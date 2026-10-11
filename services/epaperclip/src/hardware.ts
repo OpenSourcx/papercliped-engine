@@ -75,7 +75,37 @@ export interface GuestHardware {
   nics: Nic[];
   cdrom: string | null; // VMs: what's in the virtual CD drive
   pending: string[]; // keys Proxmox will apply on next start
+  protection: boolean; // Proxmox refuses to delete or overwrite a protected machine
+  startup: Startup;
+  boot: string[] | null; // VMs: devices in boot order
+  bootDevices: string[]; // VMs: devices that can be booted from
+  agent: boolean | null; // VMs: QEMU guest agent
 }
+
+export interface Startup {
+  order: number | null;
+  up: number | null; // seconds to wait after starting before the next one
+  down: number | null; // seconds to wait for shutdown before the next one
+}
+
+export function parseStartup(raw: unknown): Startup {
+  const p = parseProps(String(raw ?? ""));
+  const n = (k: string) => (getProp(p, k) !== undefined && /^\d+$/.test(getProp(p, k)!) ? Number(getProp(p, k)) : null);
+  return { order: n("order"), up: n("up"), down: n("down") };
+}
+
+export function startupString(s: Startup): string | null {
+  const parts = [s.order !== null ? `order=${s.order}` : null, s.up !== null ? `up=${s.up}` : null, s.down !== null ? `down=${s.down}` : null].filter(Boolean);
+  return parts.length ? parts.join(",") : null;
+}
+
+/** "order=scsi0;ide2;net0" -> ["scsi0","ide2","net0"] */
+export function parseBoot(raw: unknown): string[] | null {
+  const order = getProp(parseProps(String(raw ?? "")), "order");
+  return order ? order.split(";").filter(Boolean) : null;
+}
+
+export const OS_TYPES_QEMU = ["l26", "l24", "win11", "win10", "win8", "win7", "w2k22", "w2k19", "w2k16", "solaris", "other"];
 
 const num = (v: unknown, d: number) => (v === undefined || v === null || v === "" ? d : Number(v));
 
@@ -133,6 +163,11 @@ export function normalizeConfig(type: "lxc" | "qemu", cfg: Record<string, string
     nics,
     cdrom,
     pending,
+    protection: String(cfg.protection ?? "0") === "1",
+    startup: parseStartup(cfg.startup),
+    boot: type === "qemu" ? parseBoot(cfg.boot) : null,
+    bootDevices: type === "qemu" ? Object.keys(cfg).filter((k) => /^(scsi|sata|virtio|ide)\d+$/.test(k) || /^net\d+$/.test(k)).sort() : [],
+    agent: type === "qemu" ? (cfg.agent === undefined ? null : getProp(parseProps(String(cfg.agent)), "enabled") === "1" || String(cfg.agent) === "1" || parseProps(String(cfg.agent))[0]?.[0] === "1") : null,
   };
 }
 
@@ -278,4 +313,39 @@ export function ifaceParams(s: IfaceSpec, creating: boolean): Record<string, str
   }
   if (!creating && del.length) p.delete = del.join(",");
   return p;
+}
+
+/** Validates the options a person can set on a machine; throws an Error with a user-facing message. */
+export function checkMachineOptions(type: "lxc" | "qemu", cfg: Record<string, string | number>, b: Record<string, unknown>): Record<string, string | number | boolean | undefined> {
+  const bad = (m: string): never => {
+    throw new Error(m);
+  };
+  const out: Record<string, string | number | boolean | undefined> = {};
+  if (b.protection !== undefined) out.protection = typeof b.protection === "boolean" ? b.protection : bad("Protection is on or off");
+  if (b.startup !== undefined) {
+    const st = b.startup as Record<string, unknown> | null;
+    const num = (v: unknown, label: string) => (v === null || v === undefined || v === "" ? null : Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 3600 ? (v as number) : bad(`${label} must be between 0 and 3600 seconds`));
+    const order = st && st.order !== null && st.order !== undefined && st.order !== "" ? (Number.isInteger(st.order) && (st.order as number) >= 0 && (st.order as number) <= 9999 ? (st.order as number) : bad("Order is a number from 0 to 9999")) : null;
+    const value = st ? startupString({ order, up: num(st.up, "Start delay"), down: num(st.down, "Shutdown timeout") }) : null;
+    // An empty value clears it; Proxmox wants that as `delete`.
+    if (value === null) out.delete = [out.delete, "startup"].filter(Boolean).join(",");
+    else out.startup = value;
+  }
+  if (b.boot !== undefined) {
+    if (type !== "qemu") bad("Containers don't have a boot order");
+    const list = Array.isArray(b.boot) ? b.boot.map(String) : bad("Boot order is a list of devices");
+    const known = Object.keys(cfg).filter((k) => /^(scsi|sata|virtio|ide)\d+$/.test(k) || /^net\d+$/.test(k));
+    if (list.length > 8 || new Set(list).size !== list.length || !list.every((k) => known.includes(k))) bad("Boot from this machine's own disks, CD drive and network cards");
+    out.boot = list.length ? `order=${list.join(";")}` : undefined;
+    if (!list.length) out.delete = [out.delete, "boot"].filter(Boolean).join(",");
+  }
+  if (b.agent !== undefined) {
+    if (type !== "qemu") bad("Only VMs have a guest agent");
+    out.agent = typeof b.agent === "boolean" ? (b.agent ? "1" : "0") : bad("The guest agent is on or off");
+  }
+  if (b.ostype !== undefined) {
+    if (type !== "qemu") bad("A container's OS type is set when it's created");
+    out.ostype = OS_TYPES_QEMU.includes(String(b.ostype)) ? String(b.ostype) : bad("Unknown OS type");
+  }
+  return out;
 }

@@ -4,7 +4,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
-import { checkIface, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
+import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { SessionStore, type Session } from "./sessions.ts";
 
@@ -38,7 +38,7 @@ const MAX_BODY = 8 * 1024;
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".md": "text/plain; charset=utf-8" };
 const TIMEFRAMES = ["hour", "day", "week", "month", "year"];
-const POWER = ["start", "shutdown", "stop", "reboot"];
+const POWER = ["start", "shutdown", "stop", "reboot", "reset"];
 
 class HttpError extends Error {
   readonly status: number;
@@ -585,7 +585,9 @@ export function createApp(d: AppDeps) {
 
     if (method === "GET" && path === "/api/tasks") {
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50) || 50));
-      const list = await asUser(req, res, (pve) => pve.tasks(d.pve.node, limit));
+      const vm = url.searchParams.get("vmid");
+      if (vm !== null && !/^\d{1,9}$/.test(vm)) throw new HttpError(400, "bad_request", "Unknown machine");
+      const list = await asUser(req, res, (pve) => pve.tasks(d.pve.node, limit, vm === null ? undefined : Number(vm)));
       return sendJson(res, 200, { tasks: list.map((t) => ({ upid: t.upid, type: t.type, id: t.id ?? null, user: t.user, status: t.status ?? null, start: t.starttime, end: t.endtime ?? null })) });
     }
 
@@ -693,7 +695,7 @@ export function createApp(d: AppDeps) {
       if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new HttpError(404, "not_found", "Unknown machine");
       return { node: g.node ?? d.pve.node, type: g.type as GuestType, status: g.status ?? "unknown", template: g.template === 1, name: g.name ?? String(vmid) };
     };
-    const guestRoute = path.match(/^\/api\/guests\/(\d+)\/(config|resize|nets|nets\/(net\d+)\/delete|snapshots|snapshots\/([A-Za-z][\w-]{0,39})\/(rollback|delete)|clone|vnc)$/);
+    const guestRoute = path.match(/^\/api\/guests\/(\d+)\/(config|resize|destroy|template|nets|nets\/(net\d+)\/delete|snapshots|snapshots\/([A-Za-z][\w-]{0,39})\/(rollback|delete)|clone|vnc)$/);
     if (guestRoute) {
       const vmid = Number(guestRoute[1]);
       const what = guestRoute[2];
@@ -741,13 +743,35 @@ export function createApp(d: AppDeps) {
         if (b.name !== undefined) {
           if (typeof b.name !== "string" || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.name)) throw new HttpError(400, "bad_request", "Use lowercase letters, digits and hyphens for the name");
         }
-        if (!Object.keys(params).length && b.name === undefined) throw new HttpError(400, "bad_request", "Nothing to change");
+        const optionKeys = ["protection", "startup", "boot", "agent", "ostype"].filter((k) => b[k] !== undefined);
+        if (!Object.keys(params).length && b.name === undefined && !optionKeys.length) throw new HttpError(400, "bad_request", "Nothing to change");
         await asUser(req, res, async (pve) => {
           const g = await findGuest(pve, vmid);
           if (b.name !== undefined) params[g.type === "lxc" ? "hostname" : "name"] = b.name as string;
+          if (optionKeys.length) {
+            try {
+              Object.assign(params, checkMachineOptions(g.type, await pve.guestConfig(g.node, g.type, vmid), b));
+            } catch (e) {
+              throw new HttpError(400, "bad_request", (e as Error).message);
+            }
+          }
           await pve.setGuestConfig(g.node, g.type, vmid, params);
         });
         return sendJson(res, 200, { ok: true });
+      }
+
+      if (what === "destroy" || what === "template") {
+        // Irreversible, so the machine's name must be typed, and protected or running machines are refused up front.
+        const task = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          if (b.confirm !== g.name) throw new HttpError(409, "confirm", `Type the machine's name (${g.name}) to confirm.`);
+          if (g.status === "running") throw new HttpError(409, "running", `${g.name} is running. Shut it down first.`);
+          const cfg = await pve.guestConfig(g.node, g.type, vmid);
+          if (what === "destroy" && String(cfg.protection ?? "0") === "1") throw new HttpError(409, "protected", `${g.name} is protected. Turn protection off first.`);
+          if (what === "template" && g.template) throw new HttpError(409, "template", `${g.name} is already a template.`);
+          return what === "destroy" ? pve.destroyGuest(g.node, g.type, vmid) : pve.convertToTemplate(g.node, g.type, vmid);
+        });
+        return sendJson(res, 202, { task: task ?? null });
       }
 
       if (what === "resize") {
@@ -1178,6 +1202,8 @@ export function createApp(d: AppDeps) {
         const g = (await pve.clusterResources()).find((r) => r.vmid === vmid);
         if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new HttpError(404, "not_found", "Unknown machine");
         // Proxmox checks VM.PowerMgmt for this user; ePaperclip adds nothing it could get wrong.
+        if (action === "reset" && g.type !== "qemu") throw new HttpError(400, "bad_request", "Only VMs can be reset; reboot the container instead");
+        if (g.template === 1) throw new HttpError(409, "template", `${g.name ?? "This machine"} is a template; clone it to get a machine you can start.`);
         return pve.guestPower(g.node ?? d.pve.node, g.type as GuestType, vmid, action as PowerAction);
       });
       return sendJson(res, 202, { task: upid });

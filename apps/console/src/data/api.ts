@@ -167,8 +167,19 @@ export interface GuestHardware {
   nics: Nic[];
   cdrom: string | null;
   pending: string[];
+  protection: boolean;
+  startup: Startup;
+  boot: string[] | null;
+  bootDevices: string[];
+  agent: boolean | null;
   status: string;
   template: boolean;
+}
+
+export interface Startup {
+  order: number | null;
+  up: number | null;
+  down: number | null;
 }
 
 export interface HardwareChange {
@@ -180,6 +191,11 @@ export interface HardwareChange {
   description?: string;
   tags?: string[];
   name?: string;
+  protection?: boolean;
+  startup?: Startup;
+  boot?: string[];
+  agent?: boolean;
+  ostype?: string;
 }
 
 export interface NicSpec {
@@ -380,7 +396,9 @@ export const api = {
   downloadTemplate: (storage: string, template: string) => request<{ task: string }>("POST", "/api/templates/download", { storage, template }),
   downloadUrl: (storage: string, d: UrlDownload) => request<{ task: string }>("POST", `/api/storage/${enc(storage)}/download-url`, d),
   upload: uploadFile,
-  tasks: (limit = 50) => request<{ tasks: TaskEntry[] }>("GET", `/api/tasks?limit=${limit}`).then((r) => r.tasks),
+  tasks: (limit = 50, vmid?: number) => request<{ tasks: TaskEntry[] }>("GET", `/api/tasks?limit=${limit}${vmid !== undefined ? `&vmid=${vmid}` : ""}`).then((r) => r.tasks),
+  destroyMachine: (vmid: number, confirm: string) => request<{ task: string | null }>("POST", `/api/guests/${vmid}/destroy`, { confirm }),
+  convertToTemplate: (vmid: number, confirm: string) => request<{ task: string | null }>("POST", `/api/guests/${vmid}/template`, { confirm }),
   task: (upid: string) => request<TaskDetail>("GET", `/api/tasks/${enc(upid)}`),
   createVm: (spec: VmSpec) => request<{ vmid: number; task: string }>("POST", "/api/vms", spec),
   backupJobs: () => request<{ jobs: BackupJob[] }>("GET", "/api/backups/jobs").then((r) => r.jobs),
@@ -413,5 +431,5 @@ export const api = {
   setHosts: (data: string, digest: string | null) => request<{ ok: true }>("POST", "/api/network/hosts", { data, digest }),
   sdn: () => request<SdnState>("GET", "/api/sdn"),
   sdnPost: (path: string, body: unknown = {}) => request<{ ok?: true; task?: string }>("POST", `/api/sdn/${path}`, body),
-  power: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => request<{ task: string }>("POST", `/api/guests/${vmid}/power`, { action }),
+  power: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot" | "reset") => request<{ task: string }>("POST", `/api/guests/${vmid}/power`, { action }),
 };

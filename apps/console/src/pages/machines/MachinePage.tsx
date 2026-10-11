@@ -5,6 +5,7 @@ import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { Hardware } from "./Hardware.tsx";
+import { MachineTasks } from "./MachineTasks.tsx";
 import { MachineFirewall } from "../firewall/Firewall.tsx";
 const Screen = lazy(() => import("./Screen.tsx"));
 import { Snapshots } from "./Snapshots.tsx";
@@ -44,12 +45,13 @@ export function MachinePage() {
   const make = useMemo(() => () => live && g ? new LiveTransport(`/api/console/guests/${g.vmid}`) : new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid, live]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useMemo(() => (g ? { cpu: Math.max(0.02, g.cpuPct / 100), maxcpu: g.cores, mem: g.memUsed, maxmem: g.memMax, net: g.status === "running" ? 40_000 + g.vmid * 30 : 0, disk: g.status === "running" ? 120_000 : 0, running: g.status === "running" } : null), [g?.vmid, g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTab = (id: string, extra?: Record<string, string>) => setParams((p) => { const n = new URLSearchParams(p); if (id === "overview") n.delete("tab"); else n.set("tab", id); for (const [k, v] of Object.entries(extra ?? {})) n.set(k, v); return n; }, { replace: true });
-  const power = (a: "start" | "shutdown" | "stop" | "reboot") => {
+  const power = (a: "start" | "shutdown" | "stop" | "reboot" | "reset") => {
     if (!g) return;
     const r = guestPower(g.vmid, a);
     notify(r.ok ? { kind: "info", title: `${g.name}: ${live ? `${a === "shutdown" ? "shut down" : a} requested` : a === "start" ? "started" : a === "reboot" ? "rebooted" : a === "stop" ? "stopped" : "shut down"}`, body: live ? `Machine ${g.vmid}. Proxmox runs it as a task; the status updates in a few seconds.` : `Machine ${g.vmid}, from Pin's quick actions.` } : { kind: "info", title: `Couldn't ${a} ${g.name}`, body: r.error ?? "Failed" });
   };
-  const lock = g?.protected ? `${g.name} is protected` : undefined;
+  const lock = g?.protected ? `${g.name} is protected` : g?.template ? `${g.name} is a template` : undefined;
+  const openAction = (action: "destroy" | "template") => g && setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "machine-action"); n.set("action", action); n.set("vmid", String(g.vmid)); return n; });
   const running = g?.status === "running";
   usePinActions(g ? {
     context: `${g.name} #${g.vmid}`,
@@ -62,6 +64,9 @@ export function MachinePage() {
       { id: "backup", label: "Back up now", icon: <Archive className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
+      ...(g.type === "qemu" ? [{ id: "reset", label: "Reset", icon: <RotateCw className="h-4 w-4" />, run: () => power("reset"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Reset ${g.name}?`, body: "A reset restarts the VM instantly, like pressing the reset button. Unsaved work inside is lost. Reboot is the gentle option.", label: "Reset now" } }] : []),
+      { id: "template", label: "Convert to template", icon: <Copy className="h-4 w-4" />, run: () => openAction("template"), disabled: !!g.template || running, title: g.template ? "Already a template" : running ? "Shut it down first" : undefined, more: true },
+      { id: "delete", label: "Delete", icon: <Trash2 className="h-4 w-4" />, run: () => openAction("destroy"), disabled: running || g.protected, title: g.protected ? `${g.name} is protected` : running ? "Shut it down first" : undefined, danger: true, more: true },
       { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" />, run: () => setTab("hardware"), more: true },
       { id: "tasks", label: "Task log", icon: <ListChecks className="h-4 w-4" />, run: () => setTab("tasks"), more: true },
       { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true, group: "ask" },
@@ -92,6 +97,7 @@ export function MachinePage() {
             <h1 className="text-[26px] font-semibold tracking-tight leading-tight flex items-center gap-2 flex-wrap">{g.name}<span className="text-ink-3 text-[18px] font-normal tabular-nums">#{g.vmid}</span></h1>
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               {g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
+              {g.template && <Chip tone="accent">Template</Chip>}
               <Chip>{g.type === "qemu" ? "Virtual machine" : "Container"}</Chip>
               <Chip>{g.os}</Chip>
               {g.protected && <Chip><Lock className="h-3 w-3" />Protected</Chip>}
@@ -168,17 +174,7 @@ export function MachinePage() {
       {tab === "hardware" && <Hardware g={g} />}
       {tab === "firewall" && <MachineFirewall vmid={g.vmid} />}
 
-      {tab === "tasks" && (
-        <Card className="divide-y divide-line fade-in">
-          {(g.tasks ?? []).map((t) => (
-            <div key={t.id} className="flex items-center gap-3 px-5 py-3 text-[14px]">
-              {t.ok ? <Status kind="good" label="OK" /> : <Status kind="critical" label="Failed" />}
-              <span className="flex-1">{t.what}</span>
-              <span className="text-[12px] text-ink-3 tabular-nums">{ago(t.at)}</span>
-            </div>
-          ))}
-        </Card>
-      )}
+      {tab === "tasks" && <MachineTasks g={g} />}
     </PageFrame>
   );
 }

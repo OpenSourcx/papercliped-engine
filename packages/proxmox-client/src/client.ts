@@ -188,7 +188,7 @@ export interface RrdPoint {
   loadavg?: number;
   iowait?: number;
 }
-export type PowerAction = "start" | "stop" | "shutdown" | "reboot";
+export type PowerAction = "start" | "stop" | "shutdown" | "reboot" | "reset";
 
 export interface LxcInterface {
   name: string;
@@ -417,8 +417,18 @@ export class ProxmoxClient {
   }
 
   /** Recent tasks on a node. Proxmox shows each user their own unless they may audit the system. */
-  tasks(node: string, limit = 50) {
-    return this.call<TaskEntry[]>("GET", `/nodes/${seg(node)}/tasks`, { limit });
+  tasks(node: string, limit = 50, vmid?: number) {
+    return this.call<TaskEntry[]>("GET", `/nodes/${seg(node)}/tasks`, { limit, vmid });
+  }
+
+  /** Deletes a guest. `purge` also removes it from backup schedules and replication; unreferenced disks go too. */
+  destroyGuest(node: string, type: GuestType, vmid: number) {
+    return this.call<string>("DELETE", `/nodes/${seg(node)}/${type}/${seg(vmid)}`, { purge: true, "destroy-unreferenced-disks": true });
+  }
+
+  /** Turns a stopped guest into a template. This can't be undone. */
+  convertToTemplate(node: string, type: GuestType, vmid: number) {
+    return this.call<string | null>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/template`);
   }
 
   taskLog(node: string, upid: string, limit = 500) {

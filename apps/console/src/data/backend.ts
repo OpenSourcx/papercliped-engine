@@ -13,7 +13,9 @@ export interface Backend {
   downloadTemplate: (storage: string, template: string) => Promise<{ task: string }>;
   downloadUrl: (storage: string, d: UrlDownload) => Promise<{ task: string }>;
   upload: (storage: string, content: "iso" | "vztmpl", file: File, onProgress: (f: number) => void, signal?: AbortSignal) => Promise<{ task: string }>;
-  tasks: (limit?: number) => Promise<TaskEntry[]>;
+  tasks: (limit?: number, vmid?: number) => Promise<TaskEntry[]>;
+  destroyMachine: (vmid: number, confirm: string) => Promise<{ task: string | null }>;
+  convertToTemplate: (vmid: number, confirm: string) => Promise<{ task: string | null }>;
   task: (upid: string) => Promise<TaskDetail>;
   machineOptions: () => Promise<MachineOptions>;
   backupJobs: () => Promise<BackupJob[]>;
@@ -55,6 +57,8 @@ export const liveBackend: Backend = {
   downloadUrl: api.downloadUrl,
   upload: api.upload,
   tasks: api.tasks,
+  destroyMachine: api.destroyMachine,
+  convertToTemplate: api.convertToTemplate,
   task: api.task,
   machineOptions: api.machineOptions,
   backupJobs: api.backupJobs,
@@ -128,6 +132,8 @@ export const TASK_TYPES: Record<string, string> = {
   vzdump: "Backup",
   vzresize: "Resize disk",
   qmresize: "Resize disk",
+  template: "Convert to template",
+  qmreset: "Reset VM",
   vzrollback: "Roll back snapshot",
   qmrollback: "Roll back snapshot",
   vzdelsnapshot: "Delete snapshot",
@@ -228,7 +234,7 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
         onboot: g.protected, description: "", tags: g.tags ?? [], ostype: g.type === "qemu" ? "l26" : "debian",
         disks: g.type === "lxc" ? [{ key: "rootfs", storage: "local-lvm", volume: `local-lvm:vm-${vmid}-disk-0`, sizeGb: disk, mount: "/" }] : [{ key: "scsi0", storage: "local-lvm", volume: `local-lvm:vm-${vmid}-disk-0`, sizeGb: disk, mount: null }],
         nics: [{ key: "net0", model: g.type === "qemu" ? "virtio" : null, name: g.type === "lxc" ? "eth0" : null, mac, bridge: "vmbr0", tag: null, firewall: true, ip: g.type === "lxc" ? (g.ip ? `${g.ip}/24` : "dhcp") : null, gw: g.type === "lxc" && g.ip ? "192.168.1.254" : null, rate: null }],
-        cdrom: g.type === "qemu" ? "local:iso/debian-13.1.0-amd64-netinst.iso" : null, pending: [], status: g.status, template: false,
+        cdrom: g.type === "qemu" ? "local:iso/debian-13.1.0-amd64-netinst.iso" : null, pending: [], protection: g.protected, startup: { order: null, up: null, down: null }, boot: g.type === "qemu" ? ["scsi0", "net0"] : null, bootDevices: g.type === "qemu" ? ["ide2", "net0", "scsi0"] : [], agent: g.type === "qemu" ? true : null, status: g.status, template: false,
       });
     }
     const h = hw.get(vmid)!;
@@ -302,7 +308,23 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
           reject(new ApiError(0, "aborted", "Upload cancelled"));
         });
       }),
-    tasks: async (limit = 50) => tasks.slice(0, limit).map(({ upid, type, id, user: u, status, start, end }) => ({ upid, type, id, user: u, status, start, end })),
+    destroyMachine: async (vmid, confirm) => {
+      const g = guests().find((x) => x.vmid === vmid);
+      if (!g) throw new ApiError(404, "not_found", "Unknown machine");
+      if (confirm !== g.name) throw new ApiError(409, "confirm", `Type the machine's name (${g.name}) to confirm.`);
+      if (g.status === "running") throw new ApiError(409, "running", `${g.name} is running. Shut it down first.`);
+      if (hwFor(vmid).protection) throw new ApiError(409, "protected", `${g.name} is protected. Turn protection off first.`);
+      return { task: startTask(g.type === "lxc" ? "vzdestroy" : "qmdestroy", String(vmid), 1.5, [`destroy ${g.name}`, "purging from backup schedules", "removing disks"]) };
+    },
+    convertToTemplate: async (vmid, confirm) => {
+      const g = guests().find((x) => x.vmid === vmid);
+      if (!g) throw new ApiError(404, "not_found", "Unknown machine");
+      if (confirm !== g.name) throw new ApiError(409, "confirm", `Type the machine's name (${g.name}) to confirm.`);
+      if (g.status === "running") throw new ApiError(409, "running", `${g.name} is running. Shut it down first.`);
+      if (g.template) throw new ApiError(409, "template", `${g.name} is already a template.`);
+      return { task: startTask("template", String(vmid), 1, [`converting ${g.name} to a template`]) };
+    },
+    tasks: async (limit = 50, vmid) => tasks.filter((t) => vmid === undefined || t.id === String(vmid)).slice(0, limit).map(({ upid, type, id, user: u, status, start, end }) => ({ upid, type, id, user: u, status, start, end })),
     task: async (upid) => {
       const t = tasks.find((x) => x.upid === upid);
       if (!t) throw new ApiError(400, "bad_request", "Unknown task");
@@ -311,7 +333,7 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
     hardware: async (vmid) => structuredClone(hwFor(vmid)),
     setHardware: async (vmid, c) => {
       const h = hwFor(vmid);
-      hw.set(vmid, { ...h, ...(c.cores !== undefined ? { cores: c.cores } : {}), ...(c.sockets !== undefined ? { sockets: c.sockets } : {}), ...(c.memoryMb !== undefined ? { memoryMb: c.memoryMb } : {}), ...(c.swapMb !== undefined ? { swapMb: c.swapMb } : {}), ...(c.onboot !== undefined ? { onboot: c.onboot } : {}), ...(c.description !== undefined ? { description: c.description } : {}), ...(c.tags !== undefined ? { tags: c.tags } : {}), ...(c.name !== undefined ? { name: c.name } : {}), pending: h.type === "qemu" && h.status === "running" && (c.cores !== undefined || c.memoryMb !== undefined || c.sockets !== undefined) ? [...new Set([...h.pending, ...(c.cores !== undefined ? ["cores"] : []), ...(c.memoryMb !== undefined ? ["memory"] : [])])] : h.pending });
+      hw.set(vmid, { ...h, ...(c.cores !== undefined ? { cores: c.cores } : {}), ...(c.sockets !== undefined ? { sockets: c.sockets } : {}), ...(c.memoryMb !== undefined ? { memoryMb: c.memoryMb } : {}), ...(c.swapMb !== undefined ? { swapMb: c.swapMb } : {}), ...(c.onboot !== undefined ? { onboot: c.onboot } : {}), ...(c.description !== undefined ? { description: c.description } : {}), ...(c.tags !== undefined ? { tags: c.tags } : {}), ...(c.name !== undefined ? { name: c.name } : {}), ...(c.protection !== undefined ? { protection: c.protection } : {}), ...(c.startup !== undefined ? { startup: c.startup } : {}), ...(c.boot !== undefined ? { boot: c.boot } : {}), ...(c.agent !== undefined ? { agent: c.agent } : {}), ...(c.ostype !== undefined ? { ostype: c.ostype } : {}), pending: h.type === "qemu" && h.status === "running" && (c.cores !== undefined || c.memoryMb !== undefined || c.sockets !== undefined) ? [...new Set([...h.pending, ...(c.cores !== undefined ? ["cores"] : []), ...(c.memoryMb !== undefined ? ["memory"] : [])])] : h.pending });
       return { ok: true };
     },
     resizeDisk: async (vmid, disk, growGb) => {

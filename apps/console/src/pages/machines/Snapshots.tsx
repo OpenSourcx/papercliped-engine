@@ -147,6 +147,7 @@ export function CloneModal({ onClose }: { onClose: () => void }) {
   }, [g?.name, engine.data.guests.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [storages, setStorages] = useState<{ storage: string; avail: number | null }[]>([]);
   const [storage, setStorage] = useState("");
+  const [linked, setLinked] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -156,14 +157,14 @@ export function CloneModal({ onClose }: { onClose: () => void }) {
   const nameErr = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name) ? null : "Lowercase letters, digits and hyphens.";
   const go = async () => {
     setBusy(true);
-    const r = await engine.cloneMachine(g.vmid, name, storage || null);
+    const r = await engine.cloneMachine(g.vmid, name, g.template && linked ? null : storage || null, !!g.template && linked);
     setBusy(false);
     if (!r.ok) return setError(r.error);
     onClose();
     nav(g.org ? `/${device}/${g.org}/machines/${r.vmid}` : `/${device}/machines/${r.vmid}`);
   };
   return (
-    <Modal icon={<Copy className="h-5 w-5" />} title={`Clone ${g.name}`} subtitle="A full, independent copy with its own disks and new network addresses. It starts stopped." onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={go} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}Clone</Button></>}>
+    <Modal icon={<Copy className="h-5 w-5" />} title={`Clone ${g.name}`} subtitle={g.template ? "A new machine made from this template. It starts stopped." : "A full, independent copy with its own disks and new network addresses. It starts stopped."} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={go} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}Clone</Button></>}>
       <div className="space-y-4">
         <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Name</span><Input autoFocus value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setTouched(true); }} className="font-mono" />{nameErr && <span className="block text-[12px] mt-1.5 text-critical">{nameErr}</span>}</label>
         <label className="block">
@@ -173,6 +174,9 @@ export function CloneModal({ onClose }: { onClose: () => void }) {
             {storages.map((s) => <option key={s.storage} value={s.storage}>{s.storage}{s.avail !== null ? ` · ${formatBytes(s.avail)} free` : ""}</option>)}
           </select>
         </label>
+        {g.template && (
+          <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">Linked clone</div><div className="text-[12px] text-ink-3">Shares the template's disk, so it's instant and tiny. Turn off for an independent full copy.</div></div><Toggle checked={linked} onChange={setLinked} label="Linked clone" /></div>
+        )}
         {g.status === "running" && <p className="text-[12px] text-ink-3">{g.name} keeps running; the copy is taken from its current disks.</p>}
         {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
       </div>

@@ -25,7 +25,7 @@ export function liveHostMetrics(h: LiveHost, prev: HostMetrics): HostMetrics {
 export function liveGuests(h: LiveHost, orgs: Org[], prev: Guest[]): Guest[] {
   const byPool = new Map(orgs.map((o) => [o.resourceGroup.pool, o.slug]));
   return h.resources
-    .filter((r) => (r.type === "lxc" || r.type === "qemu") && typeof r.vmid === "number" && r.template !== 1)
+    .filter((r) => (r.type === "lxc" || r.type === "qemu") && typeof r.vmid === "number")
     .map((r): Guest => {
       const old = prev.find((g) => g.vmid === r.vmid);
       return {
@@ -38,6 +38,7 @@ export function liveGuests(h: LiveHost, orgs: Org[], prev: Guest[]): Guest[] {
         memUsed: r.mem ?? 0,
         memMax: r.maxmem ?? 0,
         diskMax: r.maxdisk ?? 0,
+        template: r.template === 1,
         diskUsed: r.type === "lxc" ? r.disk : undefined,
         uptimeSec: r.uptime,
         org: (r.pool && byPool.get(r.pool)) ?? null,

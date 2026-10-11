@@ -64,14 +64,15 @@ export function StoragePage() {
 export function Summary() {
   const { host, setup, data } = useEngine();
   const base = useMemo(() => ({ cpu: Math.max(0.02, host.cpuPct / 100), maxcpu: host.cpus, mem: host.memUsed, maxmem: host.memTotal, net: 180_000, disk: 400_000, running: true }), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const running = data.guests.filter((g) => g.status === "running").length;
+  const machines = data.guests.filter((g) => !g.template);
+  const running = machines.filter((g) => g.status === "running").length;
   const facts: [string, string][] = [
     ["CPU", `${host.cpuPct.toFixed(1)}% of ${host.cpus} CPUs`],
     ["Load average", `${(host.cpuPct / 100 * host.cpus).toFixed(2)}, ${(host.cpuPct / 90 * host.cpus).toFixed(2)}, ${(host.cpuPct / 85 * host.cpus).toFixed(2)}`],
     ["Memory", `${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}`],
     ["Root disk", `${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`],
     ["Uptime", formatUptime(host.uptimeSec)],
-    ["Machines", `${running} running of ${data.guests.length}`],
+    ["Machines", `${running} running of ${machines.length}`],
     ["CPU model", host.cpuModel],
     ["Version", `Proxmox VE ${host.version} · ePaperclip 0.1.0`],
   ];

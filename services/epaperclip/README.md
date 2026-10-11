@@ -42,8 +42,9 @@ All under `/api`. Changes need `Content-Type: application/json`, `X-EPC-Request:
 | `GET /templates/catalog`, `POST /templates/download` | Proxmox's template catalog and downloads from it |
 | `POST /storage/:id/download-url` | Have Proxmox download an ISO or template from a URL, with an optional checksum |
 | `POST /storage/:id/upload?content=&filename=` | Upload an ISO or template as `application/octet-stream`, streamed to Proxmox (capped by `EPC_MAX_UPLOAD_GB`) |
-| `GET /tasks`, `GET /tasks/:upid` | The task log and one task's status and output |
+| `GET /tasks`, `GET /tasks/:upid` | The task log (`?vmid=` for one machine) and one task's status and output |
 | `GET /guests/:vmid/config`, `POST /guests/:vmid/config` | A machine's hardware; change cores, sockets, memory, swap, name, tags, notes, start at boot |
+| `POST /guests/:vmid/destroy`, `POST /guests/:vmid/template` | Delete or convert to template; the body must carry the machine's name as `confirm`, and running or protected machines are refused |
 | `POST /guests/:vmid/resize`, `POST /guests/:vmid/nets`, `POST /guests/:vmid/nets/:key/delete` | Grow a disk; add, edit (keeping the MAC) or remove a network device |
 | `GET/POST /guests/:vmid/snapshots`, `POST .../snapshots/:name/rollback`, `.../delete` | Snapshots |
 | `POST /guests/:vmid/clone` | Full clone (linked only from templates) |

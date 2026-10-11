@@ -69,6 +69,9 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Snapshots (take, with memory for VMs, roll back, delete) and full clones on live machines
 - [x] Firewall at every level (device, host, machine): rules with order and switches, security groups, aliases, IP sets, options and the log, with a guard that keeps this console's port reachable
 - [x] DNS and the hosts file (digest-checked), and SDN virtual networks (zones, VNets, subnets with DHCP and SNAT), staged until applied
+- [x] Machine actions: delete (name typed; refused while running or protected; purged from backup schedules), convert to template (linked clones from templates), reset, protection switch
+- [x] Machine options: start order and delays, boot order, QEMU guest agent, OS type; Proxmox's real task history per machine
+- [ ] Disk management (add, detach, move, change the CD), container DNS and features, Cloud-Init, replication, per-machine permissions
 - [ ] Users and permissions (the IAC sync backend), certificates, disks and ZFS, HA and replication
 - [x] Serve the console on the host (port 443), with the stock Proxmox UI kept on 8006 as the emergency console
 

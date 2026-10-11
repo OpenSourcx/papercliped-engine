@@ -80,3 +80,41 @@ describe("demo hardware, snapshots and clones", () => {
     expect(r.full).toBe(true);
   });
 });
+
+describe("demo machine actions, options and history", () => {
+  const stopped = data.guests.find((g) => g.status === "stopped" && !g.protected)!;
+
+  it("deletes only a stopped, unprotected machine whose name was typed", async () => {
+    const be = b();
+    await expect(be.destroyMachine(stopped.vmid, "nope")).rejects.toMatchObject({ code: "confirm" });
+    const running = data.guests.find((g) => g.status === "running")!;
+    await expect(be.destroyMachine(running.vmid, running.name)).rejects.toMatchObject({ code: "running" });
+    await be.setHardware(stopped.vmid, { protection: true });
+    await expect(be.destroyMachine(stopped.vmid, stopped.name)).rejects.toMatchObject({ code: "protected" });
+    await be.setHardware(stopped.vmid, { protection: false });
+    const r = await be.destroyMachine(stopped.vmid, stopped.name);
+    expect(r.task).toMatch(/^UPID:demo:/);
+  });
+
+  it("converts to a template with the same guards", async () => {
+    const be = b();
+    await expect(be.convertToTemplate(stopped.vmid, "wrong")).rejects.toMatchObject({ code: "confirm" });
+    expect((await be.convertToTemplate(stopped.vmid, stopped.name)).task).toBeTruthy();
+  });
+
+  it("stores startup, boot order, agent and OS type", async () => {
+    const be = b();
+    await be.setHardware(vm.vmid, { startup: { order: 1, up: 30, down: null }, boot: ["net0", "scsi0"], agent: false, ostype: "win11" });
+    const h = await be.hardware(vm.vmid);
+    expect(h).toMatchObject({ startup: { order: 1, up: 30, down: null }, boot: ["net0", "scsi0"], agent: false, ostype: "win11" });
+  });
+
+  it("filters task history to one machine", async () => {
+    const be = b();
+    await be.takeSnapshot(ct.vmid, "hist-a", "", false);
+    await be.takeSnapshot(vm.vmid, "hist-b", "", false);
+    expect((await be.tasks(50, ct.vmid)).every((t) => t.id === String(ct.vmid))).toBe(true);
+    expect((await be.tasks(50, ct.vmid)).length).toBe(1);
+    expect((await be.tasks(50)).length).toBe(2);
+  });
+});

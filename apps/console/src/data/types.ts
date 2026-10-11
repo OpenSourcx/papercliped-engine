@@ -86,6 +86,7 @@ export interface Guest {
   memUsed: number;
   memMax: number;
   diskMax: number;
+  template?: boolean; // a template: can be cloned, never started
   diskUsed?: number; // live only; Proxmox reports it for containers
   uptimeSec?: number; // live only
   org: string | null;

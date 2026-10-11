@@ -38,7 +38,7 @@ export function Machines() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2"><span className="font-medium truncate">{g.name}</span><span className="text-[12px] text-ink-3 tabular-nums">#{g.vmid}</span></div>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                      {g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
+                      {g.template ? <Chip tone="accent">Template</Chip> : g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
                       {!org && owner && <Chip tone="accent">{owner.name}</Chip>}
                       {g.protected && <Chip><Lock className="h-3 w-3" />Protected</Chip>}
                     </div>

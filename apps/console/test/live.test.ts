@@ -29,9 +29,12 @@ describe("live data mapping", () => {
     expect(m.cpuPct).toBe(0);
   });
 
-  it("maps guests, skips templates, and assigns organizations by pool", () => {
+  it("maps guests, keeps templates flagged, and assigns organizations by pool", () => {
     const g = liveGuests(host, [newOrg("Northwind")], []);
-    expect(g.map((x) => x.vmid)).toEqual([101, 105]);
+    expect(g.map((x) => x.vmid)).toEqual([101, 105, 9000]);
+    expect(g.find((x) => x.vmid === 9000)?.template).toBe(true);
+    expect(g.find((x) => x.vmid === 105)?.template).toBe(false);
+    g.splice(2, 1);
     expect(g[1]).toMatchObject({ name: "web", type: "lxc", status: "running", cpuPct: 50, cores: 2, org: "northwind", tags: ["web", "prod"] });
     expect(g[0]).toMatchObject({ name: "VM 101", org: null, status: "stopped" });
   });

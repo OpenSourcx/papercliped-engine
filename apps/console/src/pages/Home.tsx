@@ -47,7 +47,8 @@ export function Home() {
   const pin = usePin();
   const device = setup?.deviceName ?? "pve";
   const name = (setup?.ownerName || "there").split(" ")[0];
-  const running = data.guests.filter((g) => g.status === "running").length;
+  const machines = data.guests.filter((g) => !g.template);
+  const running = machines.filter((g) => g.status === "running").length;
   const working = data.orgs.flatMap((o) => o.agents).filter((a) => a.status === "working").length;
   const activeRules = data.rules.filter((r) => r.enabled).length;
 
@@ -93,7 +94,7 @@ export function Home() {
             </Card>
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
               {[
-                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Machines running", to: `/${device}/machines` },
+                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${machines.length}`, label: "Machines running", to: `/${device}/machines` },
                 { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: `/${device}/${data.orgs[0]?.slug ?? "home"}` },
                 { icon: <Workflow className="h-4 w-4" />, value: String(activeRules), label: "Automations on", to: `/${device}/automations` },
                 { icon: <Plug className="h-4 w-4" />, value: String(data.apps.sessions.length), label: "Apps connected", to: settingsHref("apps") },

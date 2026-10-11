@@ -12,6 +12,35 @@ const duration = (t: TaskEntry) => {
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 };
 
+/** Proxmox's task list: when, what, who, how long, and how it ended. Click a task for its log. */
+export function TaskTable({ tasks }: { tasks: TaskEntry[] }) {
+  const nav = useNavigate();
+  return (
+  <table className="w-full text-[13px] min-w-[720px]">
+    <thead>
+      <tr className="border-b border-line text-ink-3 text-left">
+        <th className="font-normal px-4 h-10">Started</th>
+        <th className="font-normal px-3">Task</th>
+        <th className="font-normal px-3">User</th>
+        <th className="font-normal px-3 text-right">Duration</th>
+        <th className="font-normal px-3">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {tasks.map((t) => (
+        <tr key={t.upid} onClick={() => nav(`?modal=task&upid=${encodeURIComponent(t.upid)}`)} className="border-b border-line last:border-0 hover:bg-surface-2/60 cursor-pointer">
+          <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-ink-2">{new Date(t.start * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "medium" })}</td>
+          <td className="px-3 py-2.5"><span className="truncate block max-w-[360px]" title={taskLabel(t)}>{taskLabel(t)}</span></td>
+          <td className="px-3 text-ink-2">{t.user}</td>
+          <td className="px-3 text-right tabular-nums whitespace-nowrap">{duration(t)}</td>
+          <td className="px-3">{t.status === null ? <Status kind="working" label="Running" /> : t.status === "OK" ? <Status kind="good" label="OK" /> : t.status.startsWith("WARNINGS") ? <Status kind="warning" label={t.status} /> : <Status kind="critical" label={t.status.length > 48 ? `${t.status.slice(0, 48)}…` : t.status} />}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  );
+}
+
 /** Proxmox's task log: everything the device has done recently, with the full log of each task. */
 export function TasksPage() {
   const engine = useEngine();
@@ -43,28 +72,7 @@ export function TasksPage() {
         ) : !tasks?.length ? (
           <EmptyState icon={<ListChecks className="h-5 w-5" />} title="No tasks yet" body="Downloads, uploads and machine actions show up here as Proxmox runs them." />
         ) : (
-          <table className="w-full text-[13px] min-w-[720px]">
-            <thead>
-              <tr className="border-b border-line text-ink-3 text-left">
-                <th className="font-normal px-4 h-10">Started</th>
-                <th className="font-normal px-3">Task</th>
-                <th className="font-normal px-3">User</th>
-                <th className="font-normal px-3 text-right">Duration</th>
-                <th className="font-normal px-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((t) => (
-                <tr key={t.upid} onClick={() => nav(`?modal=task&upid=${encodeURIComponent(t.upid)}`)} className="border-b border-line last:border-0 hover:bg-surface-2/60 cursor-pointer">
-                  <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-ink-2">{new Date(t.start * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "medium" })}</td>
-                  <td className="px-3 py-2.5"><span className="truncate block max-w-[360px]" title={taskLabel(t)}>{taskLabel(t)}</span></td>
-                  <td className="px-3 text-ink-2">{t.user}</td>
-                  <td className="px-3 text-right tabular-nums whitespace-nowrap">{duration(t)}</td>
-                  <td className="px-3">{t.status === null ? <Status kind="working" label="Running" /> : t.status === "OK" ? <Status kind="good" label="OK" /> : t.status.startsWith("WARNINGS") ? <Status kind="warning" label={t.status} /> : <Status kind="critical" label={t.status.length > 48 ? `${t.status.slice(0, 48)}…` : t.status} />}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TaskTable tasks={tasks} />
         )}
       </Card>
     </PageFrame>

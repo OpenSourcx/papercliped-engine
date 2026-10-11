@@ -98,6 +98,10 @@ export function Hardware({ g }: { g: Guest }) {
           <dt className="text-ink-3">Name</dt><dd className="font-mono text-[13px]">{hw.name}</dd>
           <dt className="text-ink-3">Start at boot</dt><dd>{hw.onboot ? "Yes" : "No"}</dd>
           <dt className="text-ink-3">Tags</dt><dd className="flex flex-wrap gap-1">{hw.tags.length ? hw.tags.map((t) => <Chip key={t}>{t}</Chip>) : <span className="text-ink-3">None</span>}</dd>
+          <dt className="text-ink-3">Protection</dt><dd>{hw.protection ? "On" : "Off"}</dd>
+          <dt className="text-ink-3">Start order</dt><dd>{hw.startup.order !== null ? `${hw.startup.order}${hw.startup.up ? `, then wait ${hw.startup.up}s` : ""}` : <span className="text-ink-3">Any</span>}</dd>
+          {hw.boot && <><dt className="text-ink-3">Boot order</dt><dd className="font-mono text-[13px]">{hw.boot.join(" → ")}</dd></>}
+          {hw.agent !== null && <><dt className="text-ink-3">Guest agent</dt><dd>{hw.agent ? "On" : "Off"}</dd></>}
           <dt className="text-ink-3">Type</dt><dd>{hw.type === "lxc" ? `Container · ${hw.ostype ?? "Linux"}` : `VM · ${hw.ostype === "win11" ? "Windows 11" : hw.ostype === "l26" ? "Linux" : hw.ostype ?? "Other"}`}</dd>
           {hw.description && <><dt className="text-ink-3">Notes</dt><dd className="text-ink-2 whitespace-pre-wrap line-clamp-4">{hw.description}</dd></>}
         </dl>
@@ -247,31 +251,97 @@ function NicModal({ vmid, type, nic, onClose, onDone }: { vmid: number; type: "l
   );
 }
 
+const OS_LABELS: Record<string, string> = { l26: "Linux (2.6 kernel or newer)", l24: "Linux (2.4 kernel)", win11: "Windows 11 / Server 2022 / 2025", win10: "Windows 10 / Server 2016 / 2019", win8: "Windows 8 / Server 2012", win7: "Windows 7 / Server 2008 R2", w2k22: "Windows Server 2022", w2k19: "Windows Server 2019", w2k16: "Windows Server 2016", solaris: "Solaris", other: "Other" };
+const secs = (v: number | null) => (v === null ? "" : String(v));
+const num = (v: string): number | null => (v.trim() === "" ? null : Math.max(0, Math.floor(Number(v) || 0)));
+
 function OptionsModal({ g, hw, onClose, onDone }: { g: Guest; hw: GuestHardware; onClose: () => void; onDone: () => void }) {
   const engine = useEngine();
   const [name, setName] = useState(hw.name ?? g.name);
   const [onboot, setOnboot] = useState(hw.onboot);
+  const [protection, setProtection] = useState(hw.protection);
+  const [order, setOrder] = useState(secs(hw.startup.order));
+  const [up, setUp] = useState(secs(hw.startup.up));
+  const [down, setDown] = useState(secs(hw.startup.down));
+  const [boot, setBoot] = useState<string[]>(hw.boot ?? []);
+  const [agent, setAgent] = useState(hw.agent ?? false);
+  const [ostype, setOstype] = useState(hw.ostype ?? "other");
   const [tags, setTags] = useState(hw.tags.join(" "));
   const [description, setDescription] = useState(hw.description);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameErr = !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name) ? "Lowercase letters, digits and hyphens." : null;
+  const vm = hw.type === "qemu";
+  const unused = hw.bootDevices.filter((d) => !boot.includes(d));
+  const move = (i: number, by: number) => setBoot((b) => { const n = [...b]; const [x] = n.splice(i, 1); n.splice(i + by, 0, x); return n; });
+  const label = (d: string) => (d.startsWith("net") ? `Network ${d}` : d === hw.disks.find((x) => x.key === d)?.key ? `Disk ${d}` : d === "ide2" ? "CD drive ide2" : d);
   const save = async () => {
     setBusy(true);
     const tagList = tags.split(/[\s,;]+/).filter(Boolean);
-    const r = await engine.changeHardware(g.vmid, { ...(name !== hw.name ? { name } : {}), ...(onboot !== hw.onboot ? { onboot } : {}), ...(tagList.join(";") !== hw.tags.join(";") ? { tags: tagList } : {}), ...(description !== hw.description ? { description } : {}) });
+    const startupChanged = num(order) !== hw.startup.order || num(up) !== hw.startup.up || num(down) !== hw.startup.down;
+    const r = await engine.changeHardware(g.vmid, {
+      ...(name !== hw.name ? { name } : {}),
+      ...(onboot !== hw.onboot ? { onboot } : {}),
+      ...(protection !== hw.protection ? { protection } : {}),
+      ...(startupChanged ? { startup: { order: num(order), up: num(up), down: num(down) } } : {}),
+      ...(vm && boot.join(";") !== (hw.boot ?? []).join(";") ? { boot } : {}),
+      ...(vm && hw.agent !== null && agent !== hw.agent ? { agent } : {}),
+      ...(vm && ostype !== hw.ostype ? { ostype } : {}),
+      ...(tagList.join(";") !== hw.tags.join(";") ? { tags: tagList } : {}),
+      ...(description !== hw.description ? { description } : {}),
+    });
     setBusy(false);
     if (!r.ok) return setError(r.error);
     onDone();
     onClose();
   };
+  const section = (t: string) => <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3 pt-1">{t}</h3>;
   return (
-    <Modal icon={<Settings2 className="h-5 w-5" />} title="Options" subtitle={`${g.name} #${g.vmid}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</Button></>}>
+    <Modal size="lg" icon={<Settings2 className="h-5 w-5" />} title="Options" subtitle={`${g.name} #${g.vmid}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</Button></>}>
       <div className="space-y-4">
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-[12px] mt-1.5 text-critical">{nameErr}</span>}</label>
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Notes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-[14px] outline-none focus:border-line-strong" /></label>
-        <div className="flex items-center justify-between"><span className="text-[14px]">Start when the device boots</span><Toggle checked={onboot} onChange={setOnboot} label="Start at boot" /></div>
+        {section("General")}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-[12px] mt-1.5 text-critical">{nameErr}</span>}</label>
+          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
+          {vm && (
+            <label className="block sm:col-span-2"><span className="block text-[13px] text-ink-2 mb-2">Operating system</span><select value={ostype} onChange={(e) => setOstype(e.target.value)} className={select}>{Object.entries(OS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+          )}
+          <label className="block sm:col-span-2"><span className="block text-[13px] text-ink-2 mb-2">Notes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-[14px] outline-none focus:border-line-strong" /></label>
+        </div>
+
+        {section("Starting and stopping")}
+        <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">Start when the device boots</div></div><Toggle checked={onboot} onChange={setOnboot} label="Start at boot" /></div>
+        <div className="grid grid-cols-3 gap-4">
+          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Start order</span><Input type="number" min={0} max={9999} value={order} onChange={(e) => setOrder(e.target.value)} placeholder="Any" /></label>
+          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Wait after start <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={up} onChange={(e) => setUp(e.target.value)} placeholder="Default" /></label>
+          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Shutdown timeout <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={down} onChange={(e) => setDown(e.target.value)} placeholder="Default" /></label>
+        </div>
+        <p className="text-[12px] text-ink-3 -mt-2">Machines start in order, lowest first, waiting the delay before the next. They stop in the reverse order. Only applies to machines that start at boot.</p>
+
+        {vm && (
+          <>
+            {section("Boot order")}
+            <div className="rounded-lg border border-line divide-y divide-line">
+              {boot.length === 0 && <p className="px-3 py-2.5 text-[13px] text-ink-3">Proxmox picks the order.</p>}
+              {boot.map((d, i) => (
+                <div key={d} className="flex items-center gap-2 px-3 h-10 text-[13px]"><span className="text-ink-3 tabular-nums w-5">{i + 1}</span><span className="flex-1 font-mono">{label(d)}</span>
+                  <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move ${d} up`} className="h-7 w-7 rounded-md hover:bg-surface-2 disabled:opacity-30">↑</button>
+                  <button onClick={() => move(i, 1)} disabled={i === boot.length - 1} aria-label={`Move ${d} down`} className="h-7 w-7 rounded-md hover:bg-surface-2 disabled:opacity-30">↓</button>
+                  <button onClick={() => setBoot(boot.filter((x) => x !== d))} aria-label={`Don't boot from ${d}`} className="h-7 px-2 rounded-md hover:bg-surface-2 text-ink-3">Remove</button>
+                </div>
+              ))}
+              {unused.map((d) => (
+                <div key={d} className="flex items-center gap-2 px-3 h-10 text-[13px] text-ink-3"><span className="w-5" /><span className="flex-1 font-mono">{label(d)}</span><button onClick={() => setBoot([...boot, d])} aria-label={`Boot from ${d}`} className="h-7 px-2 rounded-md hover:bg-surface-2 text-ink-2">Add</button></div>
+              ))}
+            </div>
+            {hw.agent !== null && (
+              <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">QEMU guest agent</div><div className="text-[12px] text-ink-3">Lets Proxmox see the VM's addresses and shut it down cleanly. The agent must be installed inside.</div></div><Toggle checked={agent} onChange={setAgent} label="QEMU guest agent" /></div>
+            )}
+          </>
+        )}
+
+        {section("Safety")}
+        <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">Protection</div><div className="text-[12px] text-ink-3">Stops this machine and its disks from being deleted by accident. Turn it off to delete.</div></div><Toggle checked={protection} onChange={setProtection} label="Protection" /></div>
         {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
       </div>
     </Modal>

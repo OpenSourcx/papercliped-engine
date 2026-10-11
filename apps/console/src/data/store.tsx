@@ -35,7 +35,7 @@ interface Engine {
   /** Changes CPU, memory, name or options. Proxmox checks the user's permission; the demo updates the machine. */
   changeHardware: (vmid: number, c: HardwareChange) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Clones a machine into a new one; Pin reports when the copy is done. */
-  cloneMachine: (vmid: number, name: string, storage: string | null) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
+  cloneMachine: (vmid: number, name: string, storage: string | null, linked?: boolean) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   /** Restores a backup, as a new machine or over the original. Proxmox does the work; Pin reports when it's done. */
   restoreBackup: (spec: RestoreSpec) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   createVm: (spec: VmSpec & { org: string | null }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
@@ -58,7 +58,11 @@ interface Engine {
   markRead: (id?: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   setConnectorAccess: (id: string, who: "pin" | string, on: boolean) => void;
-  guestPower: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => { ok: boolean; error?: string };
+  guestPower: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot" | "reset") => { ok: boolean; error?: string };
+  /** Deletes a machine. The name must be typed to confirm; Proxmox refuses running and protected machines. */
+  destroyMachine: (vmid: number, confirm: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Turns a stopped machine into a template. This can't be undone. */
+  convertToTemplate: (vmid: number, confirm: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Creates a container. Live, Proxmox creates and starts it as the signed-in user; in the demo it appears at once. */
   createMachine: (spec: MachineSpec & { org: string | null; os: string }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   addProject: (org: string, name: string, lead: string | null) => void;
@@ -207,6 +211,28 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       watchTask,
       running,
       contentVersion,
+      destroyMachine: async (vmid, confirm) => {
+        try {
+          const g = view.guests.find((x) => x.vmid === vmid);
+          const r = await backend.destroyMachine(vmid, confirm);
+          watchTask(r.task, `Delete ${g?.name ?? `#${vmid}`}`);
+          if (!live) setData((d) => ({ ...d, guests: d.guests.filter((x) => x.vmid !== vmid) }));
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+        }
+      },
+      convertToTemplate: async (vmid, confirm) => {
+        try {
+          const g = view.guests.find((x) => x.vmid === vmid);
+          const r = await backend.convertToTemplate(vmid, confirm);
+          watchTask(r.task, `Convert ${g?.name ?? `#${vmid}`} to a template`);
+          if (!live) setData((d) => ({ ...d, guests: d.guests.map((x) => (x.vmid === vmid ? { ...x, template: true } : x)) }));
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+        }
+      },
       changeHardware: async (vmid, c) => {
         try {
           await backend.setHardware(vmid, c);
@@ -217,11 +243,11 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
         }
       },
-      cloneMachine: async (vmid, name, storage) => {
+      cloneMachine: async (vmid, name, storage, linked = false) => {
         try {
           const src = view.guests.find((g) => g.vmid === vmid);
           if (!live && view.guests.some((g) => g.name === name)) return { ok: false, error: "A machine with that name exists." };
-          const r = await backend.clone(vmid, name, storage, false);
+          const r = await backend.clone(vmid, name, storage, linked);
           watchTask(r.task, `Clone ${src?.name ?? `#${vmid}`} to ${name}`);
           if (!live && src) {
             const at = new Date().toISOString();
@@ -331,8 +357,9 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         const g = view.guests.find((x) => x.vmid === vmid);
         if (!g) return { ok: false, error: "Unknown machine" };
         if (g.protected) return { ok: false, error: `${g.name} is protected` };
-        const up = action === "start" || action === "reboot";
-        const label = { start: "Start", shutdown: "Shutdown", stop: "Stop", reboot: "Reboot" }[action];
+        if (g.template) return { ok: false, error: `${g.name} is a template; clone it to get a machine you can start.` };
+        const up = action === "start" || action === "reboot" || action === "reset";
+        const label = { start: "Start", shutdown: "Shutdown", stop: "Stop", reboot: "Reboot", reset: "Reset" }[action];
         if (live) {
           // Proxmox decides whether this user may do it; the result shows in the machine's task log.
           const log = (ok: boolean, what: string) => setGuests((list) => (list ?? []).map((x) => (x.vmid === vmid ? { ...x, tasks: [{ id: `${vmid}-${Date.now()}`, what, at: new Date().toISOString(), ok }, ...(x.tasks ?? [])].slice(0, 30) } : x)));

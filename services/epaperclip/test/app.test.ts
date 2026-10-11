@@ -17,6 +17,7 @@ function fakePve() {
     "kai@pam": { password: "right", totp: "123456", admin: true },
   };
   const tickets = new Map<string, string>(); // ticket -> user
+  const state = { extra: false };
   const fw = { cluster: { enable: 0, policy_in: "DROP" } as Record<string, unknown>, clusterRules: [] as Record<string, unknown>[], nodeRules: [] as Record<string, unknown>[] };
   const partial = new Map<string, string>();
   let n = 0;
@@ -58,7 +59,7 @@ function fakePve() {
     const admin = users[user].admin;
     if (path === "/version") return ok({ version: "9.0.3" });
     if (path === "/cluster/resources" && u.searchParams.get("type") === "storage") return ok([{ id: "storage/pve/local", type: "storage", node: "pve", storage: "local", plugintype: "dir", content: "iso,vztmpl,backup", status: "available", disk: 40, maxdisk: 100 }, { id: "storage/pve/drive2", type: "storage", node: "pve", storage: "drive2", plugintype: "dir", content: "images,rootdir", status: "available", disk: 5, maxdisk: 2000 }, { id: "storage/other/x", type: "storage", node: "other", storage: "x" }]);
-    if (path === "/cluster/resources") return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, { id: "qemu/102", type: "qemu", vmid: 102, node: "pve", name: "lab", status: "running" }, { id: "node/pve", type: "node", node: "pve" }]);
+    if (path === "/cluster/resources") return ok([...(state.extra ? [{ id: "lxc/103", type: "lxc", vmid: 103, node: "pve", name: "old", status: "stopped" }, { id: "lxc/104", type: "lxc", vmid: 104, node: "pve", name: "keep", status: "stopped" }, { id: "qemu/105", type: "qemu", vmid: 105, node: "pve", name: "base", status: "stopped", template: 1 }] : []), { id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, { id: "qemu/102", type: "qemu", vmid: 102, node: "pve", name: "lab", status: "running" }, { id: "node/pve", type: "node", node: "pve" }]);
     if (path === "/nodes/pve/status") return admin ? ok({ cpu: 0.1, memory: { used: 1, total: 2 } }) : { status: 403, body: "" };
     if (path === "/nodes/pve/rrddata") return admin ? ok([{ time: 1, cpu: 0.2 }]) : { status: 403, body: "" };
     if (path === "/nodes/pve/lxc/101/rrddata") return ok([{ time: 1, cpu: 0.5, q: u.search }]);
@@ -120,6 +121,14 @@ function fakePve() {
     if (path === "/cluster/sdn/vnets" && req.method === "GET") return ok([{ vnet: "northw", zone: "orgs", alias: "Northwind" }]);
     if (path === "/cluster/sdn/vnets/northw/subnets" && req.method === "GET") return ok([{ subnet: "orgs-10.20.0.0-24", cidr: "10.20.0.0/24", gateway: "10.20.0.1", snat: 1, "dhcp-range": ["start-address=10.20.0.100,end-address=10.20.0.200"] }]);
     if (path.startsWith("/cluster/sdn") && req.method !== "GET") return path === "/cluster/sdn" ? ok("UPID:pve:sdn") : ok(null);
+    if (path === "/nodes/pve/lxc/103/config") return ok({ hostname: "old", cores: 1, memory: 512, rootfs: "local-lvm:vm-103-disk-0,size=8G" });
+    if (path === "/nodes/pve/lxc/104/config") return ok({ hostname: "keep", cores: 1, memory: 512, protection: 1 });
+    if (path === "/nodes/pve/qemu/105/config") return ok({ name: "base", cores: 2, memory: 2048, template: 1 });
+    if (path === "/nodes/pve/qemu/102/config" && req.method === "GET") return ok({ name: "lab", cores: 4, memory: 8192, scsi0: "local-lvm:vm-102-disk-0,size=64G", ide2: "none,media=cdrom", net0: "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0", boot: "order=scsi0;net0", agent: "enabled=1", startup: "order=2,up=30", protection: 0 });
+    if (path === "/nodes/pve/qemu/102/config" && req.method === "PUT") return ok(null);
+    if ((path === "/nodes/pve/lxc/103" || path === "/nodes/pve/lxc/104") && req.method === "DELETE") return admin ? ok("UPID:pve:destroy") : { status: 403, body: "" };
+    if (path === "/nodes/pve/lxc/103/template" && req.method === "POST") return ok("UPID:pve:template");
+    if (path === "/nodes/pve/qemu/102/status/reset" && req.method === "POST") return ok("UPID:pve:reset");
     if (path === "/nodes/pve/lxc/101/status/shutdown") return admin ? ok("UPID:pve:1") : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
@@ -132,7 +141,7 @@ function fakePve() {
     uploads.push({ url: req.url, headers: req.headers, body: Buffer.concat(parts).toString() });
     return { status: 200, body: JSON.stringify({ data: "UPID:pve:up" }) };
   };
-  return { transport, seen, tickets, streamTransport, uploads, fw };
+  return { transport, seen, tickets, streamTransport, uploads, fw, state };
 }
 
 let server: Server;
@@ -532,6 +541,62 @@ describe("backups", () => {
     expect(() => parseBackupJob({ schedule: "21:00", storage: "x", vmids: [], mode: "snapshot", keepLast: 1 })).toThrow();
     expect(backupOf("drive2:backup/vzdump-qemu-109-2025_10_10-21_04_40.vma.zst")).toEqual({ type: "qemu", vmid: 109 });
     expect(backupOf("drive2:backup/random.tar")).toBeNull();
+  });
+});
+
+describe("machine actions and options", () => {
+  it("deletes only after the name is typed, never while running or protected", async () => {
+    pve.state.extra = true;
+    const c = await signIn();
+    expect(await (await post("/api/guests/103/destroy", {}, { Cookie: c })).json()).toMatchObject({ code: "confirm" });
+    expect((await post("/api/guests/103/destroy", { confirm: "wrong" }, { Cookie: c })).status).toBe(409);
+    expect(((await (await post("/api/guests/101/destroy", { confirm: "web" }, { Cookie: c })).json()) as { code: string }).code).toBe("running");
+    expect(((await (await post("/api/guests/104/destroy", { confirm: "keep" }, { Cookie: c })).json()) as { code: string }).code).toBe("protected");
+    const r = await post("/api/guests/103/destroy", { confirm: "old" }, { Cookie: c });
+    expect(r.status).toBe(202);
+    expect(await r.json()).toEqual({ task: "UPID:pve:destroy" });
+    const sent = pve.seen.find((x) => x.method === "DELETE" && x.url.includes("/lxc/103"))!;
+    expect(sent.url).toContain("purge=1");
+    expect(sent.url).toContain("destroy-unreferenced-disks=1");
+    expect((await post("/api/guests/103/destroy", { confirm: "old" }, { Cookie: await signIn("lee") })).status).toBe(403);
+  });
+
+  it("converts to a template with the same guards, and refuses to start templates", async () => {
+    pve.state.extra = true;
+    const c = await signIn();
+    expect((await post("/api/guests/103/template", { confirm: "nope" }, { Cookie: c })).status).toBe(409);
+    expect(await (await post("/api/guests/103/template", { confirm: "old" }, { Cookie: c })).json()).toEqual({ task: "UPID:pve:template" });
+    expect(((await (await post("/api/guests/105/template", { confirm: "base" }, { Cookie: c })).json()) as { code: string }).code).toBe("template");
+    expect(((await (await post("/api/guests/105/power", { action: "start" }, { Cookie: c })).json()) as { code: string }).code).toBe("template");
+  });
+
+  it("resets VMs but not containers", async () => {
+    const c = await signIn();
+    expect(await (await post("/api/guests/102/power", { action: "reset" }, { Cookie: c })).json()).toEqual({ task: "UPID:pve:reset" });
+    expect((await post("/api/guests/101/power", { action: "reset" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("reads and writes startup, boot order, guest agent, OS type and protection", async () => {
+    const c = await signIn();
+    const hw = (await (await fetch(base + "/api/guests/102/config", { headers: { Cookie: c } })).json()) as Record<string, unknown>;
+    expect(hw).toMatchObject({ protection: false, startup: { order: 2, up: 30, down: null }, boot: ["scsi0", "net0"], bootDevices: ["ide2", "net0", "scsi0"], agent: true });
+    expect((await post("/api/guests/102/config", { protection: true, startup: { order: 1, up: 60, down: null }, boot: ["net0", "scsi0"], agent: false, ostype: "win11" }, { Cookie: c })).status).toBe(200);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ protection: "1", startup: "order=1,up=60", boot: "order=net0;scsi0", agent: "0", ostype: "win11" });
+    expect((await post("/api/guests/102/config", { startup: { order: null, up: null, down: null } }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("delete")).toBe("startup");
+    for (const bad of [{ boot: ["scsi9"] }, { boot: ["net0", "net0"] }, { ostype: "plan9" }, { startup: { order: -1 } }, { startup: { order: 1, up: 99999 } }, { agent: "yes" }]) {
+      const r = await post("/api/guests/102/config", bad, { Cookie: c });
+      expect(r.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect((await post("/api/guests/101/config", { boot: ["net0"] }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/guests/101/config", { ostype: "l26" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("lists one machine's task history", async () => {
+    const c = await signIn();
+    await fetch(base + "/api/tasks?vmid=101", { headers: { Cookie: c } });
+    expect(pve.seen.at(-1)!.url).toContain("vmid=101");
+    expect((await fetch(base + "/api/tasks?vmid=abc", { headers: { Cookie: c } })).status).toBe(400);
   });
 });
 

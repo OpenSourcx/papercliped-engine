@@ -10,6 +10,7 @@ import { DownloadUrlModal, TemplatesModal, UploadModal } from "../pages/storage/
 import { TaskLogModal } from "../pages/Tasks.tsx";
 import { IfaceModal } from "../pages/network/Network.tsx";
 import { CloneModal } from "../pages/machines/Snapshots.tsx";
+import { MachineActionModal } from "../pages/machines/MachineActions.tsx";
 import { BackupJobModal, BackupNowModal, RestoreModal } from "../pages/backups/Backups.tsx";
 import { Settings } from "../pages/Settings.tsx";
 import { Updates } from "../pages/Updates.tsx";
@@ -44,6 +45,7 @@ export function ModalHost() {
       {m.modal === "restore" && <RestoreModal onClose={m.close} />}
       {m.modal === "iface" && <IfaceModal onClose={m.close} />}
       {m.modal === "clone" && <CloneModal onClose={m.close} />}
+      {m.modal === "machine-action" && <MachineActionModal onClose={m.close} />}
       {(m.modal === "new-project" || m.modal === "new-goal" || m.modal === "new-routine") && <QuickCreateModal kind={m.modal} onClose={m.close} />}
     </>
   );
