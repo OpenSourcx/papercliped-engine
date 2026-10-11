@@ -42,6 +42,11 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Pin's floating island and the Ask Pin bar
 - [x] Integrated Access Control screens: users mirrored as Proxmox users, per-user orgs, tools, connectors, policies
 - [x] Design framework: theme presets and user overrides as tokens
+- [x] Rail plus context sidebar: device navigation (machines, host tools) and Paperclip's organization navigation
+- [x] Machine pages with power, snapshots, hardware and task log; interactive console and host shell on a demo transport
+- [x] Organization pages: inbox, decisions, tasks, projects, goals, routines, agents, org chart, costs, activity, connectors, settings
+- [ ] Live consoles: broker relay of Proxmox's terminal proxy, behind the same transport
+- [ ] Paperclip pages still to come from the fork: chat, artifacts, workspaces, skills
 - [ ] Connect the console to the host broker and ePaperclip (replace the demo data layer)
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
 - [ ] Storage, network and backup pages

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Boxes, House, Menu, Plug, Plus, Settings, Workflow, X } from "lucide-react";
+import { House, Menu, Plug, Plus, Settings, X } from "lucide-react";
+import { ContextSidebar } from "./ContextSidebar.tsx";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
@@ -30,7 +31,18 @@ function useTip() {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const show = () => ref.current && setAnchor(ref.current.getBoundingClientRect());
   const hide = () => setAnchor(null);
-  return { ref, anchor, handlers: { onMouseEnter: show, onMouseLeave: hide, onFocus: show, onBlur: hide } };
+  // Touch screens fire mouseenter on tap; tooltips there only get in the way. Keyboard focus still shows them.
+  const canHover = typeof window !== "undefined" && window.matchMedia?.("(hover: hover)").matches;
+  return {
+    ref,
+    anchor,
+    handlers: {
+      onMouseEnter: () => canHover && show(),
+      onMouseLeave: hide,
+      onFocus: (e: React.FocusEvent) => (e.target as HTMLElement).matches?.(":focus-visible") && show(),
+      onBlur: hide,
+    },
+  };
 }
 
 function RailButton({ active, label, sub, children, badge, expanded }: { active: boolean; label: string; sub?: string; children: ReactNode; badge?: ReactNode; expanded?: boolean }) {
@@ -55,9 +67,10 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
   const loc = useLocation();
   const modals = useModals();
   const updates = data.notices.filter((n) => !n.read && n.kind === "update").length;
+  const onOrg = data.orgs.some((o) => o.slug === loc.pathname.split("/")[2]);
   const nav = (to: string, label: string, icon: ReactNode, sub?: string, badge?: ReactNode) => (
     <NavLink key={to} to={to} onClick={onNavigate} aria-label={label} className={cn("group block outline-none", expanded && "px-3")}>
-      {({ isActive }) => <RailButton active={isActive} label={label} sub={sub} badge={badge} expanded={expanded}>{icon}</RailButton>}
+      {({ isActive }) => <RailButton active={isActive || loc.pathname.startsWith(`${to}/`)} label={label} sub={sub} badge={badge} expanded={expanded}>{icon}</RailButton>}
     </NavLink>
   );
   const modalLink = (href: string, label: string, icon: ReactNode, active: boolean, badge?: ReactNode) => (
@@ -69,9 +82,10 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
 
   return (
     <nav className="flex flex-col h-full py-3 gap-2" aria-label="Main">
-      {nav(`/${d}/home`, d, <House className="h-5 w-5" />, `Online · ${host.ip}`)}
-      {nav(`/${d}/guests`, "Guests", <Boxes className="h-5 w-5" />, `${data.guests.filter((g) => g.status === "running").length} running`)}
-      {nav(`/${d}/automations`, "Automations", <Workflow className="h-5 w-5" />, `${data.rules.filter((r) => r.enabled).length} on`)}
+      {/* The device is "active" on every device page (home, machines, host tools), like Discord's home button. */}
+      <NavLink to={`/${d}/home`} onClick={onNavigate} aria-label={d} className={cn("group block outline-none", expanded && "px-3")}>
+        {() => <RailButton active={!onOrg} label={d} sub={`Online · ${host.ip}`} expanded={expanded}><House className="h-5 w-5" /></RailButton>}
+      </NavLink>
       {sep}
       <div className="flex-1 overflow-y-auto overflow-x-visible flex flex-col gap-2 [scrollbar-width:none]">
         {data.orgs.map((o) => {
@@ -119,20 +133,26 @@ export function AppShell() {
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
   return (
     <div className="min-h-dvh flex">
-      <aside className="hidden sm:block w-[72px] shrink-0 bg-surface/80 border-r border-line sticky top-0 h-dvh z-30">
+      <aside className="hidden md:block w-[72px] shrink-0 bg-surface/80 border-r border-line sticky top-0 h-dvh z-30">
         <Rail />
       </aside>
+      <aside className="hidden md:block w-60 shrink-0 bg-surface/40 border-r border-line sticky top-0 h-dvh z-20">
+        <ContextSidebar />
+      </aside>
       {drawer && (
-        <div className="sm:hidden fixed inset-0 z-40">
+        <div className="md:hidden fixed inset-0 z-[59]">
           <div className="absolute inset-0 bg-black/60 modal-backdrop-in" onClick={() => setDrawer(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-surface border-r border-line modal-in origin-left">
-            <button onClick={() => setDrawer(false)} className="absolute right-2 top-2 h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center z-10" aria-label="Close menu"><X className="h-4 w-4" /></button>
-            <Rail expanded onNavigate={() => setDrawer(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-[min(312px,88vw)] flex bg-surface border-r border-line modal-in origin-left">
+            <div className="w-[72px] shrink-0 border-r border-line bg-surface/80"><Rail onNavigate={() => setDrawer(false)} /></div>
+            <div className="flex-1 min-w-0 relative">
+              <button onClick={() => setDrawer(false)} className="absolute right-2 top-3 h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center z-10" aria-label="Close menu"><X className="h-4 w-4" /></button>
+              <ContextSidebar />
+            </div>
           </aside>
         </div>
       )}
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="sm:hidden sticky top-0 z-30 h-14 flex items-center px-3 bg-bg/80 backdrop-blur border-b border-line">
+        <div className="md:hidden sticky top-0 z-30 h-14 flex items-center px-3 bg-bg/80 backdrop-blur border-b border-line">
           <button onClick={() => setDrawer(true)} className="h-9 w-9 rounded-lg hover:bg-surface-2 flex items-center justify-center" aria-label="Open menu"><Menu className="h-5 w-5" /></button>
         </div>
         <main className="flex-1 min-w-0">

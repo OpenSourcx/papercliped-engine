@@ -92,6 +92,17 @@ The Papercliped bridge moves onto the device as an ePaperclip service instead of
 - **Host tools:** with Full control and a user whose policies allow it, a session can reach Pin's system tools (through the broker, never directly), so an AI app can check host status or power-manage a guest the same way Pin does.
 - **No hosted dependency:** the device is the authorization server. Apps on the web reach it through the user's own remote access (Tailscale or a tunnel).
 
+## Consoles and shells
+
+Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by the broker:
+
+1. The console asks the broker to open a terminal for a guest (or the node, for the host shell).
+2. The broker checks the caller: a user's `guests.console` tool for guests in reach, owner only for the host shell, never agents or connected apps for the host shell.
+3. The broker calls `termproxy` for the guest and connects to `vncwebsocket` with the ticket, then relays that websocket to the browser. The Proxmox token and ticket never reach the browser.
+4. The browser's xterm.js terminal sends keystrokes and renders output.
+
+The console's terminal is written against a transport interface, so the demo shell and the live relay are interchangeable.
+
 ## Integrated Access Control (IAC)
 
 Every ePaperclip user is also a real Proxmox user (for example `sam@pve`). ePaperclip is the source of truth: creating, changing or removing a user, their organization roles and their policies updates the matching Proxmox user, roles and ACLs, so access is the same in the console and in the stock Proxmox UI. Policies are allow or deny rules over actions and resources; each is mirrored as a Proxmox role. Organization access maps to the organization's pool. The console screens exist; the sync backend is planned and will run through the broker with its own narrowly scoped permission (`User.Modify` and `Permissions.Modify` on the relevant paths).

@@ -77,7 +77,7 @@ export function Home() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-10">
         <section>
-          <SectionTitle action={<Link to={`/${device}/guests`} className="text-[13px] text-ink-3 hover:text-ink">View guests</Link>}>This device</SectionTitle>
+          <SectionTitle action={<Link to={`/${device}/machines`} className="text-[13px] text-ink-3 hover:text-ink">View machines</Link>}>This device</SectionTitle>
           <div className="grid lg:grid-cols-[1fr_280px] gap-4">
             <Card className="p-4 sm:p-6 flex flex-col">
               <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-6 items-center justify-items-center">
@@ -93,7 +93,7 @@ export function Home() {
             </Card>
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
               {[
-                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Guests running", to: `/${device}/guests` },
+                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Machines running", to: `/${device}/machines` },
                 { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: `/${device}/${data.orgs[0]?.slug ?? "home"}` },
                 { icon: <Workflow className="h-4 w-4" />, value: String(activeRules), label: "Automations on", to: `/${device}/automations` },
                 { icon: <Plug className="h-4 w-4" />, value: String(data.apps.sessions.length), label: "Apps connected", to: settingsHref("apps") },

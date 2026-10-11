@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Rule } from "@papercliped-engine/automations";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
-import { RESERVED, type AppMode, type AppSession, type EngineData, type HostMetrics, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
+import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
  * The console's state. Today it is backed by demo data kept in the browser; the shape matches what the host broker and
@@ -24,7 +24,14 @@ interface Engine {
   markRead: (id?: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   setConnectorAccess: (id: string, who: "pin" | string, on: boolean) => void;
-  guestPower: (vmid: number, action: "start" | "shutdown") => { ok: boolean; error?: string };
+  guestPower: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => { ok: boolean; error?: string };
+  snapshot: (vmid: number, name: string, description: string) => { ok: boolean; error?: string };
+  deleteSnapshot: (vmid: number, name: string) => void;
+  addTask: (org: string, title: string, agent: string | null) => void;
+  setTaskStatus: (org: string, id: string, status: Task["status"]) => void;
+  decideApproval: (org: string, id: string, approve: boolean) => void;
+  toggleRoutine: (org: string, id: string) => void;
+  readInbox: (org: string) => void;
   setAppMode: (m: AppMode) => void;
   updateSession: (id: string, patch: Partial<AppSession>) => void;
   revokeSession: (id: string) => void;
@@ -46,7 +53,9 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<EngineData>(() => {
     const saved = readJson<EngineData | null>("epc.data", null);
     if (!saved) return demoData(null);
-    return saved.apps ? saved : { ...saved, apps: demoData(saved.orgs[0]?.name ?? null).apps };
+    // Demo data saved by an older console build: fill in what it lacks rather than crash.
+    if (saved.apps && saved.host && saved.orgs.every((o) => Array.isArray(o.goals))) return saved;
+    return demoData(saved.orgs[0]?.name ?? null);
   });
   const [host, setHost] = useState<HostMetrics>(() => demoHost(setup?.deviceName ?? "pve"));
 
@@ -72,6 +81,9 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     d.users[0] = { ...d.users[0], name: s.ownerName || "You" };
     setData(d);
   }, []);
+
+  const updateGuest = (vmid: number, fn: (g: Guest) => Guest) => setData((d) => ({ ...d, guests: d.guests.map((x) => (x.vmid === vmid ? fn(x) : x)) }));
+  const updateOrg = (slug: string, fn: (o: Org) => Org) => setData((d) => ({ ...d, orgs: d.orgs.map((o) => (o.slug === slug ? fn(o) : o)) }));
 
   const value = useMemo<Engine>(
     () => ({
@@ -114,14 +126,36 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         })),
       guestPower: (vmid, action) => {
         const g = data.guests.find((x) => x.vmid === vmid);
-        if (!g) return { ok: false, error: "Unknown guest" };
+        if (!g) return { ok: false, error: "Unknown machine" };
         if (g.protected) return { ok: false, error: `${g.name} is protected` };
-        setData((d) => ({
-          ...d,
-          guests: d.guests.map((x) => (x.vmid === vmid ? { ...x, status: action === "start" ? "running" : "stopped", cpuPct: action === "start" ? 2 : 0, memUsed: action === "start" ? x.memMax * 0.2 : 0 } : x)),
-        }));
+        const up = action === "start" || action === "reboot";
+        const label = { start: "Start", shutdown: "Shutdown", stop: "Stop", reboot: "Reboot" }[action];
+        updateGuest(vmid, (x) => ({ ...x, status: up ? "running" : "stopped", cpuPct: up ? 2 : 0, memUsed: up ? x.memMax * 0.2 : 0, tasks: [{ id: `${vmid}-${Date.now()}`, what: label, at: new Date().toISOString(), ok: true }, ...(x.tasks ?? [])].slice(0, 30) }));
         return { ok: true };
       },
+      snapshot: (vmid, name, description) => {
+        const g = data.guests.find((x) => x.vmid === vmid);
+        if (!g) return { ok: false, error: "Unknown machine" };
+        if (!/^[A-Za-z][A-Za-z0-9_-]{1,39}$/.test(name)) return { ok: false, error: "Use 2 to 40 letters, digits, - or _, starting with a letter." };
+        if (g.snapshots?.some((s) => s.name === name)) return { ok: false, error: "A snapshot with that name exists." };
+        updateGuest(vmid, (x) => ({ ...x, snapshots: [...(x.snapshots ?? []), { name, at: new Date().toISOString(), description }], tasks: [{ id: `${vmid}-${Date.now()}`, what: `Snapshot ${name}`, at: new Date().toISOString(), ok: true }, ...(x.tasks ?? [])] }));
+        return { ok: true };
+      },
+      deleteSnapshot: (vmid, name) => updateGuest(vmid, (x) => ({ ...x, snapshots: (x.snapshots ?? []).filter((s) => s.name !== name), tasks: [{ id: `${vmid}-${Date.now()}`, what: `Delete snapshot ${name}`, at: new Date().toISOString(), ok: true }, ...(x.tasks ?? [])] })),
+      addTask: (org, title, agent) =>
+        updateOrg(org, (o) => {
+          const prefix = o.slug.slice(0, 3).toUpperCase();
+          const next = Math.max(0, ...o.tasks.map((t) => Number(t.id.split("-")[1]) || 0)) + 1;
+          return { ...o, tasks: [{ id: `${prefix}-${next}`, title, status: "todo", agent, priority: "medium", project: null }, ...o.tasks], activity: [{ id: `ac-${Date.now()}`, who: "You", what: `created ${prefix}-${next}`, at: new Date().toISOString() }, ...o.activity] };
+        }),
+      setTaskStatus: (org, id, status) => updateOrg(org, (o) => ({ ...o, tasks: o.tasks.map((t) => (t.id === id ? { ...t, status } : t)) })),
+      decideApproval: (org, id, approve) =>
+        updateOrg(org, (o) => {
+          const a = o.approvals.find((x) => x.id === id);
+          return { ...o, approvals: o.approvals.map((x) => (x.id === id ? { ...x, status: approve ? "approved" : "rejected" } : x)), activity: a ? [{ id: `ac-${Date.now()}`, who: "You", what: `${approve ? "approved" : "rejected"} "${a.title}"`, at: new Date().toISOString() }, ...o.activity] : o.activity };
+        }),
+      toggleRoutine: (org, id) => updateOrg(org, (o) => ({ ...o, routines: o.routines.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
+      readInbox: (org) => updateOrg(org, (o) => ({ ...o, inbox: o.inbox.map((i) => ({ ...i, read: true })) })),
       setAppMode: (m) => setData((d) => ({ ...d, apps: { ...d.apps, mode: m } })),
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
       revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),

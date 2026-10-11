@@ -35,6 +35,9 @@ export interface Agent {
   engine: "native" | "container";
   status: AgentStatus;
   task: string | null;
+  reportsTo?: string | null; // agent id, for the org chart
+  spendUsd?: number; // this month
+  budgetUsd?: number;
 }
 
 export interface ResourceGroup {
@@ -54,7 +57,23 @@ export interface Org {
   usage: { cpuCores: number; memoryMb: number; diskGb: number; guests: number };
   memory: "postgres" | "postgres+files";
   agents: Agent[];
-  tasks: { id: string; title: string; status: "todo" | "in_progress" | "done" | "blocked"; agent: string | null }[];
+  tasks: Task[];
+  goals: { id: string; title: string; progress: number; due: string | null }[];
+  projects: { id: string; name: string; tasks: number; done: number; lead: string | null }[];
+  routines: { id: string; name: string; schedule: string; agent: string; lastRun: string | null; enabled: boolean }[];
+  approvals: { id: string; title: string; requestedBy: string; kind: "hire" | "budget" | "action"; status: "pending" | "approved" | "rejected"; at: string }[];
+  inbox: { id: string; title: string; from: string; at: string; read: boolean }[];
+  activity: { id: string; who: string; what: string; at: string }[];
+}
+
+export type TaskStatus = "todo" | "in_progress" | "in_review" | "done" | "blocked";
+export interface Task {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  agent: string | null;
+  priority?: "low" | "medium" | "high";
+  project?: string | null;
 }
 
 export interface Guest {
@@ -69,6 +88,38 @@ export interface Guest {
   diskMax: number;
   org: string | null;
   protected: boolean;
+  ip?: string | null;
+  os?: string;
+  snapshots?: { name: string; at: string; description: string }[];
+  tasks?: { id: string; what: string; at: string; ok: boolean }[];
+}
+
+export interface HostStorage {
+  id: string;
+  type: "dir" | "zfspool" | "lvmthin" | "lvm" | "nfs";
+  path: string;
+  used: number;
+  total: number;
+  content: string[];
+}
+
+export interface HostNetwork {
+  name: string;
+  type: "bridge" | "nic" | "vlan";
+  cidr: string | null;
+  gateway: string | null;
+  ports: string;
+  active: boolean;
+}
+
+export interface BackupJob {
+  id: string;
+  schedule: string;
+  storage: string;
+  selection: string;
+  keep: number;
+  lastRun: string;
+  lastOk: boolean;
 }
 
 export type Role = "owner" | "admin" | "member" | "viewer";
@@ -148,7 +199,8 @@ export interface EngineData {
   rules: Rule[];
   notices: Notice[];
   apps: { mode: AppMode; sessions: AppSession[]; activity: AppActivity[] };
+  host: { storage: HostStorage[]; network: HostNetwork[]; backups: BackupJob[] };
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups"] as const;

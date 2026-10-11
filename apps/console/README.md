@@ -10,29 +10,43 @@ pnpm --filter @papercliped-engine/console build
 pnpm --filter @papercliped-engine/console test
 ```
 
-## Layout: a rail and modals
+## Layout: rail, context sidebar, modals
 
-The console follows Discord's flow. A slim **rail** on the left holds the main views: the device's Home, Guests, Automations, then one avatar per organization (a green badge when agents are working), a "+" to create one, and at the bottom Connected apps, Settings and you. Items are round and square off on hover; a pill on the left edge marks where you are; tooltips show the name and status.
+The console follows Discord's flow.
 
-Everything else opens as a **modal** over the page you're on:
+- **Rail** (far left): your device, then one avatar per organization (a green badge when agents are working), "+" to create one, and at the bottom Connected apps, Settings and you. Round buttons square off on hover; a pill marks where you are; tooltips show name and status on hover or keyboard focus (not on touch).
+- **Context sidebar** (second column), like a channel list:
+  - On the device: Overview, Automations, **Machines** (every VM and container, live), and **Host**: Host shell, Storage, Network, Backups.
+  - Inside an organization: Paperclip's navigation (Dashboard, Inbox, Chat, Decisions; Work: Tasks, Projects, Goals, Routines, Artifacts, Workspaces; Agents; Organization: Org chart, Skills, Connectors, Costs, Activity, Settings) plus the organization's **Machines**.
+- **Modals** for everything else: the full-screen settings modal, and centered modals for details, confirmations and creation. They stack, close with Esc from the top down, and animate in and out.
 
-- **Settings** is a full-screen modal with categories on the left (General, Updates, Access control, Connected apps, Connectors, Appearance) and closes with Esc.
-- **Details** (a user's access, an app session) and **Create an organization** open as centered modals.
-- Modals stack, and Esc closes only the top one. They scale and fade in and out.
+On phones the rail and context sidebar open together as a drawer.
+
+## Machines and consoles
+
+Every machine has a page with **Overview**, **Console**, **Snapshots**, **Hardware** and **Tasks**, plus power controls (start, shut down, reboot, and stop behind a confirmation). Protected machines are locked. Inside an organization, machine pages only open machines in its resource group.
+
+The **Console** and the **Host shell** are xterm.js terminals behind a `TerminalTransport` (`src/terminal/transport.ts`). The terminal only sends keystrokes and writes what comes back, like a real TTY:
+
+- **Live** (planned): the broker opens Proxmox's terminal proxy for the guest and relays the websocket; the browser never holds a Proxmox credential, and access follows the user's `guests.console` tool. The host shell is owner-only and never offered to agents or connected apps.
+- **Demo** (today): a local line discipline (editing, history, Tab completion, Ctrl+C, Ctrl+L) in front of a simulated shell that answers from the machine's demo data. The terminal header says "Demo shell".
 
 ## Routes
 
 | Path | What |
 | --- | --- |
-| `/setup` | Onboarding: organization name, your name, Pin's mode, AI account, Pin's access and the device name |
-| `/<device>/home` | Home: greeting, the Ask Pin bar, host meters and a card per organization ("Idle" when nothing is working) |
-| `/<device>/guests` | Every VM and container, with start and shut down; protected guests are locked |
-| `/<device>/automations` | Pin's rules with plain-language read-back |
-| `/<device>/<org>` | An organization: resource group usage, agents, tasks, members, connectors, container sessions |
-| `?settings=<section>` | Opens the settings modal over the current page: `general`, `updates`, `access`, `apps`, `connectors`, `appearance` |
-| `?modal=new-org` | Opens "Create an organization" |
+| `/setup` | Onboarding |
+| `/<device>/home` | Home: greeting, the Ask Pin bar, host meters, organization cards |
+| `/<device>/machines`, `/<device>/machines/<vmid>` | All machines, and one machine (`?tab=console` and so on) |
+| `/<device>/shell`, `/storage`, `/network`, `/backups` | Host tools |
+| `/<device>/automations` | Pin's rules |
+| `/<device>/<org>` | The organization's dashboard |
+| `/<device>/<org>/<section>` | `inbox`, `decisions`, `tasks`, `projects`, `goals`, `routines`, `agents`, `org`, `costs`, `activity`, `connectors`, `settings`, and Paperclip pages still to come (`chat`, `artifacts`, `workspaces`, `skills`) |
+| `/<device>/<org>/machines/<vmid>` | One of the organization's machines |
+| `?settings=<section>` | The settings modal over the current page: `general`, `updates`, `access`, `apps`, `connectors`, `appearance` |
+| `?modal=new-org` | Create an organization |
 
-Older addresses such as `/<device>/access` or `/<device>/orgs/new` open the matching modal over Home. Organization slugs can never be a system name, so `/<device>/<org>` never collides, and a wrong device name redirects to the right one.
+Older addresses (`/<device>/guests`, `/<device>/access`, `/<device>/orgs/new` and so on) redirect to their new home. Organization slugs can never be a system name.
 
 ## Pin
 

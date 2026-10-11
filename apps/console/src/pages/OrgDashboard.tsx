@@ -1,14 +1,13 @@
 import { Link, Navigate, useParams } from "react-router-dom";
-import { Box, Cable, CircleCheck, CircleDot, Circle, OctagonAlert, Sparkles } from "lucide-react";
+import { Box, Cable, Sparkles } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
+import { TASK_ICON, TASK_LABEL } from "../data/meta.tsx";
 import type { Agent } from "../data/types.ts";
 import { formatBytes } from "../lib/storage.ts";
 import { BarMeter } from "../ui/meters.tsx";
 import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind, PageFrame } from "../ui/primitives.tsx";
 
 const AGENT_STATUS: Record<Agent["status"], [StatusKind, string]> = { working: ["working", "Working"], idle: ["idle", "Idle"], paused: ["paused", "Paused"], error: ["critical", "Error"] };
-const TASK_ICON = { todo: <Circle className="h-4 w-4 text-ink-3" />, in_progress: <CircleDot className="h-4 w-4 text-accent" />, done: <CircleCheck className="h-4 w-4 text-good" />, blocked: <OctagonAlert className="h-4 w-4 text-critical" /> };
-const TASK_LABEL = { todo: "To do", in_progress: "In progress", done: "Done", blocked: "Blocked" };
 
 export function OrgDashboard() {
   const { org: slug } = useParams();
