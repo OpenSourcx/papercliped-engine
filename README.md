@@ -4,6 +4,7 @@ A Proxmox-native system with **ePaperclip** and **Pin** built in. One clean inte
 
 - **Proxmox engine:** upstream Proxmox VE underneath (KVM, LXC, storage, network, backups), unchanged.
 - **ePaperclip:** Paperclip redesigned to run natively on Proxmox. Companies, agents, tasks, budgets, approvals, connectors and adapters all stay; each company gets its own resource group on the machine.
+- **Papercliped, built in:** Claude, ChatGPT, Codex and any MCP app connect straight to the device, each with Read only or Full control and never more than the user who approved it.
 - **Pin:** your copilot, in Assistant or Agent mode. It manages the system, your companies and your connectors, turns "if a container uses more than 50% of its memory, shut it down" into an automation, keeps a `SOUL.md` and `MEMORY.md`, and tells you when updates are available.
 
 Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it fits together, and [docs/ROADMAP.md](docs/ROADMAP.md) for what is built.

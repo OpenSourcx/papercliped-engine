@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Bot, Boxes, Clock, Plus, Workflow } from "lucide-react";
+import { ArrowUpRight, Bot, Boxes, Plug, Plus, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Org } from "../data/types.ts";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
@@ -95,7 +95,7 @@ export function Home() {
                 { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Guests running", to: "guests" },
                 { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: data.orgs[0]?.slug ?? "home" },
                 { icon: <Workflow className="h-4 w-4" />, value: String(activeRules), label: "Automations on", to: "automations" },
-                { icon: <Clock className="h-4 w-4" />, value: formatUptime(host.uptimeSec), label: "Uptime", to: "settings" },
+                { icon: <Plug className="h-4 w-4" />, value: String(data.apps.sessions.length), label: "Apps connected", to: "apps" },
               ].map((s) => (
                 <Link key={s.label} to={`/${device}/${s.to}`}>
                   <Card interactive className="p-4 flex items-center gap-3">

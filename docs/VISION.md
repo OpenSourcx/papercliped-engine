@@ -40,6 +40,16 @@ Pin is to this machine what Siri is to an iPhone, Copilot to Windows and Gemini 
 
 **Scope.** Pin can manage your system, create and manage companies, and use system-wide connectors you grant it.
 
+## Papercliped, built in
+
+Papercliped is native in ePaperclip v1. Claude, ChatGPT, Codex and any MCP app connect straight to the device at `https://<device>/mcp`; there is no separate bridge to host.
+
+- Each connected app is a **session** with one of exactly two levels: **Read only** or **Full control**.
+- A device-wide switch decides what apps may do: **API only**, **Full**, or **Agent only**, with per-agent overrides.
+- A session can be limited to chosen organizations and agents.
+- Every session belongs to the user who approved it in Integrated Access Control and can never do more than that user.
+- Activity shows which tool ran and how it ended, never the arguments or results.
+
 ## Companies and resource groups
 
 - Companies (orgs) work as in Paperclip: agents, tasks, goals, budgets, approvals.

@@ -83,6 +83,15 @@ A rule has a trigger, a scope, an action and a mode policy:
 
 Metrics come from the Proxmox cluster resource list (`mem`/`maxmem`, `cpu`, `disk`/`maxdisk`, `status`). Actions are `notify`, `shutdown`, `stop`, `start` and `snapshot`. Destructive actions such as destroy are not available to automations.
 
+## Papercliped, native
+
+The Papercliped bridge moves onto the device as an ePaperclip service instead of a separate hosted service. It serves MCP at `https://<device>/mcp` with OAuth sign-in against ePaperclip users. Sessions, the two access levels (Read only, Full control), the API only / Full / Agent only switch, per-agent overrides, tool and agent limits, and the activity log keep the behavior they have in Papercliped today (`src/access/policy.ts` and `src/access/guard.ts` in the Papercliped repository). What changes:
+
+- **Identity:** a session is approved by an IAC user and is capped by that user's organizations, tools and policies, so console, Proxmox and AI-app access come from one place.
+- **Scope:** sessions can be limited to organizations as well as agents.
+- **Host tools:** with Full control and a user whose policies allow it, a session can reach Pin's system tools (through the broker, never directly), so an AI app can check host status or power-manage a guest the same way Pin does.
+- **No hosted dependency:** the device is the authorization server. Apps on the web reach it through the user's own remote access (Tailscale or a tunnel).
+
 ## Integrated Access Control (IAC)
 
 Every ePaperclip user is also a real Proxmox user (for example `sam@pve`). ePaperclip is the source of truth: creating, changing or removing a user, their organization roles and their policies updates the matching Proxmox user, roles and ACLs, so access is the same in the console and in the stock Proxmox UI. Policies are allow or deny rules over actions and resources; each is mirrored as a Proxmox role. Organization access maps to the organization's pool. The console screens exist; the sync backend is planned and will run through the broker with its own narrowly scoped permission (`User.Modify` and `Permissions.Modify` on the relevant paths).

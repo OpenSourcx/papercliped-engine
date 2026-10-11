@@ -121,6 +121,11 @@ export function think(input: string, ctx: Ctx): PinReply {
     return { text: lines.join(". ") + "." };
   }
 
+  if (/\b(connect|add|link)\b.*\b(claude|chatgpt|codex|mcp|app)\b|\bconnected apps?\b|\bpapercliped\b/.test(t)) {
+    const n = ctx.data.apps.sessions.length;
+    return { text: `Papercliped is built into this device, so Claude, ChatGPT, Codex or any MCP app can connect straight to it. ${n} app${n === 1 ? " is" : "s are"} connected now. Each one gets Read only or Full control and never more than the user who approved it.`, card: { type: "link", label: "Open connected apps", to: `/${ctx.device}/apps` } };
+  }
+
   if (/\b(access|permission|user|policy|policies)\b/.test(t)) {
     return { text: "Access is managed in Integrated Access Control: every ePaperclip user is also a Proxmox user, and policies apply to both.", card: { type: "link", label: "Open access control", to: `/${ctx.device}/access` } };
   }

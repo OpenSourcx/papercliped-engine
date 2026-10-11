@@ -1,6 +1,6 @@
 import { validateRule } from "@papercliped-engine/automations";
 import { slugify } from "../lib/storage.ts";
-import type { Agent, Connector, EngineData, Guest, HostMetrics, Notice, Org, Policy, User } from "./types.ts";
+import type { Agent, AppActivity, AppSession, Connector, EngineData, Guest, HostMetrics, Notice, Org, Policy, User } from "./types.ts";
 
 /**
  * Demo data. The console runs against this until it is connected to the host broker and ePaperclip; the top bar shows
@@ -110,5 +110,19 @@ export function demoData(firstOrgName: string | null): EngineData {
     { id: "n-backup", kind: "info", title: "Nightly backup finished", body: "5 guests backed up to drive2. Retention keeps 1 copy; Pin suggests keeping 3.", at: new Date(Date.now() - 9 * 3_600_000).toISOString(), read: true },
   ];
 
-  return { orgs, guests, users, policies, connectors, rules: rule.ok ? [rule.rule] : [], notices };
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const sessions: AppSession[] = [
+    { id: "s-claude", app: "Claude", client: "claude.ai connector", userId: "u-owner", level: "control", orgs: null, agents: null, connectedAt: ago(60 * 24 * 6), lastUsedAt: ago(4), calls24h: 86 },
+    { id: "s-chatgpt", app: "ChatGPT", client: "ChatGPT app", userId: "u-owner", level: "read", orgs: first ? [first] : null, agents: null, connectedAt: ago(60 * 24 * 2), lastUsedAt: ago(95), calls24h: 12 },
+    { id: "s-codex", app: "Codex", client: "Codex CLI", userId: "u-sam", level: "control", orgs: first ? [first] : [], agents: orgs[0]?.agents.slice(1, 2).map((a) => a.id) ?? [], connectedAt: ago(60 * 30), lastUsedAt: ago(22), calls24h: 31 },
+  ];
+  const activity: AppActivity[] = [
+    { id: "a1", sessionId: "s-claude", tool: "paperclip_report_status", outcome: "ok", at: ago(4) },
+    { id: "a2", sessionId: "s-codex", tool: "paperclip_update_issue", outcome: "ok", at: ago(22) },
+    { id: "a3", sessionId: "s-claude", tool: "host_guest_power", outcome: "ok", at: ago(41) },
+    { id: "a4", sessionId: "s-chatgpt", tool: "paperclip_pause_agent", outcome: "blocked", at: ago(95) },
+    { id: "a5", sessionId: "s-codex", tool: "paperclip_list_issues", outcome: "ok", at: ago(120) },
+  ];
+
+  return { orgs, guests, users, policies, connectors, rules: rule.ok ? [rule.rule] : [], notices, apps: { mode: "full", sessions, activity } };
 }

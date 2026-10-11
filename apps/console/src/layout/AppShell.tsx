@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Boxes, Cable, House, KeyRound, Menu, Palette, Plus, RefreshCw, Server, Settings, ShieldCheck, Workflow, X } from "lucide-react";
+import { Boxes, Cable, House, KeyRound, Menu, Palette, Plug, Plus, RefreshCw, Server, Settings, ShieldCheck, Workflow, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { PinIsland } from "../pin/PinIsland.tsx";
@@ -68,6 +68,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </Group>
         <Group label="Administration">
           <Item to={`/${d}/access`} icon={<ShieldCheck className="h-4 w-4" />}>Access control</Item>
+          <Item to={`/${d}/apps`} icon={<Plug className="h-4 w-4" />} badge={<span className="text-[11px] text-ink-3 tabular-nums">{data.apps.sessions.length}</span>}>Connected apps</Item>
           <Item to={`/${d}/connectors`} icon={<Cable className="h-4 w-4" />}>Connectors</Item>
           <Item to={`/${d}/appearance`} icon={<Palette className="h-4 w-4" />}>Appearance</Item>
           <Item to={`/${d}/settings`} icon={<Settings className="h-4 w-4" />}>Settings</Item>

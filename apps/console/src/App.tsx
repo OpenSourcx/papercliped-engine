@@ -4,6 +4,7 @@ import { AppShell } from "./layout/AppShell.tsx";
 import { Onboarding } from "./onboarding/Onboarding.tsx";
 import { Access } from "./pages/Access.tsx";
 import { Appearance } from "./pages/Appearance.tsx";
+import { Apps } from "./pages/Apps.tsx";
 import { Automations } from "./pages/Automations.tsx";
 import { Connectors } from "./pages/Connectors.tsx";
 import { Guests } from "./pages/Guests.tsx";
@@ -46,6 +47,7 @@ export function App() {
           <Route path="updates" element={<Updates />} />
           <Route path="access" element={<Access />} />
           <Route path="connectors" element={<Connectors />} />
+          <Route path="apps" element={<Apps />} />
           <Route path="appearance" element={<Appearance />} />
           <Route path="settings" element={<Settings />} />
           <Route path="orgs/new" element={<NewOrg />} />

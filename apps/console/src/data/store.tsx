@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Rule } from "@papercliped-engine/automations";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
-import { RESERVED, type EngineData, type HostMetrics, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
+import { RESERVED, type AppMode, type AppSession, type EngineData, type HostMetrics, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
  * The console's state. Today it is backed by demo data kept in the browser; the shape matches what the host broker and
@@ -25,6 +25,9 @@ interface Engine {
   updateUser: (id: string, patch: Partial<User>) => void;
   setConnectorAccess: (id: string, who: "pin" | string, on: boolean) => void;
   guestPower: (vmid: number, action: "start" | "shutdown") => { ok: boolean; error?: string };
+  setAppMode: (m: AppMode) => void;
+  updateSession: (id: string, patch: Partial<AppSession>) => void;
+  revokeSession: (id: string) => void;
 }
 
 const Ctx = createContext<Engine | null>(null);
@@ -40,7 +43,11 @@ export function orgNameError(name: string, orgs: Org[]): string | null {
 
 export function EngineProvider({ children }: { children: ReactNode }) {
   const [setup, setSetup] = useState<SetupState | null>(() => readJson<SetupState | null>("epc.setup", null));
-  const [data, setData] = useState<EngineData>(() => readJson<EngineData | null>("epc.data", null) ?? demoData(null));
+  const [data, setData] = useState<EngineData>(() => {
+    const saved = readJson<EngineData | null>("epc.data", null);
+    if (!saved) return demoData(null);
+    return saved.apps ? saved : { ...saved, apps: demoData(saved.orgs[0]?.name ?? null).apps };
+  });
   const [host, setHost] = useState<HostMetrics>(() => demoHost(setup?.deviceName ?? "pve"));
 
   useEffect(() => writeJson("epc.data", data), [data]);
@@ -115,6 +122,9 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         }));
         return { ok: true };
       },
+      setAppMode: (m) => setData((d) => ({ ...d, apps: { ...d.apps, mode: m } })),
+      updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
+      revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),
     }),
     [setup, data, host, completeSetup],
   );

@@ -22,6 +22,7 @@ pnpm --filter @papercliped-engine/console test
 | `/<device>/automations` | Pin's rules, with plain-language read-back |
 | `/<device>/updates` | Proxmox and ePaperclip versions and pending updates |
 | `/<device>/access` | Integrated Access Control: users mirrored as Proxmox users, sync state, per-user organizations, tools, connectors and policies |
+| `/<device>/apps` | Connected apps (Papercliped, built in): the device's MCP address, the API only / Full / Agent only switch, each session's level, organizations and agents, and activity |
 | `/<device>/connectors` | Who may use each system-wide connector: Pin and/or each organization |
 | `/<device>/appearance` | The design framework: theme presets, accent, corners, glass and text size |
 | `/<device>/settings` | Device, Pin's mode, `SOUL.md`/`MEMORY.md`, demo reset |

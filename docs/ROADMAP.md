@@ -19,6 +19,13 @@ Each phase ends with something that runs on a real Proxmox host.
 - [ ] Connector access per connector: Pin and/or chosen companies
 - [ ] Company memory options when creating a company manually
 
+## Papercliped, native (v1)
+
+- [x] Connected apps page on demo data: device MCP address and per-app setup steps, the API only / Full / Agent only switch, sessions with Read only or Full control, organization and agent limits capped by the owning user, activity
+- [ ] Move the Papercliped bridge into this repository as a device service (MCP at `/mcp`, OAuth against IAC users)
+- [ ] Session limits by organization, and host tools for Full control sessions whose user allows them
+- [ ] Remote access setup for web apps (Tailscale or tunnel connector)
+
 ## Phase 3: Pin
 
 - [ ] Pin principal and runtime: Assistant and Agent modes, schedule, triggers

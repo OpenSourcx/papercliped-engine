@@ -114,6 +114,31 @@ export interface Notice {
   action?: { label: string; ruleId?: string; vmid?: number };
 }
 
+/** Papercliped, native: one connected AI app (an OAuth grant) owned by an ePaperclip user. */
+export type AccessLevel = "read" | "control"; // exactly two: Read only, Full control
+export type AppMode = "api" | "full" | "agent";
+
+export interface AppSession {
+  id: string;
+  app: string; // Claude, ChatGPT, Codex, or any MCP client
+  client: string; // what the app reported when it connected
+  userId: string; // the IAC user who approved it; the session can never exceed that user's access
+  level: AccessLevel;
+  orgs: string[] | null; // null = every org the user can reach
+  agents: string[] | null; // null = all agents
+  connectedAt: string;
+  lastUsedAt: string;
+  calls24h: number;
+}
+
+export interface AppActivity {
+  id: string;
+  sessionId: string;
+  tool: string;
+  outcome: "ok" | "blocked" | "error";
+  at: string;
+}
+
 export interface EngineData {
   orgs: Org[];
   guests: Guest[];
@@ -122,7 +147,8 @@ export interface EngineData {
   connectors: Connector[];
   rules: Rule[];
   notices: Notice[];
+  apps: { mode: AppMode; sessions: AppSession[]; activity: AppActivity[] };
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps"] as const;
