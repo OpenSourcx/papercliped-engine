@@ -88,6 +88,48 @@ export interface VmSpec {
   start?: boolean;
 }
 
+export interface BackupJob {
+  id: string;
+  schedule: string | null;
+  storage: string | null;
+  all: boolean;
+  vmids: number[];
+  pool: string | null;
+  mode: "snapshot" | "suspend" | "stop" | string;
+  compress: string | null;
+  enabled: boolean;
+  keepLast: number | null;
+  comment: string | null;
+  nextRun: number | null;
+}
+
+export interface BackupJobSpec {
+  schedule: string;
+  storage: string;
+  all: boolean;
+  vmids: number[];
+  mode: "snapshot" | "suspend" | "stop";
+  keepLast: number;
+  enabled: boolean;
+  comment?: string;
+}
+
+export interface BackupRun {
+  all: boolean;
+  vmids: number[];
+  storage: string;
+  mode: "snapshot" | "suspend" | "stop";
+  notes?: string;
+}
+
+export interface RestoreSpec {
+  from: string; // storage holding the backup
+  volid: string;
+  storage: string; // where the restored disks go
+  replace: boolean; // overwrite the original machine instead of creating a new one
+  start?: boolean;
+}
+
 export interface UrlDownload {
   url: string;
   content: "iso" | "vztmpl";
@@ -205,5 +247,11 @@ export const api = {
   tasks: (limit = 50) => request<{ tasks: TaskEntry[] }>("GET", `/api/tasks?limit=${limit}`).then((r) => r.tasks),
   task: (upid: string) => request<TaskDetail>("GET", `/api/tasks/${enc(upid)}`),
   createVm: (spec: VmSpec) => request<{ vmid: number; task: string }>("POST", "/api/vms", spec),
+  backupJobs: () => request<{ jobs: BackupJob[] }>("GET", "/api/backups/jobs").then((r) => r.jobs),
+  saveBackupJob: (id: string | null, spec: BackupJobSpec) => request<{ ok: true }>("POST", id ? `/api/backups/jobs/${enc(id)}` : "/api/backups/jobs", spec),
+  toggleBackupJob: (id: string, enabled: boolean) => request<{ ok: true }>("POST", `/api/backups/jobs/${enc(id)}`, { enabled }),
+  deleteBackupJob: (id: string) => request<{ ok: true }>("POST", `/api/backups/jobs/${enc(id)}/delete`),
+  runBackup: (r: BackupRun) => request<{ task: string }>("POST", "/api/backups/run", r),
+  restore: (r: RestoreSpec) => request<{ vmid: number; task: string }>("POST", "/api/backups/restore", r),
   power: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => request<{ task: string }>("POST", `/api/guests/${vmid}/power`, { action }),
 };

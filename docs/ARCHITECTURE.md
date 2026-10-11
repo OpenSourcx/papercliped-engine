@@ -99,12 +99,14 @@ The broker serves Proxmox's round-robin statistics read-only: `GET /v1/stats/nod
 
 ## Consoles and shells
 
-Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by the broker:
+Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by the `epaperclip` service:
 
-1. The console asks the broker to open a terminal for a guest (or the node, for the host shell).
-2. The broker checks the caller: a user's `guests.console` tool for guests in reach, owner only for the host shell, never agents or connected apps for the host shell.
-3. The broker calls `termproxy` for the guest and connects to `vncwebsocket` with the ticket, then relays that websocket to the browser. The Proxmox token and ticket never reach the browser.
-4. The browser's xterm.js terminal sends keystrokes and renders output.
+1. The browser opens a WebSocket to `/api/console/guests/<vmid>` (or `/api/console/node` for the host shell). The service refuses the upgrade unless the session cookie is valid and the `Origin` is this host, since WebSockets get no CORS protection.
+2. As the signed-in user, the service calls `termproxy` for the container, the VM's serial port or the node. Proxmox checks `VM.Console` or `Sys.Console`, so a user only gets the consoles their Proxmox permissions allow. Agents and connected apps never get the host shell.
+3. The service connects to `vncwebsocket` with the user's ticket, sends Proxmox's `user:ticket` handshake, waits for `OK`, then relays frames both ways. Neither ticket reaches the browser.
+4. The browser's xterm.js terminal speaks Proxmox's framing (`0:<bytes>:<data>` for input, `1:<cols>:<rows>:` to resize, `2` to keep alive).
+
+VMs without a serial port link to Proxmox's own noVNC console for their screen.
 
 The console's terminal is written against a transport interface, so the demo shell and the live relay are interchangeable.
 

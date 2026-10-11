@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { BookOpen, FileText, LogOut, Server, ShieldCheck } from "lucide-react";
 import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
@@ -37,7 +37,7 @@ export function Settings() {
         <p className="text-[12px] text-ink-3 mt-3">The device name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;.</p>
       </Card>
       <Card className="p-5">
-        <SectionTitle>Pin</SectionTitle>
+        <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-[13px] text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-[14px] text-ink-2">Mode</div>
           <Segmented value={setup?.pinMode ?? "assistant"} onChange={setPinMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />

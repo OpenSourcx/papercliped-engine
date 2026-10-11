@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUp, Bell, Bot, Sparkles, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ArrowUp, Bell, Bot, Maximize2, Sparkles, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { Segmented } from "../ui/primitives.tsx";
@@ -141,6 +142,9 @@ export function PinIsland() {
                 <div className="text-[12px] text-ink-3">{mode === "agent" ? "Acts on its own, tells you after" : "Asks before it acts"}</div>
               </div>
               <Segmented size="sm" value={mode} onChange={(m) => engine.setPinMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+              <Link to={`/${engine.setup?.deviceName ?? "pve"}/pin`} onClick={() => pin.setState("rest")} className="h-7 w-7 rounded-full hover:bg-surface-3 flex items-center justify-center text-ink-3" aria-label="Open Pin's page" title="Open Pin's page">
+                <Maximize2 className="h-3.5 w-3.5" />
+              </Link>
               <button onClick={() => pin.setState("rest")} className="h-7 w-7 rounded-full hover:bg-surface-3 flex items-center justify-center text-ink-3" aria-label="Close Pin">
                 <X className="h-4 w-4" />
               </button>

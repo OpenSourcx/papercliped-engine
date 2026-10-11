@@ -49,6 +49,7 @@ const handle = createApp({
 const server = devHttp
   ? createHttp(handle)
   : createHttps({ cert: readFileSync(env.EPC_TLS_CERT ?? "/etc/pve/local/pve-ssl.pem"), key: readFileSync(env.EPC_TLS_KEY ?? "/etc/pve/local/pve-ssl.key"), minVersion: "TLSv1.2" }, handle);
+server.on("upgrade", handle.upgrade);
 server.headersTimeout = 20_000;
 // Uploads of multi-gigabyte ISOs can take a long time on a slow link; a stalled socket still times out below.
 server.requestTimeout = 6 * 3600_000;

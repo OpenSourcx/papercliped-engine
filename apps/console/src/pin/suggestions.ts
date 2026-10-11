@@ -102,6 +102,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     go("backups", "Backups", "archive", `${d}/backups`),
     go("automations", "Automations", "zap", `${d}/automations`),
     go("tasks", "Tasks", "list", `${d}/tasks`),
+    go("pin", "Pin's page", "sparkles", `${d}/pin`),
     go("updates", "Updates", "refresh", "?settings=updates"),
   ].filter((s) => s.to !== `${d}/${ref.page}`);
   const goFirst = (...ids: string[]) => [...ids.map((id) => nav.find((n) => n.id === `go-${id}`)).filter((n): n is Suggestion => !!n), ...nav.filter((n) => !ids.includes(n.id.slice(3)))];
@@ -122,6 +123,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     ],
     "storage-item": [ask("How much space is left?"), ...goFirst("storage", "tasks", "backups")],
     tasks: [ask("Did anything fail recently?"), newMachine, ...goFirst("storage", "summary")],
+    pin: [ask("What have you done today?"), ...goFirst("automations", "home")],
     network: [ask("Which machines are on which bridge?"), ...goFirst("machines", "resources")],
     backups: [ask("When did the last backup run?"), ...goFirst("storage", "machines")],
     automations: [{ id: "new-automation", label: "New automation", icon: "zap", group: "ask", ask: "If a container uses more than 50% of its memory, shut it down" }, ask("What did my automations do today?"), ...goFirst("machines", "summary")],

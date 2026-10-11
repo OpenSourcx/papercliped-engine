@@ -11,7 +11,60 @@ export interface TerminalTransport {
   readonly live: boolean;
   open(write: (data: string) => void, onExit: () => void): void;
   input(data: string): void;
+  resize?(cols: number, rows: number): void;
   close(): void;
+}
+
+/**
+ * A live terminal through the host service's console relay (/api/console/...), speaking Proxmox's termproxy framing.
+ * The service authorises it with the session cookie and opens Proxmox's terminal proxy as the signed-in user.
+ */
+export class LiveTransport implements TerminalTransport {
+  readonly live = true;
+  private ws: WebSocket | null = null;
+  private ping: ReturnType<typeof setInterval> | undefined;
+  private size: [number, number] | null = null;
+  private readonly path: string;
+  private readonly enc = new TextEncoder();
+
+  constructor(path: "/api/console/node" | `/api/console/guests/${number}`) {
+    this.path = path;
+  }
+
+  open(write: (data: string) => void, onExit: () => void) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}${this.path}`);
+    this.ws = ws;
+    write("\x1b[2mConnecting…\x1b[0m\r\n");
+    ws.onopen = () => {
+      if (this.size) this.resize(...this.size);
+      this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("2"), 30_000);
+    };
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") write(e.data);
+      else (e.data as Blob).text().then(write);
+    };
+    ws.onclose = (e) => {
+      clearInterval(this.ping);
+      if (e.code === 1006) write("\r\n\x1b[31mCouldn't connect to the console. Your session may have ended.\x1b[0m\r\n");
+      else if (e.code !== 4000) write("\r\n\x1b[2mSession ended.\x1b[0m\r\n");
+      onExit();
+    };
+  }
+
+  input(data: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(`0:${this.enc.encode(data).length}:${data}`);
+  }
+
+  resize(cols: number, rows: number) {
+    this.size = [cols, rows];
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(`1:${cols}:${rows}:`);
+  }
+
+  close() {
+    clearInterval(this.ping);
+    this.ws?.close();
+  }
 }
 
 export class DemoTransport implements TerminalTransport {

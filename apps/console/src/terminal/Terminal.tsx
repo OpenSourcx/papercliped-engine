@@ -52,10 +52,13 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
     setLive(t.live);
     setEnded(false);
     t.open((d) => term.write(d), () => setEnded(true));
+    t.resize?.(term.cols, term.rows);
+    const sizeSub = term.onResize(({ cols, rows }) => t.resize?.(cols, rows));
     const sub = term.onData((d) => t.input(d));
     term.focus();
     return () => {
       sub.dispose();
+      sizeSub.dispose();
       ro.disconnect();
       t.close();
       term.dispose();

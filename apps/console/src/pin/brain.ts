@@ -103,7 +103,7 @@ export function think(input: string, ctx: Ctx): PinReply {
   if (/\b(status|health|how('s| is) (my |the )?(server|system|machine|device|box)|overview)\b/.test(t)) {
     const working = ctx.data.orgs.flatMap((o) => o.agents).filter((a) => a.status === "working").length;
     const running = ctx.data.guests.filter((g) => g.status === "running").length;
-    return { text: `${ctx.device} is healthy. CPU is at ${ctx.host.cpuPct.toFixed(0)}%, memory ${formatBytes(ctx.host.memUsed)} of ${formatBytes(ctx.host.memTotal)}. ${running} guests are running and ${working} agents are working.`, card: { type: "status" } };
+    return { text: `${ctx.device} is healthy. CPU is at ${ctx.host.cpuPct.toFixed(0)}%, memory ${formatBytes(ctx.host.memUsed)} of ${formatBytes(ctx.host.memTotal)}. ${running} machine${running === 1 ? " is" : "s are"} running and ${working} agent${working === 1 ? " is" : "s are"} working.`, card: { type: "status" } };
   }
 
   if (/\bupdates?\b|\bupgrade\b/.test(t)) {

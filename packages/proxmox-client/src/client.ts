@@ -96,6 +96,24 @@ export interface CatalogTemplate {
   infopage?: string;
 }
 
+export interface BackupJob {
+  id: string;
+  type?: string; // vzdump
+  schedule?: string; // systemd calendar event, e.g. "21:00" or "sat 02:00"
+  storage?: string;
+  vmid?: string; // comma list
+  all?: number;
+  pool?: string;
+  exclude?: string;
+  mode?: string; // snapshot | suspend | stop
+  compress?: string; // zstd | lzo | gzip | 0
+  enabled?: number;
+  comment?: string;
+  "prune-backups"?: string | Record<string, number>;
+  "next-run"?: number;
+  node?: string;
+}
+
 export interface TaskEntry {
   upid: string;
   type: string; // vzdump, qmstart, download, imgcopy, aptupdate ...
@@ -371,6 +389,43 @@ export class ProxmoxClient {
 
   createVm(node: string, params: Record<string, string | number | boolean | undefined>) {
     return this.call<string>("POST", `/nodes/${seg(node)}/qemu`, params);
+  }
+
+  /**
+   * Opens Proxmox's terminal proxy for a guest (an LXC console, or a VM's serial console) or for the node's own shell.
+   * Returns the one-time port and ticket for its vncwebsocket; see consoleSocketPath.
+   */
+  termproxy(node: string, guest: { type: GuestType; vmid: number } | null) {
+    const path = guest ? `/nodes/${seg(node)}/${guest.type}/${seg(guest.vmid)}/termproxy` : `/nodes/${seg(node)}/termproxy`;
+    return this.call<{ port: number; ticket: string; user: string; upid: string }>("POST", path, guest?.type === "qemu" ? { serial: "serial0" } : undefined);
+  }
+
+  /** The vncwebsocket path (under /api2/json) that carries a termproxy session. */
+  static consoleSocketPath(node: string, guest: { type: GuestType; vmid: number } | null, port: number, vncticket: string): string {
+    const base = guest ? `/nodes/${seg(node)}/${guest.type}/${seg(guest.vmid)}` : `/nodes/${seg(node)}`;
+    return `/api2/json${base}/vncwebsocket?port=${seg(port)}&vncticket=${seg(vncticket)}`;
+  }
+
+  /** Scheduled backup jobs (Datacenter → Backup). */
+  backupJobs() {
+    return this.call<BackupJob[]>("GET", "/cluster/backup");
+  }
+
+  createBackupJob(params: Record<string, string | number | boolean | undefined>) {
+    return this.call<null>("POST", "/cluster/backup", params);
+  }
+
+  updateBackupJob(id: string, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<null>("PUT", `/cluster/backup/${seg(id)}`, params);
+  }
+
+  deleteBackupJob(id: string) {
+    return this.call<null>("DELETE", `/cluster/backup/${seg(id)}`);
+  }
+
+  /** Backs up guests now. Returns the task id. */
+  vzdump(node: string, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/vzdump`, params);
   }
 
   /** Pools the caller can see. */

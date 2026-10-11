@@ -5,19 +5,19 @@ import { useEngine } from "../data/store.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
 import { UsageGraphs } from "../ui/UsageGraphs.tsx";
 import { Terminal } from "../terminal/LazyTerminal.tsx";
-import { DemoTransport } from "../terminal/transport.ts";
+import { DemoTransport, LiveTransport } from "../terminal/transport.ts";
 import { BarMeter } from "../ui/meters.tsx";
 import { Button, Card, Chip, PageFrame, PageHeader, Status } from "../ui/primitives.tsx";
 
 export function HostShell() {
-  const { host, setup } = useEngine();
-  const make = useMemo(() => () => new DemoTransport({ kind: "host", name: setup?.deviceName ?? "pve", os: "Debian 13 (trixie)", ip: host.ip, cores: host.cpus, memUsed: host.memUsed, memMax: host.memTotal, diskMax: host.diskTotal, uptimeSec: host.uptimeSec }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const { host, setup, live } = useEngine();
+  const make = useMemo(() => () => live ? new LiveTransport("/api/console/node") : new DemoTransport({ kind: "host", name: setup?.deviceName ?? "pve", os: "Debian 13 (trixie)", ip: host.ip, cores: host.cpus, memUsed: host.memUsed, memMax: host.memTotal, diskMax: host.diskTotal, uptimeSec: host.uptimeSec }), [live]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <PageFrame width="6xl">
       <PageHeader title="Host shell" subtitle={`A root shell on ${setup?.deviceName ?? "pve"} itself.`} />
       <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-3.5 mb-4 text-[13px]">
         <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-px" />
-        <p className="text-ink-2">Only owners can open the host shell, and it is never available to agents or connected apps. Changes here bypass ePaperclip's checks; prefer machine consoles and Pin for everyday work.</p>
+        <p className="text-ink-2">{live ? "A shell on the host, opened by Proxmox for your account (it needs Sys.Console). " : "Only owners can open the host shell. "}It is never available to agents or connected apps. Changes here bypass ePaperclip's checks; prefer machine consoles and Pin for everyday work.</p>
       </div>
       <Terminal make={make} title={`root@${setup?.deviceName ?? "pve"}`} className="h-[min(600px,calc(100dvh-260px))]" />
     </PageFrame>
@@ -78,27 +78,6 @@ export function NetworkPage() {
         ))}
       </Card>
       <p className="text-[12px] text-ink-3 mt-3">Organization containers join the bridge with the firewall on. Isolating them on their own VLAN keeps them away from the host's management network.</p>
-    </PageFrame>
-  );
-}
-
-export function BackupsPage() {
-  const { data } = useEngine();
-  return (
-    <PageFrame width="4xl">
-      <PageHeader title="Backups" subtitle="Scheduled backups of your machines." actions={<Button disabled title="Running backups arrives with the host broker"><Archive className="h-4 w-4" />Back up now</Button>} />
-      <div className="space-y-3">
-        {data.host.backups.map((b) => (
-          <Card key={b.id} className="p-5">
-            <div className="flex items-center gap-3">
-              <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><Archive className="h-4 w-4" /></span>
-              <div className="flex-1"><div className="font-medium">{b.selection}</div><div className="text-[12px] text-ink-3">{b.schedule} · to {b.storage} · keeps {b.keep}</div></div>
-              {b.lastOk ? <Status kind="good" label="Last run OK" /> : <Status kind="critical" label="Last run failed" />}
-            </div>
-            {b.keep < 3 && <p className="text-[12px] text-warning mt-3">Keeping only {b.keep} copy means one bad night loses your only backup. Pin suggests keeping 3, and leaving organization containers out.</p>}
-          </Card>
-        ))}
-      </div>
     </PageFrame>
   );
 }

@@ -29,7 +29,7 @@ Each phase ends with something that runs on a real Proxmox host.
 ## Phase 3: Pin
 
 - [ ] Pin principal and runtime: Assistant and Agent modes, schedule, triggers
-- [ ] `SOUL.md` and `MEMORY.md`
+- [x] `SOUL.md` and `MEMORY.md`, editable on Pin's page (stored in the browser until the runtime lands)
 - [ ] System skills: guests, storage, network, backups, companies, connectors
 - [ ] Natural language to automation rules, confirmed with the plain-language read-back before saving
 - [ ] Creating companies on request
@@ -49,7 +49,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Usage graphs for machines and the node over Proxmox's timeframes; Summary and Resources pages
 - [x] Interactive org chart: pan, zoom, collapse, drag to change reporting lines with loop protection
 - [x] Broker usage-history endpoints (`/v1/stats`) and Proxmox client `rrddata` calls
-- [ ] Live consoles: broker relay of Proxmox's terminal proxy, behind the same transport
+- [x] Live consoles: the host service relays Proxmox's terminal proxy (containers, VM serial consoles, host shell) over a WebSocket, as the signed-in user, behind the same transport
+- [x] Pin's own page: mode, what Pin may do, SOUL.md and MEMORY.md, automations, activity log, skills, full chat
 - [ ] Paperclip pages still to come from the fork: chat, artifacts, workspaces, skills
 - [x] Host service (`services/epaperclip`): Proxmox sign-in with two-factor, sessions, acting as the user, console serving with a strict CSP
 - [x] Console on live data: host metrics, machines, power, usage graphs, every storage and the root file system, creating containers
@@ -61,8 +62,9 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Proxmox's template catalog (system and TurnKey) with one-click download; ISO and template upload with progress; download from URL with checksum
 - [x] Task log with each task's output; Pin notifies when downloads, uploads and creates finish
 - [x] Virtual machines from an ISO, with Proxmox's wizard defaults per OS type (Windows 11 gets UEFI, Secure Boot keys and TPM 2.0)
-- [ ] Backups: run now, schedules, restore
+- [x] Backups: schedules (create, edit, enable, delete), back up now, restore as a new machine or over the original, a Backups tab on every machine
 - [ ] Network: bridges, VLANs, apply configuration
+- [ ] Graphical (noVNC) consoles for VMs without a serial port
 - [ ] Machine hardware editing (disks, NICs, CPU, memory), snapshots and clones on live machines
 - [ ] Firewall, users and permissions (the IAC sync backend), certificates, disks and ZFS, HA and replication
 - [x] Serve the console on the host (port 443), with the stock Proxmox UI kept on 8006 as the emergency console

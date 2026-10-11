@@ -34,6 +34,8 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
 fi
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 20 ] || die "Node.js 20 or newer is needed"
 
+(cd "$ROOT/services/epaperclip" && node scripts/smoke.mjs) || die "the built service doesn't start; rebuild with pnpm build"
+
 if ss -Hltn 'sport = :443' | grep -q . && ! systemctl is-active -q epaperclip; then
   die "something else is listening on port 443; stop it or set EPC_LISTEN in /etc/default/epaperclip"
 fi

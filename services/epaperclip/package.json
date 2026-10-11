@@ -7,9 +7,19 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/epaperclip.mjs --banner:js=\"// ePaperclip host service\"",
-    "start": "node --experimental-strip-types src/main.ts"
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/epaperclip.mjs --banner:js=\"// ePaperclip host service\nimport { createRequire as __epcRequire } from 'node:module'; const require = __epcRequire(import.meta.url);\"",
+    "start": "node --experimental-strip-types src/main.ts",
+    "smoke": "node scripts/smoke.mjs"
   },
-  "dependencies": { "@papercliped-engine/proxmox-client": "workspace:*" },
-  "devDependencies": { "@types/node": "^22.10.0", "esbuild": "^0.28.2", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+  "dependencies": {
+    "@papercliped-engine/proxmox-client": "workspace:*",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "8.18.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
 }

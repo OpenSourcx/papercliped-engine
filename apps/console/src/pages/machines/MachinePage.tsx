@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Camera, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { Archive, Box, Camera, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
+import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Terminal } from "../../terminal/LazyTerminal.tsx";
-import { DemoTransport } from "../../terminal/transport.ts";
+import { DemoTransport, LiveTransport } from "../../terminal/transport.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Input, PageFrame, SectionTitle, Status } from "../../ui/primitives.tsx";
@@ -16,6 +17,7 @@ const TABS = [
   { id: "overview", label: "Overview", icon: <Box className="h-4 w-4" /> },
   { id: "console", label: "Console", icon: <SquareTerminal className="h-4 w-4" /> },
   { id: "snapshots", label: "Snapshots", icon: <Camera className="h-4 w-4" /> },
+  { id: "backups", label: "Backups", icon: <Archive className="h-4 w-4" /> },
   { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" /> },
   { id: "tasks", label: "Tasks", icon: <ListChecks className="h-4 w-4" /> },
 ] as const;
@@ -81,7 +83,7 @@ export function MachinePage() {
   const device = setup?.deviceName ?? "pve";
   const g = data.guests.find((x) => String(x.vmid) === vmid && (!orgSlug || x.org === orgSlug));
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab")! : "overview";
-  const make = useMemo(() => () => new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const make = useMemo(() => () => live && g ? new LiveTransport(`/api/console/guests/${g.vmid}`) : new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid, live]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useMemo(() => (g ? { cpu: Math.max(0.02, g.cpuPct / 100), maxcpu: g.cores, mem: g.memUsed, maxmem: g.memMax, net: g.status === "running" ? 40_000 + g.vmid * 30 : 0, disk: g.status === "running" ? 120_000 : 0, running: g.status === "running" } : null), [g?.vmid, g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTab = (id: string, extra?: Record<string, string>) => setParams((p) => { const n = new URLSearchParams(p); if (id === "overview") n.delete("tab"); else n.set("tab", id); for (const [k, v] of Object.entries(extra ?? {})) n.set(k, v); return n; }, { replace: true });
   const power = (a: "start" | "shutdown" | "stop" | "reboot") => {
@@ -98,6 +100,7 @@ export function MachinePage() {
       { id: "shutdown", label: "Shut down", icon: <Power className="h-4 w-4" />, run: () => power("shutdown"), disabled: !running || !!lock, title: lock },
       { id: "console", label: "Console", icon: <SquareTerminal className="h-4 w-4" />, run: () => setTab("console"), disabled: !running, title: running ? undefined : "Start it to open its console" },
       { id: "snapshot", label: "Snapshot", icon: <Camera className="h-4 w-4" />, run: () => setTab("snapshots", { new: "1" }) },
+      { id: "backup", label: "Back up now", icon: <Archive className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
       { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" />, run: () => setTab("hardware"), more: true },
@@ -176,14 +179,23 @@ export function MachinePage() {
       {tab === "console" && (
         <div className="fade-in">
           {g.status === "running" ? (
+            <>
             <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
+            {live && g.type === "qemu" && (
+              <p className="text-[12px] text-ink-3 mt-2">
+                VMs open their serial console here (add one with <span className="font-mono">serial0: socket</span>). For the graphical screen,{" "}
+                <a className="text-accent hover:underline" target="_blank" rel="noreferrer" href={`https://${window.location.hostname}:8006/?console=kvm&novnc=1&vmid=${g.vmid}&vmname=${encodeURIComponent(g.name)}&node=${encodeURIComponent(device)}&resize=scale`}>open it in the Proxmox console</a>.
+              </p>
+            )}
+            </>
           ) : (
             <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} title={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
           )}
-          <p className="text-[12px] text-ink-3 mt-2">Live consoles run through the host broker and Proxmox's terminal proxy; who can open one is set by the Open container consoles tool in Access control.</p>
+          <p className="text-[12px] text-ink-3 mt-2">{live ? "Live console through Proxmox's terminal proxy, opened as your Proxmox account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox's terminal proxy."}</p>
         </div>
       )}
 
+      {tab === "backups" && <div className="fade-in"><MachineBackups vmid={g.vmid} name={g.name} /></div>}
       {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} startOpen={params.get("new") === "1"} onOpened={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n; }, { replace: true })} /></div>}
 
       {tab === "hardware" && (
@@ -216,5 +228,29 @@ export function MachinePage() {
         </Card>
       )}
     </PageFrame>
+  );
+}
+
+function MachineBackups({ vmid, name }: { vmid: number; name: string }) {
+  const { files, error } = useBackupFiles(vmid);
+  const [, setParams] = useSearchParams();
+  const backUp = () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(vmid)); return n; });
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[13px] text-ink-3">Backups of {name} on every storage that holds backups.</p>
+        <Button size="sm" variant="primary" onClick={backUp}><Archive className="h-3.5 w-3.5" />Back up now</Button>
+      </div>
+      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+      <Card className="overflow-x-auto">
+        {files === null ? (
+          <div className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
+        ) : files.length === 0 ? (
+          <div className="p-8 text-center"><p className="text-ink-2">No backups of {name} yet.</p><p className="text-[13px] text-ink-3 mt-1">Back it up now, or add it to a schedule in Backups.</p></div>
+        ) : (
+          <BackupTable files={files} showMachine={false} />
+        )}
+      </Card>
+    </div>
   );
 }

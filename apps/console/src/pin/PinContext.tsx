@@ -19,7 +19,8 @@ interface PinCtx {
   messages: PinMessage[];
   thinking: boolean;
   peek: { title: string; body?: string } | null;
-  send: (text: string) => void;
+  /** Sends a message to Pin. `inPlace` keeps the island closed (used by Pin's own page, which shows the chat itself). */
+  send: (text: string, opts?: { inPlace?: boolean }) => void;
   markDone: (id: string) => void;
   tab: "chat" | "notices";
   setTab: (t: "chat" | "notices") => void;
@@ -94,12 +95,12 @@ export function PinProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [engine.data.notices, state]);
 
-  const send = useCallback((text: string) => {
+  const send = useCallback((text: string, opts?: { inPlace?: boolean }) => {
     const clean = text.trim();
     if (!clean) return;
     setMessages((m) => [...m, { id: `u-${Date.now()}`, from: "you", text: clean }]);
     setTab("chat");
-    setState("open");
+    if (!opts?.inPlace) setState("open");
     setThinking(true);
     const e = engineRef.current;
     const reply = think(clean, { host: e.host, data: e.data, mode: e.setup?.pinMode ?? "assistant", device: e.setup?.deviceName ?? "pve" });

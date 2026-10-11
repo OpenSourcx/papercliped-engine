@@ -1,4 +1,4 @@
-import { api, ApiError, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
+import { api, ApiError, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
 import type { HostStorage } from "./types.ts";
 
 /**
@@ -15,6 +15,12 @@ export interface Backend {
   tasks: (limit?: number) => Promise<TaskEntry[]>;
   task: (upid: string) => Promise<TaskDetail>;
   machineOptions: () => Promise<MachineOptions>;
+  backupJobs: () => Promise<BackupJob[]>;
+  saveBackupJob: (id: string | null, spec: BackupJobSpec) => Promise<unknown>;
+  toggleBackupJob: (id: string, enabled: boolean) => Promise<unknown>;
+  deleteBackupJob: (id: string) => Promise<unknown>;
+  runBackup: (r: BackupRun) => Promise<{ task: string }>;
+  restore: (r: RestoreSpec) => Promise<{ vmid: number; task: string }>;
 }
 
 export const liveBackend: Backend = {
@@ -27,7 +33,39 @@ export const liveBackend: Backend = {
   tasks: api.tasks,
   task: api.task,
   machineOptions: api.machineOptions,
+  backupJobs: api.backupJobs,
+  saveBackupJob: api.saveBackupJob,
+  toggleBackupJob: api.toggleBackupJob,
+  deleteBackupJob: api.deleteBackupJob,
+  runBackup: api.runBackup,
+  restore: api.restore,
 };
+
+/** "vzdump-lxc-101-2025_10_10-21_00_02.tar.zst" -> { type, vmid, at (unix seconds) } */
+export function parseBackupName(volid: string): { type: "lxc" | "qemu"; vmid: number; at: number | null } | null {
+  const m = volid.match(/vzdump-(lxc|qemu|openvz)-(\d+)-(\d{4})_(\d{2})_(\d{2})-(\d{2})_(\d{2})_(\d{2})/);
+  if (!m) return null;
+  const at = Date.UTC(+m[3], +m[4] - 1, +m[5], +m[6], +m[7], +m[8]) / 1000;
+  return { type: m[1] === "qemu" ? "qemu" : "lxc", vmid: Number(m[2]), at };
+}
+
+/** Plain words for a systemd calendar schedule, for the common shapes Proxmox's UI offers. */
+export function describeSchedule(s: string | null): string {
+  if (!s) return "No schedule";
+  const t = s.trim();
+  const time = t.match(/^(?:(\*-\*-\*)\s+)?(\d{1,2}):(\d{2})$/);
+  if (time) return `Every day at ${time[2].padStart(2, "0")}:${time[3]}`;
+  const day = t.match(/^(mon|tue|wed|thu|fri|sat|sun)(?:\.\.(mon|tue|wed|thu|fri|sat|sun))?\s+(\d{1,2}):(\d{2})$/i);
+  const names: Record<string, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+  if (day) {
+    const at = `${day[3].padStart(2, "0")}:${day[4]}`;
+    if (day[2]) return day[1].toLowerCase() === "mon" && day[2].toLowerCase() === "fri" ? `Weekdays at ${at}` : `${names[day[1].toLowerCase()]} to ${names[day[2].toLowerCase()]} at ${at}`;
+    return `Every ${names[day[1].toLowerCase()]} at ${at}`;
+  }
+  const hourly = t.match(/^(?:\*:00|hourly)$/);
+  if (hourly) return "Every hour";
+  return t;
+}
 
 /** Human names for Proxmox task types, as its task log shows them. */
 export const TASK_TYPES: Record<string, string> = {
@@ -41,6 +79,8 @@ export const TASK_TYPES: Record<string, string> = {
   vzreboot: "Reboot container",
   vzdestroy: "Destroy container",
   vzdump: "Backup",
+  vzrestore: "Restore container",
+  qmrestore: "Restore VM",
   qmcreate: "Create VM",
   qmstart: "Start VM",
   qmstop: "Stop VM",
@@ -119,6 +159,12 @@ export function demoBackend(storages: () => HostStorage[], user = "owner@pve"): 
     return upid;
   };
   const exists = (storage: string, volid: string) => listFor(storage).some((i) => i.volid === volid);
+  let jobs: BackupJob[] = [{ id: "backup-daily", schedule: "21:00", storage: "drive2", all: true, vmids: [], pool: null, mode: "snapshot", compress: "zstd", enabled: true, keepLast: 1, comment: null, nextRun: Math.floor(Date.now() / 1000) + 6 * 3600 }];
+  const stamp = () => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}_${p(d.getUTCMonth() + 1)}_${p(d.getUTCDate())}-${p(d.getUTCHours())}_${p(d.getUTCMinutes())}_${p(d.getUTCSeconds())}`;
+  };
 
   return {
     content: async (storage, kind) => listFor(storage).filter((i) => !kind || i.content === kind),
@@ -163,6 +209,35 @@ export function demoBackend(storages: () => HostStorage[], user = "owner@pve"): 
       const t = tasks.find((x) => x.upid === upid);
       if (!t) throw new ApiError(400, "bad_request", "Unknown task");
       return { status: t.end ? "stopped" : "running", exitstatus: t.end ? t.status : null, log: t.log };
+    },
+    backupJobs: async () => jobs.map((j) => ({ ...j })),
+    saveBackupJob: async (id, spec) => {
+      const next: BackupJob = { id: id ?? `backup-${Math.random().toString(16).slice(2, 10)}`, schedule: spec.schedule, storage: spec.storage, all: spec.all, vmids: spec.vmids, pool: null, mode: spec.mode, compress: "zstd", enabled: spec.enabled, keepLast: spec.keepLast, comment: spec.comment ?? null, nextRun: Math.floor(Date.now() / 1000) + 3600 };
+      jobs = id ? jobs.map((j) => (j.id === id ? next : j)) : [...jobs, next];
+      return { ok: true };
+    },
+    toggleBackupJob: async (id, enabled) => {
+      jobs = jobs.map((j) => (j.id === id ? { ...j, enabled } : j));
+      return { ok: true };
+    },
+    deleteBackupJob: async (id) => {
+      jobs = jobs.filter((j) => j.id !== id);
+      return { ok: true };
+    },
+    runBackup: async (r) => {
+      if (!r.all && !r.vmids.length) throw new ApiError(400, "bad_request", "Pick the machines to back up");
+      const ids = r.all ? [101, 105, 109] : r.vmids;
+      return {
+        task: startTask("vzdump", r.all ? null : ids.join(","), 2 + ids.length, ["INFO: starting new backup job: vzdump " + (r.all ? "--all 1" : ids.join(" ")) + ` --storage ${r.storage} --mode ${r.mode} --compress zstd`, ...ids.map((id) => `INFO: Starting Backup of VM ${id}`), "INFO: Backup job finished successfully"], () => {
+          for (const id of ids) listFor(r.storage).push(item(`${r.storage}:backup/vzdump-${id >= 109 ? "qemu" : "lxc"}-${id}-${stamp()}.${id >= 109 ? "vma" : "tar"}.zst`, "backup", (1 + id % 5) * 1024 ** 3, 0, id));
+        }),
+      };
+    },
+    restore: async (r) => {
+      const b = parseBackupName(r.volid);
+      if (!b) throw new ApiError(400, "bad_request", "That isn't a machine backup");
+      const vmid = r.replace ? b.vmid : 200 + Math.floor(Math.random() * 700);
+      return { vmid, task: startTask(b.type === "lxc" ? "vzrestore" : "qmrestore", String(vmid), 2.5, [`restore ${r.volid} to ${r.storage}`, `machine ${vmid} restored`]) };
     },
     machineOptions: async () => {
       const all = storages();

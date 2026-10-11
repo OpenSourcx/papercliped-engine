@@ -27,6 +27,6 @@ export function useModals() {
     openSettings: (section = "general") => update((p) => { p.set("settings", section); p.delete("modal"); }),
     selectSection: (section: string) => update((p) => p.set("settings", section), true),
     openModal: (name: string) => update((p) => { p.set("modal", name); }),
-    close: () => update((p) => { for (const k of ["settings", "modal", "storage", "content", "kind", "upid"]) p.delete(k); }),
+    close: () => update((p) => { for (const k of ["settings", "modal", "storage", "content", "kind", "upid", "id", "vmid", "vmids", "all", "volid"]) p.delete(k); }),
   };
 }

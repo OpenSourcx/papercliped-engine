@@ -1,11 +1,12 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import WebSocket, { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Transport } from "@papercliped-engine/proxmox-client";
-import { checksum, createApp, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
+import { backupOf, checksum, createApp, parseBackupJob, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
 import { SessionStore } from "../src/sessions.ts";
 
 /** A fake Proxmox: users, optional TFA, tickets, and permissions per ticket. */
@@ -74,6 +75,13 @@ function fakePve() {
     if (path.startsWith("/nodes/pve/tasks/") && path.endsWith("/status")) return ok({ status: "stopped", exitstatus: "OK" });
     if (path.startsWith("/nodes/pve/tasks/") && path.endsWith("/log")) return ok([{ n: 1, t: "downloading" }, { n: 2, t: "TASK OK" }]);
     if (path === "/nodes/pve/qemu" && req.method === "POST") return admin ? ok("UPID:pve:qm") : { status: 403, body: "" };
+    if (path === "/nodes/pve/lxc/101/termproxy" && req.method === "POST") return ok({ port: 5901, ticket: "PVEVNC:abc", user, upid: "UPID:pve:1:2:3:vncproxy:101:x:" });
+    if (path === "/nodes/pve/termproxy" && req.method === "POST") return admin ? ok({ port: 5900, ticket: "PVEVNC:node", user, upid: "UPID:pve:1:2:3:vncshell::x:" }) : { status: 403, body: "" };
+    if (path === "/cluster/backup" && req.method === "GET") return admin ? ok([{ id: "backup-1a2b", schedule: "21:00", storage: "drive2", all: 1, mode: "snapshot", compress: "zstd", enabled: 1, "prune-backups": "keep-last=3", "next-run": 1900000000 }]) : { status: 403, body: "" };
+    if (path === "/cluster/backup" && req.method === "POST") return admin ? ok(null) : { status: 403, body: "" };
+    if (path.startsWith("/cluster/backup/") && (req.method === "PUT" || req.method === "DELETE")) return admin ? ok(null) : { status: 403, body: "" };
+    if (path === "/nodes/pve/vzdump" && req.method === "POST") return admin ? ok("UPID:pve:vzdump") : { status: 403, body: "" };
+    if (path === "/nodes/pve/lxc" && req.method === "POST" && new URLSearchParams(req.body).get("restore") === "1") return ok("UPID:pve:restore");
     if (path === "/nodes/pve/lxc/101/status/shutdown") return admin ? ok("UPID:pve:1") : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
@@ -94,6 +102,8 @@ let base: string;
 let pve: ReturnType<typeof fakePve>;
 let clock: number;
 let staticDir: string;
+let fakeConsole: WebSocketServer;
+let consoleSeen: { url: string; cookie: string | undefined; frames: string[] }[];
 
 beforeEach(async () => {
   pve = fakePve();
@@ -103,13 +113,33 @@ beforeEach(async () => {
   mkdirSync(join(staticDir, "assets"));
   writeFileSync(join(staticDir, "assets", "app-abc.js"), "console.log(1)");
   writeFileSync(join(staticDir, "..", "secret.txt"), "nope");
+  // A stand-in for Proxmox's vncwebsocket: checks the handshake, then echoes input frames as output.
+  consoleSeen = [];
+  fakeConsole = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+  fakeConsole.on("connection", (ws, req) => {
+    const rec = { url: req.url ?? "", cookie: req.headers.cookie, frames: [] as string[] };
+    consoleSeen.push(rec);
+    ws.on("message", (m) => {
+      const t = m.toString();
+      rec.frames.push(t);
+      if (rec.frames.length === 1) return ws.send(t === "sam@pve:PVEVNC:abc\n" || t === "sam@pve:PVEVNC:node\n" ? "OK" : "NO");
+      const input = t.match(/^0:(\d+):(.*)$/s);
+      if (input) ws.send(`echo:${input[2]}`);
+    });
+  });
+  await new Promise<void>((r) => fakeConsole.on("listening", () => r()));
+  const consolePort = (fakeConsole.address() as AddressInfo).port;
   const now = () => clock;
-  const handle = createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport, streamTransport: pve.streamTransport }, maxUploadBytes: 1024, sessions: new SessionStore(now), staticDir, secureCookies: true, now });
+  const handle = createApp({
+    connect: (t) => new WebSocket(`ws://127.0.0.1:${consolePort}${new URL(t.url).pathname}${new URL(t.url).search}`, { headers: t.headers }), pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport, streamTransport: pve.streamTransport }, maxUploadBytes: 1024, sessions: new SessionStore(now), staticDir, secureCookies: true, now });
   server = createServer(handle);
+  server.on("upgrade", handle.upgrade);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterEach(() => new Promise<void>((r) => {
+  for (const c of fakeConsole.clients) c.terminate();
+  fakeConsole.close();
   server.close(() => r());
   server.closeAllConnections();
 }));
@@ -402,6 +432,115 @@ describe("storage, templates and ISOs", () => {
     expect(() => checksum("ab".repeat(16), "crc32")).toThrow();
     expect(checksum("", undefined)).toEqual({});
     expect(() => parseVmSpec({ name: "x", iso: "local:iso/../../etc", ostype: "l26", cores: 1, memoryMb: 512, diskGb: 4, storage: "s" })).toThrow();
+  });
+});
+
+describe("backups", () => {
+  it("lists scheduled jobs with retention and next run", async () => {
+    const c = await signIn();
+    const r = await fetch(base + "/api/backups/jobs", { headers: { Cookie: c } });
+    expect(await r.json()).toEqual({ jobs: [{ id: "backup-1a2b", schedule: "21:00", storage: "drive2", all: true, vmids: [], pool: null, mode: "snapshot", compress: "zstd", enabled: true, keepLast: 3, comment: null, nextRun: 1900000000 }] });
+    expect((await fetch(base + "/api/backups/jobs", { headers: { Cookie: await signIn("lee") } })).status).toBe(403);
+  });
+
+  it("creates, toggles, edits and deletes jobs", async () => {
+    const c = await signIn();
+    expect((await post("/api/backups/jobs", { schedule: "sat 02:00", storage: "drive2", vmids: [101, 109], mode: "snapshot", keepLast: 7 }, { Cookie: c })).status).toBe(201);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ schedule: "sat 02:00", storage: "drive2", vmid: "101,109", mode: "snapshot", compress: "zstd", enabled: "1", "prune-backups": "keep-last=7" });
+    expect((await post("/api/backups/jobs/backup-1a2b", { enabled: false }, { Cookie: c })).status).toBe(200);
+    expect(pve.seen.at(-1)!.method).toBe("PUT");
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("enabled")).toBe("0");
+    expect((await post("/api/backups/jobs/backup-1a2b", { schedule: "21:30", storage: "drive2", all: true, mode: "stop", keepLast: 2 }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("delete")).toBe("vmid");
+    expect((await post("/api/backups/jobs/backup-1a2b/delete", {}, { Cookie: c })).status).toBe(200);
+    expect(pve.seen.at(-1)!.method).toBe("DELETE");
+    expect((await post("/api/backups/jobs/..%2Fx", {}, { Cookie: c })).status).toBe(404);
+  });
+
+  it("backs up now as the user", async () => {
+    const c = await signIn();
+    const r = await post("/api/backups/run", { vmids: [101], storage: "drive2", mode: "snapshot" }, { Cookie: c });
+    expect(await r.json()).toEqual({ task: "UPID:pve:vzdump" });
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ vmid: "101", storage: "drive2", mode: "snapshot", compress: "zstd" });
+    expect((await post("/api/backups/run", { vmids: [101], storage: "drive2", mode: "snapshot" }, { Cookie: await signIn("lee") })).status).toBe(403);
+    expect((await post("/api/backups/run", { vmids: [], storage: "drive2" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("restores as a new machine by default, and refuses to overwrite a running one", async () => {
+    const c = await signIn();
+    const r = await post("/api/backups/restore", { from: "drive2", volid: "drive2:backup/vzdump-lxc-101-2025_10_10-21_00_02.tar.zst", storage: "local-lvm" }, { Cookie: c });
+    expect(await r.json()).toMatchObject({ vmid: 106 });
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ vmid: "106", ostemplate: "drive2:backup/vzdump-lxc-101-2025_10_10-21_00_02.tar.zst", restore: "1", unique: "1", storage: "local-lvm" });
+    const over = await post("/api/backups/restore", { from: "drive2", volid: "drive2:backup/vzdump-lxc-101-2025_10_10-21_00_02.tar.zst", storage: "local-lvm", replace: true }, { Cookie: c });
+    expect(over.status).toBe(409);
+    expect((await post("/api/backups/restore", { from: "drive2", volid: "drive2:iso/x.iso", storage: "local-lvm" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/backups/restore", { from: "local", volid: "drive2:backup/vzdump-lxc-101-x.tar.zst", storage: "local-lvm" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("parses schedules and backup names", () => {
+    expect(() => parseBackupJob({ schedule: "21:00\nrm", storage: "x", all: true, mode: "snapshot", keepLast: 1 })).toThrow();
+    expect(() => parseBackupJob({ schedule: "21:00", storage: "x", all: true, mode: "fast", keepLast: 1 })).toThrow();
+    expect(() => parseBackupJob({ schedule: "21:00", storage: "x", vmids: [], mode: "snapshot", keepLast: 1 })).toThrow();
+    expect(backupOf("drive2:backup/vzdump-qemu-109-2025_10_10-21_04_40.vma.zst")).toEqual({ type: "qemu", vmid: 109 });
+    expect(backupOf("drive2:backup/random.tar")).toBeNull();
+  });
+});
+
+describe("live consoles", () => {
+  const open = (path: string, headers: Record<string, string>) =>
+    new Promise<{ ws: WebSocket; out: string[]; closed: Promise<number> }>((resolve, reject) => {
+      const ws = new WebSocket(base.replace("http", "ws") + path, { headers });
+      const out: string[] = [];
+      const closed = new Promise<number>((r) => ws.on("close", (code) => r(code)));
+      ws.on("message", (m) => out.push(m.toString()));
+      ws.on("open", () => resolve({ ws, out, closed }));
+      ws.on("unexpected-response", (_req, res) => reject(new Error(String(res.statusCode))));
+      ws.on("error", reject);
+    });
+  const until = async (fn: () => boolean) => {
+    for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 10));
+  };
+
+  it("relays a container console as the user, without exposing tickets", async () => {
+    const c = await signIn();
+    const { ws, out } = await open("/api/console/guests/101", { Cookie: c, Origin: base });
+    ws.send("0:2:ls");
+    await until(() => out.length > 0);
+    expect(out).toEqual(["echo:ls"]);
+    expect(consoleSeen[0].url).toBe("/api2/json/nodes/pve/lxc/101/vncwebsocket?port=5901&vncticket=PVEVNC%3Aabc");
+    expect(consoleSeen[0].cookie).toMatch(/^PVEAuthCookie=PVE%3Asam%40pve/);
+    expect(consoleSeen[0].frames[0]).toBe("sam@pve:PVEVNC:abc\n");
+    expect(out.join("")).not.toContain("PVE");
+    ws.close();
+  });
+
+  it("refuses cross-site and signed-out connections before upgrading", async () => {
+    const c = await signIn();
+    await expect(open("/api/console/guests/101", { Cookie: c, Origin: "https://evil.example" })).rejects.toThrow("403");
+    await expect(open("/api/console/guests/101", { Cookie: c })).rejects.toThrow("403");
+    await expect(open("/api/console/guests/101", { Origin: base })).rejects.toThrow("401");
+    await expect(open("/api/console/elsewhere", { Cookie: c, Origin: base })).rejects.toThrow("404");
+  });
+
+  it("explains in the terminal when Proxmox says no", async () => {
+    const c = await signIn("lee");
+    const { out, closed } = await open("/api/console/node", { Cookie: c, Origin: base });
+    expect(await closed).toBe(4000);
+    expect(out.join("")).toContain("doesn't have console access");
+    const s = await signIn();
+    const stopped = await open("/api/console/guests/999", { Cookie: s, Origin: base });
+    await stopped.closed;
+    expect(stopped.out.join("")).toContain("Unknown machine");
+  });
+
+  it("opens the host shell for users Proxmox allows", async () => {
+    const c = await signIn();
+    const { ws, out } = await open("/api/console/node", { Cookie: c, Origin: base });
+    ws.send("0:6:whoami");
+    await until(() => out.length > 0);
+    expect(out).toEqual(["echo:whoami"]);
+    expect(consoleSeen[0].url).toContain("/api2/json/nodes/pve/vncwebsocket?port=5900");
+    ws.close();
   });
 });
 

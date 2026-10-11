@@ -195,6 +195,21 @@ export interface AppActivity {
   at: string;
 }
 
+export interface PinLogEntry {
+  id: string;
+  at: string;
+  kind: "did" | "proposed" | "learned" | "changed";
+  text: string;
+}
+
+/** Pin's own files and history. SOUL.md is who Pin is; MEMORY.md is what it has learned about you and this device. */
+export interface PinData {
+  soul: string;
+  memory: string;
+  editedAt: { soul: string | null; memory: string | null };
+  log: PinLogEntry[];
+}
+
 export interface EngineData {
   orgs: Org[];
   guests: Guest[];
@@ -205,7 +220,8 @@ export interface EngineData {
   notices: Notice[];
   apps: { mode: AppMode; sessions: AppSession[]; activity: AppActivity[] };
   host: { storage: HostStorage[]; network: HostNetwork[]; backups: BackupJob[] };
+  pin?: PinData;
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks", "pin"] as const;

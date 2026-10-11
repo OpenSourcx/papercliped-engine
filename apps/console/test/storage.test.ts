@@ -58,3 +58,35 @@ describe("task ids", () => {
     expect(parseUpid("nope")).toBeNull();
   });
 });
+
+describe("backups", () => {
+  it("reads backup names and schedules in plain words", async () => {
+    const { describeSchedule, parseBackupName } = await import("../src/data/backend.ts");
+    expect(parseBackupName("drive2:backup/vzdump-qemu-109-2025_10_10-21_04_40.vma.zst")).toEqual({ type: "qemu", vmid: 109, at: Date.UTC(2025, 9, 10, 21, 4, 40) / 1000 });
+    expect(parseBackupName("drive2:iso/x.iso")).toBeNull();
+    expect(describeSchedule("21:00")).toBe("Every day at 21:00");
+    expect(describeSchedule("2:30")).toBe("Every day at 02:30");
+    expect(describeSchedule("mon..fri 21:00")).toBe("Weekdays at 21:00");
+    expect(describeSchedule("sat 02:00")).toBe("Every Saturday at 02:00");
+    expect(describeSchedule("*-*-1 03:00")).toBe("*-*-1 03:00");
+    expect(describeSchedule(null)).toBe("No schedule");
+  });
+
+  it("runs, schedules and restores in the demo", async () => {
+    const b = demoBackend(() => storages);
+    await b.saveBackupJob(null, { schedule: "sat 02:00", storage: "drive2", all: false, vmids: [101], mode: "snapshot", keepLast: 5, enabled: true });
+    const jobs = await b.backupJobs();
+    expect(jobs.map((j) => j.schedule)).toEqual(["21:00", "sat 02:00"]);
+    await b.toggleBackupJob(jobs[1].id, false);
+    expect((await b.backupJobs())[1].enabled).toBe(false);
+    await b.deleteBackupJob(jobs[1].id);
+    expect(await b.backupJobs()).toHaveLength(1);
+    const before = (await b.content("drive2", "backup")).length;
+    const { task } = await b.runBackup({ all: false, vmids: [101], storage: "drive2", mode: "snapshot" });
+    await wait(3200);
+    expect((await b.task(task)).exitstatus).toBe("OK");
+    expect((await b.content("drive2", "backup")).length).toBe(before + 1);
+    const r = await b.restore({ from: "drive2", volid: "drive2:backup/vzdump-lxc-101-2025_10_10-21_00_02.tar.zst", storage: "drive2", replace: true });
+    expect(r.vmid).toBe(101);
+  }, 8000);
+});

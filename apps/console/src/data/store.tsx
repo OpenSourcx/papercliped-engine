@@ -2,12 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Rule } from "@papercliped-engine/automations";
 import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
-import { api, ApiError, type MachineSpec, type VmSpec } from "./api.ts";
-import { demoBackend, liveBackend, type Backend } from "./backend.ts";
+import { api, ApiError, type MachineSpec, type RestoreSpec, type VmSpec } from "./api.ts";
+import { demoBackend, liveBackend, parseBackupName, type Backend } from "./backend.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
+import { defaultPinData } from "./pin.ts";
 import { wouldLoop } from "./orgTree.ts";
-import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type HostStorage, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
+import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type HostStorage, type PinData, type PinLogEntry, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
  * The console's state. Served by the host service, the host and its machines are live: read from Proxmox as the
@@ -31,6 +32,8 @@ interface Engine {
   running: { upid: string; label: string }[];
   /** Changes whenever a watched task finishes; storage views refetch on it. */
   contentVersion: number;
+  /** Restores a backup, as a new machine or over the original. Proxmox does the work; Pin reports when it's done. */
+  restoreBackup: (spec: RestoreSpec) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   createVm: (spec: VmSpec & { org: string | null }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   setup: SetupState | null;
   data: EngineData;
@@ -38,6 +41,11 @@ interface Engine {
   completeSetup: (s: Omit<SetupState, "completedAt">, firstOrg: string | null) => void;
   resetAll: () => void;
   setPinMode: (m: PinMode) => void;
+  /** Pin's files and activity, with defaults for consoles set up before Pin had them. */
+  pin: PinData;
+  setPinAccess: (patch: Partial<SetupState["pinAccess"]>) => void;
+  savePinFile: (file: "soul" | "memory", text: string) => void;
+  logPin: (kind: PinLogEntry["kind"], text: string) => void;
   createOrg: (name: string, size?: Partial<Org["resourceGroup"]>, by?: "user" | "pin", memory?: Org["memory"]) => { ok: true; org: Org } | { ok: false; error: string };
   saveRule: (r: Rule) => void;
   toggleRule: (id: string) => void;
@@ -176,6 +184,11 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const updateGuest = (vmid: number, fn: (g: Guest) => Guest) => setData((d) => ({ ...d, guests: d.guests.map((x) => (x.vmid === vmid ? fn(x) : x)) }));
   const updateOrg = (slug: string, fn: (o: Org) => Org) => setData((d) => ({ ...d, orgs: d.orgs.map((o) => (o.slug === slug ? fn(o) : o)) }));
 
+  const logTo = (kind: PinLogEntry["kind"], text: string) =>
+    setData((d) => {
+      const pin = d.pin ?? defaultPinData();
+      return { ...d, pin: { ...pin, log: [{ id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), kind, text }, ...pin.log].slice(0, 200) } };
+    });
   storageRef.current = live ? storage : data.host.storage;
   const view = useMemo<EngineData>(() => (live ? { ...data, guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage]);
 
@@ -188,6 +201,24 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       watchTask,
       running,
       contentVersion,
+      restoreBackup: async (spec) => {
+        try {
+          const r = await backend.restore(spec);
+          const src = parseBackupName(spec.volid);
+          const orig = view.guests.find((g) => g.vmid === src?.vmid);
+          watchTask(r.task, spec.replace ? `Restore ${orig?.name ?? `#${src?.vmid}`}` : `Restore ${orig?.name ?? "backup"} as #${r.vmid}`);
+          if (!live && src) {
+            const at = new Date().toISOString();
+            const copy: Guest = orig
+              ? { ...orig, vmid: r.vmid, name: spec.replace ? orig.name : `${orig.name}-restored`, status: spec.start ? "running" : "stopped", cpuPct: 0, memUsed: 0, snapshots: [], tasks: [{ id: `${r.vmid}-restore`, what: "Restore", at, ok: true }] }
+              : { vmid: r.vmid, name: `restored-${r.vmid}`, type: src.type, status: "stopped", cpuPct: 0, cores: 1, memUsed: 0, memMax: 1024 ** 3, diskMax: 8e9, org: null, protected: false, tasks: [{ id: `${r.vmid}-restore`, what: "Restore", at, ok: true }] };
+            setData((d) => ({ ...d, guests: spec.replace ? d.guests.map((g) => (g.vmid === r.vmid ? copy : g)) : [...d.guests, copy] }));
+          }
+          return { ok: true, vmid: r.vmid };
+        } catch (e) {
+          return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+        }
+      },
       createVm: async (spec) => {
         const { org, ...rest } = spec;
         if (live) {
@@ -216,7 +247,24 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         setSetup(null);
         setData(demoData(null));
       },
-      setPinMode: (m) => setSetup((s) => (s ? { ...s, pinMode: m } : s)),
+      setPinMode: (m) => {
+        setSetup((s) => (s ? { ...s, pinMode: m } : s));
+        logTo("changed", `Switched to ${m === "agent" ? "Agent" : "Assistant"} mode.`);
+      },
+      pin: data.pin ?? defaultPinData(),
+      setPinAccess: (patch) => {
+        setSetup((s) => (s ? { ...s, pinAccess: { ...s.pinAccess, ...patch } } : s));
+        const names: Record<string, string> = { system: "manage this device", orgs: "manage organizations", connectors: "use connectors", docs: "read the Proxmox docs" };
+        for (const [k, v] of Object.entries(patch)) logTo("changed", `${v ? "Allowed" : "Stopped"} Pin to ${names[k] ?? k}.`);
+      },
+      savePinFile: (file, text) => {
+        setData((d) => {
+          const pin = d.pin ?? defaultPinData();
+          return { ...d, pin: { ...pin, [file]: text, editedAt: { ...pin.editedAt, [file]: new Date().toISOString() } } };
+        });
+        logTo("changed", `You edited ${file === "soul" ? "SOUL.md" : "MEMORY.md"}.`);
+      },
+      logPin: (kind, text) => logTo(kind, text),
       createOrg: (name, size, by = "user", memory = "postgres") => {
         const err = orgNameError(name, data.orgs);
         if (err) return { ok: false, error: err };
@@ -226,9 +274,13 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           orgs: [...d.orgs, org],
           users: d.users.map((u) => (u.role === "owner" ? { ...u, orgs: [...u.orgs, { slug: org.slug, role: "owner" }] } : u)),
         }));
+        if (by === "pin") logTo("did", `Created the organization ${org.name}.`);
         return { ok: true, org };
       },
-      saveRule: (r) => setData((d) => ({ ...d, rules: [...d.rules.filter((x) => x.id !== r.id), r] })),
+      saveRule: (r) => {
+        setData((d) => ({ ...d, rules: [...d.rules.filter((x) => x.id !== r.id), r] }));
+        if (r.createdBy === "pin") logTo("did", `Saved the automation "${r.name}".`);
+      },
       toggleRule: (id) => setData((d) => ({ ...d, rules: d.rules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
       deleteRule: (id) => setData((d) => ({ ...d, rules: d.rules.filter((r) => r.id !== id) })),
       notify: (n) => setData((d) => ({ ...d, notices: [{ ...n, id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), read: false }, ...d.notices].slice(0, 50) })),

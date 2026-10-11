@@ -2,6 +2,7 @@ import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
+import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 
 /**
@@ -17,6 +18,8 @@ import { SessionStore, type Session } from "./sessions.ts";
 
 export interface AppDeps {
   pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport; streamTransport?: StreamTransport };
+  /** How to reach Proxmox's console websockets; tests inject a fake. */
+  connect?: Connect;
   /** Largest ISO or template upload accepted, in bytes. */
   maxUploadBytes?: number;
   sessions: SessionStore;
@@ -227,6 +230,53 @@ export function vmParams(vmid: number, v: VmSpec): Record<string, string | numbe
     start: v.start,
     description: "Created from ePaperclip",
   };
+}
+
+export interface BackupJobSpec {
+  schedule: string;
+  storage: string;
+  all: boolean;
+  vmids: number[];
+  mode: "snapshot" | "suspend" | "stop";
+  compress: "zstd" | "lzo" | "gzip" | "0";
+  keepLast: number;
+  enabled: boolean;
+  comment?: string;
+}
+
+const MODES = ["snapshot", "suspend", "stop"];
+const COMPRESS = ["zstd", "lzo", "gzip", "0"];
+
+function vmidList(v: unknown): number[] {
+  if (!Array.isArray(v) || v.length > 500 || !v.every((x) => Number.isInteger(x) && x >= 100 && x <= 999_999_999)) throw new HttpError(400, "bad_request", "Pick the machines to back up");
+  return v as number[];
+}
+
+/** A backup schedule, checked field by field. Proxmox validates the calendar expression itself. */
+export function parseBackupJob(b: Record<string, unknown>): BackupJobSpec {
+  const bad = (msg: string): never => {
+    throw new HttpError(400, "bad_request", msg);
+  };
+  const schedule = typeof b.schedule === "string" && /^[\w :.,*\/~-]{1,64}$/.test(b.schedule.trim()) ? b.schedule.trim() : bad("Enter when it runs, like 21:00 or sat 02:00");
+  const all = b.all === true;
+  const vmids = all ? [] : vmidList(b.vmids);
+  if (!all && vmids.length === 0) bad("Pick at least one machine, or back up all of them");
+  const mode = MODES.includes(String(b.mode)) ? (b.mode as BackupJobSpec["mode"]) : bad("Unknown backup mode");
+  const compress = COMPRESS.includes(String(b.compress ?? "zstd")) ? ((b.compress ?? "zstd") as BackupJobSpec["compress"]) : bad("Unknown compression");
+  const keepLast = typeof b.keepLast === "number" && Number.isInteger(b.keepLast) && b.keepLast >= 1 && b.keepLast <= 1000 ? b.keepLast : bad("Keep between 1 and 1000 backups");
+  const comment = b.comment === undefined || b.comment === "" ? undefined : typeof b.comment === "string" && b.comment.length <= 200 && !/[\r\n]/.test(b.comment) ? b.comment : bad("Keep the note to one line");
+  return { schedule, storage: storageId(b.storage), all, vmids, mode, compress, keepLast, enabled: b.enabled !== false, comment };
+}
+
+export function backupJobParams(j: BackupJobSpec): Record<string, string | number | boolean | undefined> {
+  return { schedule: j.schedule, storage: j.storage, all: j.all ? true : undefined, vmid: j.all ? undefined : j.vmids.join(","), mode: j.mode, compress: j.compress, enabled: j.enabled, "prune-backups": `keep-last=${j.keepLast}`, comment: j.comment, "notes-template": "{{guestname}}" };
+}
+
+/** "drive2:backup/vzdump-lxc-101-2025_10_10-21_00_02.tar.zst" -> { type: "lxc", vmid: 101 } */
+export function backupOf(volid: string): { type: GuestType; vmid: number } | null {
+  const m = volid.match(/:backup\/vzdump-(lxc|qemu|openvz)-(\d+)-/);
+  if (!m) return null;
+  return { type: m[1] === "qemu" ? "qemu" : "lxc", vmid: Number(m[2]) };
 }
 
 const str = (v: unknown, max = 256) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null);
@@ -554,6 +604,84 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 202, created);
     }
 
+    if (method === "GET" && path === "/api/backups/jobs") {
+      const jobs = await asUser(req, res, (pve) => pve.backupJobs());
+      const keep = (p: unknown) => {
+        const v = typeof p === "string" ? p.match(/keep-last=(\d+)/)?.[1] : p && typeof p === "object" ? (p as Record<string, number>)["keep-last"] : undefined;
+        return v ? Number(v) : null;
+      };
+      return sendJson(res, 200, {
+        jobs: jobs.map((j) => ({ id: j.id, schedule: j.schedule ?? null, storage: j.storage ?? null, all: j.all === 1, vmids: (j.vmid ?? "").split(",").filter(Boolean).map(Number), pool: j.pool ?? null, mode: j.mode ?? "snapshot", compress: j.compress ?? null, enabled: j.enabled !== 0, keepLast: keep(j["prune-backups"]), comment: j.comment ?? null, nextRun: j["next-run"] ?? null })),
+      });
+    }
+
+    if (method === "POST" && path === "/api/backups/jobs") {
+      requireSameSite(req);
+      const job = parseBackupJob(await readJson(req));
+      await asUser(req, res, (pve) => pve.createBackupJob(backupJobParams(job)));
+      return sendJson(res, 201, { ok: true });
+    }
+
+    const job = path.match(/^\/api\/backups\/jobs\/([\w-]{1,64})(\/delete)?$/);
+    if (method === "POST" && job) {
+      requireSameSite(req);
+      const id = job[1];
+      if (job[2]) {
+        await asUser(req, res, (pve) => pve.deleteBackupJob(id));
+        return sendJson(res, 200, { ok: true });
+      }
+      const b = await readJson(req);
+      // Turning a job on or off is its own small change; anything else replaces the whole definition.
+      if (Object.keys(b).length === 1 && typeof b.enabled === "boolean") {
+        await asUser(req, res, (pve) => pve.updateBackupJob(id, { enabled: b.enabled as boolean }));
+        return sendJson(res, 200, { ok: true });
+      }
+      const spec = parseBackupJob(b);
+      const params = backupJobParams(spec);
+      await asUser(req, res, (pve) => pve.updateBackupJob(id, { ...params, delete: spec.all ? "vmid" : "all" }));
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (method === "POST" && path === "/api/backups/run") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const all = b.all === true;
+      const vmids = all ? [] : vmidList(b.vmids);
+      if (!all && !vmids.length) throw new HttpError(400, "bad_request", "Pick the machines to back up");
+      const mode = MODES.includes(String(b.mode ?? "snapshot")) ? String(b.mode ?? "snapshot") : null;
+      if (!mode) throw new HttpError(400, "bad_request", "Unknown backup mode");
+      const storage = storageId(b.storage);
+      const notes = b.notes === undefined || b.notes === "" ? "{{guestname}}" : typeof b.notes === "string" && b.notes.length <= 200 && !/[\r\n]/.test(b.notes) ? b.notes : null;
+      if (notes === null) throw new HttpError(400, "bad_request", "Keep the note to one line");
+      const task = await asUser(req, res, (pve) => pve.vzdump(d.pve.node, { all: all ? true : undefined, vmid: all ? undefined : vmids.join(","), storage, mode, compress: "zstd", "notes-template": notes }));
+      return sendJson(res, 202, { task });
+    }
+
+    if (method === "POST" && path === "/api/backups/restore") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const from = storageId(b.from);
+      const volid = volumeId(b.volid, from);
+      const src = backupOf(volid);
+      if (!src) throw new HttpError(400, "bad_request", "That isn't a machine backup");
+      const target = storageId(b.storage);
+      const replace = b.replace === true;
+      const created = await asUser(req, res, async (pve) => {
+        let vmid = src.vmid;
+        if (replace) {
+          // Replacing overwrites the original machine; Proxmox refuses while it runs, and so do we, clearly.
+          const g = (await pve.clusterResources()).find((r) => r.vmid === vmid);
+          if (g && g.status === "running") throw new HttpError(409, "running", "Stop the machine before restoring over it");
+        } else {
+          vmid = await pve.nextId();
+        }
+        const common = { vmid, storage: target, force: replace ? true : undefined, unique: replace ? undefined : true, start: b.start === true ? true : undefined };
+        const task = src.type === "lxc" ? await pve.createLxc(d.pve.node, { ...common, ostemplate: volid, restore: true }) : await pve.createVm(d.pve.node, { ...common, archive: volid });
+        return { vmid, task };
+      });
+      return sendJson(res, 202, created);
+    }
+
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);
     if (method === "POST" && power) {
       requireSameSite(req);
@@ -601,7 +729,54 @@ export function createApp(d: AppDeps) {
     createReadStream(file).pipe(res);
   }
 
-  return async function handle(req: IncomingMessage, res: ServerResponse) {
+  // Live consoles: same session cookie, and the Origin must be this host (WebSockets get no CORS protection).
+  const upgrade = createConsoleRelay({
+    connect: d.connect ?? realConnect(d.pve.caPem),
+    precheck: (req) => {
+      const origin = req.headers.origin;
+      let host: string | null = null;
+      try {
+        host = origin ? new URL(origin).host : null;
+      } catch {
+        host = null;
+      }
+      if (!host || host !== req.headers.host) return { status: 403, reason: "Forbidden" };
+      if (!d.sessions.get(cookieValue(req, COOKIE))) return { status: 401, reason: "Unauthorized" };
+      return null;
+    },
+    authorize: async (req, url) => {
+      const s = d.sessions.get(cookieValue(req, COOKIE));
+      if (!s) throw new Error("Your session ended. Sign in again.");
+      try {
+        const pve = await clientFor(s);
+        const m = url.pathname.match(/^\/api\/console\/guests\/(\d+)$/);
+        let guest: { type: GuestType; vmid: number } | null = null;
+        let node = d.pve.node;
+        if (m) {
+          const g = (await pve.clusterResources()).find((r) => r.vmid === Number(m[1]));
+          if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new Error("Unknown machine.");
+          if (g.status !== "running") throw new Error("The machine isn't running. Start it to open its console.");
+          guest = { type: g.type as GuestType, vmid: g.vmid! };
+          node = g.node ?? node;
+        }
+        const tp = await pve.termproxy(node, guest);
+        const base = new URL(d.pve.baseUrl);
+        return {
+          url: `wss://${base.host}${ProxmoxClient.consoleSocketPath(node, guest, tp.port, tp.ticket)}`,
+          headers: { Cookie: `PVEAuthCookie=${encodeURIComponent(s.ticket)}` },
+          handshake: `${tp.user}:${tp.ticket}\n`,
+        };
+      } catch (e) {
+        if (e instanceof ProxmoxError && e.status === 403) throw new Error("Your Proxmox account doesn't have console access here (Sys.Console or VM.Console).");
+        if (e instanceof ProxmoxError && e.status === 401) throw new Error("Your Proxmox session ended. Sign in again.");
+        if (e instanceof ProxmoxError && e.detail && /serial/i.test(e.detail)) throw new Error("This VM has no serial port. Use its graphical console in Proxmox, or add a serial port (serial0: socket).");
+        if (e instanceof ProxmoxError) throw new Error(e.detail ? `Proxmox: ${e.detail}` : "Proxmox couldn't open the console.");
+        throw e;
+      }
+    },
+  });
+
+  const handle = async function handle(req: IncomingMessage, res: ServerResponse) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
@@ -622,4 +797,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
+  return Object.assign(handle, { upgrade });
 }

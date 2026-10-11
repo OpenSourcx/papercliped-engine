@@ -11,7 +11,7 @@ const row = (path: string) => {
   return splitSuggestions(s.items).main.map((i) => s.items[i].id);
 };
 
-const devicePages = ["home", "machines", "machines/109", "resources", "summary", "shell", "storage", "network", "backups", "automations"];
+const devicePages = ["home", "machines", "machines/109", "resources", "summary", "shell", "storage", "network", "backups", "automations", "storage/local", "tasks", "pin"];
 const orgPages = ["", "inbox", "decisions", "tasks", "projects", "goals", "routines", "machines", "machines/105", "agents", "org", "costs", "activity", "connectors", "settings"];
 
 describe("Pin's suggestions", () => {

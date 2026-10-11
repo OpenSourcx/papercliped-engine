@@ -8,7 +8,7 @@ import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
 import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
-import { PinIsland } from "../pin/PinIsland.tsx";
+import { PinIsland, PinOrb } from "../pin/PinIsland.tsx";
 import { RouteActions } from "../pin/RouteActions.tsx";
 import { Avatar } from "../ui/primitives.tsx";
 
@@ -70,6 +70,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
   const modals = useModals();
   const updates = data.notices.filter((n) => !n.read && n.kind === "update").length;
   const onOrg = data.orgs.some((o) => o.slug === loc.pathname.split("/")[2]);
+  const onPin = loc.pathname.split("/")[2] === "pin";
   const nav = (to: string, label: string, icon: ReactNode, sub?: string, badge?: ReactNode) => (
     <NavLink key={to} to={to} onClick={onNavigate} aria-label={label} className={cn("group block outline-none", expanded && "px-3")}>
       {({ isActive }) => <RailButton active={isActive || loc.pathname.startsWith(`${to}/`)} label={label} sub={sub} badge={badge} expanded={expanded}>{icon}</RailButton>}
@@ -86,8 +87,9 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
     <nav className="flex flex-col h-full py-3 gap-2" aria-label="Main">
       {/* The device is "active" on every device page (home, machines, host tools), like Discord's home button. */}
       <NavLink to={`/${d}/home`} onClick={onNavigate} aria-label={d} className={cn("group block outline-none", expanded && "px-3")}>
-        {() => <RailButton active={!onOrg} label={d} sub={`Online · ${host.ip}`} expanded={expanded}><House className="h-5 w-5" /></RailButton>}
+        {() => <RailButton active={!onOrg && !onPin} label={d} sub={`Online · ${host.ip}`} expanded={expanded}><House className="h-5 w-5" /></RailButton>}
       </NavLink>
+      {nav(`/${d}/pin`, "Pin", <PinOrb size={30} />, setup?.pinMode === "agent" ? "Agent mode" : "Assistant mode")}
       {sep}
       <div className="flex-1 overflow-y-auto overflow-x-visible flex flex-col gap-2 [scrollbar-width:none]">
         {data.orgs.map((o) => {
