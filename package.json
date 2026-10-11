@@ -1,0 +1,15 @@
+{
+  "name": "papercliped-engine",
+  "private": true,
+  "type": "module",
+  "description": "A Proxmox-native system with ePaperclip and Pin built in: one interface to manage your machine, your companies and your agents.",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
