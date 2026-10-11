@@ -282,6 +282,9 @@ export interface SdnState {
   pending: number;
 }
 
+/** The newest installer the Store found in a vendor's own checksum list. */
+export type LibraryLatest = import("@papercliped-engine/os-library").Latest;
+
 export interface UrlDownload {
   url: string;
   content: "iso" | "vztmpl";
@@ -395,6 +398,7 @@ export const api = {
   catalog: () => request<{ templates: CatalogTemplate[] }>("GET", "/api/templates/catalog").then((r) => r.templates),
   downloadTemplate: (storage: string, template: string) => request<{ task: string }>("POST", "/api/templates/download", { storage, template }),
   downloadUrl: (storage: string, d: UrlDownload) => request<{ task: string }>("POST", `/api/storage/${enc(storage)}/download-url`, d),
+  libraryLatest: (id: string) => request<LibraryLatest>("GET", `/api/library/${enc(id)}/latest`),
   upload: uploadFile,
   tasks: (limit = 50, vmid?: number) => request<{ tasks: TaskEntry[] }>("GET", `/api/tasks?limit=${limit}${vmid !== undefined ? `&vmid=${vmid}` : ""}`).then((r) => r.tasks),
   destroyMachine: (vmid: number, confirm: string) => request<{ task: string | null }>("POST", `/api/guests/${vmid}/destroy`, { confirm }),

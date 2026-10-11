@@ -103,6 +103,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     go("backups", "Backups", "archive", `${d}/backups`),
     go("automations", "Automations", "zap", `${d}/automations`),
     go("tasks", "Tasks", "list", `${d}/tasks`),
+    go("store", "Store", "package", `${d}/store`),
     go("pin", "Pin's page", "sparkles", `${d}/pin`),
     go("updates", "Updates", "refresh", "?settings=updates"),
   ].filter((s) => s.to !== `${d}/${ref.page}`);
@@ -124,6 +125,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     ],
     "storage-item": [ask("How much space is left?"), ...goFirst("storage", "tasks", "backups")],
     tasks: [ask("Did anything fail recently?"), newMachine, ...goFirst("storage", "summary")],
+    store: [newMachine, ask("What should I install first?"), ...goFirst("storage", "machines")],
     pin: [ask("What have you done today?"), ...goFirst("automations", "home")],
     network: [ask("Which machines are on which bridge?"), ...goFirst("firewall", "machines", "resources")],
     firewall: [ask("Is anything exposed that shouldn't be?"), ...goFirst("network", "summary")],

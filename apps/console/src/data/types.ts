@@ -156,7 +156,7 @@ export interface Policy {
 export interface Connector {
   id: string;
   name: string;
-  kind: "model" | "code" | "chat" | "mail" | "storage";
+  kind: "model" | "code" | "chat" | "mail" | "storage" | "network";
   status: "connected" | "needs_setup";
   access: { pin: boolean; orgs: string[] };
 }
@@ -222,7 +222,9 @@ export interface EngineData {
   apps: { mode: AppMode; sessions: AppSession[]; activity: AppActivity[] };
   host: { storage: HostStorage[]; network: HostNetwork[]; backups: BackupJob[] };
   pin?: PinData;
+  /** Installed Store plugins that aren't connectors (adapters and Pin skills). Undefined means the defaults. */
+  plugins?: string[];
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks", "pin", "firewall"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks", "pin", "firewall", "store", "library"] as const;

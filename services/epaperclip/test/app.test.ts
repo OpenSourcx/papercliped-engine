@@ -150,6 +150,7 @@ let pve: ReturnType<typeof fakePve>;
 let clock: number;
 let staticDir: string;
 let fakeConsole: WebSocketServer;
+let vendorHits: string[];
 let consoleSeen: { url: string; cookie: string | undefined; frames: string[] }[];
 
 beforeEach(async () => {
@@ -188,7 +189,14 @@ beforeEach(async () => {
   await new Promise<void>((r) => fakeConsole.on("listening", () => r()));
   const consolePort = (fakeConsole.address() as AddressInfo).port;
   const now = () => clock;
+  vendorHits = [];
   const handle = createApp({
+    fetchText: async (url) => {
+      vendorHits.push(url);
+      if (url.includes("debian")) return `${"a".repeat(64)}  debian-13.7.0-amd64-netinst.iso\n${"b".repeat(64)}  debian-edu-13.7.0-amd64-netinst.iso\n`;
+      if (url.includes("alpinelinux")) throw new Error("timed out");
+      return "no installers in here";
+    },
     connect: (t) => new WebSocket(`ws://127.0.0.1:${consolePort}${new URL(t.url).pathname}${new URL(t.url).search}`, { headers: t.headers }), pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport, streamTransport: pve.streamTransport }, maxUploadBytes: 1024, sessions: new SessionStore(now), staticDir, secureCookies: true, now });
   server = createServer(handle);
   server.on("upgrade", handle.upgrade);
@@ -597,6 +605,31 @@ describe("machine actions and options", () => {
     await fetch(base + "/api/tasks?vmid=101", { headers: { Cookie: c } });
     expect(pve.seen.at(-1)!.url).toContain("vmid=101");
     expect((await fetch(base + "/api/tasks?vmid=abc", { headers: { Cookie: c } })).status).toBe(400);
+  });
+});
+
+describe("the store's verified installers", () => {
+  it("finds the newest installer and its checksum from the vendor's own list, and caches it", async () => {
+    const c = await signIn();
+    const r = await fetch(base + "/api/library/debian/latest", { headers: { Cookie: c } });
+    expect(await r.json()).toEqual({ id: "debian", version: "13.7.0", filename: "debian-13.7.0-amd64-netinst.iso", url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso", checksum: "a".repeat(64), algorithm: "sha256" });
+    await fetch(base + "/api/library/debian/latest", { headers: { Cookie: c } });
+    expect(vendorHits).toEqual(["https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/SHA256SUMS"]);
+  });
+
+  it("explains when a vendor can't be reached or its list isn't recognised, and when there's nothing to fetch", async () => {
+    const c = await signIn();
+    const down = await fetch(base + "/api/library/alpine/latest", { headers: { Cookie: c } });
+    expect(down.status).toBe(502);
+    expect(await down.json()).toMatchObject({ code: "vendor_unreachable" });
+    expect(((await (await fetch(base + "/api/library/arch/latest", { headers: { Cookie: c } })).json()) as { code: string }).code).toBe("vendor_unrecognised");
+    expect((await fetch(base + "/api/library/windows-11/latest", { headers: { Cookie: c } })).status).toBe(404);
+    expect((await fetch(base + "/api/library/nope/latest", { headers: { Cookie: c } })).status).toBe(404);
+    expect((await fetch(base + "/api/library/Bad_Id/latest", { headers: { Cookie: c } })).status).toBe(404);
+  });
+
+  it("needs a session", async () => {
+    expect((await fetch(base + "/api/library/debian/latest")).status).toBe(401);
   });
 });
 

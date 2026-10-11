@@ -58,6 +58,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Installer and systemd unit for a Proxmox VE host (`deploy/`)
 - [ ] Connect the console to the host broker and ePaperclip for organizations, agents and tasks (still demo data)
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
+- [x] Store: one place for operating systems (newest installers resolved from each vendor's own checksum list and downloaded verified), ready-made container apps, driver disks and plugins; installed/update status, install to a chosen storage, "Create machine" from an installed item. Plugin installs (connectors, agent adapters, Pin skills) are saved on this device; their runtime arrives with the ePaperclip fork
+- [ ] Store: remove an installed ISO or template from the Store, and update plugins from a published index
 - [x] Storage content: browse ISO images, CT templates, backups and disks per storage; delete with confirmation
 - [x] Proxmox's template catalog (system and TurnKey) with one-click download; ISO and template upload with progress; download from URL with checksum
 - [x] Task log with each task's output; Pin notifies when downloads, uploads and creates finish

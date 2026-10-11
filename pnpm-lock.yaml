@@ -16,6 +16,9 @@ importers:
       '@papercliped-engine/automations':
         specifier: workspace:*
         version: link:../../packages/automations
+      '@papercliped-engine/os-library':
+        specifier: workspace:*
+        version: link:../../packages/os-library
       '@papercliped-engine/proxmox-client':
         specifier: workspace:*
         version: link:../../packages/proxmox-client
@@ -84,6 +87,18 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.33.0)
 
+  packages/os-library:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.33.0)
+
   packages/proxmox-client:
     devDependencies:
       '@types/node':
@@ -98,6 +113,9 @@ importers:
 
   services/epaperclip:
     dependencies:
+      '@papercliped-engine/os-library':
+        specifier: workspace:*
+        version: link:../../packages/os-library
       '@papercliped-engine/proxmox-client':
         specifier: workspace:*
         version: link:../../packages/proxmox-client

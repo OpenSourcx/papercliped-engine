@@ -2,6 +2,8 @@ import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
+import { LIBRARY, isoEntries, pickLatest, type Latest } from "@papercliped-engine/os-library";
+import { fetchVendorText, type FetchText } from "./vendorFetch.ts";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
@@ -21,6 +23,8 @@ import { SessionStore, type Session } from "./sessions.ts";
 
 export interface AppDeps {
   pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport; streamTransport?: StreamTransport };
+  /** How to read a vendor's checksum file; tests inject a fake. */
+  fetchText?: FetchText;
   /** The port this console is served on, kept reachable when the firewall is turned on. */
   consolePort?: number;
   /** How to reach Proxmox's console websockets; tests inject a fake. */
@@ -1191,6 +1195,25 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, out);
     }
 
+    const lib = path.match(/^\/api\/library\/([a-z0-9-]{1,32})\/latest$/);
+    if (method === "GET" && lib) {
+      requireSession(req);
+      const entry = isoEntries().find((e) => e.id === lib[1]);
+      if (!entry) throw new HttpError(404, "not_found", LIBRARY.some((e) => e.id === lib[1]) ? "That one has no automatic download" : "Unknown system");
+      const hit = latestCache.get(entry.id);
+      if (hit && now() - hit.at < 6 * 3600_000) return sendJson(res, 200, hit.latest);
+      let text: string;
+      try {
+        text = await fetchText(entry.source.sums);
+      } catch (e) {
+        throw new HttpError(502, "vendor_unreachable", `Couldn't read ${entry.vendor}'s download list (${(e as Error).message}). Try again in a moment, or download from a URL.`);
+      }
+      const latest = pickLatest(entry, text);
+      if (!latest) throw new HttpError(502, "vendor_unrecognised", `${entry.vendor}'s download list didn't have a recognisable installer. Download it from a URL instead.`);
+      latestCache.set(entry.id, { at: now(), latest });
+      return sendJson(res, 200, latest);
+    }
+
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);
     if (method === "POST" && power) {
       requireSameSite(req);
@@ -1239,6 +1262,10 @@ export function createApp(d: AppDeps) {
     if (req.method === "HEAD") return res.end();
     createReadStream(file).pipe(res);
   }
+
+  // The Library's "what's the newest installer" answers, kept for six hours so the page is quick and vendors aren't hammered.
+  const latestCache = new Map<string, { at: number; latest: Latest }>();
+  const fetchText = d.fetchText ?? fetchVendorText;
 
   // One-time VNC sessions: created by POST /api/guests/:vmid/vnc for one signed-in session, used once within 30 seconds.
   const vncSessions = new Map<string, { session: string; node: string; vmid: number; port: string; ticket: string; expires: number }>();

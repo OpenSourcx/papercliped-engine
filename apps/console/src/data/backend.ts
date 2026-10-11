@@ -1,4 +1,4 @@
-import { api, ApiError, type SdnState, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
+import { api, ApiError, type SdnState, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload, type LibraryLatest } from "./api.ts";
 import type { Guest, HostStorage } from "./types.ts";
 import { demoNetworkConfig } from "./demoNet.ts";
 
@@ -12,6 +12,8 @@ export interface Backend {
   catalog: () => Promise<CatalogTemplate[]>;
   downloadTemplate: (storage: string, template: string) => Promise<{ task: string }>;
   downloadUrl: (storage: string, d: UrlDownload) => Promise<{ task: string }>;
+  /** The newest installer a vendor lists for a Library system, with the vendor's checksum. */
+  libraryLatest: (id: string) => Promise<LibraryLatest>;
   upload: (storage: string, content: "iso" | "vztmpl", file: File, onProgress: (f: number) => void, signal?: AbortSignal) => Promise<{ task: string }>;
   tasks: (limit?: number, vmid?: number) => Promise<TaskEntry[]>;
   destroyMachine: (vmid: number, confirm: string) => Promise<{ task: string | null }>;
@@ -55,6 +57,7 @@ export const liveBackend: Backend = {
   catalog: api.catalog,
   downloadTemplate: api.downloadTemplate,
   downloadUrl: api.downloadUrl,
+  libraryLatest: api.libraryLatest,
   upload: api.upload,
   tasks: api.tasks,
   destroyMachine: api.destroyMachine,
@@ -165,6 +168,15 @@ export function parseUpid(upid: string): { node: string; type: string; id: strin
   if (p[0] !== "UPID" || p.length < 9) return null;
   return { node: p[1], type: p[5], id: p.slice(6, -2).join(":") || null, user: p[p.length - 2] };
 }
+
+const DEMO_LATEST: Record<string, Omit<LibraryLatest, "id">> = {
+  debian: { version: "13.7.0", filename: "debian-13.7.0-amd64-netinst.iso", url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso", checksum: "0".repeat(64), algorithm: "sha256" },
+  "ubuntu-lts": { version: "24.04.5", filename: "ubuntu-24.04.5-live-server-amd64.iso", url: "https://releases.ubuntu.com/noble/ubuntu-24.04.5-live-server-amd64.iso", checksum: "1".repeat(64), algorithm: "sha256" },
+  alpine: { version: "3.24.2", filename: "alpine-virt-3.24.2-x86_64.iso", url: "https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/alpine-virt-3.24.2-x86_64.iso", checksum: "2".repeat(64), algorithm: "sha256" },
+  "rocky-9": { version: "9.8", filename: "Rocky-9.8-x86_64-minimal.iso", url: "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/Rocky-9.8-x86_64-minimal.iso", checksum: "3".repeat(64), algorithm: "sha256" },
+  "alma-9": { version: "9.8", filename: "AlmaLinux-9.8-x86_64-minimal.iso", url: "https://repo.almalinux.org/almalinux/9/isos/x86_64/AlmaLinux-9.8-x86_64-minimal.iso", checksum: "4".repeat(64), algorithm: "sha256" },
+  arch: { version: "2026.10.01", filename: "archlinux-2026.10.01-x86_64.iso", url: "https://geo.mirror.pkgbuild.com/iso/latest/archlinux-2026.10.01-x86_64.iso", checksum: "5".repeat(64), algorithm: "sha256" },
+};
 
 const DEMO_CATALOG: CatalogTemplate[] = [
   ["debian-12-standard_12.7-1_amd64.tar.zst", "Debian 12 (Bookworm)", "debian", "12", "system"],
@@ -289,6 +301,11 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
       const volid = `${storage}:${d.content}/${d.filename}`;
       if (exists(storage, volid)) throw new ApiError(400, "proxmox_rejected", "filename: refusing to override existing file");
       return { task: startTask("download", d.filename, 4, [`downloading ${d.url} to /var/lib/vz/template/${d.content}/${d.filename}`, ...(d.checksum ? [`validating checksum (${d.algorithm})...OK`] : []), "download of file finished"], () => listFor(storage).push(item(volid, d.content, 900 * 1024 ** 2, 0))) };
+    },
+    libraryLatest: async (id) => {
+      const hit = DEMO_LATEST[id];
+      if (!hit) throw new ApiError(404, "not_found", "That one has no automatic download");
+      return { id, ...hit };
     },
     upload: (storage, content, file, onProgress, signal) =>
       new Promise((resolve, reject) => {

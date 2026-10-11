@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
-import { Bot, Cable, Code2, Mail, MessageSquare } from "lucide-react";
+import { Bot, Cable, Code2, Mail, MessageSquare, Network } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Connector } from "../data/types.ts";
 import { Avatar, Card, PageHeader, Status, Toggle, PageFrame } from "../ui/primitives.tsx";
 import { PinOrb } from "../pin/PinIsland.tsx";
 
-const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 w-4" />, code: <Code2 className="h-4 w-4" />, chat: <MessageSquare className="h-4 w-4" />, mail: <Mail className="h-4 w-4" />, storage: <Cable className="h-4 w-4" /> };
+const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 w-4" />, code: <Code2 className="h-4 w-4" />, chat: <MessageSquare className="h-4 w-4" />, mail: <Mail className="h-4 w-4" />, storage: <Cable className="h-4 w-4" />, network: <Network className="h-4 w-4" /> };
 
 export function Connectors() {
   const { data, setConnectorAccess } = useEngine();

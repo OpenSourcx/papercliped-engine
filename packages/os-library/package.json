@@ -1,0 +1,10 @@
+{
+  "name": "@papercliped-engine/os-library",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The operating systems ePaperclip can install, and how to find each one's latest verified installer.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}

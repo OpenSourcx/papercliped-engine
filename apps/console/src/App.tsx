@@ -12,6 +12,7 @@ import { BackupsPage } from "./pages/backups/Backups.tsx";
 import { PinPage } from "./pages/pin/PinPage.tsx";
 import { NetworkPage } from "./pages/network/Network.tsx";
 import { FirewallPage } from "./pages/firewall/Firewall.tsx";
+import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
@@ -54,6 +55,8 @@ export function App() {
           <Route path="resources" element={<Resources />} />
           <Route path="storage" element={<StoragePage />} />
           <Route path="storage/:id" element={<StorageDetail />} />
+          <Route path="store" element={<Store />} />
+          <Route path="library" element={<Navigate to="../store" replace />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="pin" element={<PinPage />} />
           <Route path="network" element={<NetworkPage />} />

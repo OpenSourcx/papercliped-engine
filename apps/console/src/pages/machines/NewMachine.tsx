@@ -48,10 +48,11 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
   const [options, setOptions] = useState<MachineOptions | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [owner, setOwner] = useState<string | null>(initialOrg);
-  const [size, setSize] = useState("small");
-  const [template, setTemplate] = useState("");
-  const [iso, setIso] = useState("");
-  const [ostype, setOstype] = useState<"l26" | "win11" | "other">("l26");
+  const asked = new URLSearchParams(window.location.search);
+  const [size, setSize] = useState(["small", "medium", "large"].includes(asked.get("size") ?? "") ? asked.get("size")! : "small");
+  const [template, setTemplate] = useState(asked.get("template") ?? "");
+  const [iso, setIso] = useState(asked.get("iso") ?? "");
+  const [ostype, setOstype] = useState<"l26" | "win11" | "other">(asked.get("ostype") === "win11" ? "win11" : asked.get("ostype") === "other" ? "other" : "l26");
   const [storage, setStorage] = useState("");
   const nextName = () => {
     const taken = new Set(engine.data.guests.map((g) => g.name));

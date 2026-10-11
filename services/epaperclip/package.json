@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@papercliped-engine/proxmox-client": "workspace:*",
-    "ws": "8.18.3"
+    "ws": "8.18.3",
+    "@papercliped-engine/os-library": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
