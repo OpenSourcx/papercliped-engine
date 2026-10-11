@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { Archive, Cable, Database, ShieldAlert } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
-import { formatBytes } from "../lib/storage.ts";
+import { formatBytes, formatUptime } from "../lib/storage.ts";
+import { UsageGraphs } from "../ui/UsageGraphs.tsx";
 import { Terminal } from "../terminal/LazyTerminal.tsx";
 import { DemoTransport } from "../terminal/transport.ts";
 import { BarMeter } from "../ui/meters.tsx";
@@ -83,6 +84,35 @@ export function BackupsPage() {
           </Card>
         ))}
       </div>
+    </PageFrame>
+  );
+}
+
+export function Summary() {
+  const { host, setup, data } = useEngine();
+  const base = useMemo(() => ({ cpu: Math.max(0.02, host.cpuPct / 100), maxcpu: host.cpus, mem: host.memUsed, maxmem: host.memTotal, net: 180_000, disk: 400_000, running: true }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const running = data.guests.filter((g) => g.status === "running").length;
+  const facts: [string, string][] = [
+    ["CPU", `${host.cpuPct.toFixed(1)}% of ${host.cpus} CPUs`],
+    ["Load average", `${(host.cpuPct / 100 * host.cpus).toFixed(2)}, ${(host.cpuPct / 90 * host.cpus).toFixed(2)}, ${(host.cpuPct / 85 * host.cpus).toFixed(2)}`],
+    ["Memory", `${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}`],
+    ["Root disk", `${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`],
+    ["Uptime", formatUptime(host.uptimeSec)],
+    ["Machines", `${running} running of ${data.guests.length}`],
+    ["CPU model", host.cpuModel],
+    ["Version", `Proxmox VE ${host.version} · ePaperclip 0.1.0`],
+  ];
+  return (
+    <PageFrame width="6xl">
+      <PageHeader title="Summary" subtitle={`Status and history for ${setup?.deviceName ?? "pve"}.`} />
+      <Card className="p-5 mb-5">
+        <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
+          {facts.map(([k, v]) => (
+            <div key={k} className="min-w-0"><dt className="text-[12px] text-ink-3">{k}</dt><dd className="text-[14px] truncate tabular-nums" title={v}>{v}</dd></div>
+          ))}
+        </dl>
+      </Card>
+      <UsageGraphs seed={1} base={base} kind="node" />
     </PageFrame>
   );
 }

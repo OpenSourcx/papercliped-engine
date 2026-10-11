@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Rule } from "@papercliped-engine/automations";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
+import { wouldLoop } from "./orgTree.ts";
 import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
@@ -32,6 +33,8 @@ interface Engine {
   decideApproval: (org: string, id: string, approve: boolean) => void;
   toggleRoutine: (org: string, id: string) => void;
   readInbox: (org: string) => void;
+  /** Changes who an agent reports to (null = you). Refuses moves that would create a reporting loop. */
+  setReportsTo: (org: string, agentId: string, managerId: string | null) => { ok: boolean; error?: string };
   setAppMode: (m: AppMode) => void;
   updateSession: (id: string, patch: Partial<AppSession>) => void;
   revokeSession: (id: string) => void;
@@ -155,6 +158,17 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           return { ...o, approvals: o.approvals.map((x) => (x.id === id ? { ...x, status: approve ? "approved" : "rejected" } : x)), activity: a ? [{ id: `ac-${Date.now()}`, who: "You", what: `${approve ? "approved" : "rejected"} "${a.title}"`, at: new Date().toISOString() }, ...o.activity] : o.activity };
         }),
       toggleRoutine: (org, id) => updateOrg(org, (o) => ({ ...o, routines: o.routines.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
+      setReportsTo: (org, agentId, managerId) => {
+        const o = data.orgs.find((x) => x.slug === org);
+        const a = o?.agents.find((x) => x.id === agentId);
+        if (!o || !a) return { ok: false, error: "Unknown agent" };
+        if (managerId === agentId) return { ok: false, error: "An agent can't report to itself." };
+        if (managerId && !o.agents.some((x) => x.id === managerId)) return { ok: false, error: "Unknown manager" };
+        if (wouldLoop(o.agents, agentId, managerId)) return { ok: false, error: `${a.name} manages that agent, so it can't report to them.` };
+        const mgr = o.agents.find((x) => x.id === managerId);
+        updateOrg(org, (x) => ({ ...x, agents: x.agents.map((ag) => (ag.id === agentId ? { ...ag, reportsTo: managerId } : ag)), activity: [{ id: `ac-${Date.now()}`, who: "You", what: `moved ${a.name} to report to ${mgr?.name ?? "you"}`, at: new Date().toISOString() }, ...x.activity] }));
+        return { ok: true };
+      },
       readInbox: (org) => updateOrg(org, (o) => ({ ...o, inbox: o.inbox.map((i) => ({ ...i, read: true })) })),
       setAppMode: (m) => setData((d) => ({ ...d, apps: { ...d.apps, mode: m } })),
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),

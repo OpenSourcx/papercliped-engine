@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Inbox, LayoutDashboard, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Sparkles, SquareTerminal, Target, Users, Vote, Workflow } from "lucide-react";
+import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Sparkles, SquareTerminal, Target, Users, Vote, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Guest, Org } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
@@ -60,6 +60,8 @@ function DeviceSidebar() {
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div className="mt-3 space-y-px">
           <Item to={`/${d}/home`} icon={<House className="h-4 w-4" />}>Overview</Item>
+          <Item to={`/${d}/summary`} icon={<Gauge className="h-4 w-4" />}>Summary</Item>
+          <Item to={`/${d}/resources`} icon={<ListTree className="h-4 w-4" />}>Resources</Item>
           <Item to={`/${d}/automations`} icon={<Workflow className="h-4 w-4" />} count={data.rules.filter((r) => r.enabled).length}>Automations</Item>
         </div>
         <Section id="sec-machines" label="Machines" action={<Link to={`/${d}/machines`} className="text-[11px] text-ink-3 hover:text-ink px-1">All</Link>}>

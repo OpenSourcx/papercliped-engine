@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ClusterResource } from "@papercliped-engine/proxmox-client";
+import type { ClusterResource, RrdCf, RrdTimeframe } from "@papercliped-engine/proxmox-client";
 import { Broker, BrokerError, decodeMarker } from "../src/broker.ts";
 import { parseBrokerConfig, type Principal } from "../src/config.ts";
 import { authenticate, startServer } from "../src/server.ts";
@@ -77,6 +77,14 @@ function fakePve(initial: (ClusterResource & { description?: string })[] = []) {
       return task();
     },
     waitTask: async () => undefined,
+    guestRrd: async (_n: string, type: string, vmid: number, timeframe: RrdTimeframe, cf?: RrdCf) => {
+      calls.push({ op: "guestRrd", args: [type, vmid, timeframe, cf] });
+      return [{ time: 1, cpu: 0.1, maxcpu: 2, mem: 1, maxmem: 2 }];
+    },
+    nodeRrd: async (_n: string, timeframe: RrdTimeframe, cf?: RrdCf) => {
+      calls.push({ op: "nodeRrd", args: [timeframe, cf] });
+      return [{ time: 1, cpu: 0.05, loadavg: 0.3 }];
+    },
   };
   return pve;
 }
@@ -209,6 +217,30 @@ describe("guest actions (Pin)", () => {
     await expectBrokerError(broker.guestAction(pin, 9500, "start"), "template");
     await expectBrokerError(broker.guestAction(pin, 105, "destroy" as never), "bad_action");
     expect(pve.calls).toEqual([]);
+  });
+});
+
+describe("stats", () => {
+  const guests = [
+    { vmid: 109, type: "qemu", node: "pve", status: "running" },
+    { vmid: 9001, type: "lxc", pool: "co-acme", tags: "co-acme", node: "pve", status: "running" },
+  ];
+  it("lets Pin read any guest and the node", async () => {
+    const { broker, pin, pve } = setup(guests);
+    expect(await broker.stats(pin, { vmid: 109 }, "day", "MAX")).toHaveLength(1);
+    expect(await broker.stats(pin, { node: true }, "hour", "AVERAGE")).toHaveLength(1);
+    expect(pve.calls.map((c) => c.args)).toEqual([["qemu", 109, "day", "MAX"], ["hour", "AVERAGE"]]);
+  });
+  it("lets a company read only its own leases, never the node", async () => {
+    const { broker, acme } = setup(guests);
+    expect(await broker.stats(acme, { vmid: 9001 }, "hour", "AVERAGE")).toHaveLength(1);
+    await expectBrokerError(broker.stats(acme, { vmid: 109 }, "hour", "AVERAGE"), "guest_not_found");
+    await expectBrokerError(broker.stats(acme, { node: true }, "hour", "AVERAGE"), "forbidden");
+  });
+  it("validates timeframe and consolidation", async () => {
+    const { broker, pin } = setup(guests);
+    await expectBrokerError(broker.stats(pin, { vmid: 109 }, "decade", "AVERAGE"), "bad_timeframe");
+    await expectBrokerError(broker.stats(pin, { vmid: 109 }, "hour", "MIN"), "bad_cf");
   });
 });
 

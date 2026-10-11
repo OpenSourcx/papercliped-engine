@@ -45,6 +45,10 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Rail plus context sidebar: device navigation (machines, host tools) and Paperclip's organization navigation
 - [x] Machine pages with power, snapshots, hardware and task log; interactive console and host shell on a demo transport
 - [x] Organization pages: inbox, decisions, tasks, projects, goals, routines, agents, org chart, costs, activity, connectors, settings
+- [x] Pin's quick actions: context-aware actions on hover (touch: in Pin's panel), replacing on-page toolbars
+- [x] Usage graphs for machines and the node over Proxmox's timeframes; Summary and Resources pages
+- [x] Interactive org chart: pan, zoom, collapse, drag to change reporting lines with loop protection
+- [x] Broker usage-history endpoints (`/v1/stats`) and Proxmox client `rrddata` calls
 - [ ] Live consoles: broker relay of Proxmox's terminal proxy, behind the same transport
 - [ ] Paperclip pages still to come from the fork: chat, artifacts, workspaces, skills
 - [ ] Connect the console to the host broker and ePaperclip (replace the demo data layer)

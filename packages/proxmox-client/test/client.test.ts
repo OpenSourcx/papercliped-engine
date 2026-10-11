@@ -43,6 +43,17 @@ describe("ProxmoxClient", () => {
     expect(seen[1].body).toBeUndefined();
   });
 
+  it("asks for usage history the way the Proxmox UI does", async () => {
+    const { seen, transport } = recorder([{ status: 200, body: { data: [{ time: 1, cpu: 0.2 }] } }, { status: 200, body: { data: [] } }]);
+    const c = client(transport);
+    expect(await c.guestRrd("pve", "lxc", 9001, "day", "MAX")).toEqual([{ time: 1, cpu: 0.2 }]);
+    await c.nodeRrd("pve", "week");
+    expect(seen.map((s) => s.url)).toEqual([
+      "https://pve.test:8006/api2/json/nodes/pve/lxc/9001/rrddata?timeframe=day&cf=MAX",
+      "https://pve.test:8006/api2/json/nodes/pve/rrddata?timeframe=week&cf=AVERAGE",
+    ]);
+  });
+
   it("turns API errors into ProxmoxError with the field details", async () => {
     const { transport } = recorder([{ status: 400, body: { errors: { vmid: "VM 9001 already exists" } } }]);
     const err = await client(transport).checkVmidFree(9001).catch((e) => e);

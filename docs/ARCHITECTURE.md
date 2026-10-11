@@ -92,6 +92,10 @@ The Papercliped bridge moves onto the device as an ePaperclip service instead of
 - **Host tools:** with Full control and a user whose policies allow it, a session can reach Pin's system tools (through the broker, never directly), so an AI app can check host status or power-manage a guest the same way Pin does.
 - **No hosted dependency:** the device is the authorization server. Apps on the web reach it through the user's own remote access (Tailscale or a tunnel).
 
+## Usage history
+
+The broker serves Proxmox's round-robin statistics read-only: `GET /v1/stats/node` (Pin only) and `GET /v1/stats/guests/:vmid` (Pin for any guest, a company only for guests in its resource group), each with `timeframe` (hour, day, week, month, year) and `cf` (AVERAGE, MAX). It calls `/nodes/{node}/rrddata` and `/nodes/{node}/{lxc|qemu}/{vmid}/rrddata`, which need only `Sys.Audit` and `VM.Audit`.
+
 ## Consoles and shells
 
 Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by the broker:

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, CircleDollarSign, FolderOpen, Inbox as InboxIcon, Plus, Repeat, Target, X } from "lucide-react";
 import { TASK_ICON, TASK_LABEL } from "../../data/meta.tsx";
 import { useEngine } from "../../data/store.tsx";
@@ -54,7 +54,9 @@ export function Inbox() {
 export function Tasks() {
   const { addTask, setTaskStatus } = useEngine();
   const [filter, setFilter] = useState<"open" | "all" | "done">("open");
-  const [creating, setCreating] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const creating = params.get("new") === "1";
+  const setCreating = (v: boolean) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set("new", "1"); else n.delete("new"); return n; }, { replace: !v });
   const [title, setTitle] = useState("");
   const [agent, setAgent] = useState<string>("");
   return (
@@ -239,43 +241,6 @@ export function Agents() {
                 </dl>
               </Modal>
             )}
-          </PageFrame>
-        );
-      }}
-    </OrgGate>
-  );
-}
-
-export function OrgChart() {
-  return (
-    <OrgGate>
-      {(org) => {
-        const roots = org.agents.filter((a) => !a.reportsTo);
-        const kids = (id: string) => org.agents.filter((a) => a.reportsTo === id);
-        const node = (a: Agent): ReactNode => (
-          <li key={a.id} className="flex flex-col items-center">
-            <div className="rounded-xl border border-line bg-surface px-4 py-3 flex items-center gap-2.5 min-w-[180px]">
-              <Avatar name={a.name} hue={org.hue + 40} size={32} />
-              <div><div className="text-[14px] font-medium">{a.name}</div><div className="text-[12px] text-ink-3">{a.role}</div></div>
-            </div>
-            {kids(a.id).length > 0 && (
-              <>
-                <span className="w-px h-6 bg-line-strong" aria-hidden />
-                <ul className="flex flex-wrap justify-center gap-4 border-t border-line-strong pt-6">{kids(a.id).map(node)}</ul>
-              </>
-            )}
-          </li>
-        );
-        return (
-          <PageFrame width="6xl">
-            <PageHeader title="Org chart" subtitle="Who reports to whom. You sit above the CEO." />
-            <Card className="p-8 overflow-x-auto">
-              <div className="flex flex-col items-center">
-                <div className="rounded-full border border-line px-4 h-9 flex items-center text-[13px] text-ink-2">You</div>
-                <span className="w-px h-6 bg-line-strong" aria-hidden />
-                <ul className="flex flex-wrap justify-center gap-6">{roots.map(node)}</ul>
-              </div>
-            </Card>
           </PageFrame>
         );
       }}

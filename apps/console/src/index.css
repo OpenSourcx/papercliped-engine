@@ -62,6 +62,9 @@
   --pin-1: #f2c16b;
   --pin-2: #e9776a;
   --pin-3: #8e7cf0;
+  /* Chart series: validated categorical slots (blue, orange) for two-series charts; single-series charts use --accent. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
   /* Status colors are reserved for state and never themed (always shown with an icon and a label). */
   --good: #34c759;
   --warning: #fab219;

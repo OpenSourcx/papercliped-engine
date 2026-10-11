@@ -8,6 +8,7 @@ import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
 import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
 import { PinIsland } from "../pin/PinIsland.tsx";
+import { RouteActions } from "../pin/RouteActions.tsx";
 import { Avatar } from "../ui/primitives.tsx";
 
 /**
@@ -159,6 +160,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <RouteActions />
       <PinIsland />
       <ModalHost />
     </div>

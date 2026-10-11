@@ -5,10 +5,12 @@ import { Onboarding } from "./onboarding/Onboarding.tsx";
 import { Automations } from "./pages/Automations.tsx";
 import { Home } from "./pages/Home.tsx";
 import { OrgDashboard } from "./pages/OrgDashboard.tsx";
-import { BackupsPage, HostShell, NetworkPage, StoragePage } from "./pages/DevicePages.tsx";
+import { BackupsPage, HostShell, NetworkPage, StoragePage, Summary } from "./pages/DevicePages.tsx";
+import { Resources } from "./pages/Resources.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
-import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgChart, OrgConnectors, OrgSettings, Projects, Routines, Tasks } from "./pages/org/OrgPages.tsx";
+import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Tasks } from "./pages/org/OrgPages.tsx";
+import { OrgChart } from "./pages/org/OrgChart.tsx";
 
 /** Everything under /<device>/ needs a finished setup and the right device name; anything else is redirected. */
 function DeviceGate() {
@@ -42,6 +44,8 @@ export function App() {
           <Route path="machines/:vmid" element={<MachinePage />} />
           <Route path="guests" element={<Navigate to="../machines" replace />} />
           <Route path="shell" element={<HostShell />} />
+          <Route path="summary" element={<Summary />} />
+          <Route path="resources" element={<Resources />} />
           <Route path="storage" element={<StoragePage />} />
           <Route path="network" element={<NetworkPage />} />
           <Route path="backups" element={<BackupsPage />} />

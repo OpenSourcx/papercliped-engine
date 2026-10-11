@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Camera, Cpu, HardDrive, ListChecks, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { Box, Camera, Cpu, HardDrive, ListChecks, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { usePin, usePinActions } from "../../pin/PinContext.tsx";
+import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { cn, formatBytes } from "../../lib/storage.ts";
@@ -23,41 +25,15 @@ const ago = (iso: string) => {
   return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
 };
 
-function PowerBar({ g }: { g: Guest }) {
-  const { guestPower, notify } = useEngine();
-  const [confirm, setConfirm] = useState<null | "stop">(null);
-  const [error, setError] = useState<string | null>(null);
-  const act = (a: "start" | "shutdown" | "stop" | "reboot") => {
-    const r = guestPower(g.vmid, a);
-    if (!r.ok) return setError(r.error ?? "Failed");
-    setError(null);
-    notify({ kind: "info", title: `${g.name}: ${a}`, body: `Machine ${g.vmid} ${a === "start" ? "started" : a === "reboot" ? "rebooted" : a === "stop" ? "was stopped" : "shut down"}.` });
-  };
-  const lock = g.protected ? "Protected machine" : undefined;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {g.status === "running" ? (
-        <>
-          <Button size="sm" disabled={g.protected} title={lock} onClick={() => act("shutdown")}><Power className="h-3.5 w-3.5" />Shut down</Button>
-          <Button size="sm" disabled={g.protected} title={lock} onClick={() => act("reboot")}><RotateCw className="h-3.5 w-3.5" />Reboot</Button>
-          <Button size="sm" variant="danger" disabled={g.protected} title={lock} onClick={() => setConfirm("stop")}><Square className="h-3.5 w-3.5" />Stop</Button>
-        </>
-      ) : (
-        <Button size="sm" variant="primary" disabled={g.protected} title={lock} onClick={() => act("start")}><Play className="h-3.5 w-3.5" />Start</Button>
-      )}
-      {error && <span className="text-[13px] text-critical">{error}</span>}
-      {confirm && (
-        <Modal size="sm" title={`Stop ${g.name}?`} subtitle="Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option." onClose={() => setConfirm(null)} footer={<><Button variant="ghost" onClick={() => setConfirm(null)}>Cancel</Button><Button variant="danger" onClick={() => { act("stop"); setConfirm(null); }}>Stop now</Button></>}>
-          <div />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function Snapshots({ g }: { g: Guest }) {
+function Snapshots({ g, startOpen, onOpened }: { g: Guest; startOpen: boolean; onOpened: () => void }) {
   const { snapshot, deleteSnapshot } = useEngine();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
+  useEffect(() => {
+    if (startOpen) {
+      setOpen(true);
+      onOpened();
+    }
+  }, [startOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -99,15 +75,38 @@ function Snapshots({ g }: { g: Guest }) {
 
 export function MachinePage() {
   const { vmid, org: orgSlug } = useParams();
-  const { data, setup, host } = useEngine();
+  const { data, setup, host, guestPower, notify } = useEngine();
+  const pin = usePin();
   const [params, setParams] = useSearchParams();
   const device = setup?.deviceName ?? "pve";
   const g = data.guests.find((x) => String(x.vmid) === vmid && (!orgSlug || x.org === orgSlug));
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab")! : "overview";
   const make = useMemo(() => () => new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!g) return <Navigate to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} replace />;
+  const base = useMemo(() => (g ? { cpu: Math.max(0.02, g.cpuPct / 100), maxcpu: g.cores, mem: g.memUsed, maxmem: g.memMax, net: g.status === "running" ? 40_000 + g.vmid * 30 : 0, disk: g.status === "running" ? 120_000 : 0, running: g.status === "running" } : null), [g?.vmid, g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTab = (id: string, extra?: Record<string, string>) => setParams((p) => { const n = new URLSearchParams(p); if (id === "overview") n.delete("tab"); else n.set("tab", id); for (const [k, v] of Object.entries(extra ?? {})) n.set(k, v); return n; }, { replace: true });
+  const power = (a: "start" | "shutdown" | "stop" | "reboot") => {
+    if (!g) return;
+    const r = guestPower(g.vmid, a);
+    notify(r.ok ? { kind: "info", title: `${g.name}: ${a === "start" ? "started" : a === "reboot" ? "rebooted" : a === "stop" ? "stopped" : "shut down"}`, body: `Machine ${g.vmid}, from Pin's quick actions.` } : { kind: "info", title: `Couldn't ${a} ${g.name}`, body: r.error ?? "Failed" });
+  };
+  const lock = g?.protected ? `${g.name} is protected` : undefined;
+  const running = g?.status === "running";
+  usePinActions(g ? {
+    context: `${g.name} #${g.vmid}`,
+    items: [
+      { id: "start", label: "Start", icon: <Play className="h-4 w-4" />, run: () => power("start"), disabled: running || !!lock, title: lock ?? (running ? "Already running" : undefined) },
+      { id: "shutdown", label: "Shut down", icon: <Power className="h-4 w-4" />, run: () => power("shutdown"), disabled: !running || !!lock, title: lock },
+      { id: "console", label: "Console", icon: <SquareTerminal className="h-4 w-4" />, run: () => setTab("console"), disabled: !running, title: running ? undefined : "Start it to open its console" },
+      { id: "snapshot", label: "Snapshot", icon: <Camera className="h-4 w-4" />, run: () => setTab("snapshots", { new: "1" }) },
+      { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
+      { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
+      { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" />, run: () => setTab("hardware"), more: true },
+      { id: "tasks", label: "Task log", icon: <ListChecks className="h-4 w-4" />, run: () => setTab("tasks"), more: true },
+      { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true },
+    ],
+  } : null);
+  if (!g || !base) return <Navigate to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} replace />;
   const org = data.orgs.find((o) => o.slug === g.org);
-  const setTab = (id: string) => setParams((p) => { const n = new URLSearchParams(p); if (id === "overview") n.delete("tab"); else n.set("tab", id); return n; }, { replace: true });
 
   return (
     <PageFrame width="6xl">
@@ -125,7 +124,7 @@ export function MachinePage() {
             </div>
           </div>
         </div>
-        <PowerBar g={g} />
+        <div className="text-[12px] text-ink-3 hidden sm:block self-center">Actions are in Pin: hover the island</div>
       </div>
 
       <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto" role="tablist">
@@ -156,6 +155,9 @@ export function MachinePage() {
             </dl>
             <Button size="sm" className="mt-4 w-full" onClick={() => setTab("console")}><SquareTerminal className="h-3.5 w-3.5" />Open console</Button>
           </Card>
+          <div className="lg:col-span-3 mt-2">
+            <UsageGraphs seed={g.vmid} base={base} kind="guest" />
+          </div>
         </div>
       )}
 
@@ -164,13 +166,13 @@ export function MachinePage() {
           {g.status === "running" ? (
             <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
           ) : (
-            <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><PowerBar g={g} /></div></Card>
+            <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} title={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
           )}
           <p className="text-[12px] text-ink-3 mt-2">Live consoles run through the host broker and Proxmox's terminal proxy; who can open one is set by the Open container consoles tool in Access control.</p>
         </div>
       )}
 
-      {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} /></div>}
+      {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} startOpen={params.get("new") === "1"} onOpened={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n; }, { replace: true })} /></div>}
 
       {tab === "hardware" && (
         <Card className="divide-y divide-line fade-in">

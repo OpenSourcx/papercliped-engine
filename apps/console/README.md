@@ -22,6 +22,28 @@ The console follows Discord's flow.
 
 On phones the rail and context sidebar open together as a drawer.
 
+## Pin's quick actions
+
+There is no toolbar on the page. Hover Pin's island and it expands into the actions for where you are, like Proxmox's toolbar (Start, Shutdown, Console, More):
+
+- On a machine: Start, Shut down, Console, Snapshot; under More: Reboot, Stop (confirmed first), Hardware, Task log, Ask Pin.
+- In an organization: New task, Decisions, Agents, Machines; under More: Tasks, Org chart, Costs, Activity, Settings.
+- On the device: Host shell, Resources, Summary, New organization; under More: Machines, Storage, Backups, Updates.
+
+On touch screens the same actions sit at the top of Pin's panel when you tap the island. Pages register their actions with `usePinActions` (`src/pin/PinContext.tsx`); the most specific page wins over the app's defaults (`src/pin/RouteActions.tsx`), and a click always runs the newest version of the action.
+
+## Graphs, Summary and Resources
+
+- **Graphs** (`src/ui/TimeSeriesChart.tsx`, `src/ui/UsageGraphs.tsx`): every machine shows CPU, memory, network and disk IO; the node shows CPU and IO delay, memory, network and server load. Timeframes are Proxmox's (hour, day, week, month, year) with Average or Maximum. Each chart has a hover crosshair and tooltip, a legend when it has two series, and a table view. Colors are validated categorical slots per theme.
+- **Summary** (`/<device>/summary`): the node's status and graphs.
+- **Resources** (`/<device>/resources`): every node, machine, storage and zone in one sortable, searchable table with tags, like Proxmox's Search view. Rows open their page.
+
+The demo history (`src/data/rrd.ts`) has the exact shape of Proxmox's `rrddata`, so switching to the broker's `/v1/stats` endpoints changes the data source, not the charts.
+
+## Org chart
+
+`/<device>/<org>/org` is a canvas: drag the background to pan, scroll or use the buttons to zoom, fit to screen, collapse branches, and search to highlight agents. Drag an agent onto another to change who it reports to; moves that would create a reporting loop are refused. Clicking an agent opens its details, including a "Reports to" picker as the keyboard-friendly way to move it.
+
 ## Machines and consoles
 
 Every machine has a page with **Overview**, **Console**, **Snapshots**, **Hardware** and **Tasks**, plus power controls (start, shut down, reboot, and stop behind a confirmation). Protected machines are locked. Inside an organization, machine pages only open machines in its resource group.

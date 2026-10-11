@@ -23,6 +23,7 @@ const warm: Tokens = {
   "--accent": "#e8b25c", "--accent-soft": "rgb(232 178 92 / 0.14)",
   "--glow-1": "rgb(232 178 92 / 0.22)", "--glow-2": "rgb(214 104 84 / 0.14)", "--glow-3": "rgb(104 120 214 / 0.12)",
   "--pin-1": "#f2c16b", "--pin-2": "#e9776a", "--pin-3": "#8e7cf0",
+  "--series-1": "#3987e5", "--series-2": "#d95926",
 };
 
 export const PRESETS: Preset[] = [
@@ -37,7 +38,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "daylight", name: "Daylight", scheme: "light",
-    tokens: { ...warm, "--bg": "#f7f4ee", "--surface": "#fffdf9", "--surface-2": "#f1ece2", "--surface-3": "#e6dfd1", "--ink": "#1d1b17", "--ink-2": "#5d564a", "--ink-3": "#857d6e", "--line": "rgb(29 27 23 / 0.08)", "--line-strong": "rgb(29 27 23 / 0.16)", "--primary": "#1d1b17", "--primary-ink": "#fffdf9", "--accent": "#b7741a", "--accent-soft": "rgb(183 116 26 / 0.12)", "--glow-1": "rgb(232 178 92 / 0.28)", "--glow-2": "rgb(233 119 106 / 0.14)", "--glow-3": "rgb(142 124 240 / 0.12)" },
+    tokens: { ...warm, "--bg": "#f7f4ee", "--surface": "#fffdf9", "--surface-2": "#f1ece2", "--surface-3": "#e6dfd1", "--ink": "#1d1b17", "--ink-2": "#5d564a", "--ink-3": "#857d6e", "--line": "rgb(29 27 23 / 0.08)", "--line-strong": "rgb(29 27 23 / 0.16)", "--primary": "#1d1b17", "--primary-ink": "#fffdf9", "--accent": "#b7741a", "--accent-soft": "rgb(183 116 26 / 0.12)", "--series-1": "#2a78d6", "--series-2": "#eb6834", "--glow-1": "rgb(232 178 92 / 0.28)", "--glow-2": "rgb(233 119 106 / 0.14)", "--glow-3": "rgb(142 124 240 / 0.12)" },
   },
 ];
 

@@ -91,6 +91,7 @@ export interface Guest {
   ip?: string | null;
   os?: string;
   snapshots?: { name: string; at: string; description: string }[];
+  tags?: string[];
   tasks?: { id: string; what: string; at: string; ok: boolean }[];
 }
 
@@ -203,4 +204,4 @@ export interface EngineData {
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources"] as const;

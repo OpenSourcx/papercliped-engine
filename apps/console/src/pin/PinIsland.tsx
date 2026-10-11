@@ -4,6 +4,9 @@ import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { Segmented } from "../ui/primitives.tsx";
 import { PinCardView } from "./PinCards.tsx";
+import { QuickActionBar } from "./QuickActionBar.tsx";
+import { Modal } from "../ui/Modal.tsx";
+import { Button } from "../ui/primitives.tsx";
 import { usePin } from "./PinContext.tsx";
 
 export function PinOrb({ size = 22, thinking = false }: { size?: number; thinking?: boolean }) {
@@ -34,6 +37,8 @@ export function PinIsland() {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
+  const leave = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const canHover = typeof window !== "undefined" && window.matchMedia?.("(hover: hover)").matches;
   const open = pin.state === "open";
 
   useEffect(() => {
@@ -73,12 +78,38 @@ export function PinIsland() {
     ? { width: "min(460px, calc(100vw - 24px))", height: "min(600px, calc(100dvh - 32px))", borderRadius: 28 }
     : pin.state === "peek"
       ? { width: "min(380px, calc(100vw - 24px))", height: 68, borderRadius: 26 }
+      : pin.state === "actions"
+        ? { width: "min(640px, calc(100vw - 24px))", height: "auto", minHeight: 60, borderRadius: 30 }
       : { width: 196, height: 40, borderRadius: 999 };
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[58]" ref={ref}>
+    <div
+      className="fixed top-3 left-1/2 -translate-x-1/2 z-[58]"
+      ref={ref}
+      onMouseEnter={() => {
+        clearTimeout(leave.current);
+        // Hover wins over a passive notification peek; it never interrupts an open panel.
+        if (canHover && (pin.state === "rest" || pin.state === "peek") && pin.actions?.items.length) pin.setState("actions");
+      }}
+      onMouseLeave={() => {
+        clearTimeout(leave.current);
+        leave.current = setTimeout(() => pin.setState(pin.state === "actions" ? "rest" : pin.state), 280);
+      }}
+    >
       <div className={cn("glass island overflow-hidden", open && "solid")} style={size}>
-        {!open && (
+        {pin.state === "actions" && pin.actions && (
+          <div className="flex items-center gap-3 pl-2 pr-3 py-2.5 fade-in">
+            <button onClick={() => pin.setState("open")} className="flex items-center gap-2 shrink-0" aria-label="Open Pin">
+              <PinOrb size={30} thinking={pin.thinking} />
+              <span className="hidden sm:block text-left leading-tight">
+                <span className="block text-[11px] text-ink-3">Quick actions</span>
+                <span className="block text-[13px] font-medium max-w-[140px] truncate">{pin.actions.context}</span>
+              </span>
+            </button>
+            <QuickActionBar onDone={() => pin.setState("rest")} />
+          </div>
+        )}
+        {!open && pin.state !== "actions" && (
           <button
             onClick={() => pin.setState("open")}
             className="absolute inset-0 flex items-center gap-2.5 px-2 pr-3 text-left"
@@ -114,6 +145,12 @@ export function PinIsland() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {pin.actions && pin.actions.items.length > 0 && (
+              <div className="px-4 pt-3 pb-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1.5">{pin.actions.context}</div>
+                <QuickActionBar compact />
+              </div>
+            )}
             <div className="flex gap-1 px-3 pt-2">
               {(["chat", "notices"] as const).map((t) => (
                 <button key={t} onClick={() => { pin.setTab(t); if (t === "notices") engine.markRead(); }} className={cn("px-3 h-7 rounded-full text-[13px] inline-flex items-center gap-1.5", pin.tab === t ? "bg-surface-3 text-ink" : "text-ink-3 hover:text-ink-2")}>
@@ -174,6 +211,17 @@ export function PinIsland() {
           </div>
         )}
       </div>
+      {pin.confirm?.confirm && (
+        <Modal
+          size="sm"
+          title={pin.confirm.confirm.title}
+          subtitle={pin.confirm.confirm.body}
+          onClose={() => pin.setConfirm(null)}
+          footer={<><Button variant="ghost" onClick={() => pin.setConfirm(null)}>Cancel</Button><Button variant={pin.confirm.danger ? "danger" : "primary"} onClick={() => { const c = pin.findLatest(pin.confirm!.id) ?? pin.confirm!; pin.setConfirm(null); c.run(); }}>{pin.confirm.confirm.label}</Button></>}
+        >
+          <div />
+        </Modal>
+      )}
     </div>
   );
 }

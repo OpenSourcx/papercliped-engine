@@ -51,6 +51,26 @@ export interface ClusterResource {
 }
 
 export type GuestType = "lxc" | "qemu";
+export type RrdTimeframe = "hour" | "day" | "week" | "month" | "year";
+export type RrdCf = "AVERAGE" | "MAX";
+
+/** One sample from Proxmox's round-robin statistics. CPU is a fraction of maxcpu; net and disk are bytes per second. */
+export interface RrdPoint {
+  time: number; // unix seconds
+  cpu?: number;
+  maxcpu?: number;
+  mem?: number;
+  maxmem?: number;
+  netin?: number;
+  netout?: number;
+  diskread?: number;
+  diskwrite?: number;
+  // node series
+  memused?: number;
+  memtotal?: number;
+  loadavg?: number;
+  iowait?: number;
+}
 export type PowerAction = "start" | "stop" | "shutdown" | "reboot";
 
 export interface LxcInterface {
@@ -179,6 +199,16 @@ export class ProxmoxClient {
 
   guestSnapshot(node: string, type: GuestType, vmid: number, snapname: string, description?: string) {
     return this.call<string>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/snapshot`, { snapname, description });
+  }
+
+  /** Usage history for a guest, as the Summary graphs in the Proxmox UI use it. Needs VM.Audit. */
+  guestRrd(node: string, type: GuestType, vmid: number, timeframe: RrdTimeframe, cf: RrdCf = "AVERAGE") {
+    return this.call<RrdPoint[]>("GET", `/nodes/${seg(node)}/${type}/${seg(vmid)}/rrddata`, { timeframe, cf });
+  }
+
+  /** Usage history for the node itself. Needs Sys.Audit. */
+  nodeRrd(node: string, timeframe: RrdTimeframe, cf: RrdCf = "AVERAGE") {
+    return this.call<RrdPoint[]>("GET", `/nodes/${seg(node)}/rrddata`, { timeframe, cf });
   }
 
   taskStatus(node: string, upid: string) {

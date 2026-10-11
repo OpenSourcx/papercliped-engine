@@ -60,11 +60,17 @@ export function demoData(firstOrgName: string | null): EngineData {
       ["Atlas", "CEO", "working", "Weekly plan for Q4", "native"],
       ["Forge", "Engineer", "working", "Fix flaky deploy check"],
       ["Scout", "Researcher", "idle", null],
+      ["Quinn", "QA engineer", "working", "Regression pass on deploy check"],
+      ["Mira", "Designer", "idle", null],
     ]);
     o.usage = { cpuCores: 1.4, memoryMb: 3_400, diskGb: 22, guests: 2 };
-    const [atlas, forge, scout] = o.agents;
+    const [atlas, forge, scout, quinn, mira] = o.agents;
     forge.reportsTo = atlas.id;
     scout.reportsTo = atlas.id;
+    quinn.reportsTo = forge.id;
+    mira.reportsTo = atlas.id;
+    Object.assign(quinn, { spendUsd: 9.8, budgetUsd: 30 });
+    Object.assign(mira, { spendUsd: 2.2, budgetUsd: 20 });
     Object.assign(atlas, { spendUsd: 18.4, budgetUsd: 50 });
     Object.assign(forge, { spendUsd: 31.2, budgetUsd: 60 });
     Object.assign(scout, { spendUsd: 4.1, budgetUsd: 25 });
@@ -129,7 +135,9 @@ export function demoData(firstOrgName: string | null): EngineData {
       : []),
   ];
 
+  const tagged: Record<number, string[]> = { 106: ["community-script", "connector", "network", "twingate"], 105: ["dns", "network"], 109: ["lab"], 100: ["bot"], 101: ["bot"] };
   for (const g of guests) {
+    g.tags ??= tagged[g.vmid] ?? (g.org ? [`co-${g.org}`, "paperclip"] : []);
     g.os ??= g.type === "qemu" ? "Linux" : "Debian 13";
     g.snapshots ??= [];
     g.tasks ??= [{ id: `${g.vmid}-t0`, what: g.status === "running" ? "Start" : "Shutdown", at: ago(60 * 30 + g.vmid % 50), ok: true }, { id: `${g.vmid}-t1`, what: "Backup (vzdump)", at: ago(60 * 9), ok: true }];

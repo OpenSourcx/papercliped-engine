@@ -1,4 +1,4 @@
-import type { ClusterResource, GuestType, PowerAction, ProxmoxClient } from "@papercliped-engine/proxmox-client";
+import type { ClusterResource, GuestType, PowerAction, ProxmoxClient, RrdCf, RrdPoint, RrdTimeframe } from "@papercliped-engine/proxmox-client";
 import type { BrokerConfig, Principal, Profile, ResourceGroup } from "./config.ts";
 
 /**
@@ -45,7 +45,7 @@ export type AuditWriter = (entry: Record<string, unknown>) => void;
 
 export interface BrokerDeps {
   config: BrokerConfig;
-  pve: Pick<ProxmoxClient, "version" | "nodeStatus" | "clusterResources" | "checkVmidFree" | "createLxc" | "cloneLxc" | "setLxcConfig" | "lxcConfig" | "lxcInterfaces" | "startLxc" | "destroyLxc" | "guestPower" | "guestSnapshot" | "waitTask">;
+  pve: Pick<ProxmoxClient, "version" | "nodeStatus" | "clusterResources" | "checkVmidFree" | "createLxc" | "cloneLxc" | "setLxcConfig" | "lxcConfig" | "lxcInterfaces" | "startLxc" | "destroyLxc" | "guestPower" | "guestSnapshot" | "waitTask" | "guestRrd" | "nodeRrd">;
   audit: AuditWriter;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -212,6 +212,24 @@ export class Broker {
     }
     this.log("guest.action", principal, { ok: true, vmid, op: action, source });
     return { vmid, action, ok: true };
+  }
+
+  /** Usage history. Pin can read any guest and the node; a company only its own leases. Read-only, so not audited. */
+  async stats(principal: Principal, target: { node: true } | { vmid: number }, timeframe: string, cf: string): Promise<RrdPoint[]> {
+    if (!["hour", "day", "week", "month", "year"].includes(timeframe)) throw new BrokerError("timeframe must be hour, day, week, month or year", 400, "bad_timeframe");
+    if (cf !== "AVERAGE" && cf !== "MAX") throw new BrokerError("cf must be AVERAGE or MAX", 400, "bad_cf");
+    const tf = timeframe as RrdTimeframe;
+    if ("node" in target) {
+      this.requireSystem(principal);
+      return this.d.pve.nodeRrd(this.c.proxmox.node, tf, cf as RrdCf);
+    }
+    const r = (await this.d.pve.clusterResources()).find((x) => x.vmid === target.vmid);
+    if (!r || (r.type !== "lxc" && r.type !== "qemu")) throw new BrokerError("Unknown guest", 404, "guest_not_found");
+    if (principal.scope === "group") {
+      const g = this.c.groups[principal.group];
+      if (!g || !this.belongs(g, r)) throw new BrokerError("Unknown guest", 404, "guest_not_found");
+    }
+    return this.d.pve.guestRrd(r.node ?? this.c.proxmox.node, r.type as GuestType, target.vmid, tf, cf as RrdCf);
   }
 
   // ---- group scope (company agents, and Pin) ----

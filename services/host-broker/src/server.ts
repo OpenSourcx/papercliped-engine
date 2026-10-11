@@ -12,6 +12,8 @@ import type { Principal } from "./config.ts";
  *   GET    /v1/host                                    Pin
  *   GET    /v1/guests                                  Pin
  *   POST   /v1/guests/:vmid/actions  {action}          Pin
+ *   GET    /v1/stats/node?timeframe=&cf=               Pin
+ *   GET    /v1/stats/guests/:vmid?timeframe=&cf=       Pin, or a group for its own leases
  *   GET    /v1/groups/:group/leases                    Pin or that group
  *   POST   /v1/groups/:group/leases  {profile, ...}    Pin or that group
  *   GET    /v1/groups/:group/leases/:id                Pin or that group
@@ -81,6 +83,13 @@ export async function handle(broker: Broker, principals: Principal[], req: Incom
       const body = await readJson(req);
       const source = body.source === "automation" ? "automation" : "pin";
       return send(res, 200, await broker.guestAction(who, Number(parts[2]), String(body.action) as GuestActionName, source));
+    }
+
+    if (parts[1] === "stats" && method === "GET") {
+      const timeframe = url.searchParams.get("timeframe") ?? "hour";
+      const cf = url.searchParams.get("cf") ?? "AVERAGE";
+      if (parts.length === 3 && parts[2] === "node") return send(res, 200, { points: await broker.stats(who, { node: true }, timeframe, cf) });
+      if (parts.length === 4 && parts[2] === "guests" && /^\d+$/.test(parts[3])) return send(res, 200, { points: await broker.stats(who, { vmid: Number(parts[3]) }, timeframe, cf) });
     }
 
     if (parts[1] === "groups" && parts[3] === "leases") {
