@@ -106,7 +106,7 @@ Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by
 3. The service connects to `vncwebsocket` with the user's ticket, sends Proxmox's `user:ticket` handshake, waits for `OK`, then relays frames both ways. Neither ticket reaches the browser.
 4. The browser's xterm.js terminal speaks Proxmox's framing (`0:<bytes>:<data>` for input, `1:<cols>:<rows>:` to resize, `2` to keep alive).
 
-VMs without a serial port link to Proxmox's own noVNC console for their screen.
+A VM's screen uses Proxmox's VNC proxy the same way. `POST /api/guests/<vmid>/vnc` asks Proxmox for a VNC proxy as the signed-in user, with a generated one-time VNC password. The service keeps the port and ticket under a random id that only that session can use, once, within 30 seconds, and returns the id and password. The browser's noVNC viewer connects to `/api/vnc/<id>`, which the service relays as raw binary to `vncwebsocket`. The password is useless without the relay, and the relay never hands out the ticket.
 
 The console's terminal is written against a transport interface, so the demo shell and the live relay are interchangeable.
 

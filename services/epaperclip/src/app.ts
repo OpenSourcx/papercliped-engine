@@ -3,6 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
+import { checkIface, checkNic, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
+import { randomBytes } from "node:crypto";
 import { SessionStore, type Session } from "./sessions.ts";
 
 /**
@@ -682,6 +684,202 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 202, created);
     }
 
+    // ---- Machines: hardware, snapshots, clones, graphical console. Proxmox checks every change against the user.
+    const findGuest = async (pve: ProxmoxClient, vmid: number) => {
+      const g = (await pve.clusterResources()).find((r) => r.vmid === vmid);
+      if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new HttpError(404, "not_found", "Unknown machine");
+      return { node: g.node ?? d.pve.node, type: g.type as GuestType, status: g.status ?? "unknown", template: g.template === 1, name: g.name ?? String(vmid) };
+    };
+    const guestRoute = path.match(/^\/api\/guests\/(\d+)\/(config|resize|nets|nets\/(net\d+)\/delete|snapshots|snapshots\/([A-Za-z][\w-]{0,39})\/(rollback|delete)|clone|vnc)$/);
+    if (guestRoute) {
+      const vmid = Number(guestRoute[1]);
+      const what = guestRoute[2];
+      if (method === "GET" && what === "config") {
+        const hw = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          const cfg = await pve.guestConfig(g.node, g.type, vmid);
+          const pending = g.type === "qemu" && g.status === "running" ? await pve.call<{ key: string; pending?: unknown; delete?: number }[]>("GET", `/nodes/${encodeURIComponent(g.node)}/qemu/${vmid}/pending`).then((l) => l.filter((x) => x.pending !== undefined || x.delete).map((x) => x.key), () => []) : [];
+          return { ...normalizeConfig(g.type, cfg, pending), status: g.status, template: g.template };
+        });
+        return sendJson(res, 200, hw);
+      }
+      if (method === "GET" && what === "snapshots") {
+        const list = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          return pve.snapshots(g.node, g.type, vmid);
+        });
+        const current = list.find((x) => x.name === "current");
+        return sendJson(res, 200, { snapshots: list.filter((x) => x.name !== "current").map((x) => ({ name: x.name, description: x.description ?? "", time: x.snaptime ?? null, parent: x.parent ?? null, vmstate: x.vmstate === 1 })), current: current?.parent ?? null });
+      }
+      if (method !== "POST") throw new HttpError(405, "method", "Method not allowed");
+      requireSameSite(req);
+      const b = await readJson(req);
+
+      if (what === "config") {
+        // Only these settings, each range-checked. Proxmox decides whether this user may change them.
+        const params: Record<string, string | number | boolean | undefined> = {};
+        const int = (v: unknown, lo: number, hi: number, label: string) => {
+          if (!Number.isInteger(v) || (v as number) < lo || (v as number) > hi) throw new HttpError(400, "bad_request", `${label} must be between ${lo} and ${hi}`);
+          return v as number;
+        };
+        if (b.cores !== undefined) params.cores = int(b.cores, 1, 512, "Cores");
+        if (b.sockets !== undefined) params.sockets = int(b.sockets, 1, 16, "Sockets");
+        if (b.memoryMb !== undefined) params.memory = int(b.memoryMb, 16, 4_194_304, "Memory");
+        if (b.swapMb !== undefined) params.swap = int(b.swapMb, 0, 1_048_576, "Swap");
+        if (b.onboot !== undefined) params.onboot = b.onboot === true;
+        if (b.description !== undefined) {
+          if (typeof b.description !== "string" || b.description.length > 8192) throw new HttpError(400, "bad_request", "Notes are limited to 8192 characters");
+          params.description = b.description;
+        }
+        if (b.tags !== undefined) {
+          if (!Array.isArray(b.tags) || b.tags.length > 20 || !b.tags.every((t) => typeof t === "string" && /^[a-z0-9][\w.+-]{0,63}$/i.test(t))) throw new HttpError(400, "bad_request", "Tags are letters, digits, - _ . +");
+          params.tags = (b.tags as string[]).join(";");
+        }
+        if (b.name !== undefined) {
+          if (typeof b.name !== "string" || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.name)) throw new HttpError(400, "bad_request", "Use lowercase letters, digits and hyphens for the name");
+        }
+        if (!Object.keys(params).length && b.name === undefined) throw new HttpError(400, "bad_request", "Nothing to change");
+        await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          if (b.name !== undefined) params[g.type === "lxc" ? "hostname" : "name"] = b.name as string;
+          await pve.setGuestConfig(g.node, g.type, vmid, params);
+        });
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (what === "resize") {
+        const disk = typeof b.disk === "string" && /^(rootfs|mp\d+|scsi\d+|sata\d+|virtio\d+|ide\d+)$/.test(b.disk) ? b.disk : null;
+        if (!disk) throw new HttpError(400, "bad_request", "Unknown disk");
+        if (!Number.isInteger(b.growGb) || (b.growGb as number) < 1 || (b.growGb as number) > 65_536) throw new HttpError(400, "bad_request", "Grow by 1 GB or more");
+        const task = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          return pve.resizeDisk(g.node, g.type, vmid, disk, `+${b.growGb}G`);
+        });
+        return sendJson(res, 200, { task: task ?? null });
+      }
+
+      if (what === "nets") {
+        const key = b.key === undefined || b.key === null ? null : typeof b.key === "string" && /^net\d{1,2}$/.test(b.key) ? b.key : "bad";
+        if (key === "bad") throw new HttpError(400, "bad_request", "Unknown network device");
+        await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          let spec;
+          try {
+            spec = checkNic(g.type, b);
+          } catch (e) {
+            throw new HttpError(400, "bad_request", (e as Error).message);
+          }
+          const cfg = await pve.guestConfig(g.node, g.type, vmid);
+          if (key && !(key in cfg)) throw new HttpError(404, "not_found", "Unknown network device");
+          const k = key ?? nextNicKey(cfg);
+          await pve.setGuestConfig(g.node, g.type, vmid, { [k]: nicString(g.type, k, spec, key ? String(cfg[key]) : undefined) });
+        });
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (guestRoute[3]) {
+        const key = guestRoute[3];
+        await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          await pve.setGuestConfig(g.node, g.type, vmid, { delete: key });
+        });
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (what === "snapshots") {
+        const name = typeof b.name === "string" && /^[A-Za-z][\w-]{1,39}$/.test(b.name) ? b.name : null;
+        if (!name) throw new HttpError(400, "bad_request", "Use 2 to 40 letters, digits, - or _, starting with a letter");
+        if (b.description !== undefined && (typeof b.description !== "string" || b.description.length > 1024)) throw new HttpError(400, "bad_request", "Keep the description under 1024 characters");
+        const task = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          return pve.createSnapshot(g.node, g.type, vmid, name, (b.description as string | undefined) || undefined, b.vmstate === true);
+        });
+        return sendJson(res, 202, { task });
+      }
+
+      if (guestRoute[4]) {
+        const snap = guestRoute[4];
+        const task = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          return guestRoute[5] === "rollback" ? pve.rollbackSnapshot(g.node, g.type, vmid, snap) : pve.deleteSnapshot(g.node, g.type, vmid, snap);
+        });
+        return sendJson(res, 202, { task });
+      }
+
+      if (what === "clone") {
+        const name = typeof b.name === "string" && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.name) ? b.name : null;
+        if (!name) throw new HttpError(400, "bad_request", "Use lowercase letters, digits and hyphens for the name");
+        const target = b.storage === undefined || b.storage === null || b.storage === "" ? undefined : storageId(b.storage);
+        const pool = b.pool === undefined || b.pool === null ? undefined : typeof b.pool === "string" && /^[\w.-]{1,64}$/.test(b.pool) ? b.pool : null;
+        if (pool === null) throw new HttpError(400, "bad_request", "Unknown pool");
+        const created = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          const newid = await pve.nextId();
+          // Linked clones only work from templates; anything else is a full copy.
+          const full = g.template ? b.linked !== true : true;
+          const task = await pve.cloneGuest(g.node, g.type, vmid, { newid, [g.type === "lxc" ? "hostname" : "name"]: name, full, storage: full ? target : undefined, pool, description: `Cloned from ${g.name} (#${vmid}) in ePaperclip` });
+          return { vmid: newid, task, full };
+        });
+        return sendJson(res, 202, created);
+      }
+
+      if (what === "vnc") {
+        const s = requireSession(req);
+        const out = await asUser(req, res, async (pve) => {
+          const g = await findGuest(pve, vmid);
+          if (g.type !== "qemu") throw new HttpError(400, "bad_request", "Containers use the text console");
+          if (g.status !== "running") throw new HttpError(409, "not_running", "Start the VM to see its screen");
+          const v = await pve.vncproxy(g.node, vmid);
+          const id = randomBytes(24).toString("base64url");
+          for (const [k, x] of vncSessions) if (x.expires < now()) vncSessions.delete(k);
+          vncSessions.set(id, { session: s.id, node: g.node, vmid, port: String(v.port), ticket: v.ticket, expires: now() + 30_000 });
+          // The one-time VNC password is useless without the relay, which holds the Proxmox ticket.
+          return { id, password: v.password ?? v.ticket };
+        });
+        return sendJson(res, 200, out);
+      }
+    }
+
+    // ---- Host network. Changes are staged by Proxmox and only take effect when applied.
+    if (method === "GET" && path === "/api/network") {
+      const net = await asUser(req, res, (pve) => pve.network(d.pve.node));
+      return sendJson(res, 200, {
+        interfaces: net.interfaces.map((i) => ({ iface: i.iface, type: i.type, active: i.active === 1, autostart: i.autostart === 1, cidr: i.cidr ?? (i.address && i.netmask ? `${i.address}/${i.netmask}` : null), gateway: i.gateway ?? null, ports: (i.bridge_ports ?? "").split(/\s+/).filter(Boolean), vlanAware: i.bridge_vlan_aware === 1, slaves: (i.slaves ?? "").split(/\s+/).filter(Boolean), bondMode: i.bond_mode ?? null, vlanRaw: i["vlan-raw-device"] ?? null, vlanId: i["vlan-id"] ?? null, comments: i.comments?.trim() || null, method: i.method ?? null })).sort((a, b) => a.iface.localeCompare(b.iface, undefined, { numeric: true })),
+        changes: net.changes,
+      });
+    }
+    const netRoute = path.match(/^\/api\/network(?:\/(apply|revert)|\/([\w.-]{1,15})(\/delete)?)?$/);
+    if (method === "POST" && netRoute) {
+      requireSameSite(req);
+      const b = await readJson(req);
+      if (netRoute[1] === "apply") {
+        const task = await asUser(req, res, (pve) => pve.applyNetwork(d.pve.node));
+        return sendJson(res, 202, { task });
+      }
+      if (netRoute[1] === "revert") {
+        await asUser(req, res, (pve) => pve.revertNetwork(d.pve.node));
+        return sendJson(res, 200, { ok: true });
+      }
+      const iface = netRoute[2];
+      if (iface && netRoute[3]) {
+        await asUser(req, res, async (pve) => {
+          // Deleting the interface that carries the default route can cut the host off; ask for its name to be typed.
+          const cur = (await pve.network(d.pve.node)).interfaces.find((i) => i.iface === iface);
+          if (cur?.gateway && b.confirm !== iface) throw new HttpError(409, "confirm", `${iface} carries this host's gateway. Type its name to delete it.`);
+          await pve.deleteInterface(d.pve.node, iface);
+        });
+        return sendJson(res, 200, { ok: true });
+      }
+      let spec;
+      try {
+        spec = checkIface(iface ? { ...b, iface } : b, !iface);
+      } catch (e) {
+        throw new HttpError(400, "bad_request", (e as Error).message);
+      }
+      await asUser(req, res, (pve) => (iface ? pve.updateInterface(d.pve.node, iface, ifaceParams(spec, false)) : pve.createInterface(d.pve.node, ifaceParams(spec, true))));
+      return sendJson(res, iface ? 200 : 201, { ok: true });
+    }
+
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);
     if (method === "POST" && power) {
       requireSameSite(req);
@@ -729,6 +927,9 @@ export function createApp(d: AppDeps) {
     createReadStream(file).pipe(res);
   }
 
+  // One-time VNC sessions: created by POST /api/guests/:vmid/vnc for one signed-in session, used once within 30 seconds.
+  const vncSessions = new Map<string, { session: string; node: string; vmid: number; port: string; ticket: string; expires: number }>();
+
   // Live consoles: same session cookie, and the Origin must be this host (WebSockets get no CORS protection).
   const upgrade = createConsoleRelay({
     connect: d.connect ?? realConnect(d.pve.caPem),
@@ -747,6 +948,18 @@ export function createApp(d: AppDeps) {
     authorize: async (req, url) => {
       const s = d.sessions.get(cookieValue(req, COOKIE));
       if (!s) throw new Error("Your session ended. Sign in again.");
+      const vnc = url.pathname.match(/^\/api\/vnc\/([\w-]+)$/);
+      if (vnc) {
+        const v = vncSessions.get(vnc[1]);
+        vncSessions.delete(vnc[1]);
+        if (!v || v.session !== s.id || v.expires < now()) throw new Error("That screen session expired. Open the console again.");
+        const base = new URL(d.pve.baseUrl);
+        return {
+          url: `wss://${base.host}${ProxmoxClient.consoleSocketPath(v.node, { type: "qemu", vmid: v.vmid }, Number(v.port), v.ticket)}`,
+          headers: { Cookie: `PVEAuthCookie=${encodeURIComponent(s.ticket)}` },
+          binary: true,
+        };
+      }
       try {
         const pve = await clientFor(s);
         const m = url.pathname.match(/^\/api\/console\/guests\/(\d+)$/);

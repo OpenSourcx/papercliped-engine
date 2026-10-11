@@ -1,5 +1,5 @@
-import { api, ApiError, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
-import type { HostStorage } from "./types.ts";
+import { api, ApiError, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
+import type { Guest, HostStorage } from "./types.ts";
 
 /**
  * Storage, templates, uploads and tasks: the same calls live (through the host service, as the signed-in user) and in
@@ -21,6 +21,21 @@ export interface Backend {
   deleteBackupJob: (id: string) => Promise<unknown>;
   runBackup: (r: BackupRun) => Promise<{ task: string }>;
   restore: (r: RestoreSpec) => Promise<{ vmid: number; task: string }>;
+  hardware: (vmid: number) => Promise<GuestHardware>;
+  setHardware: (vmid: number, c: HardwareChange) => Promise<unknown>;
+  resizeDisk: (vmid: number, disk: string, growGb: number) => Promise<{ task: string | null }>;
+  saveNic: (vmid: number, n: NicSpec) => Promise<unknown>;
+  deleteNic: (vmid: number, key: string) => Promise<unknown>;
+  snapshots: (vmid: number) => Promise<{ snapshots: SnapshotInfo[]; current: string | null }>;
+  takeSnapshot: (vmid: number, name: string, description: string, vmstate: boolean) => Promise<{ task: string }>;
+  rollbackSnapshot: (vmid: number, name: string) => Promise<{ task: string }>;
+  deleteSnapshot: (vmid: number, name: string) => Promise<{ task: string }>;
+  clone: (vmid: number, name: string, storage: string | null, linked: boolean) => Promise<{ vmid: number; task: string; full: boolean }>;
+  network: () => Promise<{ interfaces: NetIface[]; changes: string | null }>;
+  saveIface: (existing: string | null, spec: IfaceSpec) => Promise<unknown>;
+  deleteIface: (iface: string, confirm?: string) => Promise<unknown>;
+  applyNetwork: () => Promise<{ task: string }>;
+  revertNetwork: () => Promise<unknown>;
 }
 
 export const liveBackend: Backend = {
@@ -39,6 +54,21 @@ export const liveBackend: Backend = {
   deleteBackupJob: api.deleteBackupJob,
   runBackup: api.runBackup,
   restore: api.restore,
+  hardware: api.hardware,
+  setHardware: api.setHardware,
+  resizeDisk: api.resizeDisk,
+  saveNic: api.saveNic,
+  deleteNic: api.deleteNic,
+  snapshots: api.snapshots,
+  takeSnapshot: api.takeSnapshot,
+  rollbackSnapshot: api.rollbackSnapshot,
+  deleteSnapshot: api.deleteSnapshot,
+  clone: api.clone,
+  network: api.network,
+  saveIface: api.saveIface,
+  deleteIface: api.deleteIface,
+  applyNetwork: api.applyNetwork,
+  revertNetwork: api.revertNetwork,
 };
 
 /** "vzdump-lxc-101-2025_10_10-21_00_02.tar.zst" -> { type, vmid, at (unix seconds) } */
@@ -79,6 +109,15 @@ export const TASK_TYPES: Record<string, string> = {
   vzreboot: "Reboot container",
   vzdestroy: "Destroy container",
   vzdump: "Backup",
+  vzresize: "Resize disk",
+  qmresize: "Resize disk",
+  vzrollback: "Roll back snapshot",
+  qmrollback: "Roll back snapshot",
+  vzdelsnapshot: "Delete snapshot",
+  qmdelsnapshot: "Delete snapshot",
+  vzclone: "Clone container",
+  qmclone: "Clone VM",
+  srvreload: "Apply network changes",
   vzrestore: "Restore container",
   qmrestore: "Restore VM",
   qmcreate: "Create VM",
@@ -90,7 +129,6 @@ export const TASK_TYPES: Record<string, string> = {
   qmsnapshot: "Snapshot",
   vzsnapshot: "Snapshot",
   imgdel: "Delete file",
-  srvreload: "Reload service",
   startall: "Start all",
   stopall: "Stop all",
 };
@@ -122,7 +160,7 @@ const DEMO_CATALOG: CatalogTemplate[] = [
 const KIND_OF: Record<string, ContentKind> = { "ISO images": "iso", Templates: "vztmpl", Backups: "backup", "Disk images": "images", Containers: "rootdir", Snippets: "snippets" };
 
 /** An in-browser stand-in for Proxmox's storage and task APIs, for the demo. */
-export function demoBackend(storages: () => HostStorage[], user = "owner@pve"): Backend {
+export function demoBackend(storages: () => HostStorage[], guests: () => Guest[] = () => [], user = "owner@pve"): Backend {
   const now = () => Math.floor(Date.now() / 1000);
   const items = new Map<string, StorageItem[]>();
   const tasks: (TaskEntry & { log: string[]; finishAt: number; fail?: string })[] = [];
@@ -159,6 +197,48 @@ export function demoBackend(storages: () => HostStorage[], user = "owner@pve"): 
     return upid;
   };
   const exists = (storage: string, volid: string) => listFor(storage).some((i) => i.volid === volid);
+  const hw = new Map<number, GuestHardware>();
+  const snaps = new Map<number, SnapshotInfo[]>();
+  const hwFor = (vmid: number): GuestHardware => {
+    if (!hw.has(vmid)) {
+      const g = guests().find((x) => x.vmid === vmid);
+      if (!g) throw new ApiError(404, "not_found", "Unknown machine");
+      const mac = `BC:24:11:${[vmid >> 8, vmid & 255, 0x2a].map((n) => n.toString(16).padStart(2, "0").toUpperCase()).join(":")}`;
+      const disk = Math.max(1, Math.round(g.diskMax / 1e9));
+      hw.set(vmid, {
+        type: g.type, name: g.name, cores: g.cores, sockets: 1, memoryMb: Math.round(g.memMax / 1024 ** 2), swapMb: g.type === "lxc" ? 512 : null, balloonMb: null,
+        onboot: g.protected, description: "", tags: g.tags ?? [], ostype: g.type === "qemu" ? "l26" : "debian",
+        disks: g.type === "lxc" ? [{ key: "rootfs", storage: "local-lvm", volume: `local-lvm:vm-${vmid}-disk-0`, sizeGb: disk, mount: "/" }] : [{ key: "scsi0", storage: "local-lvm", volume: `local-lvm:vm-${vmid}-disk-0`, sizeGb: disk, mount: null }],
+        nics: [{ key: "net0", model: g.type === "qemu" ? "virtio" : null, name: g.type === "lxc" ? "eth0" : null, mac, bridge: "vmbr0", tag: null, firewall: true, ip: g.type === "lxc" ? (g.ip ? `${g.ip}/24` : "dhcp") : null, gw: g.type === "lxc" && g.ip ? "192.168.1.254" : null, rate: null }],
+        cdrom: g.type === "qemu" ? "local:iso/debian-13.1.0-amd64-netinst.iso" : null, pending: [], status: g.status, template: false,
+      });
+    }
+    const h = hw.get(vmid)!;
+    return { ...h, status: guests().find((x) => x.vmid === vmid)?.status ?? h.status };
+  };
+  const snapsFor = (vmid: number) => {
+    if (!snaps.has(vmid)) snaps.set(vmid, (guests().find((x) => x.vmid === vmid)?.snapshots ?? []).map((x, i, all) => ({ name: x.name, description: x.description, time: Date.parse(x.at) / 1000, parent: i ? all[i - 1].name : null, vmstate: false })));
+    return snaps.get(vmid)!;
+  };
+  let ifaces: NetIface[] = [
+    { iface: "nic0", type: "eth", active: true, autostart: true, cidr: null, gateway: null, ports: [], vlanAware: false, slaves: [], bondMode: null, vlanRaw: null, vlanId: null, comments: null, method: "manual" },
+    { iface: "nic1", type: "eth", active: false, autostart: false, cidr: null, gateway: null, ports: [], vlanAware: false, slaves: [], bondMode: null, vlanRaw: null, vlanId: null, comments: null, method: "manual" },
+    { iface: "vmbr0", type: "bridge", active: true, autostart: true, cidr: "192.168.1.10/24", gateway: "192.168.1.254", ports: ["nic0"], vlanAware: false, slaves: [], bondMode: null, vlanRaw: null, vlanId: null, comments: "Management and machines", method: "static" },
+  ];
+  let staged: NetIface[] | null = null;
+  const stanza = (i: NetIface) => [`auto ${i.iface}`, `iface ${i.iface} inet ${i.cidr ? "static" : "manual"}`, ...(i.cidr ? [`\taddress ${i.cidr}`] : []), ...(i.gateway ? [`\tgateway ${i.gateway}`] : []), ...(i.type === "bridge" ? [`\tbridge-ports ${i.ports.join(" ") || "none"}`, "\tbridge-stp off", "\tbridge-fd 0", ...(i.vlanAware ? ["\tbridge-vlan-aware yes"] : [])] : []), ...(i.type === "bond" ? [`\tbond-slaves ${i.slaves.join(" ")}`, `\tbond-mode ${i.bondMode}`] : []), ...(i.comments ? [`#${i.comments}`] : [])];
+  const diff = () => {
+    if (!staged) return null;
+    const before = new Map(ifaces.map((i) => [i.iface, stanza(i).join("\n")]));
+    const after = new Map(staged.map((i) => [i.iface, stanza(i).join("\n")]));
+    const out = ["--- /etc/network/interfaces", "+++ /etc/network/interfaces.new"];
+    for (const k of new Set([...before.keys(), ...after.keys()])) {
+      if (before.get(k) === after.get(k)) continue;
+      for (const l of (before.get(k) ?? "").split("\n").filter(Boolean)) out.push(`-${l}`);
+      for (const l of (after.get(k) ?? "").split("\n").filter(Boolean)) out.push(`+${l}`);
+    }
+    return out.length > 2 ? out.join("\n") : null;
+  };
   let jobs: BackupJob[] = [{ id: "backup-daily", schedule: "21:00", storage: "drive2", all: true, vmids: [], pool: null, mode: "snapshot", compress: "zstd", enabled: true, keepLast: 1, comment: null, nextRun: Math.floor(Date.now() / 1000) + 6 * 3600 }];
   const stamp = () => {
     const d = new Date();
@@ -209,6 +289,76 @@ export function demoBackend(storages: () => HostStorage[], user = "owner@pve"): 
       const t = tasks.find((x) => x.upid === upid);
       if (!t) throw new ApiError(400, "bad_request", "Unknown task");
       return { status: t.end ? "stopped" : "running", exitstatus: t.end ? t.status : null, log: t.log };
+    },
+    hardware: async (vmid) => structuredClone(hwFor(vmid)),
+    setHardware: async (vmid, c) => {
+      const h = hwFor(vmid);
+      hw.set(vmid, { ...h, ...(c.cores !== undefined ? { cores: c.cores } : {}), ...(c.sockets !== undefined ? { sockets: c.sockets } : {}), ...(c.memoryMb !== undefined ? { memoryMb: c.memoryMb } : {}), ...(c.swapMb !== undefined ? { swapMb: c.swapMb } : {}), ...(c.onboot !== undefined ? { onboot: c.onboot } : {}), ...(c.description !== undefined ? { description: c.description } : {}), ...(c.tags !== undefined ? { tags: c.tags } : {}), ...(c.name !== undefined ? { name: c.name } : {}), pending: h.type === "qemu" && h.status === "running" && (c.cores !== undefined || c.memoryMb !== undefined || c.sockets !== undefined) ? [...new Set([...h.pending, ...(c.cores !== undefined ? ["cores"] : []), ...(c.memoryMb !== undefined ? ["memory"] : [])])] : h.pending });
+      return { ok: true };
+    },
+    resizeDisk: async (vmid, disk, growGb) => {
+      const h = hwFor(vmid);
+      hw.set(vmid, { ...h, disks: h.disks.map((d) => (d.key === disk ? { ...d, sizeGb: (d.sizeGb ?? 0) + growGb } : d)) });
+      return { task: startTask(h.type === "lxc" ? "vzresize" : "qmresize", String(vmid), 1, [`resizing ${disk} by +${growGb}G`, "resize2fs: The filesystem is now larger."]) };
+    },
+    saveNic: async (vmid, n) => {
+      const h = hwFor(vmid);
+      if (!ifaces.some((i) => i.iface === n.bridge && i.type === "bridge")) throw new ApiError(400, "proxmox_rejected", `bridge '${n.bridge}' does not exist`);
+      const key = n.key ?? `net${[...Array(32).keys()].find((i) => !h.nics.some((x) => x.key === `net${i}`))}`;
+      const old = h.nics.find((x) => x.key === key);
+      const nic = { key, model: h.type === "qemu" ? n.model ?? old?.model ?? "virtio" : null, name: h.type === "lxc" ? old?.name ?? `eth${key.slice(3)}` : null, mac: old?.mac ?? `BC:24:11:${Math.random().toString(16).slice(2, 8).toUpperCase().match(/../g)!.join(":")}`, bridge: n.bridge, tag: n.tag ?? null, firewall: n.firewall, ip: h.type === "lxc" ? n.ip ?? "dhcp" : null, gw: h.type === "lxc" ? n.gw ?? null : null, rate: n.rate ?? null };
+      hw.set(vmid, { ...h, nics: old ? h.nics.map((x) => (x.key === key ? nic : x)) : [...h.nics, nic] });
+      return { ok: true };
+    },
+    deleteNic: async (vmid, key) => {
+      const h = hwFor(vmid);
+      hw.set(vmid, { ...h, nics: h.nics.filter((x) => x.key !== key) });
+      return { ok: true };
+    },
+    snapshots: async (vmid) => {
+      const l = snapsFor(vmid);
+      return { snapshots: l.map((x) => ({ ...x })), current: l.at(-1)?.name ?? null };
+    },
+    takeSnapshot: async (vmid, name, description, vmstate) => {
+      const l = snapsFor(vmid);
+      if (l.some((x) => x.name === name)) throw new ApiError(400, "proxmox_rejected", `snapshot name '${name}' already used`);
+      return { task: startTask(hwFor(vmid).type === "lxc" ? "vzsnapshot" : "qmsnapshot", String(vmid), 1.2, [`snapshot '${name}'`], () => l.push({ name, description, time: Math.floor(Date.now() / 1000), parent: l.at(-1)?.name ?? null, vmstate })) };
+    },
+    rollbackSnapshot: async (vmid, name) => ({ task: startTask(hwFor(vmid).type === "lxc" ? "vzrollback" : "qmrollback", String(vmid), 1.5, [`rolling back to '${name}'`]) }),
+    deleteSnapshot: async (vmid, name) => {
+      const l = snapsFor(vmid);
+      return { task: startTask(hwFor(vmid).type === "lxc" ? "vzdelsnapshot" : "qmdelsnapshot", String(vmid), 1, [`delete snapshot '${name}'`], () => snaps.set(vmid, l.filter((x) => x.name !== name))) };
+    },
+    clone: async (vmid, name) => {
+      const g = guests().find((x) => x.vmid === vmid);
+      if (!g) throw new ApiError(404, "not_found", "Unknown machine");
+      const newid = Math.max(99, ...guests().map((x) => x.vmid)) + 1;
+      return { vmid: newid, full: true, task: startTask(g.type === "lxc" ? "vzclone" : "qmclone", String(vmid), 2.5, [`create full clone of drive (${name})`, "transferred 8.0 GiB of 8.0 GiB (100.00%)"]) };
+    },
+    network: async () => ({ interfaces: structuredClone(staged ?? ifaces), changes: diff() }),
+    saveIface: async (existing, spec) => {
+      const list = structuredClone(staged ?? ifaces);
+      if (!existing && list.some((i) => i.iface === spec.iface)) throw new ApiError(400, "proxmox_rejected", `interface '${spec.iface}' already exists`);
+      const next: NetIface = { ...spec, iface: existing ?? spec.iface, active: false, method: spec.cidr ? "static" : "manual" };
+      staged = existing ? list.map((i) => (i.iface === existing ? { ...next, active: i.active } : i)) : [...list, next].sort((a, b) => a.iface.localeCompare(b.iface, undefined, { numeric: true }));
+      return { ok: true };
+    },
+    deleteIface: async (iface, confirm) => {
+      const list = structuredClone(staged ?? ifaces);
+      if (list.find((i) => i.iface === iface)?.gateway && confirm !== iface) throw new ApiError(409, "confirm", `${iface} carries this host's gateway. Type its name to delete it.`);
+      staged = list.filter((i) => i.iface !== iface);
+      return { ok: true };
+    },
+    applyNetwork: async () => {
+      const next = staged;
+      return { task: startTask("srvreload", "networking", 1.5, ["ifreload -a", "TASK OK"].slice(0, 1), () => {
+        if (next) ifaces = next.map((i) => ({ ...i, active: i.autostart }));
+        staged = null;
+      }) };
+    },
+    revertNetwork: async () => {
+      staged = null;
+      return { ok: true };
     },
     backupJobs: async () => jobs.map((j) => ({ ...j })),
     saveBackupJob: async (id, spec) => {

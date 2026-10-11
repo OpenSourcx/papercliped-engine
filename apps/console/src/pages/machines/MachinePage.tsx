@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Archive, Box, Camera, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { Archive, Box, Camera, Copy, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
+import { Hardware } from "./Hardware.tsx";
+const Screen = lazy(() => import("./Screen.tsx"));
+import { Snapshots } from "./Snapshots.tsx";
 import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { cn, formatBytes } from "../../lib/storage.ts";
@@ -11,7 +14,7 @@ import { Terminal } from "../../terminal/LazyTerminal.tsx";
 import { DemoTransport, LiveTransport } from "../../terminal/transport.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, PageFrame, SectionTitle, Status } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, Input, PageFrame, SectionTitle, Segmented, Status } from "../../ui/primitives.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: <Box className="h-4 w-4" /> },
@@ -27,54 +30,6 @@ const ago = (iso: string) => {
   return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
 };
 
-function Snapshots({ g, startOpen, onOpened }: { g: Guest; startOpen: boolean; onOpened: () => void }) {
-  const { snapshot, deleteSnapshot } = useEngine();
-  const [open, setOpen] = useState(startOpen);
-  useEffect(() => {
-    if (startOpen) {
-      setOpen(true);
-      onOpened();
-    }
-  }, [startOpen]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const take = () => {
-    const r = snapshot(g.vmid, name.trim(), desc.trim());
-    if (!r.ok) return setError(r.error ?? "Failed");
-    setOpen(false);
-    setName("");
-    setDesc("");
-    setError(null);
-  };
-  return (
-    <Card className="p-5">
-      <SectionTitle action={<Button size="sm" variant="primary" onClick={() => setOpen(true)}><Camera className="h-3.5 w-3.5" />Take snapshot</Button>}>Snapshots</SectionTitle>
-      {(g.snapshots ?? []).length === 0 ? <p className="text-[14px] text-ink-3">No snapshots yet. Take one before risky changes; Pin does this automatically before updates.</p> : (
-        <div className="divide-y divide-line">
-          {(g.snapshots ?? []).map((s) => (
-            <div key={s.name} className="flex items-center gap-3 py-3">
-              <Camera className="h-4 w-4 text-ink-3" />
-              <div className="flex-1 min-w-0"><div className="text-[14px] font-medium font-mono">{s.name}</div><div className="text-[12px] text-ink-3 truncate">{s.description || "No description"} · {ago(s.at)}</div></div>
-              <Button size="sm" variant="ghost" disabled title="Rollback arrives with the host broker">Roll back</Button>
-              <button onClick={() => deleteSnapshot(g.vmid, s.name)} className="h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center text-ink-3 hover:text-critical" aria-label={`Delete snapshot ${s.name}`}><Trash2 className="h-4 w-4" /></button>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && (
-        <Modal size="sm" title="Take a snapshot" subtitle={`Saves ${g.name}'s current state so you can return to it.`} onClose={() => setOpen(false)} footer={<><Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" onClick={take} disabled={!name.trim()}>Take snapshot</Button></>}>
-          <div className="space-y-3">
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Name</span><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="before-upgrade" onKeyDown={(e) => e.key === "Enter" && take()} /></label>
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Description</span><Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" /></label>
-            {error && <p className="text-[12px] text-critical">{error}</p>}
-          </div>
-        </Modal>
-      )}
-    </Card>
-  );
-}
-
 export function MachinePage() {
   const { vmid, org: orgSlug } = useParams();
   const { data, setup, host, guestPower, notify, live, ready } = useEngine();
@@ -83,6 +38,7 @@ export function MachinePage() {
   const device = setup?.deviceName ?? "pve";
   const g = data.guests.find((x) => String(x.vmid) === vmid && (!orgSlug || x.org === orgSlug));
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab")! : "overview";
+  const [view, setView] = useState<"screen" | "serial">("screen");
   const make = useMemo(() => () => live && g ? new LiveTransport(`/api/console/guests/${g.vmid}`) : new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid, live]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useMemo(() => (g ? { cpu: Math.max(0.02, g.cpuPct / 100), maxcpu: g.cores, mem: g.memUsed, maxmem: g.memMax, net: g.status === "running" ? 40_000 + g.vmid * 30 : 0, disk: g.status === "running" ? 120_000 : 0, running: g.status === "running" } : null), [g?.vmid, g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTab = (id: string, extra?: Record<string, string>) => setParams((p) => { const n = new URLSearchParams(p); if (id === "overview") n.delete("tab"); else n.set("tab", id); for (const [k, v] of Object.entries(extra ?? {})) n.set(k, v); return n; }, { replace: true });
@@ -100,6 +56,7 @@ export function MachinePage() {
       { id: "shutdown", label: "Shut down", icon: <Power className="h-4 w-4" />, run: () => power("shutdown"), disabled: !running || !!lock, title: lock },
       { id: "console", label: "Console", icon: <SquareTerminal className="h-4 w-4" />, run: () => setTab("console"), disabled: !running, title: running ? undefined : "Start it to open its console" },
       { id: "snapshot", label: "Snapshot", icon: <Camera className="h-4 w-4" />, run: () => setTab("snapshots", { new: "1" }) },
+      { id: "clone", label: "Clone", icon: <Copy className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "clone"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "backup", label: "Back up now", icon: <Archive className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
@@ -180,41 +137,33 @@ export function MachinePage() {
         <div className="fade-in">
           {g.status === "running" ? (
             <>
-            <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
-            {live && g.type === "qemu" && (
-              <p className="text-[12px] text-ink-3 mt-2">
-                VMs open their serial console here (add one with <span className="font-mono">serial0: socket</span>). For the graphical screen,{" "}
-                <a className="text-accent hover:underline" target="_blank" rel="noreferrer" href={`https://${window.location.hostname}:8006/?console=kvm&novnc=1&vmid=${g.vmid}&vmname=${encodeURIComponent(g.name)}&node=${encodeURIComponent(device)}&resize=scale`}>open it in the Proxmox console</a>.
-              </p>
+            {g.type === "qemu" && (
+              <div className="mb-3"><Segmented size="sm" value={view} onChange={setView} options={[{ value: "screen", label: "Screen" }, { value: "serial", label: "Serial console" }]} /></div>
+            )}
+            {g.type === "qemu" && view === "screen" ? (
+              live ? (
+                <Suspense fallback={<Card className="p-8 text-center text-ink-3 text-[14px]">Loading the viewer…</Card>}><Screen vmid={g.vmid} name={g.name} /></Suspense>
+              ) : (
+                <Card className="p-10 text-center"><Monitor className="h-6 w-6 mx-auto text-ink-3" /><p className="text-ink-2 mt-3">{g.name}'s screen appears here on a device.</p><p className="text-[13px] text-ink-3 mt-1">The demo has no real VM to show. The serial console works as a demo.</p></Card>
+              )
+            ) : (
+              <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
+            )}
+            {live && g.type === "qemu" && view === "serial" && (
+              <p className="text-[12px] text-ink-3 mt-2">The serial console needs a serial port on the VM (<span className="font-mono">serial0: socket</span>, then a restart).</p>
             )}
             </>
           ) : (
             <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} title={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
           )}
-          <p className="text-[12px] text-ink-3 mt-2">{live ? "Live console through Proxmox's terminal proxy, opened as your Proxmox account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox's terminal proxy."}</p>
+          <p className="text-[12px] text-ink-3 mt-2">{live ? "Opened through Proxmox as your account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox."}</p>
         </div>
       )}
 
       {tab === "backups" && <div className="fade-in"><MachineBackups vmid={g.vmid} name={g.name} /></div>}
       {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} startOpen={params.get("new") === "1"} onOpened={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n; }, { replace: true })} /></div>}
 
-      {tab === "hardware" && (
-        <Card className="divide-y divide-line fade-in">
-          {[
-            [<Cpu key="c" className="h-4 w-4" />, "Processors", `${g.cores} core${g.cores === 1 ? "" : "s"}`],
-            [<MemoryStick key="m" className="h-4 w-4" />, "Memory", formatBytes(g.memMax)],
-            [<HardDrive key="d" className="h-4 w-4" />, "Root disk", formatBytes(g.diskMax)],
-            [<Network key="n" className="h-4 w-4" />, "Network", `eth0 · bridge vmbr0 · ${g.ip ?? "DHCP"} · firewall on`],
-            [<Lock key="u" className="h-4 w-4" />, "Privileges", g.type === "lxc" ? "Unprivileged container" : "KVM with host CPU"],
-          ].map(([icon, k, v]) => (
-            <div key={String(k)} className="flex items-center gap-3 px-5 py-3.5">
-              <span className="text-ink-3">{icon}</span>
-              <span className="w-32 text-[14px] text-ink-2">{k}</span>
-              <span className="text-[14px]">{v}</span>
-            </div>
-          ))}
-        </Card>
-      )}
+      {tab === "hardware" && <Hardware g={g} />}
 
       {tab === "tasks" && (
         <Card className="divide-y divide-line fade-in">

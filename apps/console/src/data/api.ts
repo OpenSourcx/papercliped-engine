@@ -130,6 +130,109 @@ export interface RestoreSpec {
   start?: boolean;
 }
 
+export interface Disk {
+  key: string;
+  storage: string | null;
+  volume: string;
+  sizeGb: number | null;
+  mount: string | null;
+}
+
+export interface Nic {
+  key: string;
+  model: string | null;
+  name: string | null;
+  mac: string | null;
+  bridge: string | null;
+  tag: number | null;
+  firewall: boolean;
+  ip: string | null;
+  gw: string | null;
+  rate: number | null;
+}
+
+export interface GuestHardware {
+  type: "lxc" | "qemu";
+  name: string | null;
+  cores: number;
+  sockets: number;
+  memoryMb: number;
+  swapMb: number | null;
+  balloonMb: number | null;
+  onboot: boolean;
+  description: string;
+  tags: string[];
+  ostype: string | null;
+  disks: Disk[];
+  nics: Nic[];
+  cdrom: string | null;
+  pending: string[];
+  status: string;
+  template: boolean;
+}
+
+export interface HardwareChange {
+  cores?: number;
+  sockets?: number;
+  memoryMb?: number;
+  swapMb?: number;
+  onboot?: boolean;
+  description?: string;
+  tags?: string[];
+  name?: string;
+}
+
+export interface NicSpec {
+  key: string | null; // null adds a new device
+  bridge: string;
+  model?: string;
+  tag?: number | null;
+  firewall: boolean;
+  ip?: string;
+  gw?: string | null;
+  rate?: number | null;
+}
+
+export interface SnapshotInfo {
+  name: string;
+  description: string;
+  time: number | null;
+  parent: string | null;
+  vmstate: boolean;
+}
+
+export interface NetIface {
+  iface: string;
+  type: string; // bridge | eth | bond | vlan | ...
+  active: boolean;
+  autostart: boolean;
+  cidr: string | null;
+  gateway: string | null;
+  ports: string[];
+  vlanAware: boolean;
+  slaves: string[];
+  bondMode: string | null;
+  vlanRaw: string | null;
+  vlanId: number | null;
+  comments: string | null;
+  method: string | null;
+}
+
+export interface IfaceSpec {
+  type: "bridge" | "vlan" | "bond";
+  iface: string;
+  cidr: string | null;
+  gateway: string | null;
+  autostart: boolean;
+  comments: string | null;
+  ports: string[];
+  vlanAware: boolean;
+  slaves: string[];
+  bondMode: string | null;
+  vlanRaw: string | null;
+  vlanId: number | null;
+}
+
 export interface UrlDownload {
   url: string;
   content: "iso" | "vztmpl";
@@ -253,5 +356,21 @@ export const api = {
   deleteBackupJob: (id: string) => request<{ ok: true }>("POST", `/api/backups/jobs/${enc(id)}/delete`),
   runBackup: (r: BackupRun) => request<{ task: string }>("POST", "/api/backups/run", r),
   restore: (r: RestoreSpec) => request<{ vmid: number; task: string }>("POST", "/api/backups/restore", r),
+  hardware: (vmid: number) => request<GuestHardware>("GET", `/api/guests/${vmid}/config`),
+  setHardware: (vmid: number, c: HardwareChange) => request<{ ok: true }>("POST", `/api/guests/${vmid}/config`, c),
+  resizeDisk: (vmid: number, disk: string, growGb: number) => request<{ task: string | null }>("POST", `/api/guests/${vmid}/resize`, { disk, growGb }),
+  saveNic: (vmid: number, n: NicSpec) => request<{ ok: true }>("POST", `/api/guests/${vmid}/nets`, n),
+  deleteNic: (vmid: number, key: string) => request<{ ok: true }>("POST", `/api/guests/${vmid}/nets/${enc(key)}/delete`),
+  snapshots: (vmid: number) => request<{ snapshots: SnapshotInfo[]; current: string | null }>("GET", `/api/guests/${vmid}/snapshots`),
+  takeSnapshot: (vmid: number, name: string, description: string, vmstate: boolean) => request<{ task: string }>("POST", `/api/guests/${vmid}/snapshots`, { name, description, vmstate }),
+  rollbackSnapshot: (vmid: number, name: string) => request<{ task: string }>("POST", `/api/guests/${vmid}/snapshots/${enc(name)}/rollback`),
+  deleteSnapshot: (vmid: number, name: string) => request<{ task: string }>("POST", `/api/guests/${vmid}/snapshots/${enc(name)}/delete`),
+  clone: (vmid: number, name: string, storage: string | null, linked: boolean) => request<{ vmid: number; task: string; full: boolean }>("POST", `/api/guests/${vmid}/clone`, { name, storage, linked }),
+  screen: (vmid: number) => request<{ id: string; password: string }>("POST", `/api/guests/${vmid}/vnc`),
+  network: () => request<{ interfaces: NetIface[]; changes: string | null }>("GET", "/api/network"),
+  saveIface: (existing: string | null, spec: IfaceSpec) => request<{ ok: true }>("POST", existing ? `/api/network/${enc(existing)}` : "/api/network", spec),
+  deleteIface: (iface: string, confirm?: string) => request<{ ok: true }>("POST", `/api/network/${enc(iface)}/delete`, { confirm }),
+  applyNetwork: () => request<{ task: string }>("POST", "/api/network/apply"),
+  revertNetwork: () => request<{ ok: true }>("POST", "/api/network/revert"),
   power: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => request<{ task: string }>("POST", `/api/guests/${vmid}/power`, { action }),
 };

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Rule } from "@papercliped-engine/automations";
 import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
-import { api, ApiError, type MachineSpec, type RestoreSpec, type VmSpec } from "./api.ts";
+import { api, ApiError, type HardwareChange, type MachineSpec, type RestoreSpec, type VmSpec } from "./api.ts";
 import { demoBackend, liveBackend, parseBackupName, type Backend } from "./backend.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
@@ -32,6 +32,10 @@ interface Engine {
   running: { upid: string; label: string }[];
   /** Changes whenever a watched task finishes; storage views refetch on it. */
   contentVersion: number;
+  /** Changes CPU, memory, name or options. Proxmox checks the user's permission; the demo updates the machine. */
+  changeHardware: (vmid: number, c: HardwareChange) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Clones a machine into a new one; Pin reports when the copy is done. */
+  cloneMachine: (vmid: number, name: string, storage: string | null) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   /** Restores a backup, as a new machine or over the original. Proxmox does the work; Pin reports when it's done. */
   restoreBackup: (spec: RestoreSpec) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   createVm: (spec: VmSpec & { org: string | null }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
@@ -104,7 +108,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const [running, setRunning] = useState<{ upid: string; label: string }[]>([]);
   const [contentVersion, setContentVersion] = useState(0);
   const storageRef = useRef<HostStorage[]>([]);
-  const backend = useMemo<Backend>(() => (live ? liveBackend : demoBackend(() => storageRef.current)), [live]); // eslint-disable-line react-hooks/exhaustive-deps
+  const guestsRef = useRef<Guest[]>([]);
+  const backend = useMemo<Backend>(() => (live ? liveBackend : demoBackend(() => storageRef.current, () => guestsRef.current)), [live]); // eslint-disable-line react-hooks/exhaustive-deps
   const watchTask = useCallback(
     (upid: string | null, label: string) => {
       if (!upid) {
@@ -116,7 +121,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       const tick = () =>
         backend.task(upid).then(
           (t) => {
-            if (t.status === "running" && tries++ < 2400) return void setTimeout(tick, 1500);
+            if (t.status === "running" && tries++ < 2400) return void setTimeout(tick, tries < 10 ? 700 : 1500);
             setRunning((r) => r.filter((x) => x.upid !== upid));
             setContentVersion((n) => n + 1);
             setRefreshTick((n) => n + 1);
@@ -128,7 +133,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
             else setRunning((r) => r.filter((x) => x.upid !== upid));
           },
         );
-      setTimeout(tick, 800);
+      setTimeout(tick, 500);
     },
     [backend],
   );
@@ -190,6 +195,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       return { ...d, pin: { ...pin, log: [{ id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), kind, text }, ...pin.log].slice(0, 200) } };
     });
   storageRef.current = live ? storage : data.host.storage;
+  guestsRef.current = live ? guests ?? [] : data.guests;
   const view = useMemo<EngineData>(() => (live ? { ...data, guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage]);
 
   const value = useMemo<Engine>(
@@ -201,6 +207,31 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       watchTask,
       running,
       contentVersion,
+      changeHardware: async (vmid, c) => {
+        try {
+          await backend.setHardware(vmid, c);
+          if (live) setRefreshTick((n) => n + 1);
+          else setData((d) => ({ ...d, guests: d.guests.map((g) => (g.vmid === vmid ? { ...g, ...(c.cores !== undefined ? { cores: c.cores } : {}), ...(c.memoryMb !== undefined ? { memMax: c.memoryMb * 1024 ** 2 } : {}), ...(c.name !== undefined ? { name: c.name } : {}), ...(c.tags !== undefined ? { tags: c.tags } : {}), tasks: [{ id: `${vmid}-${Date.now()}`, what: "Update configuration", at: new Date().toISOString(), ok: true }, ...(g.tasks ?? [])].slice(0, 30) } : g)) }));
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+        }
+      },
+      cloneMachine: async (vmid, name, storage) => {
+        try {
+          const src = view.guests.find((g) => g.vmid === vmid);
+          if (!live && view.guests.some((g) => g.name === name)) return { ok: false, error: "A machine with that name exists." };
+          const r = await backend.clone(vmid, name, storage, false);
+          watchTask(r.task, `Clone ${src?.name ?? `#${vmid}`} to ${name}`);
+          if (!live && src) {
+            const at = new Date().toISOString();
+            setData((d) => ({ ...d, guests: [...d.guests, { ...src, vmid: r.vmid, name, status: "stopped", cpuPct: 0, memUsed: 0, protected: false, snapshots: [], tasks: [{ id: `${r.vmid}-clone`, what: `Clone of ${src.name}`, at, ok: true }] }] }));
+          }
+          return { ok: true, vmid: r.vmid };
+        } catch (e) {
+          return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+        }
+      },
       restoreBackup: async (spec) => {
         try {
           const r = await backend.restore(spec);

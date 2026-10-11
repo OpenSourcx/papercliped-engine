@@ -61,27 +61,6 @@ export function StoragePage() {
   );
 }
 
-export function NetworkPage() {
-  const { data } = useEngine();
-  return (
-    <PageFrame width="4xl">
-      <PageHeader title="Network" subtitle="Bridges and network cards on this device." />
-      <Card className="divide-y divide-line">
-        {data.host.network.map((n) => (
-          <div key={n.name} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-            <Cable className="h-4 w-4 text-ink-3" />
-            <span className="font-mono text-[14px] w-20">{n.name}</span>
-            <Chip>{n.type === "bridge" ? "Linux bridge" : n.type === "nic" ? "Network card" : "VLAN"}</Chip>
-            <span className="flex-1 text-[13px] text-ink-2 font-mono">{n.cidr ?? ""}{n.gateway ? ` via ${n.gateway}` : ""}{n.ports ? ` · ports ${n.ports}` : ""}</span>
-            {n.active ? <Status kind="good" label="Active" /> : <Status kind="off" label="Unused" />}
-          </div>
-        ))}
-      </Card>
-      <p className="text-[12px] text-ink-3 mt-3">Organization containers join the bridge with the firewall on. Isolating them on their own VLAN keeps them away from the host's management network.</p>
-    </PageFrame>
-  );
-}
-
 export function Summary() {
   const { host, setup, data } = useEngine();
   const base = useMemo(() => ({ cpu: Math.max(0.02, host.cpuPct / 100), maxcpu: host.cpus, mem: host.memUsed, maxmem: host.memTotal, net: 180_000, disk: 400_000, running: true }), []); // eslint-disable-line react-hooks/exhaustive-deps

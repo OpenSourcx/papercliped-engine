@@ -16,14 +16,18 @@ import WebSocket, { WebSocketServer } from "ws";
 export interface ConsoleTarget {
   url: string; // wss://.../vncwebsocket?port=&vncticket=
   headers: Record<string, string>; // the user's PVEAuthCookie
-  handshake: string; // "<user>:<vncticket>\n"
+  /** termproxy's "<user>:<vncticket>\n" line, answered with "OK". VNC sessions have none (the browser does RFB auth). */
+  handshake?: string;
+  /** Relay output as binary frames (VNC) instead of text (terminals). */
+  binary?: boolean;
 }
 
 /** Something that speaks WebSocket to Proxmox: the real `ws` client, or a fake in tests. */
 export type Connect = (target: ConsoleTarget) => WebSocket;
 
 export function realConnect(caPem?: string): Connect {
-  return (t) => new WebSocket(t.url, ["binary"], { headers: t.headers, ca: caPem, maxPayload: 1024 * 1024, handshakeTimeout: 15_000 });
+  // A VNC framebuffer update for a large screen is several megabytes in one frame, so the Proxmox side allows big frames.
+  return (t) => new WebSocket(t.url, ["binary"], { headers: t.headers, ca: caPem, maxPayload: 64 * 1024 * 1024, handshakeTimeout: 15_000 });
 }
 
 const MAX_FRAME = 64 * 1024;
@@ -39,7 +43,7 @@ export function createConsoleRelay(opts: {
 
   return function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
     const url = new URL(req.url ?? "/", "http://epaperclip");
-    if (!/^\/api\/console\/(node|guests\/\d+)$/.test(url.pathname)) {
+    if (!/^\/api\/(console\/(node|guests\/\d+)|vnc\/[\w-]{16,64})$/.test(url.pathname)) {
       socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       return;
     }
@@ -52,10 +56,12 @@ export function createConsoleRelay(opts: {
       let pve: WebSocket | null = null;
       let ready = false;
       const pending: (Buffer | string)[] = [];
+      let binary = url.pathname.startsWith("/api/vnc/");
       const fail = (msg: string) => {
         if (browser.readyState === WebSocket.OPEN) {
-          browser.send(`\r\n\x1b[31m${msg}\x1b[0m\r\n`);
-          browser.close(4000, msg.slice(0, 100));
+          // Terminals show the reason inline; a VNC stream is binary, so it only gets the close reason.
+          if (!binary) browser.send(`\r\n\x1b[31m${msg}\x1b[0m\r\n`);
+          browser.close(4000, Buffer.byteLength(msg) > 120 ? msg.slice(0, 100) : msg);
         }
         pve?.terminate();
       };
@@ -74,10 +80,19 @@ export function createConsoleRelay(opts: {
       opts.authorize(req, url).then(
         (target) => {
           if (browser.readyState !== WebSocket.OPEN) return;
+          binary = !!target.binary;
           pve = opts.connect(target);
-          let greeted = false;
-          pve.on("open", () => pve!.send(target.handshake));
-          pve.on("message", (data) => {
+          let greeted = !target.handshake;
+          pve.on("open", () => {
+            if (target.handshake) return void pve!.send(target.handshake);
+            ready = true;
+            for (const f of pending.splice(0)) pve!.send(f);
+          });
+          pve.on("message", (data, isBinary) => {
+            if (target.binary) {
+              if (browser.readyState === WebSocket.OPEN) browser.send(data, { binary: isBinary || true });
+              return;
+            }
             const text = data.toString();
             // Proxmox answers the handshake with "OK" before any terminal output.
             if (!greeted) {

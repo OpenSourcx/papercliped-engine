@@ -57,7 +57,7 @@ function fakePve() {
     const admin = users[user].admin;
     if (path === "/version") return ok({ version: "9.0.3" });
     if (path === "/cluster/resources" && u.searchParams.get("type") === "storage") return ok([{ id: "storage/pve/local", type: "storage", node: "pve", storage: "local", plugintype: "dir", content: "iso,vztmpl,backup", status: "available", disk: 40, maxdisk: 100 }, { id: "storage/pve/drive2", type: "storage", node: "pve", storage: "drive2", plugintype: "dir", content: "images,rootdir", status: "available", disk: 5, maxdisk: 2000 }, { id: "storage/other/x", type: "storage", node: "other", storage: "x" }]);
-    if (path === "/cluster/resources") return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, { id: "node/pve", type: "node", node: "pve" }]);
+    if (path === "/cluster/resources") return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, { id: "qemu/102", type: "qemu", vmid: 102, node: "pve", name: "lab", status: "running" }, { id: "node/pve", type: "node", node: "pve" }]);
     if (path === "/nodes/pve/status") return admin ? ok({ cpu: 0.1, memory: { used: 1, total: 2 } }) : { status: 403, body: "" };
     if (path === "/nodes/pve/rrddata") return admin ? ok([{ time: 1, cpu: 0.2 }]) : { status: 403, body: "" };
     if (path === "/nodes/pve/lxc/101/rrddata") return ok([{ time: 1, cpu: 0.5, q: u.search }]);
@@ -82,6 +82,20 @@ function fakePve() {
     if (path.startsWith("/cluster/backup/") && (req.method === "PUT" || req.method === "DELETE")) return admin ? ok(null) : { status: 403, body: "" };
     if (path === "/nodes/pve/vzdump" && req.method === "POST") return admin ? ok("UPID:pve:vzdump") : { status: 403, body: "" };
     if (path === "/nodes/pve/lxc" && req.method === "POST" && new URLSearchParams(req.body).get("restore") === "1") return ok("UPID:pve:restore");
+    if (path === "/nodes/pve/network" && req.method === "GET") return admin ? { status: 200, body: JSON.stringify({ data: [{ iface: "vmbr0", type: "bridge", active: 1, autostart: 1, cidr: "192.168.1.10/24", gateway: "192.168.1.1", bridge_ports: "nic0" }, { iface: "nic0", type: "eth", active: 1 }], changes: "--- /etc/network/interfaces\n+++ new\n+auto vmbr1" }) } : { status: 403, body: "" };
+    if (path === "/nodes/pve/network" && req.method === "POST") return admin ? ok(null) : { status: 403, body: "" };
+    if (path === "/nodes/pve/network" && req.method === "PUT") return ok("UPID:pve:netapply");
+    if (path === "/nodes/pve/network" && req.method === "DELETE") return ok(null);
+    if (path.startsWith("/nodes/pve/network/") && (req.method === "PUT" || req.method === "DELETE")) return ok(null);
+    if (path === "/nodes/pve/lxc/101/config" && req.method === "GET") return ok({ hostname: "web", cores: 2, memory: 2048, swap: 512, rootfs: "local-lvm:vm-101-disk-0,size=8G", net0: "name=eth0,bridge=vmbr0,hwaddr=BC:24:11:00:00:01,ip=dhcp,type=veth" });
+    if (path === "/nodes/pve/lxc/101/config" && req.method === "PUT") return admin ? ok(null) : { status: 403, body: "" };
+    if (path === "/nodes/pve/lxc/101/resize" && req.method === "PUT") return ok("UPID:pve:resize");
+    if (path === "/nodes/pve/lxc/101/snapshot" && req.method === "GET") return ok([{ name: "before-upgrade", description: "safe", snaptime: 100 }, { name: "current", parent: "before-upgrade" }]);
+    if (path === "/nodes/pve/lxc/101/snapshot" && req.method === "POST") return ok("UPID:pve:snap");
+    if (path.startsWith("/nodes/pve/lxc/101/snapshot/") && path.endsWith("/rollback")) return ok("UPID:pve:rollback");
+    if (path.startsWith("/nodes/pve/lxc/101/snapshot/") && req.method === "DELETE") return ok("UPID:pve:delsnap");
+    if (path === "/nodes/pve/lxc/101/clone" && req.method === "POST") return ok("UPID:pve:clone");
+    if (path === "/nodes/pve/qemu/102/vncproxy" && req.method === "POST") return ok({ port: "5902", ticket: "PVEVNC:screen", user, upid: "UPID:pve:1:2:3:vncproxy:102:x:", password: "onetimepw" });
     if (path === "/nodes/pve/lxc/101/status/shutdown") return admin ? ok("UPID:pve:1") : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
@@ -119,6 +133,17 @@ beforeEach(async () => {
   fakeConsole.on("connection", (ws, req) => {
     const rec = { url: req.url ?? "", cookie: req.headers.cookie, frames: [] as string[] };
     consoleSeen.push(rec);
+    if (rec.url.includes("/qemu/")) {
+      // A VNC server speaks first, in binary.
+      ws.send(Buffer.from("RFB 003.008\n"));
+      ws.on("message", (m) => {
+        const b = m as Buffer;
+        // "big" asks for a full-screen-sized framebuffer update, larger than any terminal frame.
+        if (b.toString() === "big") return ws.send(Buffer.alloc(3 * 1024 * 1024, 7));
+        ws.send(Buffer.concat([Buffer.from("got:"), b]));
+      });
+      return;
+    }
     ws.on("message", (m) => {
       const t = m.toString();
       rec.frames.push(t);
@@ -235,7 +260,7 @@ describe("acting as the signed-in user", () => {
     const body = (await r.json()) as { version: string; status: unknown; resources: { vmid: number }[] };
     expect(body.version).toBe("9.0.3");
     expect(body.status).not.toBeNull();
-    expect(body.resources.map((g) => g.vmid)).toEqual([101]);
+    expect(body.resources.map((g) => g.vmid)).toEqual([101, 102]);
     expect((body as unknown as { storage: { storage: string; used: number; total: number }[] }).storage).toEqual([
       { storage: "local", plugintype: "dir", content: "iso,vztmpl,backup", status: "available", used: 40, total: 100, shared: false },
       { storage: "drive2", plugintype: "dir", content: "images,rootdir", status: "available", used: 5, total: 2000, shared: false },
@@ -249,7 +274,7 @@ describe("acting as the signed-in user", () => {
     const c = await signIn("lee");
     const host = (await (await fetch(base + "/api/host", { headers: { Cookie: c } })).json()) as { status: unknown; resources: unknown[] };
     expect(host.status).toBeNull();
-    expect(host.resources).toHaveLength(1);
+    expect(host.resources).toHaveLength(2);
     expect((await fetch(base + "/api/stats/node", { headers: { Cookie: c } })).status).toBe(403);
     const p = await post("/api/guests/101/power", { action: "shutdown" }, { Cookie: c });
     expect(p.status).toBe(403);
@@ -486,6 +511,93 @@ describe("backups", () => {
   });
 });
 
+describe("host network", () => {
+  it("lists interfaces with the pending diff", async () => {
+    const c = await signIn();
+    const r = (await (await fetch(base + "/api/network", { headers: { Cookie: c } })).json()) as { interfaces: { iface: string; ports: string[] }[]; changes: string };
+    expect(r.interfaces.map((i) => i.iface)).toEqual(["nic0", "vmbr0"]);
+    expect(r.interfaces[1]).toMatchObject({ cidr: "192.168.1.10/24", gateway: "192.168.1.1", ports: ["nic0"], active: true });
+    expect(r.changes).toContain("+auto vmbr1");
+  });
+
+  it("creates, edits, applies and reverts, as the user", async () => {
+    const c = await signIn();
+    expect((await post("/api/network", { type: "bridge", iface: "vmbr1", cidr: "10.10.0.1/24", ports: "", vlanAware: true }, { Cookie: c })).status).toBe(201);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ type: "bridge", iface: "vmbr1", cidr: "10.10.0.1/24", bridge_vlan_aware: "1" });
+    expect((await post("/api/network/vmbr1", { type: "bridge", ports: "nic1" }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("delete")).toBe("cidr,gateway,comments");
+    expect(await (await post("/api/network/apply", {}, { Cookie: c })).json()).toEqual({ task: "UPID:pve:netapply" });
+    expect((await post("/api/network/revert", {}, { Cookie: c })).status).toBe(200);
+    expect((await post("/api/network", { type: "bridge", iface: "eth9" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/network", { type: "bridge", iface: "vmbr2" }, { Cookie: await signIn("lee") })).status).toBe(403);
+  });
+
+  it("asks for the name before deleting the interface with the gateway", async () => {
+    const c = await signIn();
+    const r = await post("/api/network/vmbr0/delete", {}, { Cookie: c });
+    expect(r.status).toBe(409);
+    expect((await post("/api/network/vmbr0/delete", { confirm: "vmbr0" }, { Cookie: c })).status).toBe(200);
+    expect((await post("/api/network/nic0/delete", {}, { Cookie: c })).status).toBe(200);
+  });
+});
+
+describe("machine hardware, snapshots and clones", () => {
+  it("reads a machine's hardware", async () => {
+    const c = await signIn();
+    const hw = (await (await fetch(base + "/api/guests/101/config", { headers: { Cookie: c } })).json()) as { disks: unknown[] };
+    expect(hw).toMatchObject({ type: "lxc", name: "web", cores: 2, memoryMb: 2048, swapMb: 512, status: "running" });
+    expect(hw.disks[0]).toMatchObject({ key: "rootfs", sizeGb: 8 });
+  });
+
+  it("changes CPU, memory and options within range", async () => {
+    const c = await signIn();
+    expect((await post("/api/guests/101/config", { cores: 4, memoryMb: 4096, onboot: true, tags: ["web", "prod"] }, { Cookie: c })).status).toBe(200);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ cores: "4", memory: "4096", onboot: "1", tags: "web;prod" });
+    expect((await post("/api/guests/101/config", { name: "web-2" }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("hostname")).toBe("web-2");
+    expect((await post("/api/guests/101/config", { cores: 0 }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/guests/101/config", { tags: ["a;b"] }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/guests/101/config", { evil: "1" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/guests/101/config", { cores: 2 }, { Cookie: await signIn("lee") })).status).toBe(403);
+  });
+
+  it("grows disks and edits network devices without losing the MAC", async () => {
+    const c = await signIn();
+    expect((await post("/api/guests/101/resize", { disk: "rootfs", growGb: 10 }, { Cookie: c })).status).toBe(200);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ disk: "rootfs", size: "+10G" });
+    expect((await post("/api/guests/101/resize", { disk: "../x", growGb: 10 }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/guests/101/nets", { key: "net0", bridge: "vmbr1", ip: "10.0.0.5/24", gw: "10.0.0.1" }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("net0")).toBe("name=eth0,bridge=vmbr1,hwaddr=BC:24:11:00:00:01,ip=10.0.0.5/24,type=veth,firewall=1,gw=10.0.0.1");
+    expect((await post("/api/guests/101/nets", { bridge: "vmbr0" }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("net1")).toBe("name=eth1,bridge=vmbr0,firewall=1,ip=dhcp,type=veth");
+    expect((await post("/api/guests/101/nets/net0/delete", {}, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("delete")).toBe("net0");
+    expect((await post("/api/guests/101/nets", { key: "net7", bridge: "vmbr0" }, { Cookie: c })).status).toBe(404);
+  });
+
+  it("lists, takes, rolls back and deletes snapshots", async () => {
+    const c = await signIn();
+    expect(await (await fetch(base + "/api/guests/101/snapshots", { headers: { Cookie: c } })).json()).toEqual({ snapshots: [{ name: "before-upgrade", description: "safe", time: 100, parent: null, vmstate: false }], current: "before-upgrade" });
+    expect(await (await post("/api/guests/101/snapshots", { name: "pre-update", description: "x" }, { Cookie: c })).json()).toEqual({ task: "UPID:pve:snap" });
+    expect((await post("/api/guests/101/snapshots", { name: "1bad" }, { Cookie: c })).status).toBe(400);
+    expect(await (await post("/api/guests/101/snapshots/before-upgrade/rollback", {}, { Cookie: c })).json()).toEqual({ task: "UPID:pve:rollback" });
+    expect(await (await post("/api/guests/101/snapshots/before-upgrade/delete", {}, { Cookie: c })).json()).toEqual({ task: "UPID:pve:delsnap" });
+  });
+
+  it("clones as a full copy unless the source is a template", async () => {
+    const c = await signIn();
+    const r = await post("/api/guests/101/clone", { name: "web-copy", linked: true, storage: "local-lvm" }, { Cookie: c });
+    expect(await r.json()).toEqual({ vmid: 106, task: "UPID:pve:clone", full: true });
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ newid: "106", hostname: "web-copy", full: "1", storage: "local-lvm" });
+    expect((await post("/api/guests/101/clone", { name: "Bad Name" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("only opens screens for running VMs", async () => {
+    const c = await signIn();
+    expect((await post("/api/guests/101/vnc", {}, { Cookie: c })).status).toBe(400);
+  });
+});
+
 describe("live consoles", () => {
   const open = (path: string, headers: Record<string, string>) =>
     new Promise<{ ws: WebSocket; out: string[]; closed: Promise<number> }>((resolve, reject) => {
@@ -531,6 +643,36 @@ describe("live consoles", () => {
     const stopped = await open("/api/console/guests/999", { Cookie: s, Origin: base });
     await stopped.closed;
     expect(stopped.out.join("")).toContain("Unknown machine");
+  });
+
+  it("relays a VM's screen once, for the session that asked, in binary", async () => {
+    const c = await signIn();
+    const r = await post("/api/guests/102/vnc", {}, { Cookie: c });
+    const { id, password } = (await r.json()) as { id: string; password: string };
+    expect(password).toBe("onetimepw");
+    expect(JSON.stringify({ id, password })).not.toContain("PVEVNC");
+    const other = await signIn("lee");
+    await expect(open(`/api/vnc/${id}`, { Cookie: other, Origin: base }).then((x) => x.closed)).resolves.toBe(4000);
+    const r2 = await post("/api/guests/102/vnc", {}, { Cookie: c });
+    const { id: id2 } = (await r2.json()) as { id: string };
+    const frames: Buffer[] = [];
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const w = new WebSocket(base.replace("http", "ws") + `/api/vnc/${id2}`, { headers: { Cookie: c, Origin: base } });
+      w.on("message", (m, isBinary) => isBinary && frames.push(m as Buffer));
+      w.on("open", () => resolve(w));
+      w.on("error", reject);
+    });
+    ws.send(Buffer.from([1, 2, 3]));
+    await until(() => frames.length >= 2);
+    expect(frames[0].toString()).toBe("RFB 003.008\n");
+    expect([...frames[1]]).toEqual([...Buffer.from("got:"), 1, 2, 3]);
+    expect(consoleSeen.at(-1)!.url).toBe("/api2/json/nodes/pve/qemu/102/vncwebsocket?port=5902&vncticket=PVEVNC%3Ascreen");
+    ws.send(Buffer.from("big"));
+    await until(() => frames.length >= 3);
+    expect(frames[2].length).toBe(3 * 1024 * 1024);
+    ws.close();
+    // Used once: the same id can't be replayed.
+    await expect(open(`/api/vnc/${id2}`, { Cookie: c, Origin: base }).then((x) => x.closed)).resolves.toBe(4000);
   });
 
   it("opens the host shell for users Proxmox allows", async () => {

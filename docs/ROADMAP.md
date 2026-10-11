@@ -63,9 +63,10 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Task log with each task's output; Pin notifies when downloads, uploads and creates finish
 - [x] Virtual machines from an ISO, with Proxmox's wizard defaults per OS type (Windows 11 gets UEFI, Secure Boot keys and TPM 2.0)
 - [x] Backups: schedules (create, edit, enable, delete), back up now, restore as a new machine or over the original, a Backups tab on every machine
-- [ ] Network: bridges, VLANs, apply configuration
-- [ ] Graphical (noVNC) consoles for VMs without a serial port
-- [ ] Machine hardware editing (disks, NICs, CPU, memory), snapshots and clones on live machines
+- [x] Network: bridges, VLANs and bonds, staged with a diff, applied or reverted, with a guard on the interface carrying the gateway
+- [x] Graphical VM consoles in the browser (noVNC through a one-time, session-bound relay), with Ctrl+Alt+Del, fit and full screen
+- [x] Machine hardware editing: cores, sockets, memory, swap, growing disks, adding and editing network devices (MAC kept), name, tags, notes, start at boot
+- [x] Snapshots (take, with memory for VMs, roll back, delete) and full clones on live machines
 - [ ] Firewall, users and permissions (the IAC sync backend), certificates, disks and ZFS, HA and replication
 - [x] Serve the console on the host (port 443), with the stock Proxmox UI kept on 8006 as the emergency console
 

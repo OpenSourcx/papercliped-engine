@@ -114,6 +114,38 @@ export interface BackupJob {
   node?: string;
 }
 
+export interface NetworkInterface {
+  iface: string;
+  type: string; // bridge | eth | bond | vlan | OVSBridge | alias | unknown ...
+  active?: number;
+  autostart?: number;
+  method?: string; // static | manual | dhcp
+  cidr?: string;
+  address?: string;
+  netmask?: string;
+  gateway?: string;
+  cidr6?: string;
+  gateway6?: string;
+  bridge_ports?: string;
+  bridge_vlan_aware?: number;
+  slaves?: string;
+  bond_mode?: string;
+  "vlan-raw-device"?: string;
+  "vlan-id"?: number;
+  comments?: string;
+  mtu?: number;
+  exists?: number;
+  families?: string[];
+}
+
+export interface Snapshot {
+  name: string; // "current" is the live state
+  description?: string;
+  snaptime?: number;
+  parent?: string;
+  vmstate?: number;
+}
+
 export interface TaskEntry {
   upid: string;
   type: string; // vzdump, qmstart, download, imgcopy, aptupdate ...
@@ -261,6 +293,11 @@ export class ProxmoxClient {
   }
 
   async call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return (await this.callFull<T>(method, path, params)).data;
+  }
+
+  /** Like call, but also returns the extra top-level fields some endpoints add next to `data` (e.g. `changes`). */
+  async callFull<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | undefined>): Promise<{ data: T; extra: Record<string, unknown> }> {
     const entries = Object.entries(params ?? {}).filter((e): e is [string, string | number | boolean] => e[1] !== undefined);
     const form = new URLSearchParams(entries.map(([k, v]): [string, string] => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)])).toString();
     const withQuery = method === "GET" || method === "DELETE";
@@ -282,7 +319,8 @@ export class ProxmoxClient {
       const detail = parsed.errors ? Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join("; ") : parsed.message;
       throw new ProxmoxError(`Proxmox ${method} ${path} failed (${res.status})${detail ? `: ${detail}` : ""}`, res.status, detail ? detail.trim() : null);
     }
-    return parsed.data as T;
+    const { data, ...extra } = parsed as { data?: T } & Record<string, unknown>;
+    return { data: data as T, extra };
   }
 
   version() {
@@ -426,6 +464,74 @@ export class ProxmoxClient {
   /** Backs up guests now. Returns the task id. */
   vzdump(node: string, params: Record<string, string | number | boolean | undefined>) {
     return this.call<string>("POST", `/nodes/${seg(node)}/vzdump`, params);
+  }
+
+  /** The node's network interfaces, plus the diff of changes written but not applied yet (Proxmox's "pending"). */
+  async network(node: string): Promise<{ interfaces: NetworkInterface[]; changes: string | null }> {
+    const r = await this.callFull<NetworkInterface[]>("GET", `/nodes/${seg(node)}/network`);
+    return { interfaces: r.data ?? [], changes: typeof r.extra.changes === "string" && r.extra.changes ? r.extra.changes : null };
+  }
+
+  createInterface(node: string, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<null>("POST", `/nodes/${seg(node)}/network`, params);
+  }
+
+  updateInterface(node: string, iface: string, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<null>("PUT", `/nodes/${seg(node)}/network/${seg(iface)}`, params);
+  }
+
+  deleteInterface(node: string, iface: string) {
+    return this.call<null>("DELETE", `/nodes/${seg(node)}/network/${seg(iface)}`);
+  }
+
+  /** Applies pending network changes (ifreload). Returns a task id. */
+  applyNetwork(node: string) {
+    return this.call<string>("PUT", `/nodes/${seg(node)}/network`);
+  }
+
+  revertNetwork(node: string) {
+    return this.call<null>("DELETE", `/nodes/${seg(node)}/network`);
+  }
+
+  /** A guest's configuration (cores, memory, disks, network devices ...). */
+  guestConfig(node: string, type: GuestType, vmid: number) {
+    return this.call<Record<string, string | number>>("GET", `/nodes/${seg(node)}/${type}/${seg(vmid)}/config`);
+  }
+
+  /** Changes a guest's configuration. PUT is synchronous for both containers and VMs. */
+  setGuestConfig(node: string, type: GuestType, vmid: number, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<string | null>("PUT", `/nodes/${seg(node)}/${type}/${seg(vmid)}/config`, params);
+  }
+
+  /** Grows a disk, e.g. size "+10G". Disks can't shrink. */
+  resizeDisk(node: string, type: GuestType, vmid: number, disk: string, size: string) {
+    return this.call<string | null>("PUT", `/nodes/${seg(node)}/${type}/${seg(vmid)}/resize`, { disk, size });
+  }
+
+  snapshots(node: string, type: GuestType, vmid: number) {
+    return this.call<Snapshot[]>("GET", `/nodes/${seg(node)}/${type}/${seg(vmid)}/snapshot`);
+  }
+
+  createSnapshot(node: string, type: GuestType, vmid: number, name: string, description?: string, vmstate?: boolean) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/snapshot`, { snapname: name, description, vmstate: type === "qemu" ? vmstate : undefined });
+  }
+
+  rollbackSnapshot(node: string, type: GuestType, vmid: number, name: string) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/snapshot/${seg(name)}/rollback`);
+  }
+
+  deleteSnapshot(node: string, type: GuestType, vmid: number, name: string) {
+    return this.call<string>("DELETE", `/nodes/${seg(node)}/${type}/${seg(vmid)}/snapshot/${seg(name)}`);
+  }
+
+  /** Clones a guest into a new one. Full clones copy every disk; linked clones need a template. */
+  cloneGuest(node: string, type: GuestType, vmid: number, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/clone`, params);
+  }
+
+  /** Opens a VNC proxy for a VM's screen, for noVNC over vncwebsocket. With generate-password, VNC auth uses `password`. */
+  vncproxy(node: string, vmid: number) {
+    return this.call<{ port: number | string; ticket: string; user: string; upid: string; password?: string; cert?: string }>("POST", `/nodes/${seg(node)}/qemu/${seg(vmid)}/vncproxy`, { websocket: true, "generate-password": true });
   }
 
   /** Pools the caller can see. */
