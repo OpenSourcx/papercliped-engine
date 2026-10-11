@@ -128,6 +128,15 @@ ePaperclip is not a guest on the machine it manages. It runs on the Proxmox host
 
 Every ePaperclip user is also a real Proxmox user (for example `sam@pve`). ePaperclip is the source of truth: creating, changing or removing a user, their organization roles and their policies updates the matching Proxmox user, roles and ACLs, so access is the same in the console and in the stock Proxmox UI. Policies are allow or deny rules over actions and resources; each is mirrored as a Proxmox role. Organization access maps to the organization's pool. The console screens exist; the sync backend is planned and will run through the broker with its own narrowly scoped permission (`User.Modify` and `Permissions.Modify` on the relevant paths).
 
+## Firewall and network safety
+
+Both act as the signed-in user, so Proxmox's permissions decide who may change them. Two guards sit on top:
+
+- **Console lock-out.** Proxmox keeps its own interface (:8006) and SSH reachable when its firewall drops everything else, but not ePaperclip's port. Before turning the firewall on, switching an inbound policy away from accept, or removing or disabling a rule, the host service reads the datacenter and host rules and checks that an enabled inbound rule lets the console's port in. If not, it answers `409 lockout`, and the console offers to add one host rule that keeps the console reachable (or to continue anyway).
+- **Staged network changes.** Interface and SDN changes are written to Proxmox's pending configuration and shown as a diff. Nothing changes on the host until they are applied, and they can be reverted. Deleting the interface that carries the gateway needs its name typed, in the UI and in the service.
+
+Rules, options, aliases, IP sets, DNS and SDN fields are checked against narrow patterns before they reach Proxmox, and unknown option keys are refused.
+
 ## Connector access
 
 Each system-wide connector has an access list: `pin` and zero or more company IDs. Paperclip's existing connections model (applications, connections, profiles, bindings, policies, approvals) carries this; the new piece is the Pin principal and the per-company grant UI.

@@ -17,6 +17,7 @@ function fakePve() {
     "kai@pam": { password: "right", totp: "123456", admin: true },
   };
   const tickets = new Map<string, string>(); // ticket -> user
+  const fw = { cluster: { enable: 0, policy_in: "DROP" } as Record<string, unknown>, clusterRules: [] as Record<string, unknown>[], nodeRules: [] as Record<string, unknown>[] };
   const partial = new Map<string, string>();
   let n = 0;
   const seen: Parameters<Transport>[0][] = [];
@@ -96,6 +97,29 @@ function fakePve() {
     if (path.startsWith("/nodes/pve/lxc/101/snapshot/") && req.method === "DELETE") return ok("UPID:pve:delsnap");
     if (path === "/nodes/pve/lxc/101/clone" && req.method === "POST") return ok("UPID:pve:clone");
     if (path === "/nodes/pve/qemu/102/vncproxy" && req.method === "POST") return ok({ port: "5902", ticket: "PVEVNC:screen", user, upid: "UPID:pve:1:2:3:vncproxy:102:x:", password: "onetimepw" });
+    if (path === "/cluster/firewall/options" && req.method === "GET") return ok(fw.cluster);
+    if (path === "/cluster/firewall/options" && req.method === "PUT") return admin ? (Object.assign(fw.cluster, Object.fromEntries([...new URLSearchParams(req.body)].map(([k, v]) => [k, /^\d+$/.test(v) ? Number(v) : v]))), ok(null)) : { status: 403, body: "" };
+    if (path === "/nodes/pve/firewall/options" && req.method === "GET") return ok({ enable: 1 });
+    if (path === "/cluster/firewall/rules" && req.method === "GET") return ok(fw.clusterRules);
+    if (path === "/nodes/pve/firewall/rules" && req.method === "GET") return ok(fw.nodeRules);
+    if (path === "/nodes/pve/firewall/rules" && req.method === "POST") { const f = Object.fromEntries(new URLSearchParams(req.body)); fw.nodeRules.unshift({ ...f, enable: Number(f.enable), pos: 0 }); fw.nodeRules.forEach((r, i) => (r.pos = i)); return ok(null); }
+    if (path.startsWith("/nodes/pve/firewall/rules/") && (req.method === "PUT" || req.method === "DELETE")) return ok(null);
+    if (path === "/cluster/firewall/rules" && req.method === "POST") return ok(null);
+    if (path === "/cluster/firewall/macros") return ok([{ macro: "SSH", descr: "Secure Shell traffic" }]);
+    if (path === "/cluster/firewall/groups" && req.method === "GET") return ok([{ group: "webservers", comment: "HTTP and HTTPS" }]);
+    if (path === "/cluster/firewall/groups/webservers" && req.method === "GET") return ok([{ pos: 0, type: "in", action: "ACCEPT", macro: "HTTPS", enable: 1 }]);
+    if (path === "/cluster/firewall/aliases" && req.method === "POST") return ok(null);
+    if (path === "/cluster/firewall/ipset/lan" && req.method === "POST") return ok(null);
+    if (path === "/nodes/pve/lxc/101/firewall/rules" && req.method === "GET") return ok([{ pos: 0, type: "in", action: "ACCEPT", proto: "tcp", dport: "80", enable: 1, comment: "web" }]);
+    if (path === "/nodes/pve/firewall/log") return ok([{ n: 1, t: "0 5 - 11/Oct/2026:10:00:00 +0000 policy DROP: IN=vmbr0 SRC=1.2.3.4" }]);
+    if (path === "/nodes/pve/dns" && req.method === "GET") return ok({ search: "lan", dns1: "1.1.1.1", dns2: "9.9.9.9" });
+    if (path === "/nodes/pve/dns" && req.method === "PUT") return ok(null);
+    if (path === "/nodes/pve/hosts" && req.method === "GET") return ok({ data: "127.0.0.1 localhost\n", digest: "a".repeat(40) });
+    if (path === "/nodes/pve/hosts" && req.method === "POST") return new URLSearchParams(req.body).get("digest") === "b".repeat(40) ? { status: 500, body: JSON.stringify({ message: "detected modified configuration - file changed by other user? Try again.\n" }) } : ok(null);
+    if (path === "/cluster/sdn/zones" && req.method === "GET") return ok([{ zone: "orgs", type: "simple", dhcp: "dnsmasq", state: "new" }]);
+    if (path === "/cluster/sdn/vnets" && req.method === "GET") return ok([{ vnet: "northw", zone: "orgs", alias: "Northwind" }]);
+    if (path === "/cluster/sdn/vnets/northw/subnets" && req.method === "GET") return ok([{ subnet: "orgs-10.20.0.0-24", cidr: "10.20.0.0/24", gateway: "10.20.0.1", snat: 1, "dhcp-range": ["start-address=10.20.0.100,end-address=10.20.0.200"] }]);
+    if (path.startsWith("/cluster/sdn") && req.method !== "GET") return path === "/cluster/sdn" ? ok("UPID:pve:sdn") : ok(null);
     if (path === "/nodes/pve/lxc/101/status/shutdown") return admin ? ok("UPID:pve:1") : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
@@ -108,7 +132,7 @@ function fakePve() {
     uploads.push({ url: req.url, headers: req.headers, body: Buffer.concat(parts).toString() });
     return { status: 200, body: JSON.stringify({ data: "UPID:pve:up" }) };
   };
-  return { transport, seen, tickets, streamTransport, uploads };
+  return { transport, seen, tickets, streamTransport, uploads, fw };
 }
 
 let server: Server;
@@ -595,6 +619,101 @@ describe("machine hardware, snapshots and clones", () => {
   it("only opens screens for running VMs", async () => {
     const c = await signIn();
     expect((await post("/api/guests/101/vnc", {}, { Cookie: c })).status).toBe(400);
+  });
+});
+
+describe("firewall", () => {
+  it("refuses to turn on a drop firewall that would block this console, unless asked to keep it reachable", async () => {
+    const c = await signIn();
+    const r = await post("/api/firewall/datacenter/options", { enable: true }, { Cookie: c });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ code: "lockout" });
+    expect(pve.fw.cluster.enable).toBe(0);
+    expect((await post("/api/firewall/datacenter/options", { enable: true, keepConsole: true }, { Cookie: c })).status).toBe(200);
+    expect(pve.fw.nodeRules[0]).toMatchObject({ type: "in", action: "ACCEPT", proto: "tcp", dport: "443" });
+    expect(pve.fw.cluster.enable).toBe(1);
+    // Now removing that rule would lock us out again.
+    expect((await post("/api/firewall/host/rules/0/delete", {}, { Cookie: c })).status).toBe(409);
+    expect((await post("/api/firewall/host/rules/0", { enable: false }, { Cookie: c })).status).toBe(409);
+    expect((await post("/api/firewall/host/rules/0/delete", { ignoreLockout: true }, { Cookie: c })).status).toBe(200);
+  });
+
+  it("allows an accept policy without a console rule", async () => {
+    const c = await signIn();
+    expect((await post("/api/firewall/datacenter/options", { enable: true, policy_in: "ACCEPT" }, { Cookie: c })).status).toBe(200);
+  });
+
+  it("creates, edits, moves and lists rules at each level", async () => {
+    const c = await signIn();
+    expect((await post("/api/firewall/datacenter/rules", { type: "in", action: "ACCEPT", macro: "SSH", source: "+lan" }, { Cookie: c })).status).toBe(200);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ type: "in", action: "ACCEPT", enable: "1", macro: "SSH", source: "+lan" });
+    expect((await post("/api/firewall/host/rules/0", { moveto: 3 }, { Cookie: c })).status).toBe(200);
+    expect(new URLSearchParams(pve.seen.at(-1)!.body).get("moveto")).toBe("3");
+    const g = (await (await fetch(base + "/api/firewall/guest-101/rules", { headers: { Cookie: c } })).json()) as { rules: { dport: string }[] };
+    expect(g.rules[0]).toMatchObject({ pos: 0, type: "in", action: "ACCEPT", dport: "80", enable: true, comment: "web" });
+    expect(pve.seen.at(-1)!.url).toContain("/nodes/pve/lxc/101/firewall/rules");
+    const grp = (await (await fetch(base + "/api/firewall/group-webservers/rules", { headers: { Cookie: c } })).json()) as { rules: unknown[] };
+    expect(grp.rules).toHaveLength(1);
+    expect((await post("/api/firewall/datacenter/rules", { type: "in", action: "ACCEPT", dport: "22" }, { Cookie: c })).status).toBe(400);
+    expect((await fetch(base + "/api/firewall/host/aliases", { headers: { Cookie: c } })).status).toBe(404);
+    expect((await fetch(base + "/api/firewall/elsewhere/rules", { headers: { Cookie: c } })).status).toBe(404);
+  });
+
+  it("manages aliases, IP sets, groups and reads the log", async () => {
+    const c = await signIn();
+    expect((await post("/api/firewall/datacenter/aliases", { name: "lan", cidr: "192.168.1.0/24" }, { Cookie: c })).status).toBe(200);
+    expect((await post("/api/firewall/datacenter/ipsets/lan/entries", { cidr: "192.168.1.0/24" }, { Cookie: c })).status).toBe(200);
+    expect((await post("/api/firewall/datacenter/aliases", { name: "lan", cidr: "nope nope" }, { Cookie: c })).status).toBe(400);
+    expect(await (await fetch(base + "/api/firewall/datacenter/groups", { headers: { Cookie: c } })).json()).toEqual({ groups: [{ group: "webservers", comment: "HTTP and HTTPS" }] });
+    expect(await (await fetch(base + "/api/firewall/datacenter/macros", { headers: { Cookie: c } })).json()).toEqual({ macros: [{ macro: "SSH", descr: "Secure Shell traffic" }] });
+    const log = (await (await fetch(base + "/api/firewall/host/log", { headers: { Cookie: c } })).json()) as { lines: string[] };
+    expect(log.lines[0]).toContain("policy DROP");
+  });
+
+  it("leaves the decision to Proxmox's permissions", async () => {
+    const lee = await signIn("lee");
+    expect((await post("/api/firewall/datacenter/options", { enable: true, policy_in: "ACCEPT" }, { Cookie: lee })).status).toBe(403);
+  });
+});
+
+describe("DNS, hosts and SDN", () => {
+  it("reads and writes DNS", async () => {
+    const c = await signIn();
+    expect(await (await fetch(base + "/api/network/dns", { headers: { Cookie: c } })).json()).toEqual({ search: "lan", servers: ["1.1.1.1", "9.9.9.9"] });
+    expect((await post("/api/network/dns", { search: "home.lan", servers: ["192.168.1.1"] }, { Cookie: c })).status).toBe(200);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ search: "home.lan", dns1: "192.168.1.1", delete: "dns2,dns3" });
+    expect((await post("/api/network/dns", { search: "home.lan", servers: ["evil; rm"] }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("writes the hosts file with a digest so concurrent edits aren't lost", async () => {
+    const c = await signIn();
+    const h = (await (await fetch(base + "/api/network/hosts", { headers: { Cookie: c } })).json()) as { digest: string };
+    expect(h.digest).toBe("a".repeat(40));
+    expect((await post("/api/network/hosts", { data: "127.0.0.1 localhost\n", digest: h.digest }, { Cookie: c })).status).toBe(200);
+    const stale = await post("/api/network/hosts", { data: "x", digest: "b".repeat(40) }, { Cookie: c });
+    expect(stale.status).toBe(502);
+    expect(((await stale.json()) as { error: string }).error).toContain("modified");
+  });
+
+  it("lists zones, VNets and subnets with what's pending", async () => {
+    const c = await signIn();
+    const r = (await (await fetch(base + "/api/sdn", { headers: { Cookie: c } })).json()) as { zones: unknown[]; vnets: { subnets: unknown[] }[]; pending: number };
+    expect(r.zones[0]).toMatchObject({ zone: "orgs", type: "simple", state: "new" });
+    expect(r.vnets[0].subnets[0]).toMatchObject({ id: "orgs-10.20.0.0-24", cidr: "10.20.0.0/24", gateway: "10.20.0.1", snat: true });
+    expect(r.pending).toBe(1);
+  });
+
+  it("creates zones, VNets and subnets, then applies", async () => {
+    const c = await signIn();
+    expect((await post("/api/sdn/zones", { zone: "orgs", type: "simple", dhcp: true }, { Cookie: c })).status).toBe(201);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ zone: "orgs", type: "simple", ipam: "pve", dhcp: "dnsmasq" });
+    expect((await post("/api/sdn/vnets", { vnet: "northw", zone: "orgs", alias: "Northwind" }, { Cookie: c })).status).toBe(201);
+    expect((await post("/api/sdn/vnets/northw/subnets", { cidr: "10.20.0.0/24", gateway: "10.20.0.1", snat: true, dhcpStart: "10.20.0.100", dhcpEnd: "10.20.0.200" }, { Cookie: c })).status).toBe(201);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toEqual({ subnet: "10.20.0.0/24", type: "subnet", gateway: "10.20.0.1", snat: "1", "dhcp-range": "start-address=10.20.0.100,end-address=10.20.0.200" });
+    expect((await post("/api/sdn/vnets/northw/subnets/orgs-10.20.0.0-24/delete", {}, { Cookie: c })).status).toBe(200);
+    expect(await (await post("/api/sdn/apply", {}, { Cookie: c })).json()).toEqual({ task: "UPID:pve:sdn" });
+    expect((await post("/api/sdn/zones", { zone: "Bad_Zone", type: "simple" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/sdn/vnets", { vnet: "x", zone: "orgs", tag: 9000 }, { Cookie: c })).status).toBe(400);
   });
 });
 

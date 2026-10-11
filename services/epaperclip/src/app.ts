@@ -3,7 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
-import { checkIface, checkNic, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
+import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
+import { checkIface, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { SessionStore, type Session } from "./sessions.ts";
 
@@ -20,6 +21,8 @@ import { SessionStore, type Session } from "./sessions.ts";
 
 export interface AppDeps {
   pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport; streamTransport?: StreamTransport };
+  /** The port this console is served on, kept reachable when the firewall is turned on. */
+  consolePort?: number;
   /** How to reach Proxmox's console websockets; tests inject a fake. */
   connect?: Connect;
   /** Largest ISO or template upload accepted, in bytes. */
@@ -840,6 +843,104 @@ export function createApp(d: AppDeps) {
       }
     }
 
+    // ---- Host DNS and hosts file.
+    if (path === "/api/network/dns" || path === "/api/network/hosts") {
+      const node = encodeURIComponent(d.pve.node);
+      const which = path.endsWith("dns") ? "dns" : "hosts";
+      if (method === "GET") {
+        const out = await asUser(req, res, (pve) => pve.call<Record<string, unknown>>("GET", `/nodes/${node}/${which}`));
+        return sendJson(res, 200, which === "dns" ? { search: out.search ?? "", servers: [out.dns1, out.dns2, out.dns3].filter((x) => typeof x === "string" && x) } : { data: out.data ?? "", digest: out.digest ?? null });
+      }
+      if (method !== "POST") throw new HttpError(405, "method", "Method not allowed");
+      requireSameSite(req);
+      const b = await readJson(req);
+      if (which === "dns") {
+        const search = typeof b.search === "string" && /^[a-z0-9]([a-z0-9.-]{0,252})$/i.test(b.search) ? b.search : null;
+        if (!search) throw new HttpError(400, "bad_request", "The search domain looks like example.lan");
+        const servers = Array.isArray(b.servers) ? b.servers : [];
+        if (servers.length < 1 || servers.length > 3 || !servers.every((x) => typeof x === "string" && (/^(\d{1,3}\.){3}\d{1,3}$/.test(x) || /^[0-9a-f:]{2,39}$/i.test(x)))) throw new HttpError(400, "bad_request", "Give 1 to 3 DNS server addresses");
+        await asUser(req, res, (pve) => pve.call("PUT", `/nodes/${node}/dns`, { search, dns1: servers[0], dns2: servers[1], dns3: servers[2], delete: ["dns2", "dns3"].filter((_, i) => !servers[i + 1]).join(",") || undefined }));
+        return sendJson(res, 200, { ok: true });
+      }
+      if (typeof b.data !== "string" || b.data.length > 65_536 || b.data.includes("\u0000")) throw new HttpError(400, "bad_request", "The hosts file must be text under 64 KB");
+      if (b.digest !== undefined && b.digest !== null && (typeof b.digest !== "string" || !/^[0-9a-f]{20,64}$/.test(b.digest))) throw new HttpError(400, "bad_request", "Bad digest");
+      // The digest makes Proxmox refuse the write if someone changed the file since it was read.
+      await asUser(req, res, (pve) => pve.call("POST", `/nodes/${node}/hosts`, { data: b.data as string, digest: (b.digest as string | null) ?? undefined }));
+      return sendJson(res, 200, { ok: true });
+    }
+
+    // ---- SDN: zones, VNets and subnets, staged until applied.
+    if (path === "/api/sdn" && method === "GET") {
+      const out = await asUser(req, res, async (pve) => {
+        const [zones, vnets] = await Promise.all([pve.call<Record<string, unknown>[]>("GET", "/cluster/sdn/zones", { pending: 1 }), pve.call<Record<string, unknown>[]>("GET", "/cluster/sdn/vnets", { pending: 1 })]);
+        const subnets = await Promise.all(vnets.map((v) => pve.call<Record<string, unknown>[]>("GET", `/cluster/sdn/vnets/${encodeURIComponent(String(v.vnet))}/subnets`, { pending: 1 }).catch(() => [])));
+        // With pending=1, staged values sit under `pending`; show what will be after apply, and mark the state.
+        const view = (x: Record<string, unknown>): Record<string, unknown> & { state: unknown } => ({ ...x, ...(x.pending && typeof x.pending === "object" ? (x.pending as Record<string, unknown>) : {}), state: x.state ?? null });
+        const zs = zones.map(view).map((z) => ({ zone: z.zone, type: z.type, bridge: z.bridge ?? null, dhcp: z.dhcp ?? null, state: z.state }));
+        const vs = vnets.map(view).map((v, i) => ({ vnet: v.vnet, zone: v.zone, tag: v.tag ?? null, alias: v.alias ?? null, state: v.state, subnets: subnets[i].map(view).map((sn) => ({ id: sn.subnet, cidr: sn.cidr ?? String(sn.subnet ?? "").replace(/^[^-]+-/, "").replace(/-(\d+)$/, "/$1"), gateway: sn.gateway ?? null, snat: sn.snat === 1, dhcpRange: Array.isArray(sn["dhcp-range"]) ? sn["dhcp-range"] : sn["dhcp-range"] ? [sn["dhcp-range"]] : [], state: sn.state })) }));
+        const pending = [...zs, ...vs, ...vs.flatMap((v) => v.subnets)].filter((x) => x.state).length;
+        return { zones: zs, vnets: vs, pending };
+      });
+      return sendJson(res, 200, out);
+    }
+    const sdn = path.match(/^\/api\/sdn\/(apply|zones|vnets)(?:\/([a-z][a-z0-9]{0,7})(?:\/(delete|subnets)(?:\/([\w.:-]{3,64})\/(delete))?)?)?$/);
+    if (sdn && method === "POST") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const ID = /^[a-z][a-z0-9]{0,7}$/;
+      const [, kind, id, action, subId] = sdn;
+      if (kind === "apply") {
+        const task = await asUser(req, res, (pve) => pve.call<string>("PUT", "/cluster/sdn"));
+        return sendJson(res, 202, { task });
+      }
+      if (kind === "zones" && !id) {
+        const zone = typeof b.zone === "string" && ID.test(b.zone) ? b.zone : null;
+        if (!zone) throw new HttpError(400, "bad_request", "Zone names are up to 8 lowercase letters and digits, starting with a letter");
+        const type = b.type === "vlan" ? "vlan" : b.type === "simple" ? "simple" : null;
+        if (!type) throw new HttpError(400, "bad_request", "Pick a simple or VLAN zone");
+        const bridge = type === "vlan" ? (typeof b.bridge === "string" && /^[\w.-]{1,15}$/.test(b.bridge) ? b.bridge : null) : undefined;
+        if (bridge === null) throw new HttpError(400, "bad_request", "VLAN zones need a bridge");
+        await asUser(req, res, (pve) => pve.call("POST", "/cluster/sdn/zones", { zone, type, bridge, ipam: "pve", dhcp: type === "simple" && b.dhcp === true ? "dnsmasq" : undefined }));
+        return sendJson(res, 201, { ok: true });
+      }
+      if (kind === "vnets" && !id) {
+        const vnet = typeof b.vnet === "string" && ID.test(b.vnet) ? b.vnet : null;
+        const zone = typeof b.zone === "string" && ID.test(b.zone) ? b.zone : null;
+        if (!vnet || !zone) throw new HttpError(400, "bad_request", "VNet and zone names are up to 8 lowercase letters and digits");
+        const tag = b.tag === undefined || b.tag === null || b.tag === "" ? undefined : Number.isInteger(b.tag) && (b.tag as number) >= 1 && (b.tag as number) <= 4094 ? (b.tag as number) : null;
+        if (tag === null) throw new HttpError(400, "bad_request", "VLAN tags go from 1 to 4094");
+        const alias = b.alias === undefined || b.alias === "" ? undefined : typeof b.alias === "string" && /^[\w .()-]{1,64}$/.test(b.alias) ? b.alias : null;
+        if (alias === null) throw new HttpError(400, "bad_request", "Keep the description short and plain");
+        await asUser(req, res, (pve) => pve.call("POST", "/cluster/sdn/vnets", { vnet, zone, tag, alias }));
+        return sendJson(res, 201, { ok: true });
+      }
+      if (id && action === "delete") {
+        await asUser(req, res, (pve) => pve.call("DELETE", `/cluster/sdn/${kind}/${id}`));
+        return sendJson(res, 200, { ok: true });
+      }
+      if (kind === "vnets" && id && action === "subnets" && !subId) {
+        let spec;
+        try {
+          const cidr = typeof b.cidr === "string" && isCidr4(b.cidr) ? b.cidr : null;
+          if (!cidr) throw new Error("Use a network like 10.20.0.0/24");
+          const gateway = b.gateway === undefined || b.gateway === null || b.gateway === "" ? undefined : typeof b.gateway === "string" && isIpv4(b.gateway) ? b.gateway : null;
+          if (gateway === null) throw new Error("The gateway should be an IPv4 address");
+          const range = b.dhcpStart && b.dhcpEnd ? (typeof b.dhcpStart === "string" && isIpv4(b.dhcpStart) && typeof b.dhcpEnd === "string" && isIpv4(b.dhcpEnd) ? `start-address=${b.dhcpStart},end-address=${b.dhcpEnd}` : null) : undefined;
+          if (range === null) throw new Error("DHCP ranges are two IPv4 addresses");
+          spec = { subnet: cidr, type: "subnet", gateway, snat: b.snat === true ? 1 : undefined, "dhcp-range": range };
+        } catch (e) {
+          throw new HttpError(400, "bad_request", (e as Error).message);
+        }
+        await asUser(req, res, (pve) => pve.call("POST", `/cluster/sdn/vnets/${id}/subnets`, spec));
+        return sendJson(res, 201, { ok: true });
+      }
+      if (kind === "vnets" && id && action === "subnets" && subId) {
+        await asUser(req, res, (pve) => pve.call("DELETE", `/cluster/sdn/vnets/${id}/subnets/${encodeURIComponent(subId)}`));
+        return sendJson(res, 200, { ok: true });
+      }
+      throw new HttpError(404, "not_found", "Not found");
+    }
+
     // ---- Host network. Changes are staged by Proxmox and only take effect when applied.
     if (method === "GET" && path === "/api/network") {
       const net = await asUser(req, res, (pve) => pve.network(d.pve.node));
@@ -878,6 +979,192 @@ export function createApp(d: AppDeps) {
       }
       await asUser(req, res, (pve) => (iface ? pve.updateInterface(d.pve.node, iface, ifaceParams(spec, false)) : pve.createInterface(d.pve.node, ifaceParams(spec, true))));
       return sendJson(res, iface ? 200 : 201, { ok: true });
+    }
+
+    // ---- Firewall, at the datacenter, host and machine levels, as the signed-in user.
+    if (path.startsWith("/api/firewall/")) {
+      const seg = path.split("/").slice(3).map(decodeURIComponent);
+      const [scope, res2, a, b2, c] = seg;
+      const consolePort = d.consolePort ?? 443;
+      const resolve = async (pve: ProxmoxClient): Promise<{ level: Level | "group"; base: string }> => {
+        if (scope === "datacenter") return { level: "cluster", base: "/cluster/firewall" };
+        if (scope === "host") return { level: "node", base: `/nodes/${encodeURIComponent(d.pve.node)}/firewall` };
+        const gm = scope?.match(/^guest-(\d+)$/);
+        if (gm) {
+          const g = (await pve.clusterResources()).find((r) => r.vmid === Number(gm[1]));
+          if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new HttpError(404, "not_found", "Unknown machine");
+          return { level: "guest", base: `/nodes/${encodeURIComponent(g.node ?? d.pve.node)}/${g.type}/${g.vmid}/firewall` };
+        }
+        const grp = scope?.match(/^group-(.+)$/);
+        if (grp && GROUP.test(grp[1])) return { level: "group", base: `/cluster/firewall/groups/${encodeURIComponent(grp[1])}` };
+        throw new HttpError(404, "not_found", "Unknown firewall");
+      };
+      const allowed: Record<string, (Level | "group")[]> = { options: ["cluster", "node", "guest"], rules: ["cluster", "node", "guest", "group"], aliases: ["cluster", "guest"], ipsets: ["cluster", "guest"], groups: ["cluster"], macros: ["cluster"], log: ["node", "guest"], refs: ["cluster", "guest"] };
+      if (!res2 || !allowed[res2]) throw new HttpError(404, "not_found", "Not found");
+      const rulesPath = (base: string, level: string) => (level === "group" ? base : `${base}/rules`);
+      const mapRule = (r: Record<string, unknown>) => ({ pos: r.pos, type: r.type, action: r.action, enable: r.enable === 1, macro: r.macro ?? null, proto: r.proto ?? null, dport: r.dport ?? null, sport: r.sport ?? null, source: r.source ?? null, dest: r.dest ?? null, iface: r.iface ?? null, log: r.log ?? null, comment: r.comment ?? null });
+      const fail = (e: unknown): never => {
+        throw e instanceof FirewallInputError ? new HttpError(400, "bad_request", e.message) : e;
+      };
+
+      // Would the console stop being reachable after this change? (Firewall on, inbound policy not ACCEPT, no rule letting the port in.)
+      const lockoutAfter = async (pve: ProxmoxClient, change: { options?: Record<string, string | number>; level?: Level | "group"; dropRule?: { level: string; pos: number } }) => {
+        const node = encodeURIComponent(d.pve.node);
+        const [cOpts, nOpts, cRules, nRules] = await Promise.all([
+          pve.call<Record<string, string | number>>("GET", "/cluster/firewall/options"),
+          pve.call<Record<string, string | number>>("GET", `/nodes/${node}/firewall/options`).catch(() => ({}) as Record<string, string | number>),
+          pve.call<Record<string, unknown>[]>("GET", "/cluster/firewall/rules"),
+          pve.call<Record<string, unknown>[]>("GET", `/nodes/${node}/firewall/rules`).catch(() => []),
+        ]);
+        const cluster = { ...cOpts, ...(change.level === "cluster" ? change.options : {}) };
+        const host = { ...nOpts, ...(change.level === "node" ? change.options : {}) };
+        const on = Number(cluster.enable ?? 0) === 1 && Number(host.enable ?? 1) === 1;
+        const policy = String(cluster.policy_in ?? "DROP");
+        if (!on || policy === "ACCEPT") return false;
+        const keep = (list: Record<string, unknown>[], level: string) => list.filter((r) => !(change.dropRule && change.dropRule.level === level && r.pos === change.dropRule.pos));
+        return !consoleAllowed([...keep(cRules, "cluster"), ...keep(nRules, "node")] as never, consolePort);
+      };
+      const guardOrKeep = async (pve: ProxmoxClient, body: Record<string, unknown>, change: Parameters<typeof lockoutAfter>[1]) => {
+        if (body.ignoreLockout === true || !(await lockoutAfter(pve, change))) return;
+        if (body.keepConsole === true) {
+          await pve.call("POST", `/nodes/${encodeURIComponent(d.pve.node)}/firewall/rules`, { ...consoleRule(consolePort), pos: 0 });
+          return;
+        }
+        throw new HttpError(409, "lockout", `This would block port ${consolePort}, which this console runs on. Let ePaperclip add a rule that keeps it reachable, or continue anyway.`);
+      };
+
+      if (method === "GET") {
+        const out = await asUser(req, res, async (pve) => {
+          const { level, base } = await resolve(pve);
+          if (!allowed[res2].includes(level)) throw new HttpError(404, "not_found", "Not found");
+          if (res2 === "options") return { options: await pve.call<Record<string, unknown>>("GET", `${base}/options`) };
+          if (res2 === "rules") return { rules: (await pve.call<Record<string, unknown>[]>("GET", rulesPath(base, level))).map(mapRule), consolePort };
+          if (res2 === "aliases") return { aliases: (await pve.call<{ name: string; cidr: string; comment?: string }[]>("GET", `${base}/aliases`)).map((x) => ({ name: x.name, cidr: x.cidr, comment: x.comment ?? null })) };
+          if (res2 === "ipsets" && a) {
+            if (!NAME.test(a)) throw new HttpError(400, "bad_request", "Unknown IP set");
+            return { entries: (await pve.call<{ cidr: string; nomatch?: number; comment?: string }[]>("GET", `${base}/ipset/${encodeURIComponent(a)}`)).map((x) => ({ cidr: x.cidr, nomatch: x.nomatch === 1, comment: x.comment ?? null })) };
+          }
+          if (res2 === "ipsets") return { ipsets: (await pve.call<{ name: string; comment?: string }[]>("GET", `${base}/ipset`)).map((x) => ({ name: x.name, comment: x.comment ?? null })) };
+          if (res2 === "groups") return { groups: (await pve.call<{ group: string; comment?: string }[]>("GET", `${base}/groups`)).map((x) => ({ group: x.group, comment: x.comment ?? null })) };
+          if (res2 === "macros") return { macros: (await pve.call<{ macro: string; descr?: string }[]>("GET", `${base}/macros`)).map((x) => ({ macro: x.macro, descr: x.descr ?? "" })) };
+          if (res2 === "log") return { lines: (await pve.call<{ n: number; t: string }[]>("GET", `${base}/log`, { limit: 200 })).map((x) => x.t) };
+          return { refs: (await pve.call<{ type: string; name: string; ref: string; comment?: string }[]>("GET", `${base}/refs`)).map((x) => ({ type: x.type, name: x.name, ref: x.ref, comment: x.comment ?? null })) };
+        });
+        return sendJson(res, 200, out);
+      }
+      if (method !== "POST") throw new HttpError(405, "method", "Method not allowed");
+      requireSameSite(req);
+      const body = await readJson(req);
+      const out = await asUser(req, res, async (pve) => {
+        const { level, base } = await resolve(pve);
+        if (!allowed[res2].includes(level)) throw new HttpError(404, "not_found", "Not found");
+        if (res2 === "options") {
+          let opts: Record<string, string | number> = {};
+          try {
+            opts = checkOptions(level as Level, body);
+          } catch (e) {
+            fail(e);
+          }
+          if (level !== "guest") await guardOrKeep(pve, body, { options: opts, level: level as Level });
+          await pve.call("PUT", `${base}/options`, opts);
+          return { ok: true };
+        }
+        if (res2 === "rules") {
+          const rp = rulesPath(base, level);
+          if (!a) {
+            let rule;
+            try {
+              rule = checkRule(body);
+            } catch (e) {
+              fail(e);
+            }
+            const pos = Number.isInteger(body.pos) && (body.pos as number) >= 0 ? (body.pos as number) : undefined;
+            await pve.call("POST", rp, { ...ruleParams(rule!, false), pos });
+            return { ok: true };
+          }
+          const pos = Number(a);
+          if (!Number.isInteger(pos) || pos < 0 || pos > 10_000) throw new HttpError(400, "bad_request", "Unknown rule");
+          if (b2 === "delete") {
+            if (level === "cluster" || level === "node") await guardOrKeep(pve, body, { dropRule: { level, pos } });
+            await pve.call("DELETE", `${rp}/${pos}`);
+            return { ok: true };
+          }
+          if (Object.keys(body).every((k) => k === "enable" || k === "ignoreLockout" || k === "keepConsole") && typeof body.enable === "boolean") {
+            if (!body.enable && (level === "cluster" || level === "node")) await guardOrKeep(pve, body, { dropRule: { level, pos } });
+            await pve.call("PUT", `${rp}/${pos}`, { enable: body.enable ? 1 : 0 });
+            return { ok: true };
+          }
+          if (Object.keys(body).length === 1 && Number.isInteger(body.moveto)) {
+            await pve.call("PUT", `${rp}/${pos}`, { moveto: body.moveto as number });
+            return { ok: true };
+          }
+          let rule;
+          try {
+            rule = checkRule(body);
+          } catch (e) {
+            fail(e);
+          }
+          await pve.call("PUT", `${rp}/${pos}`, ruleParams(rule!, true));
+          return { ok: true };
+        }
+        if (res2 === "groups") {
+          if (!a) {
+            if (typeof body.group !== "string" || !GROUP.test(body.group)) throw new HttpError(400, "bad_request", "Group names are 2 to 18 letters, digits, - or _, starting with a letter");
+            await pve.call("POST", `${base}/groups`, { group: body.group, comment: typeof body.comment === "string" && body.comment.length <= 200 && !/[\r\n]/.test(body.comment) ? body.comment || undefined : undefined });
+            return { ok: true };
+          }
+          if (!GROUP.test(a) || b2 !== "delete") throw new HttpError(404, "not_found", "Not found");
+          await pve.call("DELETE", `${base}/groups/${encodeURIComponent(a)}`);
+          return { ok: true };
+        }
+        if (res2 === "aliases") {
+          try {
+            if (!a) {
+              const al = checkAlias(body);
+              await pve.call("POST", `${base}/aliases`, al);
+              return { ok: true };
+            }
+            if (!NAME.test(a)) throw new HttpError(400, "bad_request", "Unknown alias");
+            if (b2 === "delete") {
+              await pve.call("DELETE", `${base}/aliases/${encodeURIComponent(a)}`);
+              return { ok: true };
+            }
+            const al = checkAlias({ ...body, name: body.name ?? a });
+            await pve.call("PUT", `${base}/aliases/${encodeURIComponent(a)}`, { cidr: al.cidr, comment: al.comment, rename: al.name !== a ? al.name : undefined });
+            return { ok: true };
+          } catch (e) {
+            return fail(e);
+          }
+        }
+        if (res2 === "ipsets") {
+          try {
+            if (!a) {
+              if (typeof body.name !== "string" || !NAME.test(body.name)) throw new FirewallInputError("Names start with a letter: letters, digits, - and _");
+              await pve.call("POST", `${base}/ipset`, { name: body.name, comment: typeof body.comment === "string" && body.comment && body.comment.length <= 200 && !/[\r\n]/.test(body.comment) ? body.comment : undefined });
+              return { ok: true };
+            }
+            if (!NAME.test(a)) throw new HttpError(400, "bad_request", "Unknown IP set");
+            if (b2 === "delete") {
+              await pve.call("DELETE", `${base}/ipset/${encodeURIComponent(a)}`);
+              return { ok: true };
+            }
+            if (b2 === "entries" && !c) {
+              await pve.call("POST", `${base}/ipset/${encodeURIComponent(a)}`, checkIpsetEntry(body));
+              return { ok: true };
+            }
+            if (b2 === "entries" && c && seg[5] === "delete") {
+              checkIpsetEntry({ cidr: c });
+              await pve.call("DELETE", `${base}/ipset/${encodeURIComponent(a)}/${encodeURIComponent(c)}`);
+              return { ok: true };
+            }
+            throw new HttpError(404, "not_found", "Not found");
+          } catch (e) {
+            return fail(e);
+          }
+        }
+        throw new HttpError(404, "not_found", "Not found");
+      });
+      return sendJson(res, 200, out);
     }
 
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);

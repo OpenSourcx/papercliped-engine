@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Sparkles, SquareTerminal, Target, Users, Vote, Workflow } from "lucide-react";
+import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Shield, Sparkles, SquareTerminal, Target, Users, Vote, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Guest, Org } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
@@ -71,6 +71,7 @@ function DeviceSidebar() {
           <Item to={`/${d}/shell`} icon={<SquareTerminal className="h-4 w-4" />}>Host shell</Item>
           <Item to={`/${d}/storage`} icon={<Database className="h-4 w-4" />}>Storage</Item>
           <Item to={`/${d}/network`} icon={<Network className="h-4 w-4" />}>Network</Item>
+          <Item to={`/${d}/firewall`} icon={<Shield className="h-4 w-4" />}>Firewall</Item>
           <Item to={`/${d}/backups`} icon={<Archive className="h-4 w-4" />}>Backups</Item>
           <Item to={`/${d}/tasks`} icon={<ListChecks className="h-4 w-4" />}>Tasks</Item>
         </Section>

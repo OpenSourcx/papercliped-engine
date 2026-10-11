@@ -44,6 +44,7 @@ const handle = createApp({
   staticDir: env.EPC_STATIC ?? "/opt/epaperclip/console",
   secureCookies: !devHttp,
   maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
+  consolePort: port,
 });
 
 const server = devHttp

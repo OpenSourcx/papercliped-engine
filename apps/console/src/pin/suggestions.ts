@@ -9,7 +9,7 @@ import type { EngineData } from "../data/types.ts";
  *  - "go"  jumps to a related page. Never the page you're on.
  */
 
-export type IconName = "upload" | "download" | "package" | "plus" | "box" | "org" | "task" | "vote" | "users" | "list" | "gauge" | "terminal" | "tree" | "database" | "archive" | "refresh" | "network" | "activity" | "dollar" | "settings" | "sparkles" | "check" | "target" | "folder" | "repeat" | "inbox" | "plug" | "zap";
+export type IconName = "shield" | "upload" | "download" | "package" | "plus" | "box" | "org" | "task" | "vote" | "users" | "list" | "gauge" | "terminal" | "tree" | "database" | "archive" | "refresh" | "network" | "activity" | "dollar" | "settings" | "sparkles" | "check" | "target" | "folder" | "repeat" | "inbox" | "plug" | "zap";
 
 export interface Suggestion {
   id: string;
@@ -99,6 +99,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     go("shell", "Host shell", "terminal", `${d}/shell`),
     go("storage", "Storage", "database", `${d}/storage`),
     go("network", "Network", "network", `${d}/network`),
+    go("firewall", "Firewall", "shield", `${d}/firewall`),
     go("backups", "Backups", "archive", `${d}/backups`),
     go("automations", "Automations", "zap", `${d}/automations`),
     go("tasks", "Tasks", "list", `${d}/tasks`),
@@ -124,7 +125,8 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     "storage-item": [ask("How much space is left?"), ...goFirst("storage", "tasks", "backups")],
     tasks: [ask("Did anything fail recently?"), newMachine, ...goFirst("storage", "summary")],
     pin: [ask("What have you done today?"), ...goFirst("automations", "home")],
-    network: [ask("Which machines are on which bridge?"), ...goFirst("machines", "resources")],
+    network: [ask("Which machines are on which bridge?"), ...goFirst("firewall", "machines", "resources")],
+    firewall: [ask("Is anything exposed that shouldn't be?"), ...goFirst("network", "summary")],
     backups: [ask("When did the last backup run?"), ...goFirst("storage", "machines")],
     automations: [{ id: "new-automation", label: "New automation", icon: "zap", group: "ask", ask: "If a container uses more than 50% of its memory, shut it down" }, ask("What did my automations do today?"), ...goFirst("machines", "summary")],
   };

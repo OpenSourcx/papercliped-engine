@@ -233,6 +233,39 @@ export interface IfaceSpec {
   vlanId: number | null;
 }
 
+export interface FwRule {
+  pos: number;
+  type: "in" | "out" | "group";
+  action: string;
+  enable: boolean;
+  macro: string | null;
+  proto: string | null;
+  dport: string | null;
+  sport: string | null;
+  source: string | null;
+  dest: string | null;
+  iface: string | null;
+  log: string | null;
+  comment: string | null;
+}
+
+export type FwRuleSpec = Omit<FwRule, "pos">;
+
+export interface SdnSubnet {
+  id: string;
+  cidr: string;
+  gateway: string | null;
+  snat: boolean;
+  dhcpRange: string[];
+  state: string | null;
+}
+
+export interface SdnState {
+  zones: { zone: string; type: string; bridge: string | null; dhcp: string | null; state: string | null }[];
+  vnets: { vnet: string; zone: string; tag: number | null; alias: string | null; state: string | null; subnets: SdnSubnet[] }[];
+  pending: number;
+}
+
 export interface UrlDownload {
   url: string;
   content: "iso" | "vztmpl";
@@ -372,5 +405,13 @@ export const api = {
   deleteIface: (iface: string, confirm?: string) => request<{ ok: true }>("POST", `/api/network/${enc(iface)}/delete`, { confirm }),
   applyNetwork: () => request<{ task: string }>("POST", "/api/network/apply"),
   revertNetwork: () => request<{ ok: true }>("POST", "/api/network/revert"),
+  firewallGet: <T,>(scope: string, res: string, sub?: string) => request<T>("GET", `/api/firewall/${enc(scope)}/${res}${sub ? `/${enc(sub)}` : ""}`),
+  firewallPost: (scope: string, path: string, body: unknown = {}) => request<{ ok: true }>("POST", `/api/firewall/${enc(scope)}/${path}`, body),
+  dns: () => request<{ search: string; servers: string[] }>("GET", "/api/network/dns"),
+  setDns: (search: string, servers: string[]) => request<{ ok: true }>("POST", "/api/network/dns", { search, servers }),
+  hosts: () => request<{ data: string; digest: string | null }>("GET", "/api/network/hosts"),
+  setHosts: (data: string, digest: string | null) => request<{ ok: true }>("POST", "/api/network/hosts", { data, digest }),
+  sdn: () => request<SdnState>("GET", "/api/sdn"),
+  sdnPost: (path: string, body: unknown = {}) => request<{ ok?: true; task?: string }>("POST", `/api/sdn/${path}`, body),
   power: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => request<{ task: string }>("POST", `/api/guests/${vmid}/power`, { action }),
 };

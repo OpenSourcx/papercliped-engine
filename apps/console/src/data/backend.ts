@@ -1,5 +1,6 @@
-import { api, ApiError, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
+import { api, ApiError, type SdnState, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload } from "./api.ts";
 import type { Guest, HostStorage } from "./types.ts";
+import { demoNetworkConfig } from "./demoNet.ts";
 
 /**
  * Storage, templates, uploads and tasks: the same calls live (through the host service, as the signed-in user) and in
@@ -36,6 +37,14 @@ export interface Backend {
   deleteIface: (iface: string, confirm?: string) => Promise<unknown>;
   applyNetwork: () => Promise<{ task: string }>;
   revertNetwork: () => Promise<unknown>;
+  firewallGet: <T>(scope: string, res: string, sub?: string) => Promise<T>;
+  firewallPost: (scope: string, path: string, body?: unknown) => Promise<unknown>;
+  dns: () => Promise<{ search: string; servers: string[] }>;
+  setDns: (search: string, servers: string[]) => Promise<unknown>;
+  hosts: () => Promise<{ data: string; digest: string | null }>;
+  setHosts: (data: string, digest: string | null) => Promise<unknown>;
+  sdn: () => Promise<SdnState>;
+  sdnPost: (path: string, body?: unknown) => Promise<{ ok?: true; task?: string }>;
 }
 
 export const liveBackend: Backend = {
@@ -69,6 +78,14 @@ export const liveBackend: Backend = {
   deleteIface: api.deleteIface,
   applyNetwork: api.applyNetwork,
   revertNetwork: api.revertNetwork,
+  firewallGet: api.firewallGet,
+  firewallPost: api.firewallPost,
+  dns: api.dns,
+  setDns: api.setDns,
+  hosts: api.hosts,
+  setHosts: api.setHosts,
+  sdn: api.sdn,
+  sdnPost: api.sdnPost,
 };
 
 /** "vzdump-lxc-101-2025_10_10-21_00_02.tar.zst" -> { type, vmid, at (unix seconds) } */
@@ -118,6 +135,7 @@ export const TASK_TYPES: Record<string, string> = {
   vzclone: "Clone container",
   qmclone: "Clone VM",
   srvreload: "Apply network changes",
+  reloadnetworkall: "Apply SDN changes",
   vzrestore: "Restore container",
   qmrestore: "Restore VM",
   qmcreate: "Create VM",
@@ -360,6 +378,7 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
       staged = null;
       return { ok: true };
     },
+    ...demoNetworkConfig(startTask),
     backupJobs: async () => jobs.map((j) => ({ ...j })),
     saveBackupJob: async (id, spec) => {
       const next: BackupJob = { id: id ?? `backup-${Math.random().toString(16).slice(2, 10)}`, schedule: spec.schedule, storage: spec.storage, all: spec.all, vmids: spec.vmids, pool: null, mode: spec.mode, compress: "zstd", enabled: spec.enabled, keepLast: spec.keepLast, comment: spec.comment ?? null, nextRun: Math.floor(Date.now() / 1000) + 3600 };

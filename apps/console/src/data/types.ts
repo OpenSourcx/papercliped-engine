@@ -224,4 +224,4 @@ export interface EngineData {
 }
 
 /** Top-level routes under /<device>/. An org slug can never take one of these names. */
-export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks", "pin"] as const;
+export const RESERVED = ["home", "guests", "access", "connectors", "automations", "appearance", "settings", "updates", "setup", "orgs", "new", "apps", "machines", "shell", "storage", "network", "backups", "summary", "resources", "tasks", "pin", "firewall"] as const;

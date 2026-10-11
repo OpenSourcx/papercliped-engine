@@ -49,6 +49,9 @@ All under `/api`. Changes need `Content-Type: application/json`, `X-EPC-Request:
 | `POST /guests/:vmid/clone` | Full clone (linked only from templates) |
 | `POST /guests/:vmid/vnc`, WebSocket `/api/vnc/:id` | A VM's screen: one-time, session-bound VNC relay |
 | WebSocket `/api/console/guests/:vmid`, `/api/console/node` | Text consoles and the host shell |
+| `GET/POST /firewall/:scope/{options,rules,aliases,ipsets,groups,macros,log,refs}` | Firewall at `datacenter`, `host`, `guest-<vmid>`, or `group-<name>` (rules only); `409 lockout` when a change would block this console |
+| `GET/POST /network/dns`, `GET/POST /network/hosts` | DNS servers and search domain; the hosts file, checked against its digest |
+| `GET /sdn`, `POST /sdn/{zones,vnets,apply}` and `/sdn/vnets/:id/subnets` | SDN zones, VNets and subnets, staged until applied |
 | `GET /network`, `POST /network`, `POST /network/:iface`, `.../delete`, `POST /network/apply`, `POST /network/revert` | Host interfaces, staged changes and their diff |
 
 ## Develop

@@ -11,6 +11,7 @@ import { StorageDetail } from "./pages/storage/StorageDetail.tsx";
 import { BackupsPage } from "./pages/backups/Backups.tsx";
 import { PinPage } from "./pages/pin/PinPage.tsx";
 import { NetworkPage } from "./pages/network/Network.tsx";
+import { FirewallPage } from "./pages/firewall/Firewall.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
@@ -56,6 +57,7 @@ export function App() {
           <Route path="tasks" element={<TasksPage />} />
           <Route path="pin" element={<PinPage />} />
           <Route path="network" element={<NetworkPage />} />
+          <Route path="firewall" element={<FirewallPage />} />
           <Route path="backups" element={<BackupsPage />} />
           <Route path="automations" element={<Automations />} />
           {/* Older addresses open the matching modal over Home. */}

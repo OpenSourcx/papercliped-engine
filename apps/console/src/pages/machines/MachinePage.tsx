@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Archive, Box, Camera, Copy, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { Archive, Box, Camera, Copy, Shield, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { Hardware } from "./Hardware.tsx";
+import { MachineFirewall } from "../firewall/Firewall.tsx";
 const Screen = lazy(() => import("./Screen.tsx"));
 import { Snapshots } from "./Snapshots.tsx";
 import { useEngine } from "../../data/store.tsx";
@@ -22,6 +23,7 @@ const TABS = [
   { id: "snapshots", label: "Snapshots", icon: <Camera className="h-4 w-4" /> },
   { id: "backups", label: "Backups", icon: <Archive className="h-4 w-4" /> },
   { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" /> },
+  { id: "firewall", label: "Firewall", icon: <Shield className="h-4 w-4" /> },
   { id: "tasks", label: "Tasks", icon: <ListChecks className="h-4 w-4" /> },
 ] as const;
 
@@ -164,6 +166,7 @@ export function MachinePage() {
       {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} startOpen={params.get("new") === "1"} onOpened={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n; }, { replace: true })} /></div>}
 
       {tab === "hardware" && <Hardware g={g} />}
+      {tab === "firewall" && <MachineFirewall vmid={g.vmid} />}
 
       {tab === "tasks" && (
         <Card className="divide-y divide-line fade-in">

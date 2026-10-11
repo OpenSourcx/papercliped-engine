@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Cable, Check, GitMerge, Loader2, Network as NetIcon, Pencil, Plus, RotateCcw, Split, Trash2 } from "lucide-react";
-import { ApiError, type IfaceSpec, type NetIface } from "../../data/api.ts";
+import { ApiError, type IfaceSpec, type NetIface, type SdnState } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
@@ -12,7 +12,7 @@ const TYPE_LABEL: Record<string, string> = { bridge: "Linux bridge", eth: "Netwo
 const q = () => new URLSearchParams(window.location.search);
 
 /** The host's network, like System → Network in Proxmox: changes are staged, shown as a diff, then applied or reverted. */
-export function NetworkPage() {
+function InterfacesView() {
   const engine = useEngine();
   const nav = useNavigate();
   const [data, setData] = useState<{ interfaces: NetIface[]; changes: string | null } | null>(null);
@@ -80,8 +80,8 @@ export function NetworkPage() {
   const mgmt = data?.interfaces.find((i) => i.gateway);
 
   return (
-    <PageFrame width="6xl">
-      <PageHeader title="Network" subtitle="Bridges, VLANs, bonds and network cards on this device. Changes wait here until you apply them." actions={<Button variant="primary" onClick={() => nav("?modal=iface&type=bridge")}><Plus className="h-4 w-4" />New</Button>} />
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-3"><p className="text-[13px] text-ink-3">Bridges, VLANs, bonds and network cards. Changes wait here until you apply them.</p><Button size="sm" variant="primary" onClick={() => nav("?modal=iface&type=bridge")}><Plus className="h-3.5 w-3.5" />New</Button></div>
       {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
 
       {data?.changes && (
@@ -158,7 +158,218 @@ export function NetworkPage() {
           ) : <div />}
         </Modal>
       )}
+    </div>
+  );
+}
+
+const NET_TABS = [
+  { id: "interfaces", label: "Interfaces" },
+  { id: "dns", label: "DNS and hosts" },
+  { id: "sdn", label: "Virtual networks (SDN)" },
+] as const;
+
+/** The host's network: interfaces, name resolution, and SDN virtual networks for organizations. */
+export function NetworkPage() {
+  const [params, setParams] = useSearchParams();
+  const tab = NET_TABS.find((t) => t.id === params.get("tab"))?.id ?? "interfaces";
+  return (
+    <PageFrame width="6xl">
+      <PageHeader title="Network" subtitle="How this device and its machines connect: interfaces, DNS, and virtual networks." />
+      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
+        {NET_TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", t.id); return n; }, { replace: true })} className={cn("px-3.5 h-10 text-[14px] whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
+      </div>
+      {tab === "interfaces" && <InterfacesView />}
+      {tab === "dns" && <DnsHosts />}
+      {tab === "sdn" && <Sdn />}
     </PageFrame>
+  );
+}
+
+function DnsHosts() {
+  const engine = useEngine();
+  const [search, setSearch] = useState("");
+  const [servers, setServers] = useState(["", "", ""]);
+  const [hosts, setHosts] = useState<{ data: string; digest: string | null } | null>(null);
+  const [text, setText] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    engine.backend.dns().then((d) => { setSearch(d.search); setServers([d.servers[0] ?? "", d.servers[1] ?? "", d.servers[2] ?? ""]); }, (e) => setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Couldn't read DNS" }));
+    engine.backend.hosts().then((h) => { setHosts(h); setText(h.data); }, () => setHosts(null));
+  }, [engine.backend, tick]);
+  const saveDns = async () => {
+    try {
+      await engine.backend.setDns(search.trim(), servers.map((x) => x.trim()).filter(Boolean));
+      setMsg({ ok: true, text: "DNS saved." });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Couldn't save DNS" });
+    }
+  };
+  const saveHosts = async () => {
+    try {
+      await engine.backend.setHosts(text, hosts?.digest ?? null);
+      setMsg({ ok: true, text: "Hosts file saved." });
+      setTick((n) => n + 1);
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof ApiError ? `${e.message} Reload to see the current file.` : "Couldn't save the hosts file" });
+    }
+  };
+  return (
+    <div className="grid lg:grid-cols-[360px_1fr] gap-5">
+      <Card className="p-5 h-fit">
+        <h2 className="font-medium mb-1">DNS</h2>
+        <p className="text-[12px] text-ink-3 mb-4">Where the host looks up names. Containers copy this unless they set their own.</p>
+        <label className="block mb-3"><span className="block text-[13px] text-ink-2 mb-1.5">Search domain</span><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="lan" className="font-mono" /></label>
+        {servers.map((v, i) => (
+          <label key={i} className="block mb-3"><span className="block text-[13px] text-ink-2 mb-1.5">DNS server {i + 1}{i ? <span className="text-ink-3"> (optional)</span> : ""}</span><Input value={v} onChange={(e) => setServers(servers.map((x, j) => (j === i ? e.target.value : x)))} placeholder={i === 0 ? "192.168.1.1" : ""} className="font-mono" /></label>
+        ))}
+        <Button size="sm" variant="primary" onClick={saveDns} disabled={!search.trim() || !servers[0].trim()}>Save DNS</Button>
+      </Card>
+      <Card className="flex flex-col min-h-[420px]">
+        <div className="flex items-center gap-2 px-4 h-11 border-b border-line">
+          <span className="font-mono text-[13px] flex-1">/etc/hosts{hosts && text !== hosts.data && <span className="text-warning"> · unsaved</span>}</span>
+          <Button size="sm" variant="ghost" onClick={() => setTick((n) => n + 1)}>Reload</Button>
+          <Button size="sm" variant="primary" onClick={saveHosts} disabled={!hosts || text === hosts.data}>Save</Button>
+        </div>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label="Hosts file" className="flex-1 w-full resize-none bg-transparent p-4 font-mono text-[13px] leading-relaxed outline-none" />
+      </Card>
+      {msg && <p role="status" className={cn("lg:col-span-2 text-[13px]", msg.ok ? "text-good" : "text-critical")}>{msg.text}</p>}
+    </div>
+  );
+}
+
+const ID_RE = /^[a-z][a-z0-9]{0,7}$/;
+
+function Sdn() {
+  const engine = useEngine();
+  const [state, setState] = useState<SdnState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [form, setForm] = useState<null | { kind: "zone" } | { kind: "vnet" } | { kind: "subnet"; vnet: string }>(null);
+  const [applying, setApplying] = useState(false);
+  useEffect(() => {
+    engine.backend.sdn().then((s) => (setState(s), setError(null)), (e) => setError(e instanceof ApiError ? e.message : "Couldn't read SDN"));
+  }, [engine.backend, engine.contentVersion, tick]);
+  const act = async (path: string, body?: unknown) => {
+    try {
+      const r = await engine.backend.sdnPost(path, body);
+      if (r.task) engine.watchTask(r.task, "Apply virtual network changes");
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Proxmox refused that");
+    }
+    setTick((n) => n + 1);
+  };
+  const pill = (s: string | null) => (s ? <Chip tone="warning">{s === "new" ? "new · not applied" : s === "deleted" ? "deleted · not applied" : "changed · not applied"}</Chip> : null);
+  return (
+    <div className="space-y-5">
+      <p className="text-[13px] text-ink-3">Virtual networks let organizations have their own isolated network, with addresses handed out automatically and internet access through the host. A <b className="font-medium text-ink-2">zone</b> is the kind of network, a <b className="font-medium text-ink-2">VNet</b> is a network machines join like a bridge, and a <b className="font-medium text-ink-2">subnet</b> gives it addresses.</p>
+      {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+      {state && state.pending > 0 && (
+        <Card className="p-4 border-warning/40 flex flex-wrap items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-warning" />
+          <div className="flex-1 min-w-[200px]"><div className="font-medium text-[14px]">{state.pending} change{state.pending === 1 ? "" : "s"} waiting</div><div className="text-[12px] text-ink-3">Machines can join new VNets once they're applied.</div></div>
+          <Button size="sm" variant="primary" onClick={async () => { setApplying(true); await act("apply"); setApplying(false); }} disabled={applying}>{applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Apply</Button>
+        </Card>
+      )}
+      <div className="grid lg:grid-cols-[320px_1fr] gap-5">
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="font-medium">Zones</h2><Button size="sm" variant="ghost" onClick={() => setForm({ kind: "zone" })}><Plus className="h-3.5 w-3.5" />Zone</Button></div>
+          <Card className="divide-y divide-line">
+            {state?.zones.length === 0 && <p className="p-4 text-[13px] text-ink-3">No zones yet. A simple zone is the easy start: isolated networks on this host.</p>}
+            {state?.zones.map((z) => (
+              <div key={z.zone} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0"><div className="font-mono text-[13px]">{z.zone}</div><div className="text-[12px] text-ink-3">{z.type === "simple" ? "Simple (isolated on this host)" : `VLAN on ${z.bridge}`}{z.dhcp ? " · DHCP" : ""}</div></div>
+                {pill(z.state)}
+                <button onClick={() => act(`zones/${z.zone}/delete`)} aria-label={`Delete ${z.zone}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </Card>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="font-medium">VNets</h2><Button size="sm" variant="ghost" onClick={() => setForm({ kind: "vnet" })} disabled={!state?.zones.length}><Plus className="h-3.5 w-3.5" />VNet</Button></div>
+          <div className="space-y-3">
+            {state?.vnets.length === 0 && <Card className="p-4 text-[13px] text-ink-3">No VNets yet.</Card>}
+            {state?.vnets.map((v) => (
+              <Card key={v.vnet} className="p-4">
+                <div className="flex items-center gap-3">
+                  <NetIcon className="h-4 w-4 text-ink-3" />
+                  <div className="flex-1 min-w-0"><div className="text-[14px]"><span className="font-mono">{v.vnet}</span>{v.alias && <span className="text-ink-2"> · {v.alias}</span>}</div><div className="text-[12px] text-ink-3">Zone {v.zone}{v.tag ? ` · VLAN ${v.tag}` : ""}</div></div>
+                  {pill(v.state)}
+                  <Button size="sm" variant="ghost" onClick={() => setForm({ kind: "subnet", vnet: v.vnet })}><Plus className="h-3.5 w-3.5" />Subnet</Button>
+                  <button onClick={() => act(`vnets/${v.vnet}/delete`)} aria-label={`Delete ${v.vnet}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {v.subnets.length > 0 && (
+                  <div className="mt-3 divide-y divide-line border-t border-line">
+                    {v.subnets.map((sn) => (
+                      <div key={sn.id} className="flex items-center gap-3 pt-2.5 mt-2.5 first:mt-0">
+                        <span className="font-mono text-[13px] w-36">{sn.cidr}</span>
+                        <span className="text-[12px] text-ink-3 flex-1">{sn.gateway ? `gateway ${sn.gateway}` : "no gateway"}{sn.snat ? " · internet via host (SNAT)" : ""}{sn.dhcpRange.length ? ` · DHCP ${sn.dhcpRange[0].replace("start-address=", "").replace(",end-address=", " to ")}` : ""}</span>
+                        {pill(sn.state)}
+                        <button onClick={() => act(`vnets/${v.vnet}/subnets/${encodeURIComponent(sn.id)}/delete`)} aria-label={`Delete ${sn.cidr}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+      {form && <SdnForm form={form} zones={state?.zones.map((z) => z.zone) ?? []} onClose={() => setForm(null)} onSave={async (path, body) => { await act(path, body); setForm(null); }} />}
+    </div>
+  );
+}
+
+function SdnForm({ form, zones, onClose, onSave }: { form: { kind: "zone" } | { kind: "vnet" } | { kind: "subnet"; vnet: string }; zones: string[]; onClose: () => void; onSave: (path: string, body: unknown) => Promise<void> }) {
+  const [id, setId] = useState("");
+  const [type, setType] = useState<"simple" | "vlan">("simple");
+  const [bridge, setBridge] = useState("vmbr0");
+  const [dhcp, setDhcp] = useState(true);
+  const [zone, setZone] = useState(zones[0] ?? "");
+  const [alias, setAlias] = useState("");
+  const [tag, setTag] = useState("");
+  const [cidr, setCidr] = useState("10.20.0.0/24");
+  const [gateway, setGateway] = useState("10.20.0.1");
+  const [snat, setSnat] = useState(true);
+  const [dhcpStart, setDhcpStart] = useState("10.20.0.100");
+  const [dhcpEnd, setDhcpEnd] = useState("10.20.0.200");
+  const idErr = form.kind !== "subnet" && id && !ID_RE.test(id) ? "Up to 8 lowercase letters and digits, starting with a letter." : null;
+  const save = () =>
+    form.kind === "zone" ? onSave("zones", { zone: id, type, bridge: type === "vlan" ? bridge : undefined, dhcp: type === "simple" && dhcp })
+    : form.kind === "vnet" ? onSave("vnets", { vnet: id, zone, alias: alias || undefined, tag: tag ? Number(tag) : undefined })
+    : onSave(`vnets/${form.vnet}/subnets`, { cidr, gateway: gateway || undefined, snat, dhcpStart: dhcpStart || undefined, dhcpEnd: dhcpEnd || undefined });
+  return (
+    <Modal icon={<NetIcon className="h-5 w-5" />} title={form.kind === "zone" ? "New zone" : form.kind === "vnet" ? "New VNet" : `New subnet on ${form.vnet}`} subtitle="Staged until you apply." onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={form.kind !== "subnet" && (!id || !!idErr)}>Create</Button></>}>
+      <div className="space-y-4">
+        {form.kind !== "subnet" && <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Name</span><Input autoFocus value={id} onChange={(e) => setId(e.target.value.toLowerCase())} placeholder={form.kind === "zone" ? "orgs" : "northw"} className="font-mono" />{idErr && <span className="block text-[12px] mt-1.5 text-critical">{idErr}</span>}</label>}
+        {form.kind === "zone" && (
+          <>
+            <Segmented value={type} onChange={setType} options={[{ value: "simple", label: "Simple" }, { value: "vlan", label: "VLAN" }]} />
+            <p className="text-[12px] text-ink-3">{type === "simple" ? "Isolated networks that live on this host. The host routes them, so they can reach the internet with SNAT." : "Each VNet becomes a VLAN tag on an existing bridge, to reach other devices on your physical network."}</p>
+            {type === "vlan" ? <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Bridge</span><Input value={bridge} onChange={(e) => setBridge(e.target.value)} className="font-mono" /></label> : <div className="flex items-center justify-between"><span className="text-[14px]">Hand out addresses automatically (DHCP)</span><Toggle checked={dhcp} onChange={setDhcp} label="DHCP" /></div>}
+          </>
+        )}
+        {form.kind === "vnet" && (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Zone</span><select value={zone} onChange={(e) => setZone(e.target.value)} className="h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px]">{zones.map((z) => <option key={z}>{z}</option>)}</select></label>
+            <label className="block"><span className="block text-[13px] text-ink-2 mb-2">VLAN tag <span className="text-ink-3">(VLAN zones)</span></span><Input type="number" min={1} max={4094} value={tag} onChange={(e) => setTag(e.target.value)} /></label>
+            <label className="block sm:col-span-2"><span className="block text-[13px] text-ink-2 mb-2">Description</span><Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Northwind Labs network" /></label>
+          </div>
+        )}
+        {form.kind === "subnet" && (
+          <>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Network</span><Input value={cidr} onChange={(e) => setCidr(e.target.value)} className="font-mono" /></label>
+              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Gateway</span><Input value={gateway} onChange={(e) => setGateway(e.target.value)} className="font-mono" /></label>
+              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">DHCP from</span><Input value={dhcpStart} onChange={(e) => setDhcpStart(e.target.value)} className="font-mono" /></label>
+              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">DHCP to</span><Input value={dhcpEnd} onChange={(e) => setDhcpEnd(e.target.value)} className="font-mono" /></label>
+            </div>
+            <div className="flex items-center justify-between"><div><div className="text-[14px]">Internet through the host (SNAT)</div><div className="text-[12px] text-ink-3">Machines reach out; nothing outside can reach in.</div></div><Toggle checked={snat} onChange={setSnat} label="SNAT" /></div>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
