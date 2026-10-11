@@ -7,6 +7,8 @@ import { Home } from "./pages/Home.tsx";
 import { OrgDashboard } from "./pages/OrgDashboard.tsx";
 import { BackupsPage, HostShell, NetworkPage, StoragePage, Summary } from "./pages/DevicePages.tsx";
 import { Resources } from "./pages/Resources.tsx";
+import { StorageDetail } from "./pages/storage/StorageDetail.tsx";
+import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
 import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Tasks } from "./pages/org/OrgPages.tsx";
@@ -47,6 +49,8 @@ export function App() {
           <Route path="summary" element={<Summary />} />
           <Route path="resources" element={<Resources />} />
           <Route path="storage" element={<StoragePage />} />
+          <Route path="storage/:id" element={<StorageDetail />} />
+          <Route path="tasks" element={<TasksPage />} />
           <Route path="network" element={<NetworkPage />} />
           <Route path="backups" element={<BackupsPage />} />
           <Route path="automations" element={<Automations />} />

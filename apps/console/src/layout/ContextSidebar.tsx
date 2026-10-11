@@ -72,6 +72,7 @@ function DeviceSidebar() {
           <Item to={`/${d}/storage`} icon={<Database className="h-4 w-4" />}>Storage</Item>
           <Item to={`/${d}/network`} icon={<Network className="h-4 w-4" />}>Network</Item>
           <Item to={`/${d}/backups`} icon={<Archive className="h-4 w-4" />}>Backups</Item>
+          <Item to={`/${d}/tasks`} icon={<ListChecks className="h-4 w-4" />}>Tasks</Item>
         </Section>
       </div>
     </>

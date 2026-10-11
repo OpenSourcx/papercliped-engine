@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Transport } from "@papercliped-engine/proxmox-client";
-import { createApp, parseMachineSpec, templateName } from "../src/app.ts";
+import { checksum, createApp, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
 import { SessionStore } from "../src/sessions.ts";
 
 /** A fake Proxmox: users, optional TFA, tickets, and permissions per ticket. */
@@ -62,13 +62,31 @@ function fakePve() {
     if (path === "/nodes/pve/lxc/101/rrddata") return ok([{ time: 1, cpu: 0.5, q: u.search }]);
     if (path === "/cluster/nextid") return ok("106");
     if (path === "/nodes/pve/storage") return ok(u.searchParams.get("content") === "vztmpl" ? [{ storage: "local", type: "dir", active: 1 }] : [{ storage: "local-lvm", type: "lvmthin", avail: 5e10, active: 1 }]);
-    if (path === "/nodes/pve/storage/local/content") return ok([{ volid: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst", size: 1 }]);
+    if (path === "/nodes/pve/storage/local/content" && u.searchParams.get("content") === "vztmpl") return ok([{ volid: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst", size: 1 }]);
     if (path === "/pools") return ok([{ poolid: "co-northwind" }]);
     if (path === "/nodes/pve/lxc" && req.method === "POST") return admin ? ok("UPID:pve:create") : { status: 403, body: "" };
+    if (path === "/nodes/pve/storage/local/content" && u.searchParams.get("content") === null) return ok([{ volid: "local:iso/debian.iso", content: "iso", format: "iso", size: 600, ctime: 5 }, { volid: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst", content: "vztmpl", size: 1 }]);
+    if (path.startsWith("/nodes/pve/storage/local/content/") && req.method === "DELETE") return admin ? ok("UPID:pve:del") : { status: 403, body: "" };
+    if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok([{ template: "alpine-3.20-default_20240908_amd64.tar.xz", headline: "Alpine Linux 3.20", os: "alpine", section: "system", package: "alpine" }]);
+    if (path === "/nodes/pve/aplinfo" && req.method === "POST") return admin ? ok("UPID:pve:apl") : { status: 403, body: "" };
+    if (path === "/nodes/pve/storage/local/download-url") return new URLSearchParams(req.body).get("filename") === "exists.iso" ? { status: 400, body: JSON.stringify({ errors: { filename: "refusing to override existing file" } }) } : ok("UPID:pve:dl");
+    if (path === "/nodes/pve/tasks") return ok([{ upid: "UPID:pve:0001:0002:0003:download:x:sam@pve:", type: "download", user: "sam@pve", starttime: 1, status: "OK", endtime: 2 }]);
+    if (path.startsWith("/nodes/pve/tasks/") && path.endsWith("/status")) return ok({ status: "stopped", exitstatus: "OK" });
+    if (path.startsWith("/nodes/pve/tasks/") && path.endsWith("/log")) return ok([{ n: 1, t: "downloading" }, { n: 2, t: "TASK OK" }]);
+    if (path === "/nodes/pve/qemu" && req.method === "POST") return admin ? ok("UPID:pve:qm") : { status: 403, body: "" };
     if (path === "/nodes/pve/lxc/101/status/shutdown") return admin ? ok("UPID:pve:1") : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, seen, tickets };
+  const uploads: { url: string; headers: Record<string, string>; body: string }[] = [];
+  const streamTransport = async (req: { url: string; headers: Record<string, string>; body: AsyncIterable<Uint8Array | string> }) => {
+    const parts: Buffer[] = [];
+    for await (const c of req.body) parts.push(Buffer.from(c));
+    const user = tickets.get(decodeURIComponent((req.headers.Cookie ?? "").replace("PVEAuthCookie=", "")));
+    if (!user) return { status: 401, body: "" };
+    uploads.push({ url: req.url, headers: req.headers, body: Buffer.concat(parts).toString() });
+    return { status: 200, body: JSON.stringify({ data: "UPID:pve:up" }) };
+  };
+  return { transport, seen, tickets, streamTransport, uploads };
 }
 
 let server: Server;
@@ -86,7 +104,7 @@ beforeEach(async () => {
   writeFileSync(join(staticDir, "assets", "app-abc.js"), "console.log(1)");
   writeFileSync(join(staticDir, "..", "secret.txt"), "nope");
   const now = () => clock;
-  const handle = createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport }, sessions: new SessionStore(now), staticDir, secureCookies: true, now });
+  const handle = createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport, streamTransport: pve.streamTransport }, maxUploadBytes: 1024, sessions: new SessionStore(now), staticDir, secureCookies: true, now });
   server = createServer(handle);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -259,7 +277,7 @@ describe("creating machines", () => {
   it("offers templates, disk storages, pools and the next id", async () => {
     const c = await signIn();
     const r = await fetch(base + "/api/machines/options", { headers: { Cookie: c } });
-    expect(await r.json()).toEqual({ nextid: 106, templates: [{ volid: spec.template, name: "Debian 12 standard", size: 1 }], storages: [{ storage: "local-lvm", type: "lvmthin", avail: 5e10 }], pools: ["co-northwind"] });
+    expect(await r.json()).toEqual({ nextid: 106, templates: [{ volid: spec.template, name: "Debian 12 standard", size: 1 }], storages: [{ storage: "local-lvm", type: "lvmthin", avail: 5e10 }], isos: [], vmStorages: [{ storage: "local-lvm", type: "lvmthin", avail: 5e10 }], pools: ["co-northwind"] });
   });
 
   it("creates an unprivileged container as the user and starts it", async () => {
@@ -286,6 +304,104 @@ describe("creating machines", () => {
   it("names templates readably", () => {
     expect(templateName("local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst")).toBe("Ubuntu 24.04 standard");
     expect(templateName("local:vztmpl/custom.tar.gz")).toBe("custom.tar.gz");
+  });
+});
+
+describe("storage, templates and ISOs", () => {
+  it("lists what a storage holds", async () => {
+    const c = await signIn();
+    const r = await fetch(base + "/api/storage/local/content", { headers: { Cookie: c } });
+    const { items } = (await r.json()) as { items: { volid: string; content: string }[] };
+    expect(items.map((i) => i.content)).toEqual(["iso", "vztmpl"]);
+    expect((await fetch(base + "/api/storage/local/content?content=evil", { headers: { Cookie: c } })).status).toBe(400);
+    expect((await fetch(base + "/api/storage/..%2Fetc/content", { headers: { Cookie: c } })).status).toBe(400);
+  });
+
+  it("deletes only volumes inside the named storage, as the user", async () => {
+    const c = await signIn();
+    expect((await post("/api/storage/local/delete", { volid: "local:iso/debian.iso" }, { Cookie: c })).status).toBe(202);
+    expect(pve.seen.at(-1)!.url).toContain("/storage/local/content/local%3Aiso%2Fdebian.iso");
+    expect((await post("/api/storage/local/delete", { volid: "drive2:iso/debian.iso" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/storage/local/delete", { volid: "local:../../etc/passwd" }, { Cookie: c })).status).toBe(400);
+    const lee = await signIn("lee");
+    expect((await post("/api/storage/local/delete", { volid: "local:iso/debian.iso" }, { Cookie: lee })).status).toBe(403);
+  });
+
+  it("offers Proxmox's template catalog and downloads from it", async () => {
+    const c = await signIn();
+    const cat = (await (await fetch(base + "/api/templates/catalog", { headers: { Cookie: c } })).json()) as { templates: { template: string; headline: string }[] };
+    expect(cat.templates[0]).toMatchObject({ template: "alpine-3.20-default_20240908_amd64.tar.xz", headline: "Alpine Linux 3.20" });
+    const r = await post("/api/templates/download", { storage: "local", template: "alpine-3.20-default_20240908_amd64.tar.xz" }, { Cookie: c });
+    expect(await r.json()).toEqual({ task: "UPID:pve:apl" });
+    expect((await post("/api/templates/download", { storage: "local", template: "../x.tar.xz" }, { Cookie: c })).status).toBe(400);
+  });
+
+  it("downloads from a URL with an optional checksum, and passes Proxmox's reason through", async () => {
+    const c = await signIn();
+    const r = await post("/api/storage/local/download-url", { url: "https://cdimage.example/debian.iso", content: "iso", filename: "debian.iso", checksum: "AB".repeat(32), algorithm: "sha256" }, { Cookie: c });
+    expect(r.status).toBe(202);
+    expect(Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body))).toMatchObject({ url: "https://cdimage.example/debian.iso", filename: "debian.iso", checksum: "ab".repeat(32), "checksum-algorithm": "sha256", "verify-certificates": "1" });
+    expect((await post("/api/storage/local/download-url", { url: "file:///etc/shadow", content: "iso", filename: "a.iso" }, { Cookie: c })).status).toBe(400);
+    expect((await post("/api/storage/local/download-url", { url: "https://x.example/a", content: "iso", filename: "a.exe" }, { Cookie: c })).status).toBe(400);
+    const exists = await post("/api/storage/local/download-url", { url: "https://x.example/a.iso", content: "iso", filename: "exists.iso" }, { Cookie: c });
+    expect(exists.status).toBe(400);
+    expect(await exists.json()).toEqual({ error: "filename: refusing to override existing file", code: "proxmox_rejected" });
+  });
+
+  it("streams uploads through to Proxmox as the user", async () => {
+    const c = await signIn();
+    const r = await fetch(base + "/api/storage/local/upload?content=iso&filename=tiny.iso", { method: "POST", headers: { Cookie: c, "X-EPC-Request": "1", "Content-Type": "application/octet-stream" }, body: "ISODATA" });
+    expect(r.status).toBe(202);
+    expect(pve.uploads).toHaveLength(1);
+    expect(pve.uploads[0].url).toBe("https://127.0.0.1:8006/api2/json/nodes/pve/storage/local/upload");
+    expect(pve.uploads[0].body).toContain('filename="tiny.iso"');
+    expect(pve.uploads[0].body).toContain("\r\n\r\nISODATA\r\n");
+    expect(pve.uploads[0].headers.Cookie).toContain("PVEAuthCookie=");
+  });
+
+  it("refuses uploads that are too big, mislabeled, unnamed or cross-site", async () => {
+    const c = await signIn();
+    const up = (q: string, body: string, headers: Record<string, string> = {}) => fetch(base + `/api/storage/local/upload?${q}`, { method: "POST", headers: { Cookie: c, "X-EPC-Request": "1", "Content-Type": "application/octet-stream", ...headers }, body });
+    expect((await up("content=iso&filename=big.iso", "x".repeat(2000))).status).toBe(413);
+    expect((await up("content=iso&filename=evil.sh", "x")).status).toBe(400);
+    expect((await up("content=backup&filename=a.iso", "x")).status).toBe(400);
+    expect((await up("content=iso&filename=a.iso", "x", { "Content-Type": "text/plain" })).status).toBe(415);
+    expect((await up("content=iso&filename=a.iso", "x", { "X-EPC-Request": "" })).status).toBe(403);
+    expect(pve.uploads).toHaveLength(0);
+  });
+
+  it("lists tasks and reads a task's log", async () => {
+    const c = await signIn();
+    const { tasks } = (await (await fetch(base + "/api/tasks", { headers: { Cookie: c } })).json()) as { tasks: { upid: string }[] };
+    expect(tasks[0]).toMatchObject({ type: "download", status: "OK", user: "sam@pve" });
+    const one = await fetch(base + `/api/tasks/${encodeURIComponent(tasks[0].upid)}`, { headers: { Cookie: c } });
+    expect(await one.json()).toEqual({ status: "stopped", exitstatus: "OK", log: ["downloading", "TASK OK"] });
+    expect((await fetch(base + `/api/tasks/${encodeURIComponent("UPID:othernode:01:02:03:x:y:z:")}`, { headers: { Cookie: c } })).status).toBe(400);
+    expect((await fetch(base + `/api/tasks/${encodeURIComponent("UPID:pve:0A:0B:0C:imgdel:local:iso/a.iso:sam@pve:")}`, { headers: { Cookie: c } })).status).toBe(200);
+    expect((await fetch(base + `/api/tasks/${encodeURIComponent("UPID:pve:zz:0B:0C:x:y:")}`, { headers: { Cookie: c } })).status).toBe(400);
+  });
+
+  it("creates VMs with the defaults Proxmox's wizard uses", async () => {
+    const c = await signIn();
+    const r = await post("/api/vms", { name: "win-box", iso: "local:iso/win11.iso", ostype: "win11", cores: 4, memoryMb: 8192, diskGb: 64, storage: "local-lvm" }, { Cookie: c });
+    expect(r.status).toBe(202);
+    const sent = Object.fromEntries(new URLSearchParams(pve.seen.at(-1)!.body));
+    expect(sent).toMatchObject({ vmid: "106", name: "win-box", ostype: "win11", bios: "ovmf", machine: "q35", sata0: "local-lvm:64", ide2: "local:iso/win11.iso,media=cdrom", tpmstate0: "local-lvm:1,version=v2.0", start: "1" });
+    expect(vmParams(1, parseVmSpec({ name: "lin", iso: null, ostype: "l26", cores: 2, memoryMb: 2048, diskGb: 32, storage: "local-lvm" }))).toMatchObject({ scsi0: "local-lvm:32,iothread=1", ide2: "none,media=cdrom", net0: "virtio,bridge=vmbr0,firewall=1", bios: undefined });
+    const lee = await signIn("lee");
+    expect((await post("/api/vms", { name: "x", iso: null, ostype: "l26", cores: 1, memoryMb: 512, diskGb: 4, storage: "local-lvm" }, { Cookie: lee })).status).toBe(403);
+  });
+
+  it("validates names, volumes and checksums tightly", () => {
+    expect(() => fileName("a.iso", "iso")).not.toThrow();
+    expect(() => fileName("a.tar.zst", "iso")).toThrow();
+    expect(() => fileName(".hidden.iso", "iso")).toThrow();
+    expect(() => volumeId("local:iso/a.iso", "local")).not.toThrow();
+    expect(() => volumeId("local:iso/../a.iso", "local")).toThrow();
+    expect(() => checksum("zz", "sha256")).toThrow();
+    expect(() => checksum("ab".repeat(16), "crc32")).toThrow();
+    expect(checksum("", undefined)).toEqual({});
+    expect(() => parseVmSpec({ name: "x", iso: "local:iso/../../etc", ostype: "l26", cores: 1, memoryMb: 512, diskGb: 4, storage: "s" })).toThrow();
   });
 });
 

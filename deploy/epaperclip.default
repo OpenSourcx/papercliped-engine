@@ -6,3 +6,4 @@
 #EPC_TLS_CERT=/etc/pve/local/pve-ssl.pem
 #EPC_TLS_KEY=/etc/pve/local/pve-ssl.key
 #EPC_STATIC=/opt/epaperclip/console
+#EPC_MAX_UPLOAD_GB=64

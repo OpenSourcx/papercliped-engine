@@ -1,7 +1,7 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
-import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type Transport } from "@papercliped-engine/proxmox-client";
+import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { SessionStore, type Session } from "./sessions.ts";
 
 /**
@@ -16,7 +16,9 @@ import { SessionStore, type Session } from "./sessions.ts";
  */
 
 export interface AppDeps {
-  pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport };
+  pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport; streamTransport?: StreamTransport };
+  /** Largest ISO or template upload accepted, in bytes. */
+  maxUploadBytes?: number;
   sessions: SessionStore;
   staticDir: string | null;
   secureCookies: boolean;
@@ -145,12 +147,95 @@ export function parseMachineSpec(b: Record<string, unknown>): MachineSpec {
   return { name, template, storage, pool, password, sshKey, cores: int(b.cores, 1, 64, "Cores"), memoryMb: int(b.memoryMb, 256, 262144, "Memory"), diskGb: int(b.diskGb, 2, 4096, "Disk") };
 }
 
+const STORAGE_RE = /^[A-Za-z][\w.-]{0,63}$/;
+const FILE_RE = { iso: /^\w[\w.+-]{0,200}\.(iso|img)$/i, vztmpl: /^\w[\w.+-]{0,200}\.tar\.(gz|xz|zst)$/ } as const;
+const ALGOS = ["md5", "sha1", "sha224", "sha256", "sha384", "sha512"];
+const CONTENT_KINDS = ["iso", "vztmpl", "backup", "images", "rootdir", "snippets", "import"];
+
+export function storageId(v: unknown): string {
+  if (typeof v !== "string" || !STORAGE_RE.test(v)) throw new HttpError(400, "bad_request", "Unknown storage");
+  return v;
+}
+
+/** A volume id inside the given storage, e.g. local:iso/debian.iso. Never a path that climbs out. */
+export function volumeId(v: unknown, storage: string): string {
+  if (typeof v !== "string" || !v.startsWith(`${storage}:`) || v.length > 300 || v.includes("..") || !/^[\w.-]+:[\w./+-]+$/.test(v)) throw new HttpError(400, "bad_request", "Unknown file");
+  return v;
+}
+
+export function fileName(v: unknown, content: "iso" | "vztmpl"): string {
+  if (typeof v !== "string" || !FILE_RE[content].test(v)) throw new HttpError(400, "bad_request", content === "iso" ? "Use a file name ending in .iso or .img" : "Use a file name ending in .tar.gz, .tar.xz or .tar.zst");
+  return v;
+}
+
+export function checksum(c: unknown, a: unknown): { checksum?: string; algorithm?: string } {
+  if (c === undefined || c === null || c === "") return {};
+  if (typeof c !== "string" || !/^[0-9a-fA-F]{32,128}$/.test(c.trim())) throw new HttpError(400, "bad_request", "The checksum should be hexadecimal");
+  if (typeof a !== "string" || !ALGOS.includes(a)) throw new HttpError(400, "bad_request", "Pick a checksum algorithm");
+  return { checksum: c.trim().toLowerCase(), algorithm: a };
+}
+
+export interface VmSpec {
+  name: string;
+  iso: string | null;
+  ostype: "l26" | "win11" | "other";
+  cores: number;
+  memoryMb: number;
+  diskGb: number;
+  storage: string;
+  pool?: string;
+  start: boolean;
+}
+
+export function parseVmSpec(b: Record<string, unknown>): VmSpec {
+  const bad = (msg: string): never => {
+    throw new HttpError(400, "bad_request", msg);
+  };
+  const int = (v: unknown, lo: number, hi: number, what: string) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : bad(`${what} must be between ${lo} and ${hi}`));
+  const name = typeof b.name === "string" && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.name) ? b.name : bad("Use lowercase letters, digits and hyphens for the name");
+  const ostype = b.ostype === "l26" || b.ostype === "win11" || b.ostype === "other" ? b.ostype : bad("Pick an operating system type");
+  const storage = storageId(b.storage);
+  const iso = b.iso === null || b.iso === undefined || b.iso === "" ? null : typeof b.iso === "string" && /^[\w.-]+:iso\/[\w.+-]+$/.test(b.iso) && !b.iso.includes("..") ? b.iso : bad("Pick an ISO image");
+  const pool = b.pool === undefined || b.pool === null ? undefined : typeof b.pool === "string" && /^[\w.-]{1,64}$/.test(b.pool) ? b.pool : bad("Unknown pool");
+  return { name, iso, ostype, storage, pool, start: b.start !== false, cores: int(b.cores, 1, 128, "Cores"), memoryMb: int(b.memoryMb, 512, 1048576, "Memory"), diskGb: int(b.diskGb, 4, 16384, "Disk") };
+}
+
+/** Proxmox create parameters for a VM, following the defaults Proxmox's own wizard picks for each OS type. */
+export function vmParams(vmid: number, v: VmSpec): Record<string, string | number | boolean | undefined> {
+  const win = v.ostype === "win11";
+  return {
+    vmid,
+    name: v.name,
+    ostype: v.ostype,
+    cores: v.cores,
+    sockets: 1,
+    cpu: "x86-64-v2-AES",
+    memory: v.memoryMb,
+    scsihw: "virtio-scsi-single",
+    // Windows installs without extra drivers on SATA and e1000e; everything else gets VirtIO.
+    [win ? "sata0" : "scsi0"]: `${v.storage}:${v.diskGb}${win ? "" : ",iothread=1"}`,
+    ide2: v.iso ? `${v.iso},media=cdrom` : "none,media=cdrom",
+    net0: `${win ? "e1000e" : "virtio"},bridge=vmbr0,firewall=1`,
+    boot: `order=${win ? "sata0" : "scsi0"};ide2;net0`,
+    agent: "1",
+    bios: win ? "ovmf" : undefined,
+    machine: win ? "q35" : undefined,
+    efidisk0: win ? `${v.storage}:1,efitype=4m,pre-enrolled-keys=1` : undefined,
+    tpmstate0: win ? `${v.storage}:1,version=v2.0` : undefined,
+    pool: v.pool,
+    onboot: false,
+    start: v.start,
+    description: "Created from ePaperclip",
+  };
+}
+
 const str = (v: unknown, max = 256) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null);
 
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
   const limiter = new LoginLimiter(now);
-  const pveOpts = { baseUrl: d.pve.baseUrl, caPem: d.pve.caPem, transport: d.pve.transport };
+  const pveOpts = { baseUrl: d.pve.baseUrl, caPem: d.pve.caPem, transport: d.pve.transport, streamTransport: d.pve.streamTransport };
+  const maxUpload = d.maxUploadBytes ?? 64 * 1024 ** 3;
   const cookie = (id: string, maxAge: number) => `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${d.secureCookies ? "; Secure" : ""}`;
 
   const clientFor = async (s: Session): Promise<ProxmoxClient> => {
@@ -312,17 +397,24 @@ export function createApp(d: AppDeps) {
     if (method === "GET" && path === "/api/machines/options") {
       const data = await asUser(req, res, async (pve) => {
         const node = d.pve.node;
-        const [tplStores, diskStores, pools, nextid] = await Promise.all([
+        const [tplStores, diskStores, isoStores, imageStores, pools, nextid] = await Promise.all([
           pve.nodeStorages(node, "vztmpl"),
           pve.nodeStorages(node, "rootdir"),
+          pve.nodeStorages(node, "iso"),
+          pve.nodeStorages(node, "images"),
           pve.pools().catch(() => []),
           pve.nextId(),
         ]);
-        const templates = (await Promise.all(tplStores.filter((s) => s.active !== 0).map((s) => pve.storageContent(node, s.storage, "vztmpl").catch(() => [])))).flat();
+        const active = <T extends { active?: number }>(l: T[]) => l.filter((s) => s.active !== 0);
+        const templates = (await Promise.all(active(tplStores).map((s) => pve.storageContent(node, s.storage, "vztmpl").catch(() => [])))).flat();
+        const isos = (await Promise.all(active(isoStores).map((s) => pve.storageContent(node, s.storage, "iso").catch(() => [])))).flat();
+        const disk = (l: typeof diskStores) => active(l).map((s) => ({ storage: s.storage, type: s.type, avail: s.avail ?? null }));
         return {
           nextid,
           templates: templates.map((t) => ({ volid: t.volid, name: templateName(t.volid), size: t.size ?? null })),
-          storages: diskStores.filter((s) => s.active !== 0).map((s) => ({ storage: s.storage, type: s.type, avail: s.avail ?? null })),
+          isos: isos.map((t) => ({ volid: t.volid, name: t.volid.split("/").pop() ?? t.volid, size: t.size ?? null })),
+          storages: disk(diskStores),
+          vmStorages: disk(imageStores),
           pools: pools.map((p) => p.poolid),
         };
       });
@@ -354,6 +446,110 @@ export function createApp(d: AppDeps) {
           description: "Created from ePaperclip",
         });
         return { vmid, task: upid };
+      });
+      return sendJson(res, 202, created);
+    }
+
+    const content = path.match(/^\/api\/storage\/([^/]+)\/content$/);
+    if (method === "GET" && content) {
+      const storage = storageId(decodeURIComponent(content[1]));
+      const kind = url.searchParams.get("content") ?? undefined;
+      if (kind !== undefined && !CONTENT_KINDS.includes(kind)) throw new HttpError(400, "bad_request", "Unknown content type");
+      const items = await asUser(req, res, (pve) => pve.storageContentAll(d.pve.node, storage, kind));
+      return sendJson(res, 200, { items: items.map((i) => ({ volid: i.volid, content: i.content, format: i.format ?? null, size: i.size ?? null, ctime: i.ctime ?? null, vmid: i.vmid ?? null, notes: i.notes ?? null, protected: i.protected === 1 })) });
+    }
+
+    const del = path.match(/^\/api\/storage\/([^/]+)\/delete$/);
+    if (method === "POST" && del) {
+      requireSameSite(req);
+      const storage = storageId(decodeURIComponent(del[1]));
+      const volid = volumeId((await readJson(req)).volid, storage);
+      const task = await asUser(req, res, (pve) => pve.deleteVolume(d.pve.node, storage, volid));
+      return sendJson(res, 202, { task: task ?? null });
+    }
+
+    if (method === "GET" && path === "/api/templates/catalog") {
+      const list = await asUser(req, res, (pve) => pve.templateCatalog(d.pve.node));
+      return sendJson(res, 200, { templates: list.map((t) => ({ template: t.template, headline: t.headline ?? null, description: t.description ?? null, os: t.os ?? null, version: t.version ?? null, section: t.section ?? null, infopage: t.infopage ?? null })) });
+    }
+
+    if (method === "POST" && path === "/api/templates/download") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const storage = storageId(b.storage);
+      const template = fileName(b.template, "vztmpl");
+      const task = await asUser(req, res, (pve) => pve.downloadTemplate(d.pve.node, storage, template));
+      return sendJson(res, 202, { task });
+    }
+
+    const dl = path.match(/^\/api\/storage\/([^/]+)\/download-url$/);
+    if (method === "POST" && dl) {
+      requireSameSite(req);
+      const storage = storageId(decodeURIComponent(dl[1]));
+      const b = await readJson(req);
+      const kind = b.content === "vztmpl" ? "vztmpl" : b.content === "iso" ? "iso" : null;
+      if (!kind) throw new HttpError(400, "bad_request", "Choose ISO image or container template");
+      let target: URL;
+      try {
+        target = new URL(String(b.url));
+      } catch {
+        throw new HttpError(400, "bad_request", "Enter a full http(s) address");
+      }
+      if ((target.protocol !== "https:" && target.protocol !== "http:") || String(b.url).length > 2048) throw new HttpError(400, "bad_request", "Enter a full http(s) address");
+      const filename = fileName(b.filename, kind);
+      const sum = checksum(b.checksum, b.algorithm);
+      const task = await asUser(req, res, (pve) => pve.downloadUrl(d.pve.node, storage, { url: target.href, content: kind, filename, ...sum, verifyCertificates: b.verifyCertificates !== false }));
+      return sendJson(res, 202, { task });
+    }
+
+    const up = path.match(/^\/api\/storage\/([^/]+)\/upload$/);
+    if (method === "POST" && up) {
+      requireSameSite(req);
+      const storage = storageId(decodeURIComponent(up[1]));
+      const kind = url.searchParams.get("content") === "vztmpl" ? "vztmpl" : url.searchParams.get("content") === "iso" ? "iso" : null;
+      if (!kind) throw new HttpError(400, "bad_request", "Choose ISO image or container template");
+      const filename = fileName(url.searchParams.get("filename"), kind);
+      const sum = checksum(url.searchParams.get("checksum") || undefined, url.searchParams.get("algorithm"));
+      if (req.headers["content-type"] !== "application/octet-stream") throw new HttpError(415, "binary_only", "Send the file as application/octet-stream");
+      const size = Number(req.headers["content-length"]);
+      if (!Number.isSafeInteger(size) || size <= 0) throw new HttpError(411, "length_required", "The upload needs a Content-Length");
+      if (size > maxUpload) throw new HttpError(413, "too_large", `Uploads are limited to ${Math.floor(maxUpload / 1024 ** 3)} GiB`);
+      // Stream straight through to Proxmox; stop if the browser sends more or less than it announced.
+      async function* exact() {
+        let seen = 0;
+        for await (const chunk of req) {
+          seen += (chunk as Buffer).length;
+          if (seen > size) throw new HttpError(400, "bad_length", "The upload was larger than announced");
+          yield chunk as Buffer;
+        }
+        if (seen !== size) throw new HttpError(400, "bad_length", "The upload ended early");
+      }
+      const task = await asUser(req, res, (pve) => pve.upload(d.pve.node, storage, { content: kind, filename, size, file: exact(), ...sum }));
+      return sendJson(res, 202, { task });
+    }
+
+    if (method === "GET" && path === "/api/tasks") {
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50) || 50));
+      const list = await asUser(req, res, (pve) => pve.tasks(d.pve.node, limit));
+      return sendJson(res, 200, { tasks: list.map((t) => ({ upid: t.upid, type: t.type, id: t.id ?? null, user: t.user, status: t.status ?? null, start: t.starttime, end: t.endtime ?? null })) });
+    }
+
+    const task = path.match(/^\/api\/tasks\/([^/]+)$/);
+    if (method === "GET" && task) {
+      const upid = decodeURIComponent(task[1]);
+      // UPID:node:pid:pstart:starttime:type:id:user: — the id can hold a volume id with ":" and "/", so only the fixed
+      // fields are pinned. It is URL-encoded on the way to Proxmox, and must name this node.
+      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:\w+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
+      const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(d.pve.node, upid), pve.taskLog(d.pve.node, upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
+      return sendJson(res, 200, { status: status.status, exitstatus: (status as { exitstatus?: string }).exitstatus ?? null, log: log.map((l) => l.t) });
+    }
+
+    if (method === "POST" && path === "/api/vms") {
+      requireSameSite(req);
+      const spec = parseVmSpec(await readJson(req));
+      const created = await asUser(req, res, async (pve) => {
+        const vmid = await pve.nextId();
+        return { vmid, task: await pve.createVm(d.pve.node, vmParams(vmid, spec)) };
       });
       return sendJson(res, 202, created);
     }
@@ -413,7 +609,13 @@ export function createApp(d: AppDeps) {
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });
       return serveStatic(req, res, url);
     } catch (e) {
+      // A refused upload: answer and drop the connection instead of reading gigabytes nobody wants.
+      if (!req.complete && !res.headersSent) res.setHeader("Connection", "close");
+      if (res.headersSent) return void res.destroy();
       if (e instanceof HttpError) return sendJson(res, e.status, { error: e.message, code: e.code });
+      // Proxmox's own reasons ("file exists", "checksum mismatch", "storage does not support content type") help the
+      // user fix the request, and they could read them in Proxmox's UI anyway.
+      if (e instanceof ProxmoxError && e.detail) return sendJson(res, e.status >= 400 && e.status < 500 ? 400 : 502, { error: e.detail.slice(0, 500), code: "proxmox_rejected" });
       if (e instanceof ProxmoxError) return sendJson(res, 502, { error: "Proxmox didn't answer as expected", code: "proxmox_error" });
       const net = (e as { code?: unknown })?.code;
       if (typeof net === "string" && /^E[A-Z]+|CERT|SELF_SIGNED|UNABLE_TO_VERIFY/.test(net)) return sendJson(res, 502, { error: `Can't reach Proxmox (${net})`, code: "proxmox_unreachable" });

@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Rule } from "@papercliped-engine/automations";
 import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
-import { api, ApiError, type MachineSpec } from "./api.ts";
+import { api, ApiError, type MachineSpec, type VmSpec } from "./api.ts";
+import { demoBackend, liveBackend, type Backend } from "./backend.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
 import { wouldLoop } from "./orgTree.ts";
@@ -22,6 +23,15 @@ interface Engine {
   liveError: string | null;
   /** False until the first live answer arrives, so pages can wait instead of reporting "not found". */
   ready: boolean;
+  /** Storage, templates, uploads and tasks: Proxmox live, or the in-browser stand-in for the demo. */
+  backend: Backend;
+  /** Follows a Proxmox task until it ends, then tells you through Pin. Bumps contentVersion so lists refresh. */
+  watchTask: (upid: string | null, label: string) => void;
+  /** Tasks this console started that are still running. */
+  running: { upid: string; label: string }[];
+  /** Changes whenever a watched task finishes; storage views refetch on it. */
+  contentVersion: number;
+  createVm: (spec: VmSpec & { org: string | null }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
   setup: SetupState | null;
   data: EngineData;
   host: HostMetrics;
@@ -83,6 +93,37 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const [storage, setStorage] = useState<HostStorage[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [running, setRunning] = useState<{ upid: string; label: string }[]>([]);
+  const [contentVersion, setContentVersion] = useState(0);
+  const storageRef = useRef<HostStorage[]>([]);
+  const backend = useMemo<Backend>(() => (live ? liveBackend : demoBackend(() => storageRef.current)), [live]); // eslint-disable-line react-hooks/exhaustive-deps
+  const watchTask = useCallback(
+    (upid: string | null, label: string) => {
+      if (!upid) {
+        setContentVersion((n) => n + 1);
+        return;
+      }
+      setRunning((r) => [...r, { upid, label }]);
+      let tries = 0;
+      const tick = () =>
+        backend.task(upid).then(
+          (t) => {
+            if (t.status === "running" && tries++ < 2400) return void setTimeout(tick, 1500);
+            setRunning((r) => r.filter((x) => x.upid !== upid));
+            setContentVersion((n) => n + 1);
+            setRefreshTick((n) => n + 1);
+            const ok = t.exitstatus === "OK" || (t.exitstatus ?? "").startsWith("WARNINGS");
+            setData((d) => ({ ...d, notices: [{ id: `n-${Date.now()}-${upid.slice(-6)}`, kind: "info" as const, title: ok ? `${label}: done` : `${label}: failed`, body: ok ? "Finished on Proxmox." : (t.exitstatus ?? "Proxmox reported an error.") + " Open Tasks for the log.", at: new Date().toISOString(), read: false }, ...d.notices].slice(0, 50) }));
+          },
+          () => {
+            if (tries++ < 20) setTimeout(tick, 3000);
+            else setRunning((r) => r.filter((x) => x.upid !== upid));
+          },
+        );
+      setTimeout(tick, 800);
+    },
+    [backend],
+  );
 
   useEffect(() => writeJson("epc.data", data), [data]);
 
@@ -135,6 +176,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const updateGuest = (vmid: number, fn: (g: Guest) => Guest) => setData((d) => ({ ...d, guests: d.guests.map((x) => (x.vmid === vmid ? fn(x) : x)) }));
   const updateOrg = (slug: string, fn: (o: Org) => Org) => setData((d) => ({ ...d, orgs: d.orgs.map((o) => (o.slug === slug ? fn(o) : o)) }));
 
+  storageRef.current = live ? storage : data.host.storage;
   const view = useMemo<EngineData>(() => (live ? { ...data, guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage]);
 
   const value = useMemo<Engine>(
@@ -142,6 +184,29 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       live,
       liveError,
       ready: !live || guests !== null,
+      backend,
+      watchTask,
+      running,
+      contentVersion,
+      createVm: async (spec) => {
+        const { org, ...rest } = spec;
+        if (live) {
+          try {
+            const r = await api.createVm(rest);
+            watchTask(r.task, `Create VM ${spec.name}`);
+            return { ok: true, vmid: r.vmid };
+          } catch (e) {
+            return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+          }
+        }
+        if (view.guests.some((g) => g.name === spec.name)) return { ok: false, error: "A machine with that name exists." };
+        const vmid = Math.max(99, ...view.guests.map((g) => g.vmid)) + 1;
+        const at = new Date().toISOString();
+        const up = spec.start !== false;
+        const guest: Guest = { vmid, name: spec.name, type: "qemu", status: up ? "running" : "stopped", cpuPct: up ? 4 : 0, cores: spec.cores, memUsed: up ? spec.memoryMb * 1024 ** 2 * 0.2 : 0, memMax: spec.memoryMb * 1024 ** 2, diskMax: spec.diskGb * 1e9, org, protected: false, ip: null, os: spec.ostype === "win11" ? "Windows 11" : spec.iso?.split("/").pop() ?? "No media", tags: org ? [org] : [], snapshots: [], tasks: [...(up ? [{ id: `${vmid}-start`, what: "Start", at, ok: true }] : []), { id: `${vmid}-create`, what: "Create", at, ok: true }] };
+        setData((d) => ({ ...d, guests: [...d.guests, guest] }));
+        return { ok: true, vmid };
+      },
       setup,
       data: view,
       host,
@@ -210,6 +275,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           try {
             const r = await api.createMachine(rest);
             setTimeout(() => setRefreshTick((n) => n + 1), 1200);
+            watchTask(r.task, `Create container ${spec.name}`);
             return { ok: true, vmid: r.vmid };
           } catch (e) {
             return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
@@ -264,7 +330,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
       revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),
     }),
-    [live, liveError, guests, setup, data, view, host, completeSetup],
+    [live, liveError, guests, setup, data, view, host, completeSetup, backend, watchTask, running, contentVersion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

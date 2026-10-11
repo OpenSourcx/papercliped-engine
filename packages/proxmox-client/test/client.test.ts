@@ -111,3 +111,50 @@ describe("user sessions (Integrated Access Control)", () => {
     expect(err.status).toBe(401);
   });
 });
+
+describe("storage content and uploads", () => {
+  it("streams an upload as multipart with an exact Content-Length", async () => {
+    let seen: { url: string; headers: Record<string, string>; body: Buffer } | null = null;
+    const c = new ProxmoxClient({
+      baseUrl: "https://pve.test:8006",
+      ticket: "PVE:t",
+      csrf: "c1",
+      streamTransport: async (req) => {
+        const parts: Buffer[] = [];
+        for await (const ch of req.body) parts.push(Buffer.from(ch));
+        seen = { url: req.url, headers: req.headers, body: Buffer.concat(parts) };
+        return { status: 200, body: JSON.stringify({ data: "UPID:pve:up" }) };
+      },
+    });
+    async function* file() {
+      yield Buffer.from("ISO");
+      yield Buffer.from("DATA");
+    }
+    expect(await c.upload("pve", "local", { content: "iso", filename: 'my"disk.iso', size: 7, file: file() })).toBe("UPID:pve:up");
+    const s = seen!;
+    expect(s.url).toBe("https://pve.test:8006/api2/json/nodes/pve/storage/local/upload");
+    expect(s.headers.CSRFPreventionToken).toBe("c1");
+    expect(Number(s.headers["Content-Length"])).toBe(s.body.length);
+    const text = s.body.toString();
+    expect(text).toContain('name="content"\r\n\r\niso\r\n');
+    expect(text).toContain('filename="mydisk.iso"');
+    expect(text).toContain("\r\n\r\nISODATA\r\n--");
+  });
+
+  it("deletes volumes by encoded volid and asks for the catalog and downloads", async () => {
+    const { seen, transport } = recorder([{ status: 200, body: { data: null } }, { status: 200, body: { data: [] } }, { status: 200, body: { data: "UPID:dl" } }]);
+    const c = new ProxmoxClient({ baseUrl: "https://pve.test:8006", ticket: "PVE:t", csrf: "c1", transport });
+    await c.deleteVolume("pve", "local", "local:iso/a b.iso");
+    await c.templateCatalog("pve");
+    await c.downloadUrl("pve", "local", { url: "https://x.test/a.iso", content: "iso", filename: "a.iso", checksum: "ab", algorithm: "sha256" });
+    expect(seen[0].url).toBe("https://pve.test:8006/api2/json/nodes/pve/storage/local/content/local%3Aiso%2Fa%20b.iso");
+    expect(seen[1].url).toBe("https://pve.test:8006/api2/json/nodes/pve/aplinfo");
+    expect(Object.fromEntries(new URLSearchParams(seen[2].body))).toEqual({ url: "https://x.test/a.iso", content: "iso", filename: "a.iso", checksum: "ab", "checksum-algorithm": "sha256", "verify-certificates": "1" });
+  });
+
+  it("keeps Proxmox's explanation on errors", async () => {
+    const { transport } = recorder([{ status: 400, body: { errors: { filename: "already exists" } } }]);
+    const err = await new ProxmoxClient({ baseUrl: "https://pve.test:8006", ticket: "t", csrf: "c", transport }).downloadTemplate("pve", "local", "x").catch((e) => e);
+    expect(err.detail).toBe("filename: already exists");
+  });
+});

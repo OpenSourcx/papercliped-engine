@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Archive, Cable, Database, HardDrive, ShieldAlert } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
@@ -27,7 +28,7 @@ export function StoragePage() {
   const { data, host, setup } = useEngine();
   return (
     <PageFrame width="4xl">
-      <PageHeader title="Storage" subtitle="Where machine disks, templates, ISO images and backups live." />
+      <PageHeader title="Storage" subtitle="Where machine disks, templates, ISO images and backups live. Open one to browse, upload or download." />
       <div className="space-y-3">
         {host.diskTotal > 0 && (
           <Card className="p-5">
@@ -42,7 +43,8 @@ export function StoragePage() {
         )}
         {data.host.storage.length === 0 && <p className="text-[14px] text-ink-3">Your Proxmox account can't see any storage on this device.</p>}
         {data.host.storage.map((s) => (
-          <Card key={s.id} className="p-5">
+          <Link key={s.id} to={`/${setup?.deviceName ?? "pve"}/storage/${s.id}`} className="block">
+          <Card interactive className="p-5">
             <div className="flex items-center gap-3">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><Database className="h-4 w-4" /></span>
               <div className="flex-1 min-w-0"><div className="font-medium">{s.id}</div><div className="text-[12px] text-ink-3 font-mono truncate">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""}</div></div>
@@ -52,6 +54,7 @@ export function StoragePage() {
             <div className="flex flex-wrap gap-1.5 mt-3">{s.content.map((c) => <Chip key={c}>{c}</Chip>)}</div>
             {s.type === "dir" && <p className="text-[12px] text-ink-3 mt-3">Directory storage copies whole disks when cloning. ZFS or LVM-thin make container sessions start in seconds.</p>}
           </Card>
+          </Link>
         ))}
       </div>
     </PageFrame>

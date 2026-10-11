@@ -19,6 +19,7 @@ The installer puts the service in `/opt/epaperclip`, creates an `epaperclip` sys
 | `EPC_PVE_NODE` | the hostname |
 | `EPC_TLS_CERT` / `EPC_TLS_KEY` | `/etc/pve/local/pve-ssl.pem` / `.key` |
 | `EPC_STATIC` | `/opt/epaperclip/console` |
+| `EPC_MAX_UPLOAD_GB` | `64` |
 | `EPC_DEV_HTTP` | unset; `1` serves plain HTTP for local development only |
 
 If you replaced the node certificate (for example with ACME), point `EPC_TLS_CERT`/`EPC_TLS_KEY` at `/etc/pve/local/pveproxy-ssl.pem`/`.key`.
@@ -35,7 +36,13 @@ All under `/api`. Changes need `Content-Type: application/json`, `X-EPC-Request:
 | `GET /host` | Node status, guests and storage the user can see |
 | `GET /stats/node`, `GET /stats/guests/:vmid` | Usage history (`timeframe`, `cf`) |
 | `POST /guests/:vmid/power` | `start`, `shutdown`, `stop`, `reboot` |
-| `GET /machines/options`, `POST /machines` | Templates, storages and pools; create and start an unprivileged container |
+| `GET /machines/options`, `POST /machines` | Templates, ISOs, storages and pools; create and start an unprivileged container |
+| `POST /vms` | Create a VM booting an ISO, with Proxmox's wizard defaults for the OS type |
+| `GET /storage/:id/content`, `POST /storage/:id/delete` | What a storage holds; delete one volume |
+| `GET /templates/catalog`, `POST /templates/download` | Proxmox's template catalog and downloads from it |
+| `POST /storage/:id/download-url` | Have Proxmox download an ISO or template from a URL, with an optional checksum |
+| `POST /storage/:id/upload?content=&filename=` | Upload an ISO or template as `application/octet-stream`, streamed to Proxmox (capped by `EPC_MAX_UPLOAD_GB`) |
+| `GET /tasks`, `GET /tasks/:upid` | The task log and one task's status and output |
 
 ## Develop
 

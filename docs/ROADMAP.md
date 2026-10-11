@@ -57,7 +57,14 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Installer and systemd unit for a Proxmox VE host (`deploy/`)
 - [ ] Connect the console to the host broker and ePaperclip for organizations, agents and tasks (still demo data)
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
-- [ ] Storage, network and backup pages
+- [x] Storage content: browse ISO images, CT templates, backups and disks per storage; delete with confirmation
+- [x] Proxmox's template catalog (system and TurnKey) with one-click download; ISO and template upload with progress; download from URL with checksum
+- [x] Task log with each task's output; Pin notifies when downloads, uploads and creates finish
+- [x] Virtual machines from an ISO, with Proxmox's wizard defaults per OS type (Windows 11 gets UEFI, Secure Boot keys and TPM 2.0)
+- [ ] Backups: run now, schedules, restore
+- [ ] Network: bridges, VLANs, apply configuration
+- [ ] Machine hardware editing (disks, NICs, CPU, memory), snapshots and clones on live machines
+- [ ] Firewall, users and permissions (the IAC sync backend), certificates, disks and ZFS, HA and replication
 - [x] Serve the console on the host (port 443), with the stock Proxmox UI kept on 8006 as the emergency console
 
 ## Phase 5: the system

@@ -6,6 +6,8 @@ import { Connectors } from "../pages/Connectors.tsx";
 import { NewMachineModal } from "../pages/machines/NewMachine.tsx";
 import { NewOrgModal } from "../pages/NewOrg.tsx";
 import { QuickCreateModal } from "../pages/org/QuickCreate.tsx";
+import { DownloadUrlModal, TemplatesModal, UploadModal } from "../pages/storage/StorageModals.tsx";
+import { TaskLogModal } from "../pages/Tasks.tsx";
 import { Settings } from "../pages/Settings.tsx";
 import { Updates } from "../pages/Updates.tsx";
 import { SettingsModal, type SettingsSection } from "../ui/Modal.tsx";
@@ -30,6 +32,10 @@ export function ModalHost() {
       {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
       {m.modal === "new-org" && <NewOrgModal onClose={m.close} />}
       {m.modal === "new-machine" && <NewMachineModal onClose={m.close} />}
+      {m.modal === "upload" && <UploadModal onClose={m.close} />}
+      {m.modal === "download-url" && <DownloadUrlModal onClose={m.close} />}
+      {m.modal === "templates" && <TemplatesModal onClose={m.close} />}
+      {m.modal === "task" && <TaskLogModal onClose={m.close} />}
       {(m.modal === "new-project" || m.modal === "new-goal" || m.modal === "new-routine") && <QuickCreateModal kind={m.modal} onClose={m.close} />}
     </>
   );

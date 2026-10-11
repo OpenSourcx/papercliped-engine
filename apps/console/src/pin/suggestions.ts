@@ -9,7 +9,7 @@ import type { EngineData } from "../data/types.ts";
  *  - "go"  jumps to a related page. Never the page you're on.
  */
 
-export type IconName = "plus" | "box" | "org" | "task" | "vote" | "users" | "list" | "gauge" | "terminal" | "tree" | "database" | "archive" | "refresh" | "network" | "activity" | "dollar" | "settings" | "sparkles" | "check" | "target" | "folder" | "repeat" | "inbox" | "plug" | "zap";
+export type IconName = "upload" | "download" | "package" | "plus" | "box" | "org" | "task" | "vote" | "users" | "list" | "gauge" | "terminal" | "tree" | "database" | "archive" | "refresh" | "network" | "activity" | "dollar" | "settings" | "sparkles" | "check" | "target" | "folder" | "repeat" | "inbox" | "plug" | "zap";
 
 export interface Suggestion {
   id: string;
@@ -32,7 +32,7 @@ export interface PageRef {
 export function pageOf(pathname: string, orgSlugs: string[]): PageRef {
   const [, device = "pve", a = "home", b = "", c = ""] = pathname.split("/");
   if (orgSlugs.includes(a)) return { device, org: a, page: b === "machines" && c ? "machine" : b };
-  return { device, org: null, page: a === "machines" && b ? "machine" : a };
+  return { device, org: null, page: a === "machines" && b ? "machine" : a === "storage" && b ? "storage-item" : a };
 }
 
 const go = (id: string, label: string, icon: IconName, to: string): Suggestion => ({ id: `go-${id}`, label, icon, group: "go", to });
@@ -101,6 +101,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     go("network", "Network", "network", `${d}/network`),
     go("backups", "Backups", "archive", `${d}/backups`),
     go("automations", "Automations", "zap", `${d}/automations`),
+    go("tasks", "Tasks", "list", `${d}/tasks`),
     go("updates", "Updates", "refresh", "?settings=updates"),
   ].filter((s) => s.to !== `${d}/${ref.page}`);
   const goFirst = (...ids: string[]) => [...ids.map((id) => nav.find((n) => n.id === `go-${id}`)).filter((n): n is Suggestion => !!n), ...nav.filter((n) => !ids.includes(n.id.slice(3)))];
@@ -112,7 +113,15 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     resources: [newMachine, ask("What's using the most resources?"), ...goFirst("machines", "summary")],
     summary: [newMachine, ask("How is my server?"), ...goFirst("shell", "resources")],
     shell: [ask("What can I check from the host shell?"), ...goFirst("summary", "machines")],
-    storage: [ask("How much space is left?"), newMachine, ...goFirst("backups", "resources")],
+    storage: [
+      { id: "upload-iso", label: "Upload ISO", icon: "upload", group: "do", to: "?modal=upload&content=iso" },
+      { id: "templates", label: "Templates", icon: "package", group: "do", to: "?modal=templates" },
+      { id: "download-url", label: "Download from URL", icon: "download", group: "do", to: "?modal=download-url" },
+      ask("How much space is left?"),
+      ...goFirst("backups", "tasks"),
+    ],
+    "storage-item": [ask("How much space is left?"), ...goFirst("storage", "tasks", "backups")],
+    tasks: [ask("Did anything fail recently?"), newMachine, ...goFirst("storage", "summary")],
     network: [ask("Which machines are on which bridge?"), ...goFirst("machines", "resources")],
     backups: [ask("When did the last backup run?"), ...goFirst("storage", "machines")],
     automations: [{ id: "new-automation", label: "New automation", icon: "zap", group: "ask", ask: "If a container uses more than 50% of its memory, shut it down" }, ask("What did my automations do today?"), ...goFirst("machines", "summary")],

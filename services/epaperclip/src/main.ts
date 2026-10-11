@@ -16,6 +16,7 @@ import { SessionStore } from "./sessions.ts";
  *   EPC_TLS_CERT   certificate to serve              (default /etc/pve/local/pve-ssl.pem)
  *   EPC_TLS_KEY    its private key                   (default /etc/pve/local/pve-ssl.key)
  *   EPC_STATIC     the built console                 (default /opt/epaperclip/console)
+ *   EPC_MAX_UPLOAD_GB  largest ISO or template upload    (default 64)
  *   EPC_DEV_HTTP   set to 1 to serve plain HTTP for local development only
  */
 
@@ -42,13 +43,16 @@ const handle = createApp({
   sessions,
   staticDir: env.EPC_STATIC ?? "/opt/epaperclip/console",
   secureCookies: !devHttp,
+  maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
 });
 
 const server = devHttp
   ? createHttp(handle)
   : createHttps({ cert: readFileSync(env.EPC_TLS_CERT ?? "/etc/pve/local/pve-ssl.pem"), key: readFileSync(env.EPC_TLS_KEY ?? "/etc/pve/local/pve-ssl.key"), minVersion: "TLSv1.2" }, handle);
 server.headersTimeout = 20_000;
-server.requestTimeout = 60_000;
+// Uploads of multi-gigabyte ISOs can take a long time on a slow link; a stalled socket still times out below.
+server.requestTimeout = 6 * 3600_000;
+server.timeout = 120_000;
 
 const sweep = setInterval(() => sessions.sweep(), 60_000);
 sweep.unref();

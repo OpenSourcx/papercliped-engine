@@ -9,6 +9,9 @@ import { request as httpsRequest } from "node:https";
 
 export type Transport = (req: { method: string; url: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; body: string }>;
 
+/** Like Transport, but streams the request body (for uploads that can be gigabytes). */
+export type StreamTransport = (req: { method: string; url: string; headers: Record<string, string>; body: AsyncIterable<Uint8Array | string> }) => Promise<{ status: number; body: string }>;
+
 /**
  * Two ways to authenticate:
  *  - an API token (`tokenId` + `tokenSecret`), used by the broker, and
@@ -19,6 +22,7 @@ export type ProxmoxClientOptions = {
   baseUrl: string; // e.g. https://192.168.1.200:8006
   caPem?: string;
   transport?: Transport;
+  streamTransport?: StreamTransport;
 } & ({ tokenId: string; tokenSecret: string; ticket?: undefined } | { ticket: string; csrf: string; tokenId?: undefined });
 
 export interface LoginResult {
@@ -30,9 +34,12 @@ export interface LoginResult {
 
 export class ProxmoxError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** Proxmox's own explanation (field errors or its message), when it gave one. Safe to show the signed-in user. */
+  readonly detail: string | null;
+  constructor(message: string, status: number, detail: string | null = null) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -64,6 +71,40 @@ export interface ClusterResource {
   plugintype?: string; // dir, lvmthin, zfspool, nfs, ...
   content?: string; // comma list: images,rootdir,vztmpl,iso,backup,snippets
   shared?: number;
+}
+
+export interface StorageItem {
+  volid: string;
+  content: string; // iso | vztmpl | backup | images | rootdir | snippets | import
+  format?: string;
+  size?: number;
+  ctime?: number;
+  vmid?: number;
+  notes?: string;
+  protected?: number;
+}
+
+export interface CatalogTemplate {
+  template: string; // file name, e.g. debian-12-standard_12.7-1_amd64.tar.zst
+  package?: string;
+  headline?: string;
+  description?: string;
+  os?: string;
+  version?: string;
+  section?: string; // system | turnkeylinux | mail ...
+  type?: string; // lxc
+  infopage?: string;
+}
+
+export interface TaskEntry {
+  upid: string;
+  type: string; // vzdump, qmstart, download, imgcopy, aptupdate ...
+  id?: string; // guest id or volume, depending on type
+  user: string;
+  status?: string; // OK, an error, or absent while running
+  starttime: number;
+  endtime?: number;
+  node?: string;
 }
 
 export interface NodeStatus {
@@ -125,6 +166,23 @@ function nodeTransport(caPem?: string): Transport {
     });
 }
 
+function nodeStreamTransport(caPem?: string): StreamTransport {
+  return (req) =>
+    new Promise((resolve, reject) => {
+      const r = httpsRequest(req.url, { method: req.method, headers: req.headers, ca: caPem, timeout: 10 * 60_000 }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+      });
+      r.on("timeout", () => r.destroy(new Error("Proxmox upload stalled")));
+      r.on("error", reject);
+      (async () => {
+        for await (const chunk of req.body) if (!r.write(chunk)) await new Promise((ok) => r.once("drain", ok));
+        r.end();
+      })().catch((e) => r.destroy(e));
+    });
+}
+
 const seg = (v: string | number) => encodeURIComponent(String(v));
 
 function apiBase(baseUrl: string): string {
@@ -138,6 +196,7 @@ export class ProxmoxClient {
   private readonly headers: Record<string, string>;
   private readonly writeHeaders: Record<string, string>;
   private readonly transport: Transport;
+  private readonly streamTransport: StreamTransport;
 
   constructor(opts: ProxmoxClientOptions) {
     this.base = apiBase(opts.baseUrl);
@@ -149,6 +208,7 @@ export class ProxmoxClient {
       this.writeHeaders = {};
     }
     this.transport = opts.transport ?? nodeTransport(opts.caPem);
+    this.streamTransport = opts.streamTransport ?? nodeStreamTransport(opts.caPem);
   }
 
   /**
@@ -202,7 +262,7 @@ export class ProxmoxClient {
     }
     if (res.status < 200 || res.status >= 300) {
       const detail = parsed.errors ? Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join("; ") : parsed.message;
-      throw new ProxmoxError(`Proxmox ${method} ${path} failed (${res.status})${detail ? `: ${detail}` : ""}`, res.status);
+      throw new ProxmoxError(`Proxmox ${method} ${path} failed (${res.status})${detail ? `: ${detail}` : ""}`, res.status, detail ? detail.trim() : null);
     }
     return parsed.data as T;
   }
@@ -237,6 +297,80 @@ export class ProxmoxClient {
 
   storageContent(node: string, storage: string, content: string) {
     return this.call<{ volid: string; size?: number; format?: string }[]>("GET", `/nodes/${seg(node)}/storage/${seg(storage)}/content`, { content });
+  }
+
+  /** What a storage holds: ISO images, container templates, backups, disk images. */
+  storageContentAll(node: string, storage: string, content?: string) {
+    return this.call<StorageItem[]>("GET", `/nodes/${seg(node)}/storage/${seg(storage)}/content`, { content });
+  }
+
+  /** Deletes one volume. Returns a task id (newer Proxmox) or null. */
+  deleteVolume(node: string, storage: string, volid: string) {
+    return this.call<string | null>("DELETE", `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`);
+  }
+
+  /** Proxmox's appliance catalog: the container templates it can download. */
+  templateCatalog(node: string) {
+    return this.call<CatalogTemplate[]>("GET", `/nodes/${seg(node)}/aplinfo`);
+  }
+
+  downloadTemplate(node: string, storage: string, template: string) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/aplinfo`, { storage, template });
+  }
+
+  /** Has Proxmox download a file from a URL straight into a storage. */
+  downloadUrl(node: string, storage: string, p: { url: string; content: "iso" | "vztmpl"; filename: string; checksum?: string; algorithm?: string; verifyCertificates?: boolean }) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/storage/${seg(storage)}/download-url`, { url: p.url, content: p.content, filename: p.filename, checksum: p.checksum, "checksum-algorithm": p.checksum ? p.algorithm : undefined, "verify-certificates": p.verifyCertificates ?? true });
+  }
+
+  /**
+   * Uploads an ISO image or container template, streaming it as multipart/form-data the way Proxmox's UI does.
+   * `size` must be the exact byte count of `file`.
+   */
+  async upload(node: string, storage: string, p: { content: "iso" | "vztmpl"; filename: string; size: number; file: AsyncIterable<Uint8Array | string>; checksum?: string; algorithm?: string }): Promise<string> {
+    const boundary = `----epaperclip${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+    const field = (name: string, value: string) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+    let head = field("content", p.content);
+    if (p.checksum && p.algorithm) head += field("checksum", p.checksum) + field("checksum-algorithm", p.algorithm);
+    head += `--${boundary}\r\nContent-Disposition: form-data; name="filename"; filename="${p.filename.replace(/["\r\n]/g, "")}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+    const tail = `\r\n--${boundary}--\r\n`;
+    const headBuf = Buffer.from(head);
+    const tailBuf = Buffer.from(tail);
+    async function* body() {
+      yield headBuf;
+      yield* p.file;
+      yield tailBuf;
+    }
+    const res = await this.streamTransport({
+      method: "POST",
+      url: `${this.base}/nodes/${seg(node)}/storage/${seg(storage)}/upload`,
+      headers: { ...this.headers, ...this.writeHeaders, Accept: "application/json", "Content-Type": `multipart/form-data; boundary=${boundary}`, "Content-Length": String(headBuf.length + p.size + tailBuf.length) },
+      body: body(),
+    });
+    let parsed: { data?: string; errors?: Record<string, string>; message?: string } = {};
+    try {
+      parsed = res.body ? JSON.parse(res.body) : {};
+    } catch {
+      // not JSON
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const detail = parsed.errors ? Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join("; ") : parsed.message ?? null;
+      throw new ProxmoxError(`Proxmox upload failed (${res.status})`, res.status, detail);
+    }
+    return parsed.data ?? "";
+  }
+
+  /** Recent tasks on a node. Proxmox shows each user their own unless they may audit the system. */
+  tasks(node: string, limit = 50) {
+    return this.call<TaskEntry[]>("GET", `/nodes/${seg(node)}/tasks`, { limit });
+  }
+
+  taskLog(node: string, upid: string, limit = 500) {
+    return this.call<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/log`, { start: 0, limit });
+  }
+
+  createVm(node: string, params: Record<string, string | number | boolean | undefined>) {
+    return this.call<string>("POST", `/nodes/${seg(node)}/qemu`, params);
   }
 
   /** Pools the caller can see. */
