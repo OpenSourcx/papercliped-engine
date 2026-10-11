@@ -1,0 +1,32 @@
+import { Cable, Palette, Plug, RefreshCw, Settings as Gear, ShieldCheck } from "lucide-react";
+import { Access } from "../pages/Access.tsx";
+import { Appearance } from "../pages/Appearance.tsx";
+import { Apps } from "../pages/Apps.tsx";
+import { Connectors } from "../pages/Connectors.tsx";
+import { NewOrgModal } from "../pages/NewOrg.tsx";
+import { Settings } from "../pages/Settings.tsx";
+import { Updates } from "../pages/Updates.tsx";
+import { SettingsModal, type SettingsSection } from "../ui/Modal.tsx";
+import { useModals } from "./useModals.ts";
+
+const SECTIONS: SettingsSection[] = [
+  { id: "general", group: "Device", label: "General", icon: <Gear className="h-4 w-4" />, render: () => <Settings /> },
+  { id: "updates", group: "Device", label: "Updates", icon: <RefreshCw className="h-4 w-4" />, render: () => <Updates /> },
+  { id: "access", group: "Access", label: "Access control", icon: <ShieldCheck className="h-4 w-4" />, render: () => <Access /> },
+  { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
+  { id: "connectors", group: "Access", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
+  { id: "appearance", group: "You", label: "Appearance", icon: <Palette className="h-4 w-4" />, render: () => <Appearance /> },
+];
+
+export const SETTINGS_IDS = SECTIONS.map((s) => s.id);
+
+/** Renders whichever modal the URL asks for, over the current page. */
+export function ModalHost() {
+  const m = useModals();
+  return (
+    <>
+      {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
+      {m.modal === "new-org" && <NewOrgModal onClose={m.close} />}
+    </>
+  );
+}

@@ -1,14 +1,14 @@
 import { CheckCircle2, Download, RefreshCw } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { usePin } from "../pin/PinContext.tsx";
-import { Button, Card, PageHeader, Status } from "../ui/primitives.tsx";
+import { Button, Card, PageHeader, Status, PageFrame } from "../ui/primitives.tsx";
 
 export function Updates() {
   const { data, host } = useEngine();
   const pin = usePin();
   const updates = data.notices.filter((n) => n.kind === "update");
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="3xl">
       <PageHeader title="Updates" subtitle="Pin follows Proxmox and Paperclip releases and tells you when something new lands. Updates are applied only when you approve, after snapshots." actions={<Button onClick={() => pin.send("Are there any updates?")}><RefreshCw className="h-4 w-4" />Ask Pin</Button>} />
       <div className="grid sm:grid-cols-2 gap-4 mb-6">
         <Card className="p-5"><div className="text-[12px] text-ink-3">Proxmox VE</div><div className="text-[20px] font-semibold mt-1">{host.version}</div>{updates.length ? <Status kind="warning" label="Update available" /> : <Status kind="good" label="Up to date" />}</Card>
@@ -27,6 +27,6 @@ export function Updates() {
           </Card>
         ))}
       </div>
-    </div>
+    </PageFrame>
   );
 }

@@ -1,111 +1,138 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Boxes, Cable, House, KeyRound, Menu, Palette, Plug, Plus, RefreshCw, Server, Settings, ShieldCheck, Workflow, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Boxes, House, Menu, Plug, Plus, Settings, Workflow, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
+import { ModalHost } from "../modals/ModalHost.tsx";
+import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
 import { PinIsland } from "../pin/PinIsland.tsx";
-import { Avatar, Chip } from "../ui/primitives.tsx";
+import { Avatar } from "../ui/primitives.tsx";
 
-function Item({ to, icon, children, end, badge }: { to: string; icon: ReactNode; children: ReactNode; end?: boolean; badge?: ReactNode }) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        cn("group flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[14px] transition-colors", isActive ? "bg-surface-3 text-ink font-medium" : "text-ink-2 hover:text-ink hover:bg-surface-2")
-      }
-    >
-      <span className="text-ink-3 group-hover:text-ink-2 [.active_&]:text-ink">{icon}</span>
-      <span className="flex-1 truncate">{children}</span>
-      {badge}
-    </NavLink>
+/**
+ * The rail, Discord style: a slim column of round buttons that square off on hover, with a pill on the left edge that
+ * marks the current view. Main views live here; everything else opens as a modal.
+ */
+
+function Tip({ label, sub, anchor }: { label: string; sub?: string; anchor: DOMRect }) {
+  return createPortal(
+    <span role="tooltip" style={{ left: anchor.right + 14, top: anchor.top + anchor.height / 2 }} className="pointer-events-none fixed -translate-y-1/2 z-[70] whitespace-nowrap rounded-lg bg-surface-3 border border-line-strong px-3 py-1.5 text-[13px] font-semibold text-ink shadow-xl modal-in origin-left">
+      {label}
+      {sub && <span className="block text-[11px] font-normal text-ink-3">{sub}</span>}
+    </span>,
+    document.body,
   );
 }
 
-function Group({ label, children, action }: { label: string; children: ReactNode; action?: ReactNode }) {
+/** Shows a tooltip beside an element while it is hovered or focused, rendered outside any scrolling container. */
+function useTip() {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const show = () => ref.current && setAnchor(ref.current.getBoundingClientRect());
+  const hide = () => setAnchor(null);
+  return { ref, anchor, handlers: { onMouseEnter: show, onMouseLeave: hide, onFocus: show, onBlur: hide } };
+}
+
+function RailButton({ active, label, sub, children, badge, expanded }: { active: boolean; label: string; sub?: string; children: ReactNode; badge?: ReactNode; expanded?: boolean }) {
+  const tip = useTip();
   return (
-    <div className="mt-5">
-      <div className="flex items-center justify-between px-2.5 mb-1">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-3">{label}</span>
-        {action}
-      </div>
-      <div className="space-y-0.5">{children}</div>
-    </div>
+    <span ref={tip.ref} {...tip.handlers} className={cn("relative flex items-center", expanded ? "gap-3 w-full" : "justify-center w-[72px]")}>
+      {!expanded && <span aria-hidden className={cn("rail-pill absolute left-0 w-1 rounded-r-full bg-ink", active ? "h-10 opacity-100" : "h-2 opacity-0 group-hover:opacity-100 group-hover:h-5")} />}
+      <span className="relative shrink-0">
+        <span className={cn("h-12 w-12 flex items-center justify-center overflow-hidden transition-[border-radius,background,color] duration-200", active ? "rounded-[16px] bg-accent text-primary-ink" : "rounded-[24px] bg-surface-2 text-ink-2 group-hover:rounded-[16px] group-hover:bg-surface-3 group-hover:text-ink")}>
+          {children}
+        </span>
+        {badge}
+      </span>
+      {expanded ? <span className="text-[14px] font-medium truncate">{label}{sub && <span className="block text-[12px] text-ink-3 font-normal">{sub}</span>}</span> : tip.anchor && <Tip label={label} sub={sub} anchor={tip.anchor} />}
+    </span>
   );
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () => void }) {
   const { setup, data, host } = useEngine();
   const d = setup?.deviceName ?? "pve";
-  const unread = data.notices.filter((n) => !n.read && n.kind === "update").length;
+  const loc = useLocation();
+  const modals = useModals();
+  const updates = data.notices.filter((n) => !n.read && n.kind === "update").length;
+  const nav = (to: string, label: string, icon: ReactNode, sub?: string, badge?: ReactNode) => (
+    <NavLink key={to} to={to} onClick={onNavigate} aria-label={label} className={cn("group block outline-none", expanded && "px-3")}>
+      {({ isActive }) => <RailButton active={isActive} label={label} sub={sub} badge={badge} expanded={expanded}>{icon}</RailButton>}
+    </NavLink>
+  );
+  const modalLink = (href: string, label: string, icon: ReactNode, active: boolean, badge?: ReactNode) => (
+    <Link to={href} onClick={onNavigate} aria-label={label} className={cn("group block outline-none", expanded && "px-3")}>
+      <RailButton active={active} label={label} badge={badge} expanded={expanded}>{icon}</RailButton>
+    </Link>
+  );
+  const sep = <div className={cn("h-0.5 rounded-full bg-line-strong my-1", expanded ? "mx-4" : "w-8 mx-auto")} />;
+
   return (
-    <nav className="flex flex-col h-full" onClick={(e) => (e.target as HTMLElement).closest("a") && onNavigate?.()}>
-      <div className="px-3 pt-4 pb-3">
-        <div className="flex items-center gap-2.5 rounded-xl p-2 border border-line bg-surface-2/60">
-          <div className="h-9 w-9 rounded-lg bg-surface-3 flex items-center justify-center"><Server className="h-[18px] w-[18px] text-ink-2" /></div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold truncate">{d}</div>
-            <div className="text-[12px] text-ink-3 flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-good" aria-hidden />Online · {host.ip}</div>
-          </div>
-        </div>
+    <nav className="flex flex-col h-full py-3 gap-2" aria-label="Main">
+      {nav(`/${d}/home`, d, <House className="h-5 w-5" />, `Online · ${host.ip}`)}
+      {nav(`/${d}/guests`, "Guests", <Boxes className="h-5 w-5" />, `${data.guests.filter((g) => g.status === "running").length} running`)}
+      {nav(`/${d}/automations`, "Automations", <Workflow className="h-5 w-5" />, `${data.rules.filter((r) => r.enabled).length} on`)}
+      {sep}
+      <div className="flex-1 overflow-y-auto overflow-x-visible flex flex-col gap-2 [scrollbar-width:none]">
+        {data.orgs.map((o) => {
+          const working = o.agents.filter((a) => a.status === "working").length;
+          return nav(
+            `/${d}/${o.slug}`,
+            o.name,
+            <span className="h-12 w-12 flex items-center justify-center text-[17px] font-semibold" style={{ background: `oklch(0.42 0.09 ${o.hue})`, color: `oklch(0.95 0.03 ${o.hue})` }}>{o.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>,
+            working ? `${working} agents working` : "Idle",
+            working ? <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-good border-[3px] border-bg" /> : undefined,
+          );
+        })}
+        {modalLink(modalHref("new-org"), "Create an organization", <Plus className="h-5 w-5" />, modals.modal === "new-org")}
       </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-4">
-        <div className="space-y-0.5">
-          <Item to={`/${d}/home`} icon={<House className="h-4 w-4" />}>Home</Item>
-          <Item to={`/${d}/guests`} icon={<Boxes className="h-4 w-4" />}>Guests</Item>
-          <Item to={`/${d}/automations`} icon={<Workflow className="h-4 w-4" />}>Automations</Item>
-          <Item to={`/${d}/updates`} icon={<RefreshCw className="h-4 w-4" />} badge={unread ? <Chip tone="accent">{unread}</Chip> : null}>Updates</Item>
-        </div>
-        <Group label="Organizations" action={<NavLink to={`/${d}/orgs/new`} className="h-6 w-6 rounded-md hover:bg-surface-2 flex items-center justify-center text-ink-3 hover:text-ink" aria-label="New organization"><Plus className="h-3.5 w-3.5" /></NavLink>}>
-          {data.orgs.map((o) => {
-            const working = o.agents.filter((a) => a.status === "working").length;
-            return (
-              <Item key={o.slug} to={`/${d}/${o.slug}`} icon={<Avatar name={o.name} hue={o.hue} size={20} />} badge={<span className="text-[11px] text-ink-3 tabular-nums">{working ? `${working} working` : "idle"}</span>}>
-                {o.name}
-              </Item>
-            );
-          })}
-        </Group>
-        <Group label="Administration">
-          <Item to={`/${d}/access`} icon={<ShieldCheck className="h-4 w-4" />}>Access control</Item>
-          <Item to={`/${d}/apps`} icon={<Plug className="h-4 w-4" />} badge={<span className="text-[11px] text-ink-3 tabular-nums">{data.apps.sessions.length}</span>}>Connected apps</Item>
-          <Item to={`/${d}/connectors`} icon={<Cable className="h-4 w-4" />}>Connectors</Item>
-          <Item to={`/${d}/appearance`} icon={<Palette className="h-4 w-4" />}>Appearance</Item>
-          <Item to={`/${d}/settings`} icon={<Settings className="h-4 w-4" />}>Settings</Item>
-        </Group>
-      </div>
-      <div className="px-3 py-3 border-t border-line flex items-center gap-2.5">
-        <Avatar name={setup?.ownerName || "You"} hue={32} size={30} />
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium truncate">{setup?.ownerName || "You"}</div>
-          <div className="text-[11px] text-ink-3 flex items-center gap-1"><KeyRound className="h-3 w-3" />owner@pve</div>
-        </div>
-        <Chip tone="warning">Demo data</Chip>
-      </div>
+      {sep}
+      {modalLink(settingsHref("apps"), "Connected apps", <Plug className="h-5 w-5" />, modals.settings === "apps")}
+      {modalLink(
+        settingsHref(updates ? "updates" : "general"),
+        "Settings",
+        <Settings className="h-5 w-5" />,
+        modals.settings !== null && modals.settings !== "apps",
+        updates ? <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-critical text-white text-[11px] font-bold flex items-center justify-center border-[3px] border-bg tabular-nums" aria-label={`${updates} update`}>{updates}</span> : undefined,
+      )}
+      <Link to={settingsHref("general")} onClick={onNavigate} className={cn("group block mt-1", expanded && "px-3")} aria-label={`${setup?.ownerName || "You"}, settings`}>
+        <UserChip name={setup?.ownerName || "You"} expanded={expanded} />
+      </Link>
+      <span className="sr-only">{loc.pathname}</span>
     </nav>
+  );
+}
+
+function UserChip({ name, expanded }: { name: string; expanded?: boolean }) {
+  const tip = useTip();
+  return (
+    <span ref={tip.ref} {...tip.handlers} className={cn("relative flex items-center", expanded ? "gap-3" : "justify-center w-[72px]")}>
+      <Avatar name={name} hue={32} size={40} />
+      {expanded ? <span className="text-[14px]">{name}<span className="block text-[11px] text-warning">Demo data</span></span> : tip.anchor && <Tip label={name} sub="Demo data · owner@pve" anchor={tip.anchor} />}
+    </span>
   );
 }
 
 export function AppShell() {
   const [drawer, setDrawer] = useState(false);
   const loc = useLocation();
-  useEffect(() => setDrawer(false), [loc.pathname]);
+  useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
   return (
     <div className="min-h-dvh flex">
-      <aside className="hidden lg:block w-64 shrink-0 border-r border-line bg-surface/60 sticky top-0 h-dvh">
-        <Sidebar />
+      <aside className="hidden sm:block w-[72px] shrink-0 bg-surface/80 border-r border-line sticky top-0 h-dvh z-30">
+        <Rail />
       </aside>
       {drawer && (
-        <div className="lg:hidden fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawer(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-surface border-r border-line fade-in">
+        <div className="sm:hidden fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/60 modal-backdrop-in" onClick={() => setDrawer(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-surface border-r border-line modal-in origin-left">
             <button onClick={() => setDrawer(false)} className="absolute right-2 top-2 h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center z-10" aria-label="Close menu"><X className="h-4 w-4" /></button>
-            <Sidebar onNavigate={() => setDrawer(false)} />
+            <Rail expanded onNavigate={() => setDrawer(false)} />
           </aside>
         </div>
       )}
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="lg:hidden sticky top-0 z-30 h-14 flex items-center px-3 bg-bg/80 backdrop-blur border-b border-line">
+        <div className="sm:hidden sticky top-0 z-30 h-14 flex items-center px-3 bg-bg/80 backdrop-blur border-b border-line">
           <button onClick={() => setDrawer(true)} className="h-9 w-9 rounded-lg hover:bg-surface-2 flex items-center justify-center" aria-label="Open menu"><Menu className="h-5 w-5" /></button>
         </div>
         <main className="flex-1 min-w-0">
@@ -113,6 +140,7 @@ export function AppShell() {
         </main>
       </div>
       <PinIsland />
+      <ModalHost />
     </div>
   );
 }

@@ -45,7 +45,7 @@ export function PinCardView({ card, done, onDone }: { card: PinCard; done?: bool
         </div>
         <div className="font-medium">{card.name}</div>
         <div className="grid grid-cols-2 gap-2 mt-2 text-[13px] text-ink-2">
-          <span className="inline-flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-ink-3" />{card.size.cores} cores</span>
+          <span className="inline-flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-ink-3" />{card.size.cores} core{card.size.cores === 1 ? "" : "s"}</span>
           <span className="inline-flex items-center gap-1.5"><MemoryStick className="h-3.5 w-3.5 text-ink-3" />{formatBytes(card.size.memoryMb * 1024 ** 2)}</span>
           <span>{card.size.diskGb} GB disk</span>
           <span>Up to {card.size.maxGuests} containers</span>

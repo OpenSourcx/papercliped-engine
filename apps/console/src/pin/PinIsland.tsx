@@ -76,7 +76,7 @@ export function PinIsland() {
       : { width: 196, height: 40, borderRadius: 999 };
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50" ref={ref}>
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[58]" ref={ref}>
       <div className={cn("glass island overflow-hidden", open && "solid")} style={size}>
         {!open && (
           <button

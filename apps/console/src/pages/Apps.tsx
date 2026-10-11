@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Check, Copy, Plug, ShieldAlert, Trash2, X } from "lucide-react";
+import { Check, Copy, Plug, ShieldAlert, Trash2 } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
+import { Modal } from "../ui/Modal.tsx";
 import type { AppMode, AppSession } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
-import { Avatar, Button, Card, Chip, EmptyState, PageHeader, SectionTitle, Segmented, Status } from "../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, PageHeader, SectionTitle, Segmented, Status, PageFrame } from "../ui/primitives.tsx";
 
 const LEVEL = { read: "Read only", control: "Full control" } as const;
 const MODE_TEXT: Record<AppMode, string> = {
@@ -34,15 +35,8 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
     return next.length === all.length ? null : next;
   };
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative w-full max-w-md h-full bg-surface border-l border-line overflow-y-auto fade-in" aria-label={`${session.app} session`}>
-        <div className="sticky top-0 bg-surface/95 backdrop-blur border-b border-line px-5 py-4 flex items-center gap-3">
-          <Avatar name={session.app} hue={session.app === "Claude" ? 30 : session.app === "ChatGPT" ? 160 : 260} size={36} />
-          <div className="flex-1 min-w-0"><div className="font-semibold">{session.app}</div><div className="text-[12px] text-ink-3">{session.client} · approved by {owner?.name ?? "unknown"}</div></div>
-          <button onClick={onClose} className="h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center" aria-label="Close"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-5 space-y-6">
+    <Modal title={session.app} subtitle={`${session.client} · approved by ${owner?.name ?? "unknown"}`} icon={<Avatar name={session.app} hue={session.app === "Claude" ? 30 : session.app === "ChatGPT" ? 160 : 260} size={40} />} onClose={onClose}>
+      <div className="space-y-6">
           <div>
             <div className="text-[13px] font-medium mb-2">Access level</div>
             <Segmented value={session.level} onChange={(level) => updateSession(session.id, { level })} options={[{ value: "read", label: "Read only" }, { value: "control", label: "Full control" }]} />
@@ -81,9 +75,8 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
             )}
           </div>
           <Button variant="danger" onClick={() => { revokeSession(session.id); onClose(); }}><Trash2 className="h-4 w-4" />Disconnect {session.app}</Button>
-        </div>
-      </aside>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -106,15 +99,15 @@ export function Apps() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="6xl">
       <PageHeader title="Connected apps" subtitle="Papercliped is built in. Connect Claude, ChatGPT, Codex or any MCP app straight to this device, and control what each one can do." />
 
-      <div className="grid lg:grid-cols-[1.2fr_1fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4">
         <Card className="p-5">
           <SectionTitle>Connect an app</SectionTitle>
           <div className="flex items-center gap-2 rounded-xl bg-surface-2 border border-line pl-4 pr-1.5 h-12">
             <Plug className="h-4 w-4 text-ink-3 shrink-0" />
-            <code className="flex-1 truncate text-[14px]">{url}</code>
+            <code className="flex-1 min-w-0 truncate text-[14px]">{url}</code>
             <Button size="sm" onClick={copy}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</Button>
           </div>
           <div className="flex flex-wrap gap-1.5 mt-4">
@@ -188,6 +181,6 @@ export function Apps() {
         <p className="text-[12px] text-ink-3 mt-2">Activity lists which tool ran and how it ended, never the arguments or results.</p>
       </section>
       {session && <SessionPanel session={session} onClose={() => setOpen(null)} />}
-    </div>
+    </PageFrame>
   );
 }

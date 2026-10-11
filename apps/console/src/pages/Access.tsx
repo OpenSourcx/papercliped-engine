@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeftRight, Check, KeyRound, ShieldCheck, ShieldX, UserPlus, X } from "lucide-react";
+import { ArrowLeftRight, Check, KeyRound, ShieldCheck, ShieldX, UserPlus } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
+import { Modal } from "../ui/Modal.tsx";
 import type { Role, User } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
-import { Avatar, Button, Card, Chip, PageHeader, Segmented, Status } from "../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, PageHeader, Segmented, Status, PageFrame } from "../ui/primitives.tsx";
 
 const TOOLS: [string, string][] = [
   ["tasks", "Create and work on tasks"],
@@ -30,18 +31,8 @@ function UserPanel({ user, onClose }: { user: User; onClose: () => void }) {
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const owner = user.role === "owner";
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative w-full max-w-md h-full bg-surface border-l border-line overflow-y-auto fade-in" aria-label={`Access for ${user.name}`}>
-        <div className="sticky top-0 bg-surface/95 backdrop-blur border-b border-line px-5 py-4 flex items-center gap-3">
-          <Avatar name={user.name} hue={210} size={36} />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{user.name}</div>
-            <div className="text-[12px] text-ink-3 truncate">{user.email}</div>
-          </div>
-          <button onClick={onClose} className="h-8 w-8 rounded-lg hover:bg-surface-2 flex items-center justify-center" aria-label="Close"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-5 space-y-6">
+    <Modal title={user.name} subtitle={user.email} icon={<Avatar name={user.name} hue={210} size={40} />} onClose={onClose}>
+      <div className="space-y-6">
           <div className="rounded-xl border border-line bg-surface-2/50 p-3.5 flex items-center gap-3">
             <ArrowLeftRight className="h-4 w-4 text-ink-3" />
             <div className="flex-1 text-[13px]">
@@ -117,9 +108,8 @@ function UserPanel({ user, onClose }: { user: User; onClose: () => void }) {
               ))}
             </div>
           </div>
-        </div>
-      </aside>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -131,7 +121,7 @@ export function Access() {
   const pending = data.users.filter((u) => !u.synced).length;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="6xl">
       <PageHeader
         title="Access control"
         subtitle="Integrated Access Control keeps ePaperclip and Proxmox in step: every user here is also a real Proxmox user, and the policies you set apply in both."
@@ -182,6 +172,6 @@ export function Access() {
         </div>
       )}
       {user && <UserPanel user={user} onClose={() => setOpen(null)} />}
-    </div>
+    </PageFrame>
   );
 }

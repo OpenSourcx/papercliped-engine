@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Bot, Cable, Code2, Mail, MessageSquare } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Connector } from "../data/types.ts";
-import { Avatar, Card, PageHeader, Status, Toggle } from "../ui/primitives.tsx";
+import { Avatar, Card, PageHeader, Status, Toggle, PageFrame } from "../ui/primitives.tsx";
 import { PinOrb } from "../pin/PinIsland.tsx";
 
 const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 w-4" />, code: <Code2 className="h-4 w-4" />, chat: <MessageSquare className="h-4 w-4" />, mail: <Mail className="h-4 w-4" />, storage: <Cable className="h-4 w-4" /> };
@@ -10,7 +10,7 @@ const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 
 export function Connectors() {
   const { data, setConnectorAccess } = useEngine();
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="6xl">
       <PageHeader title="Connectors" subtitle="System-wide connections, set up once. For each one, choose who can use it: Pin, and any of your organizations. An org's agents only see the connectors granted to it." />
       <Card className="overflow-x-auto">
         <table className="w-full text-[14px] min-w-[640px]">
@@ -45,6 +45,6 @@ export function Connectors() {
         </table>
       </Card>
       <p className="text-[12px] text-ink-3 mt-3">Credentials stay in the Vault. Agents and Pin receive short-lived, run-scoped access, never the key itself.</p>
-    </div>
+    </PageFrame>
   );
 }

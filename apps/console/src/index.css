@@ -201,13 +201,31 @@ body {
   }
 }
 
+/* Modal motion, Discord style: centered modals scale up from 96%, the settings modal settles from 104%. */
+.modal-in { animation: modal-in 220ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.modal-out { animation: modal-out 160ms ease-in both; }
+.modal-backdrop-in { animation: fade 200ms ease-out both; }
+.modal-backdrop-out { animation: fade 160ms ease-in reverse both; }
+.settings-in { animation: settings-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.settings-out { animation: settings-out 160ms ease-in both; }
+
+@keyframes modal-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes modal-out { to { opacity: 0; transform: scale(0.97); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes settings-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+@keyframes settings-out { to { opacity: 0; transform: scale(1.03); } }
+
+/* The rail's active marker, Discord style: a pill on the left edge that grows on hover and fills when selected. */
+.rail-pill { transition: height 200ms cubic-bezier(0.32, 0.72, 0, 1), opacity 200ms; }
+
 @media (prefers-reduced-motion: reduce) {
   .pin-orb,
   .shimmer-text {
     animation: none;
   }
   .island,
-  .fade-in {
+  .fade-in,
+  .modal-in, .modal-out, .modal-backdrop-in, .modal-backdrop-out, .settings-in, .settings-out {
     transition: none;
     animation: none;
   }

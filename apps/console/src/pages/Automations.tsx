@@ -2,14 +2,14 @@ import { describeRule } from "@papercliped-engine/automations";
 import { Sparkles, Trash2, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { usePin } from "../pin/PinContext.tsx";
-import { Button, Card, Chip, EmptyState, PageHeader, Toggle } from "../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, PageHeader, Toggle, PageFrame } from "../ui/primitives.tsx";
 
 export function Automations() {
   const { data, setup, toggleRule, deleteRule } = useEngine();
   const pin = usePin();
   const mode = setup?.pinMode ?? "assistant";
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="4xl">
       <PageHeader
         title="Automations"
         subtitle={<>Rules Pin runs for you. Tell Pin what you want in plain words; it writes the rule and a strict validator checks it. {mode === "assistant" ? "Pin is in Assistant mode, so firing rules ask you before acting." : "Pin is in Agent mode, so firing rules act right away and tell you after."}</>}
@@ -36,6 +36,6 @@ export function Automations() {
         </div>
       )}
       <p className="text-[12px] text-ink-3 mt-4">Automations can notify, shut down, stop, start or snapshot guests. They can never delete anything, and protected guests only ever get a notification.</p>
-    </div>
+    </PageFrame>
   );
 }

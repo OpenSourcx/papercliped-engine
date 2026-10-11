@@ -56,7 +56,7 @@ describe("Papercliped, native", () => {
   it("points app connection requests at Connected apps", () => {
     const r = think("How do I connect Claude?", ctx());
     expect(r.text).toMatch(/built into this device/);
-    expect(r.card).toEqual({ type: "link", label: "Open connected apps", to: "/pve/apps" });
+    expect(r.card).toEqual({ type: "link", label: "Open connected apps", to: "?settings=apps" });
   });
 
   it("reserves the apps route", () => {

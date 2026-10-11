@@ -2,14 +2,14 @@ import { useNavigate } from "react-router-dom";
 import { BookOpen, FileText, Server } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
-import { Button, Card, Chip, PageHeader, Segmented, SectionTitle } from "../ui/primitives.tsx";
+import { Button, Card, Chip, PageHeader, Segmented, SectionTitle, PageFrame } from "../ui/primitives.tsx";
 
 export function Settings() {
   const { setup, host, setPinMode, resetAll } = useEngine();
   const navigate = useNavigate();
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20 space-y-4">
-      <PageHeader title="Settings" />
+    <PageFrame width="3xl" className="space-y-4">
+      <PageHeader title="General" />
       <Card className="p-5">
         <SectionTitle>Device</SectionTitle>
         <div className="flex items-center gap-3">
@@ -44,6 +44,6 @@ export function Settings() {
         <p className="text-[14px] text-ink-2">The console is running on demo data in this browser. Starting over clears it and runs onboarding again.</p>
         <Button variant="danger" className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>Start over</Button>
       </Card>
-    </div>
+    </PageFrame>
   );
 }

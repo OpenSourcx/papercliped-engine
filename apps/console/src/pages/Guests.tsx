@@ -3,7 +3,7 @@ import { Box, Lock, Monitor, Play, Power } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { formatBytes } from "../lib/storage.ts";
 import { BarMeter } from "../ui/meters.tsx";
-import { Button, Card, Chip, PageHeader, Segmented, Status } from "../ui/primitives.tsx";
+import { Button, Card, Chip, PageHeader, Segmented, Status, PageFrame } from "../ui/primitives.tsx";
 
 export function Guests() {
   const { data, guestPower, notify } = useEngine();
@@ -19,7 +19,7 @@ export function Guests() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="6xl">
       <PageHeader title="Guests" subtitle="Every virtual machine and container on this device. Organization containers are created and removed by their agents; protected guests can't be touched by automations." />
       <div className="flex items-center justify-between gap-3 mb-4">
         <Segmented value={filter} onChange={setFilter} options={[{ value: "all", label: "All" }, { value: "running", label: "Running" }, { value: "orgs", label: "Organizations" }]} />
@@ -57,6 +57,6 @@ export function Guests() {
           );
         })}
       </div>
-    </div>
+    </PageFrame>
   );
 }

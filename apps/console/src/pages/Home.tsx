@@ -5,6 +5,7 @@ import type { Org } from "../data/types.ts";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
 import { PinComposer } from "../pin/PinComposer.tsx";
 import { usePin } from "../pin/PinContext.tsx";
+import { modalHref, settingsHref } from "../modals/useModals.ts";
 import { ArcMeter, BarMeter } from "../ui/meters.tsx";
 import { Avatar, Card, SectionTitle, Status } from "../ui/primitives.tsx";
 
@@ -92,12 +93,12 @@ export function Home() {
             </Card>
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
               {[
-                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Guests running", to: "guests" },
-                { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: data.orgs[0]?.slug ?? "home" },
-                { icon: <Workflow className="h-4 w-4" />, value: String(activeRules), label: "Automations on", to: "automations" },
-                { icon: <Plug className="h-4 w-4" />, value: String(data.apps.sessions.length), label: "Apps connected", to: "apps" },
+                { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${data.guests.length}`, label: "Guests running", to: `/${device}/guests` },
+                { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: `/${device}/${data.orgs[0]?.slug ?? "home"}` },
+                { icon: <Workflow className="h-4 w-4" />, value: String(activeRules), label: "Automations on", to: `/${device}/automations` },
+                { icon: <Plug className="h-4 w-4" />, value: String(data.apps.sessions.length), label: "Apps connected", to: settingsHref("apps") },
               ].map((s) => (
-                <Link key={s.label} to={`/${device}/${s.to}`}>
+                <Link key={s.label} to={s.to}>
                   <Card interactive className="p-4 flex items-center gap-3">
                     <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{s.icon}</span>
                     <div>
@@ -112,10 +113,10 @@ export function Home() {
         </section>
 
         <section>
-          <SectionTitle action={<Link to={`/${device}/orgs/new`} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
+          <SectionTitle action={<Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.orgs.map((o) => <OrgCard key={o.slug} org={o} device={device} />)}
-            <Link to={`/${device}/orgs/new`} className="block">
+            <Link to={modalHref("new-org")} className="block">
               <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
                 <Plus className="h-5 w-5" />
                 <span className="text-[14px]">New organization</span>

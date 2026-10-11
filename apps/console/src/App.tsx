@@ -2,17 +2,10 @@ import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { useEngine } from "./data/store.tsx";
 import { AppShell } from "./layout/AppShell.tsx";
 import { Onboarding } from "./onboarding/Onboarding.tsx";
-import { Access } from "./pages/Access.tsx";
-import { Appearance } from "./pages/Appearance.tsx";
-import { Apps } from "./pages/Apps.tsx";
 import { Automations } from "./pages/Automations.tsx";
-import { Connectors } from "./pages/Connectors.tsx";
 import { Guests } from "./pages/Guests.tsx";
 import { Home } from "./pages/Home.tsx";
-import { NewOrg } from "./pages/NewOrg.tsx";
 import { OrgDashboard } from "./pages/OrgDashboard.tsx";
-import { Settings } from "./pages/Settings.tsx";
-import { Updates } from "./pages/Updates.tsx";
 
 /** Everything under /<device>/ needs a finished setup and the right device name; anything else is redirected. */
 function DeviceGate() {
@@ -44,13 +37,10 @@ export function App() {
           <Route path="home" element={<Home />} />
           <Route path="guests" element={<Guests />} />
           <Route path="automations" element={<Automations />} />
-          <Route path="updates" element={<Updates />} />
-          <Route path="access" element={<Access />} />
-          <Route path="connectors" element={<Connectors />} />
-          <Route path="apps" element={<Apps />} />
-          <Route path="appearance" element={<Appearance />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="orgs/new" element={<NewOrg />} />
+          {/* Older addresses open the matching modal over Home. */}
+          {["updates", "access", "connectors", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id}`} replace />} />)}
+          <Route path="settings" element={<Navigate to="../home?settings=general" replace />} />
+          <Route path="orgs/new" element={<Navigate to="../home?modal=new-org" replace />} />
           <Route path=":org" element={<OrgDashboard />} />
         </Route>
       </Route>

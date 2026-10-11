@@ -4,7 +4,8 @@ import { Database, FileText, Sparkles } from "lucide-react";
 import { orgNameError, useEngine } from "../data/store.tsx";
 import { formatBytes, slugify } from "../lib/storage.ts";
 import { suggestSize } from "../pin/brain.ts";
-import { Button, Card, Input, PageHeader, SectionTitle, Toggle } from "../ui/primitives.tsx";
+import { Button, Card, Input, SectionTitle, Toggle } from "../ui/primitives.tsx";
+import { Modal } from "../ui/Modal.tsx";
 
 function Slider({ label, value, min, max, step, onChange, format }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format: (v: number) => string }) {
   return (
@@ -15,7 +16,7 @@ function Slider({ label, value, min, max, step, onChange, format }: { label: str
   );
 }
 
-export function NewOrg() {
+export function NewOrgModal({ onClose }: { onClose: () => void }) {
   const engine = useEngine();
   const navigate = useNavigate();
   const device = engine.setup?.deviceName ?? "pve";
@@ -33,16 +34,24 @@ export function NewOrg() {
     setTouched(true);
     if (error) return;
     const r = engine.createOrg(name, s, "user", memory);
-    if (r.ok) navigate(`/${device}/${r.org.slug}`);
+    if (r.ok) {
+      onClose();
+      navigate(`/${device}/${r.org.slug}`);
+    }
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
-      <PageHeader title="New organization" subtitle="An organization gets its own agents, tasks and a resource group on this device that its agents can't leave." />
+    <Modal
+      size="lg"
+      title="Create an organization"
+      subtitle="It gets its own agents, tasks and a resource group on this device that its agents can't leave."
+      onClose={onClose}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={create} disabled={!name.trim()}>Create organization</Button></>}
+    >
       <div className="space-y-4">
         <Card className="p-5">
           <label className="text-[13px] text-ink-2 block mb-2" htmlFor="org-name">Name</label>
-          <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} placeholder="e.g. Northwind Labs" autoFocus />
+          <Input id="org-name" value={name} onKeyDown={(e) => e.key === "Enter" && create()} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} placeholder="e.g. Northwind Labs" autoFocus />
           <div className="text-[12px] mt-2 h-4">
             {touched && error ? <span className="text-critical">{error}</span> : name && <span className="text-ink-3">Lives at /{device}/<span className="text-ink-2">{slugify(name)}</span></span>}
           </div>
@@ -59,13 +68,13 @@ export function NewOrg() {
           <div className="mt-5 grid sm:grid-cols-2 gap-5">
             {pinDecides ? (
               <>
-                {[["CPU", `${s.cores} cores`], ["Memory", formatBytes(s.memoryMb * 1024 ** 2)], ["Disk", `${s.diskGb} GB`], ["Containers", `Up to ${s.maxGuests}`]].map(([k, v]) => (
+                {[["CPU", `${s.cores} core${s.cores === 1 ? "" : "s"}`], ["Memory", formatBytes(s.memoryMb * 1024 ** 2)], ["Disk", `${s.diskGb} GB`], ["Containers", `Up to ${s.maxGuests}`]].map(([k, v]) => (
                   <div key={k} className="rounded-lg bg-surface-2 border border-line px-3.5 py-2.5"><div className="text-[12px] text-ink-3">{k}</div><div className="text-[15px] font-medium tabular-nums">{v}</div></div>
                 ))}
               </>
             ) : (
               <>
-                <Slider label="CPU" value={size.cores} min={1} max={engine.host.cpus} step={1} onChange={(v) => setSize({ ...size, cores: v })} format={(v) => `${v} cores`} />
+                <Slider label="CPU" value={size.cores} min={1} max={engine.host.cpus} step={1} onChange={(v) => setSize({ ...size, cores: v })} format={(v) => `${v} core${v === 1 ? "" : "s"}`} />
                 <Slider label="Memory" value={size.memoryMb} min={512} max={totalMemMb} step={512} onChange={(v) => setSize({ ...size, memoryMb: v })} format={(v) => formatBytes(v * 1024 ** 2)} />
                 <Slider label="Disk" value={size.diskGb} min={8} max={500} step={8} onChange={(v) => setSize({ ...size, diskGb: v })} format={(v) => `${v} GB`} />
                 <Slider label="Containers" value={size.maxGuests} min={1} max={20} step={1} onChange={(v) => setSize({ ...size, maxGuests: v })} format={(v) => `Up to ${v}`} />
@@ -89,11 +98,7 @@ export function NewOrg() {
           </div>
         </Card>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
-          <Button variant="primary" onClick={create} disabled={!name.trim()}>Create organization</Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

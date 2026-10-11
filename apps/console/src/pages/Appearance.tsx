@@ -1,7 +1,7 @@
 import { Check, RotateCcw } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { PRESETS, useTheme } from "../theme/theme.tsx";
-import { Button, Card, PageHeader, SectionTitle } from "../ui/primitives.tsx";
+import { Button, Card, PageHeader, SectionTitle, PageFrame } from "../ui/primitives.tsx";
 
 const ACCENTS = ["#e8b25c", "#e9776a", "#7aa2ff", "#8e7cf0", "#4cc38a", "#f2f2f2"];
 
@@ -18,7 +18,7 @@ function Range({ label, value, min, max, step, onChange, format }: { label: stri
 export function Appearance() {
   const { settings, update, reset } = useTheme();
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="4xl">
       <PageHeader title="Appearance" subtitle="ePaperclip is built on design tokens. Pick a theme, then make it yours: every page and Pin's island follow these settings." actions={<Button variant="ghost" onClick={reset}><RotateCcw className="h-4 w-4" />Reset</Button>} />
       <Card className="p-5">
         <SectionTitle>Theme</SectionTitle>
@@ -57,6 +57,6 @@ export function Appearance() {
         <Range label="Glass blur" value={settings.glassBlur} min={0} max={40} step={2} onChange={(v) => update({ glassBlur: v })} format={(v) => `${v}px`} />
         <Range label="Glass opacity" value={settings.glassAlpha} min={0.3} max={0.95} step={0.05} onChange={(v) => update({ glassAlpha: v })} format={(v) => `${Math.round(v * 100)}%`} />
       </Card>
-    </div>
+    </PageFrame>
   );
 }

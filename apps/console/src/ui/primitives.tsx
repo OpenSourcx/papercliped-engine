@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, CircleDashed, CirclePause, Loader2, XCircle } from "lucide-react";
 import { cn } from "../lib/storage.ts";
+import { useInModal } from "./Modal.tsx";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -38,12 +39,20 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
   );
 }
 
+/** A page's outer frame: roomy and centered as a main view, flush inside a modal. */
+export function PageFrame({ width = "6xl", className, children }: { width?: "3xl" | "4xl" | "6xl"; className?: string; children: ReactNode }) {
+  const inModal = useInModal();
+  if (inModal) return <div className={className}>{children}</div>;
+  return <div className={cn("mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20", width === "3xl" ? "max-w-3xl" : width === "4xl" ? "max-w-4xl" : "max-w-6xl", className)}>{children}</div>;
+}
+
 export function PageHeader({ title, subtitle, actions, eyebrow }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
+  const inModal = useInModal();
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
+    <div className={cn("flex flex-wrap items-end justify-between gap-4", inModal ? "mb-6" : "mb-8")}>
       <div className="min-w-0">
         {eyebrow && <div className="text-[13px] text-ink-3 mb-1.5">{eyebrow}</div>}
-        <h1 className="text-[26px] sm:text-[30px] font-semibold tracking-tight leading-tight">{title}</h1>
+        <h1 className={cn("font-semibold tracking-tight leading-tight", inModal ? "text-[22px]" : "text-[26px] sm:text-[30px]")}>{title}</h1>
         {subtitle && <p className="text-ink-2 mt-1.5 text-[15px] max-w-2xl">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

@@ -109,7 +109,7 @@ export function think(input: string, ctx: Ctx): PinReply {
   if (/\bupdates?\b|\bupgrade\b/.test(t)) {
     const u = ctx.data.notices.find((n) => n.kind === "update");
     return u
-      ? { text: `${u.title}. ${u.body}`, card: { type: "link", label: "Open updates", to: `/${ctx.device}/updates` } }
+      ? { text: `${u.title}. ${u.body}`, card: { type: "link", label: "Open updates", to: "?settings=updates" } }
       : { text: "Everything is up to date. I check Proxmox and Paperclip releases daily and will tell you when something lands." };
   }
 
@@ -123,11 +123,11 @@ export function think(input: string, ctx: Ctx): PinReply {
 
   if (/\b(connect|add|link)\b.*\b(claude|chatgpt|codex|mcp|app)\b|\bconnected apps?\b|\bpapercliped\b/.test(t)) {
     const n = ctx.data.apps.sessions.length;
-    return { text: `Papercliped is built into this device, so Claude, ChatGPT, Codex or any MCP app can connect straight to it. ${n} app${n === 1 ? " is" : "s are"} connected now. Each one gets Read only or Full control and never more than the user who approved it.`, card: { type: "link", label: "Open connected apps", to: `/${ctx.device}/apps` } };
+    return { text: `Papercliped is built into this device, so Claude, ChatGPT, Codex or any MCP app can connect straight to it. ${n} app${n === 1 ? " is" : "s are"} connected now. Each one gets Read only or Full control and never more than the user who approved it.`, card: { type: "link", label: "Open connected apps", to: "?settings=apps" } };
   }
 
   if (/\b(access|permission|user|policy|policies)\b/.test(t)) {
-    return { text: "Access is managed in Integrated Access Control: every ePaperclip user is also a Proxmox user, and policies apply to both.", card: { type: "link", label: "Open access control", to: `/${ctx.device}/access` } };
+    return { text: "Access is managed in Integrated Access Control: every ePaperclip user is also a Proxmox user, and policies apply to both.", card: { type: "link", label: "Open access control", to: "?settings=access" } };
   }
 
   if (/\b(hi|hello|hey)\b/.test(t)) return { text: "Hi! I look after this device. Ask me for a status check, to create an organization, or to set up an automation like \"if a container uses more than 50% of its memory, shut it down\"." };

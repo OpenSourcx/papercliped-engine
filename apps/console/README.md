@@ -10,24 +10,29 @@ pnpm --filter @papercliped-engine/console build
 pnpm --filter @papercliped-engine/console test
 ```
 
+## Layout: a rail and modals
+
+The console follows Discord's flow. A slim **rail** on the left holds the main views: the device's Home, Guests, Automations, then one avatar per organization (a green badge when agents are working), a "+" to create one, and at the bottom Connected apps, Settings and you. Items are round and square off on hover; a pill on the left edge marks where you are; tooltips show the name and status.
+
+Everything else opens as a **modal** over the page you're on:
+
+- **Settings** is a full-screen modal with categories on the left (General, Updates, Access control, Connected apps, Connectors, Appearance) and closes with Esc.
+- **Details** (a user's access, an app session) and **Create an organization** open as centered modals.
+- Modals stack, and Esc closes only the top one. They scale and fade in and out.
+
 ## Routes
 
-| Path | Page |
+| Path | What |
 | --- | --- |
 | `/setup` | Onboarding: organization name, your name, Pin's mode, AI account, Pin's access and the device name |
-| `/<device>/home` | Home: greeting, the Ask Pin bar, host CPU/memory/storage, and a card per organization (agents working, CPU, memory; "Idle" when nothing is working) |
-| `/<device>/<org>` | An organization: resource group usage against its limits, agents, tasks, members, connectors, container sessions |
-| `/<device>/orgs/new` | New organization: "let Pin decide" sizing or manual sliders, and agent memory options |
+| `/<device>/home` | Home: greeting, the Ask Pin bar, host meters and a card per organization ("Idle" when nothing is working) |
 | `/<device>/guests` | Every VM and container, with start and shut down; protected guests are locked |
-| `/<device>/automations` | Pin's rules, with plain-language read-back |
-| `/<device>/updates` | Proxmox and ePaperclip versions and pending updates |
-| `/<device>/access` | Integrated Access Control: users mirrored as Proxmox users, sync state, per-user organizations, tools, connectors and policies |
-| `/<device>/apps` | Connected apps (Papercliped, built in): the device's MCP address, the API only / Full / Agent only switch, each session's level, organizations and agents, and activity |
-| `/<device>/connectors` | Who may use each system-wide connector: Pin and/or each organization |
-| `/<device>/appearance` | The design framework: theme presets, accent, corners, glass and text size |
-| `/<device>/settings` | Device, Pin's mode, `SOUL.md`/`MEMORY.md`, demo reset |
+| `/<device>/automations` | Pin's rules with plain-language read-back |
+| `/<device>/<org>` | An organization: resource group usage, agents, tasks, members, connectors, container sessions |
+| `?settings=<section>` | Opens the settings modal over the current page: `general`, `updates`, `access`, `apps`, `connectors`, `appearance` |
+| `?modal=new-org` | Opens "Create an organization" |
 
-Organization slugs can never be one of the system page names (`home`, `access`, and so on), so `/<device>/<org>` never collides. A wrong device name redirects to the right one.
+Older addresses such as `/<device>/access` or `/<device>/orgs/new` open the matching modal over Home. Organization slugs can never be a system name, so `/<device>/<org>` never collides, and a wrong device name redirects to the right one.
 
 ## Pin
 

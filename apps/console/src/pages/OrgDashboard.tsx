@@ -4,7 +4,7 @@ import { useEngine } from "../data/store.tsx";
 import type { Agent } from "../data/types.ts";
 import { formatBytes } from "../lib/storage.ts";
 import { BarMeter } from "../ui/meters.tsx";
-import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind } from "../ui/primitives.tsx";
+import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind, PageFrame } from "../ui/primitives.tsx";
 
 const AGENT_STATUS: Record<Agent["status"], [StatusKind, string]> = { working: ["working", "Working"], idle: ["idle", "Idle"], paused: ["paused", "Paused"], error: ["critical", "Error"] };
 const TASK_ICON = { todo: <Circle className="h-4 w-4 text-ink-3" />, in_progress: <CircleDot className="h-4 w-4 text-accent" />, done: <CircleCheck className="h-4 w-4 text-good" />, blocked: <OctagonAlert className="h-4 w-4 text-critical" /> };
@@ -23,7 +23,7 @@ export function OrgDashboard() {
   const members = data.users.filter((u) => u.orgs.some((o) => o.slug === org.slug));
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20">
+    <PageFrame width="6xl">
       <PageHeader
         eyebrow={<Link to={`/${device}/home`} className="hover:text-ink">{device}</Link>}
         title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
@@ -112,6 +112,6 @@ export function OrgDashboard() {
           </div>
         )}
       </Card>
-    </div>
+    </PageFrame>
   );
 }
