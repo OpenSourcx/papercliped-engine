@@ -33,7 +33,7 @@ Status: draft. This describes the target system and marks which parts exist in t
 | `packages/proxmox-client` | Typed, minimal Proxmox VE API client. TLS always verified. | Yes |
 | `services/host-broker` | Holds the Proxmox token. Exposes a small allowlisted API with two kinds of caller: Pin (system scope) and companies (resource-group scope). Enforces hard limits and protected guests. Audit log. | Yes (core logic) |
 | `packages/automations` | Deterministic trigger engine. Evaluates rules against host metrics and decides actions. Mode-aware: Assistant proposes, Agent acts. | Yes |
-| `apps/console` | The single UI. Starts from Paperclip's UI and adds host pages and the design framework. | Planned |
+| `apps/console` | The single UI: Paperclip's style as a system manager, Pin's island, onboarding, IAC screens, design framework. Routes are `/<device>/home` and `/<device>/<org>`. | Yes (demo data) |
 | ePaperclip (`upstream/paperclip` fork) | Paperclip, redesigned and extended. | Planned |
 | Pin | Copilot runtime: modes, skills, `SOUL.md`/`MEMORY.md`, turns language into rules and tasks. | Planned |
 | Installer | ISO and apt repository on top of upstream Proxmox VE packages. | Planned |
@@ -82,6 +82,10 @@ A rule has a trigger, a scope, an action and a mode policy:
 ```
 
 Metrics come from the Proxmox cluster resource list (`mem`/`maxmem`, `cpu`, `disk`/`maxdisk`, `status`). Actions are `notify`, `shutdown`, `stop`, `start` and `snapshot`. Destructive actions such as destroy are not available to automations.
+
+## Integrated Access Control (IAC)
+
+Every ePaperclip user is also a real Proxmox user (for example `sam@pve`). ePaperclip is the source of truth: creating, changing or removing a user, their organization roles and their policies updates the matching Proxmox user, roles and ACLs, so access is the same in the console and in the stock Proxmox UI. Policies are allow or deny rules over actions and resources; each is mirrored as a Proxmox role. Organization access maps to the organization's pool. The console screens exist; the sync backend is planned and will run through the broker with its own narrowly scoped permission (`User.Modify` and `Permissions.Modify` on the relevant paths).
 
 ## Connector access
 

@@ -1,0 +1,49 @@
+import { useNavigate } from "react-router-dom";
+import { BookOpen, FileText, Server } from "lucide-react";
+import { useEngine } from "../data/store.tsx";
+import { formatBytes, formatUptime } from "../lib/storage.ts";
+import { Button, Card, Chip, PageHeader, Segmented, SectionTitle } from "../ui/primitives.tsx";
+
+export function Settings() {
+  const { setup, host, setPinMode, resetAll } = useEngine();
+  const navigate = useNavigate();
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-20 space-y-4">
+      <PageHeader title="Settings" />
+      <Card className="p-5">
+        <SectionTitle>Device</SectionTitle>
+        <div className="flex items-center gap-3">
+          <span className="h-10 w-10 rounded-lg bg-surface-2 flex items-center justify-center"><Server className="h-5 w-5 text-ink-2" /></span>
+          <div>
+            <div className="font-medium">{setup?.deviceName}</div>
+            <div className="text-[13px] text-ink-3">{host.cpuModel} · {host.cpus} CPUs · {formatBytes(host.memTotal)} · up {formatUptime(host.uptimeSec)}</div>
+          </div>
+        </div>
+        <p className="text-[12px] text-ink-3 mt-3">The device name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;.</p>
+      </Card>
+      <Card className="p-5">
+        <SectionTitle>Pin</SectionTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[14px] text-ink-2">Mode</div>
+          <Segmented value={setup?.pinMode ?? "assistant"} onChange={setPinMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+        </div>
+        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          {[[<FileText key="s" className="h-4 w-4" />, "SOUL.md", "Who Pin is and how it behaves"], [<BookOpen key="m" className="h-4 w-4" />, "MEMORY.md", "What Pin has learned about you and this device"]].map(([icon, file, body]) => (
+            <div key={String(file)} className="rounded-lg border border-line p-3">
+              <div className="flex items-center gap-2 font-mono text-[13px]">{icon}{file}</div>
+              <div className="text-[12px] text-ink-3 mt-1">{body}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {setup && Object.entries(setup.pinAccess).filter(([, v]) => v).map(([k]) => <Chip key={k}>{{ system: "Manages this device", orgs: "Manages organizations", connectors: "Uses connectors", docs: "Reads Proxmox docs" }[k]}</Chip>)}
+        </div>
+      </Card>
+      <Card className="p-5">
+        <SectionTitle>Demo</SectionTitle>
+        <p className="text-[14px] text-ink-2">The console is running on demo data in this browser. Starting over clears it and runs onboarding again.</p>
+        <Button variant="danger" className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>Start over</Button>
+      </Card>
+    </div>
+  );
+}

@@ -15,8 +15,9 @@ Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](do
 | `packages/proxmox-client` | Minimal Proxmox VE API client (API tokens, verified TLS, task waiting) | Working, tested |
 | `packages/automations` | Pin's deterministic trigger engine: rule validation, plain-language read-back, mode-aware decisions | Working, tested |
 | `services/host-broker` | The only holder of the Proxmox token: resource groups for companies, system scope for Pin, protected guests, lease expiry, audit log, HTTP API | Working, tested against a fake Proxmox; not yet run against a real host |
+| `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island, org dashboards, guests, automations, Integrated Access Control, connectors, appearance | Working on demo data; not yet connected to the broker |
 
-Not built yet: the console UI, the ePaperclip fork, the Pin runtime, the installer. See the roadmap.
+Not built yet: connecting the console to the broker, the ePaperclip fork, the model-backed Pin runtime, the installer. See the roadmap.
 
 ## Develop
 

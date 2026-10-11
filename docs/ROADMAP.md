@@ -30,9 +30,14 @@ Each phase ends with something that runs on a real Proxmox host.
 
 ## Phase 4: the console
 
-- [ ] One UI: Paperclip's style plus host pages (guests, storage, network, backups, updates)
-- [ ] Onboarding: organization name, Pin mode, first AI account, Pin's access, first company
-- [ ] Design framework: themes as tokens and layouts the user can change
+- [x] One UI on demo data: Paperclip's style reorganized as a system manager, with home, org dashboards, guests, automations, updates
+- [x] Onboarding: organization name, your name, Pin mode, first AI account, Pin's access, device name
+- [x] Pin's floating island and the Ask Pin bar
+- [x] Integrated Access Control screens: users mirrored as Proxmox users, per-user orgs, tools, connectors, policies
+- [x] Design framework: theme presets and user overrides as tokens
+- [ ] Connect the console to the host broker and ePaperclip (replace the demo data layer)
+- [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
+- [ ] Storage, network and backup pages
 - [ ] Serve the console in place of the stock Proxmox UI, which stays reachable as an emergency console
 
 ## Phase 5: the system
