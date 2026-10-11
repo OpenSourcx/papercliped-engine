@@ -1,0 +1,45 @@
+[Unit]
+Description=ePaperclip console and host service
+Documentation=https://github.com/OpenSourcx/papercliped-engine
+After=network-online.target pve-cluster.service pveproxy.service
+Wants=network-online.target
+Requires=pve-cluster.service
+
+[Service]
+Type=simple
+User=epaperclip
+Group=epaperclip
+# Read access to the node certificate, its key and the cluster CA in /etc/pve, the same way pveproxy reads them.
+SupplementaryGroups=www-data
+EnvironmentFile=-/etc/default/epaperclip
+ExecStart=/usr/bin/node /opt/epaperclip/epaperclip.mjs
+Restart=on-failure
+RestartSec=3
+
+# Port 443 without running as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# It only serves files, talks to Proxmox on loopback and keeps sessions in memory: lock everything else down.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+UMask=0077
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

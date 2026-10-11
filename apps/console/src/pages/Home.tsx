@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Bot, Boxes, Plug, Plus, Workflow } from "lucide-react";
+import { ArrowUpRight, Bot, Boxes, Database, HardDrive, Plug, Plus, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Org } from "../data/types.ts";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
@@ -83,7 +83,7 @@ export function Home() {
               <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-6 items-center justify-items-center">
                 <ArcMeter label="CPU" pct={host.cpuPct} caption={`of ${host.cpus} CPUs`} />
                 <ArcMeter label="Memory" pct={(host.memUsed / host.memTotal) * 100} caption={`${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}`} />
-                <ArcMeter label="Storage" pct={(host.diskUsed / host.diskTotal) * 100} caption={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
+                <ArcMeter label="Root disk" pct={host.diskTotal ? (host.diskUsed / host.diskTotal) * 100 : 0} caption={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
               </div>
               <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-ink-3">
                 <span>{host.cpuModel}</span>
@@ -109,6 +109,30 @@ export function Home() {
                 </Link>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle action={<Link to={`/${device}/storage`} className="text-[13px] text-ink-3 hover:text-ink">View storage</Link>}>Drives</SectionTitle>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[
+              ...(host.diskTotal ? [{ id: "/", name: "Root file system", sub: "System disk", used: host.diskUsed, total: host.diskTotal, root: true, active: true }] : []),
+              ...data.host.storage.map((s) => ({ id: s.id, name: s.id, sub: [s.type, s.content.slice(0, 3).join(", ")].filter(Boolean).join(" · "), used: s.used, total: s.total, root: false, active: s.active !== false })),
+            ].map((s) => (
+              <Link key={s.id} to={`/${device}/storage`}>
+                <Card interactive className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{s.root ? <HardDrive className="h-4 w-4" /> : <Database className="h-4 w-4" />}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[14px] truncate">{s.name}</div>
+                      <div className="text-[12px] text-ink-3 truncate">{s.sub}</div>
+                    </div>
+                    {!s.active && <Status kind="off" label="Unavailable" />}
+                  </div>
+                  <BarMeter label={`${formatBytes(Math.max(0, s.total - s.used))} free`} pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
+                </Card>
+              </Link>
+            ))}
           </div>
         </section>
 

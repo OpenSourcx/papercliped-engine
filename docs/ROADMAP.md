@@ -51,10 +51,14 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Broker usage-history endpoints (`/v1/stats`) and Proxmox client `rrddata` calls
 - [ ] Live consoles: broker relay of Proxmox's terminal proxy, behind the same transport
 - [ ] Paperclip pages still to come from the fork: chat, artifacts, workspaces, skills
-- [ ] Connect the console to the host broker and ePaperclip (replace the demo data layer)
+- [x] Host service (`services/epaperclip`): Proxmox sign-in with two-factor, sessions, acting as the user, console serving with a strict CSP
+- [x] Console on live data: host metrics, machines, power, usage graphs, every storage and the root file system, creating containers
+- [x] Pin's island shows every suggestion for the page you're on: up to three in the row (actions first), the rest grouped under More
+- [x] Installer and systemd unit for a Proxmox VE host (`deploy/`)
+- [ ] Connect the console to the host broker and ePaperclip for organizations, agents and tasks (still demo data)
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
 - [ ] Storage, network and backup pages
-- [ ] Serve the console in place of the stock Proxmox UI, which stays reachable as an emergency console
+- [x] Serve the console on the host (port 443), with the stock Proxmox UI kept on 8006 as the emergency console
 
 ## Phase 5: the system
 

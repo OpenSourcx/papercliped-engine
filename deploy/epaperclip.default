@@ -1,0 +1,8 @@
+# ePaperclip host service settings. Restart after changing: systemctl restart epaperclip
+#EPC_LISTEN=0.0.0.0:443
+#EPC_PVE_URL=https://127.0.0.1:8006
+#EPC_PVE_CA=/etc/pve/pve-root-ca.pem
+#EPC_PVE_NODE=
+#EPC_TLS_CERT=/etc/pve/local/pve-ssl.pem
+#EPC_TLS_KEY=/etc/pve/local/pve-ssl.key
+#EPC_STATIC=/opt/epaperclip/console

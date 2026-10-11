@@ -79,7 +79,7 @@ export function PinIsland() {
     : pin.state === "peek"
       ? { width: "min(380px, calc(100vw - 24px))", height: 68, borderRadius: 26 }
       : pin.state === "actions"
-        ? { width: "min(640px, calc(100vw - 24px))", height: "auto", minHeight: 60, borderRadius: 30 }
+        ? { width: "min(720px, calc(100vw - 24px))", height: "auto", minHeight: 60, borderRadius: 30 }
       : { width: 196, height: 40, borderRadius: 999 };
 
   return (
@@ -98,12 +98,12 @@ export function PinIsland() {
     >
       <div className={cn("glass island overflow-hidden", open && "solid")} style={size}>
         {pin.state === "actions" && pin.actions && (
-          <div className="flex items-center gap-3 pl-2 pr-3 py-2.5 fade-in">
-            <button onClick={() => pin.setState("open")} className="flex items-center gap-2 shrink-0" aria-label="Open Pin">
+          <div className="flex items-start gap-3 pl-2 pr-3 py-2.5 fade-in">
+            <button onClick={() => pin.setState("open")} className="flex items-center gap-2 shrink-0 h-9" aria-label="Open Pin">
               <PinOrb size={30} thinking={pin.thinking} />
               <span className="hidden sm:block text-left leading-tight">
                 <span className="block text-[11px] text-ink-3">Quick actions</span>
-                <span className="block text-[13px] font-medium max-w-[140px] truncate">{pin.actions.context}</span>
+                <span className="block text-[13px] font-medium max-w-[120px] truncate">{pin.actions.context}</span>
               </span>
             </button>
             <QuickActionBar onDone={() => pin.setState("rest")} />

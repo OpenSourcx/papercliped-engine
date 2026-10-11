@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Camera, Cpu, HardDrive, ListChecks, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { Box, Camera, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { useEngine } from "../../data/store.tsx";
@@ -75,7 +75,7 @@ function Snapshots({ g, startOpen, onOpened }: { g: Guest; startOpen: boolean; o
 
 export function MachinePage() {
   const { vmid, org: orgSlug } = useParams();
-  const { data, setup, host, guestPower, notify } = useEngine();
+  const { data, setup, host, guestPower, notify, live, ready } = useEngine();
   const pin = usePin();
   const [params, setParams] = useSearchParams();
   const device = setup?.deviceName ?? "pve";
@@ -87,7 +87,7 @@ export function MachinePage() {
   const power = (a: "start" | "shutdown" | "stop" | "reboot") => {
     if (!g) return;
     const r = guestPower(g.vmid, a);
-    notify(r.ok ? { kind: "info", title: `${g.name}: ${a === "start" ? "started" : a === "reboot" ? "rebooted" : a === "stop" ? "stopped" : "shut down"}`, body: `Machine ${g.vmid}, from Pin's quick actions.` } : { kind: "info", title: `Couldn't ${a} ${g.name}`, body: r.error ?? "Failed" });
+    notify(r.ok ? { kind: "info", title: `${g.name}: ${live ? `${a === "shutdown" ? "shut down" : a} requested` : a === "start" ? "started" : a === "reboot" ? "rebooted" : a === "stop" ? "stopped" : "shut down"}`, body: live ? `Machine ${g.vmid}. Proxmox runs it as a task; the status updates in a few seconds.` : `Machine ${g.vmid}, from Pin's quick actions.` } : { kind: "info", title: `Couldn't ${a} ${g.name}`, body: r.error ?? "Failed" });
   };
   const lock = g?.protected ? `${g.name} is protected` : undefined;
   const running = g?.status === "running";
@@ -102,9 +102,21 @@ export function MachinePage() {
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
       { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" />, run: () => setTab("hardware"), more: true },
       { id: "tasks", label: "Task log", icon: <ListChecks className="h-4 w-4" />, run: () => setTab("tasks"), more: true },
-      { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true },
+      { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true, group: "ask" },
     ],
   } : null);
+  if (!ready) return <div className="p-10 text-ink-3 text-[14px]" aria-busy="true">Loading machine…</div>;
+  if (!g && live)
+    return (
+      <PageFrame width="3xl">
+        <Card className="p-8 text-center mt-6">
+          <Loader2 className="h-5 w-5 animate-spin mx-auto text-ink-3" />
+          <p className="font-medium mt-3">Waiting for machine #{vmid}</p>
+          <p className="text-[13px] text-ink-3 mt-1">A new machine shows up as soon as Proxmox lists it. If it never does, your account may not be able to see it.</p>
+          <Link to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} className="inline-block mt-4 text-[13px] text-ink-2 hover:text-ink">Back to machines</Link>
+        </Card>
+      </PageFrame>
+    );
   if (!g || !base) return <Navigate to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} replace />;
   const org = data.orgs.find((o) => o.slug === g.org);
 
@@ -156,7 +168,7 @@ export function MachinePage() {
             <Button size="sm" className="mt-4 w-full" onClick={() => setTab("console")}><SquareTerminal className="h-3.5 w-3.5" />Open console</Button>
           </Card>
           <div className="lg:col-span-3 mt-2">
-            <UsageGraphs seed={g.vmid} base={base} kind="guest" />
+            <UsageGraphs seed={g.vmid} vmid={g.vmid} base={base} kind="guest" />
           </div>
         </div>
       )}

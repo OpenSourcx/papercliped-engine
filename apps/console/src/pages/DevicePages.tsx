@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Archive, Cable, Database, ShieldAlert } from "lucide-react";
+import { Archive, Cable, Database, HardDrive, ShieldAlert } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
 import { UsageGraphs } from "../ui/UsageGraphs.tsx";
@@ -24,19 +24,31 @@ export function HostShell() {
 }
 
 export function StoragePage() {
-  const { data } = useEngine();
+  const { data, host, setup } = useEngine();
   return (
     <PageFrame width="4xl">
       <PageHeader title="Storage" subtitle="Where machine disks, templates, ISO images and backups live." />
       <div className="space-y-3">
+        {host.diskTotal > 0 && (
+          <Card className="p-5">
+            <div className="flex items-center gap-3">
+              <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><HardDrive className="h-4 w-4" /></span>
+              <div className="flex-1 min-w-0"><div className="font-medium">Root file system</div><div className="text-[12px] text-ink-3 font-mono truncate">/ on {setup?.deviceName ?? "pve"}</div></div>
+              <Status kind="good" label="Mounted" />
+            </div>
+            <BarMeter className="mt-4" label="Used" pct={(host.diskUsed / host.diskTotal) * 100} value={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
+            <p className="text-[12px] text-ink-3 mt-3">The host's own system disk. Machines usually live on the storages below.</p>
+          </Card>
+        )}
+        {data.host.storage.length === 0 && <p className="text-[14px] text-ink-3">Your Proxmox account can't see any storage on this device.</p>}
         {data.host.storage.map((s) => (
           <Card key={s.id} className="p-5">
             <div className="flex items-center gap-3">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><Database className="h-4 w-4" /></span>
-              <div className="flex-1 min-w-0"><div className="font-medium">{s.id}</div><div className="text-[12px] text-ink-3 font-mono truncate">{s.type} · {s.path}</div></div>
-              <Status kind="good" label="Active" />
+              <div className="flex-1 min-w-0"><div className="font-medium">{s.id}</div><div className="text-[12px] text-ink-3 font-mono truncate">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""}</div></div>
+              {s.active === false ? <Status kind="off" label="Unavailable" /> : <Status kind="good" label="Active" />}
             </div>
-            <BarMeter className="mt-4" label="Used" pct={(s.used / s.total) * 100} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
+            <BarMeter className="mt-4" label="Used" pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
             <div className="flex flex-wrap gap-1.5 mt-3">{s.content.map((c) => <Chip key={c}>{c}</Chip>)}</div>
             {s.type === "dir" && <p className="text-[12px] text-ink-3 mt-3">Directory storage copies whole disks when cloning. ZFS or LVM-thin make container sessions start in seconds.</p>}
           </Card>

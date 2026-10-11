@@ -9,12 +9,23 @@ import { request as httpsRequest } from "node:https";
 
 export type Transport = (req: { method: string; url: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; body: string }>;
 
-export interface ProxmoxClientOptions {
+/**
+ * Two ways to authenticate:
+ *  - an API token (`tokenId` + `tokenSecret`), used by the broker, and
+ *  - a user's login ticket (`ticket` + `csrf`), used by ePaperclip to act as the signed-in user, so Proxmox's own
+ *    permissions decide what that user can see and do (Integrated Access Control).
+ */
+export type ProxmoxClientOptions = {
   baseUrl: string; // e.g. https://192.168.1.200:8006
-  tokenId: string; // user@realm!tokenname
-  tokenSecret: string;
   caPem?: string;
   transport?: Transport;
+} & ({ tokenId: string; tokenSecret: string; ticket?: undefined } | { ticket: string; csrf: string; tokenId?: undefined });
+
+export interface LoginResult {
+  username: string;
+  ticket: string;
+  csrf: string | null; // absent on a partial (two-factor) ticket
+  needTfa: boolean;
 }
 
 export class ProxmoxError extends Error {
@@ -48,6 +59,21 @@ export interface ClusterResource {
   disk?: number;
   maxdisk?: number;
   uptime?: number;
+  // storage entries
+  storage?: string;
+  plugintype?: string; // dir, lvmthin, zfspool, nfs, ...
+  content?: string; // comma list: images,rootdir,vztmpl,iso,backup,snippets
+  shared?: number;
+}
+
+export interface NodeStatus {
+  cpu: number; // fraction 0..1
+  cpuinfo?: { cpus?: number; model?: string };
+  memory: { total: number; used: number; free: number };
+  rootfs?: { total: number; used: number };
+  uptime?: number;
+  pveversion?: string;
+  loadavg?: string[];
 }
 
 export type GuestType = "lxc" | "qemu";
@@ -101,17 +127,59 @@ function nodeTransport(caPem?: string): Transport {
 
 const seg = (v: string | number) => encodeURIComponent(String(v));
 
+function apiBase(baseUrl: string): string {
+  const u = new URL(baseUrl);
+  if (u.protocol !== "https:") throw new Error("Proxmox URL must use https");
+  return `${u.origin}/api2/json`;
+}
+
 export class ProxmoxClient {
   private readonly base: string;
-  private readonly auth: string;
+  private readonly headers: Record<string, string>;
+  private readonly writeHeaders: Record<string, string>;
   private readonly transport: Transport;
 
   constructor(opts: ProxmoxClientOptions) {
-    const u = new URL(opts.baseUrl);
-    if (u.protocol !== "https:") throw new Error("Proxmox URL must use https");
-    this.base = `${u.origin}/api2/json`;
-    this.auth = `PVEAPIToken=${opts.tokenId}=${opts.tokenSecret}`;
+    this.base = apiBase(opts.baseUrl);
+    if (opts.ticket !== undefined) {
+      this.headers = { Cookie: `PVEAuthCookie=${encodeURIComponent(opts.ticket)}` };
+      this.writeHeaders = { CSRFPreventionToken: opts.csrf };
+    } else {
+      this.headers = { Authorization: `PVEAPIToken=${opts.tokenId}=${opts.tokenSecret}` };
+      this.writeHeaders = {};
+    }
     this.transport = opts.transport ?? nodeTransport(opts.caPem);
+  }
+
+  /**
+   * Signs a user in with Proxmox's own login (`POST /access/ticket`). With two-factor enabled, the first call returns
+   * a partial ticket and needTfa; answer it with `tfaChallenge` set to that ticket and `password` set to the response
+   * (`totp:123456` or `recovery:KEY`). Passing a still-valid ticket as `password` renews it. Wrong credentials throw a
+   * ProxmoxError with status 401; Proxmox never says which part was wrong.
+   */
+  static async login(opts: { baseUrl: string; caPem?: string; transport?: Transport }, creds: { username: string; password: string; realm?: string; tfaChallenge?: string }): Promise<LoginResult> {
+    const transport = opts.transport ?? nodeTransport(opts.caPem);
+    const params: Record<string, string> = { username: creds.username, password: creds.password };
+    if (creds.realm) params.realm = creds.realm;
+    if (creds.tfaChallenge) params["tfa-challenge"] = creds.tfaChallenge;
+    const res = await transport({
+      method: "POST",
+      url: `${apiBase(opts.baseUrl)}/access/ticket`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams(params).toString(),
+    });
+    if (res.status !== 200) throw new ProxmoxError(`Proxmox login failed (${res.status})`, res.status === 0 ? 502 : res.status);
+    const data = (JSON.parse(res.body || "{}") as { data?: { username?: string; ticket?: string; CSRFPreventionToken?: string; NeedTFA?: number } }).data;
+    if (!data?.ticket || !data.username) throw new ProxmoxError("Proxmox login returned no ticket", 502);
+    return { username: data.username, ticket: data.ticket, csrf: data.CSRFPreventionToken ?? null, needTfa: data.NeedTFA === 1 };
+  }
+
+  /** Login realms (pam, pve, ldap, ...). Readable without signing in, for the login screen. */
+  static async realms(opts: { baseUrl: string; caPem?: string; transport?: Transport }): Promise<{ realm: string; type: string; comment?: string; default?: number }[]> {
+    const transport = opts.transport ?? nodeTransport(opts.caPem);
+    const res = await transport({ method: "GET", url: `${apiBase(opts.baseUrl)}/access/domains`, headers: { Accept: "application/json" } });
+    if (res.status !== 200) throw new ProxmoxError(`Proxmox realms failed (${res.status})`, res.status);
+    return (JSON.parse(res.body || "{}") as { data?: { realm: string; type: string; comment?: string; default?: number }[] }).data ?? [];
   }
 
   async call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
@@ -119,7 +187,7 @@ export class ProxmoxClient {
     const form = new URLSearchParams(entries.map(([k, v]): [string, string] => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)])).toString();
     const withQuery = method === "GET" || method === "DELETE";
     const url = `${this.base}${path}${withQuery && form ? `?${form}` : ""}`;
-    const headers: Record<string, string> = { Authorization: this.auth, Accept: "application/json" };
+    const headers: Record<string, string> = { ...this.headers, Accept: "application/json", ...(method === "GET" ? {} : this.writeHeaders) };
     let body: string | undefined;
     if (!withQuery && form) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
@@ -144,14 +212,38 @@ export class ProxmoxClient {
   }
 
   nodeStatus(node: string) {
-    return this.call<{ cpu: number; cpuinfo?: { cpus?: number; model?: string }; memory: { total: number; used: number; free: number } }>("GET", `/nodes/${seg(node)}/status`);
+    return this.call<NodeStatus>("GET", `/nodes/${seg(node)}/status`);
   }
 
   clusterResources() {
     return this.call<ClusterResource[]>("GET", "/cluster/resources", { type: "vm" });
   }
 
+  /** Every storage the caller can see, with usage (disk/maxdisk) and what it holds. */
+  clusterStorage() {
+    return this.call<ClusterResource[]>("GET", "/cluster/resources", { type: "storage" });
+  }
+
   /** Resolves when `vmid` is free cluster-wide; throws (400) when it is taken. */
+  /** The next free guest id. */
+  nextId() {
+    return this.call<string | number>("GET", "/cluster/nextid").then(Number);
+  }
+
+  /** Storages on a node that hold the given content (vztmpl for container templates, rootdir for container disks). */
+  nodeStorages(node: string, content: string) {
+    return this.call<{ storage: string; type: string; avail?: number; total?: number; active?: number; enabled?: number }[]>("GET", `/nodes/${seg(node)}/storage`, { content, enabled: 1 });
+  }
+
+  storageContent(node: string, storage: string, content: string) {
+    return this.call<{ volid: string; size?: number; format?: string }[]>("GET", `/nodes/${seg(node)}/storage/${seg(storage)}/content`, { content });
+  }
+
+  /** Pools the caller can see. */
+  pools() {
+    return this.call<{ poolid: string; comment?: string }[]>("GET", "/pools");
+  }
+
   checkVmidFree(vmid: number) {
     return this.call<string | number>("GET", "/cluster/nextid", { vmid });
   }

@@ -86,6 +86,8 @@ export interface Guest {
   memUsed: number;
   memMax: number;
   diskMax: number;
+  diskUsed?: number; // live only; Proxmox reports it for containers
+  uptimeSec?: number; // live only
   org: string | null;
   protected: boolean;
   ip?: string | null;
@@ -97,11 +99,13 @@ export interface Guest {
 
 export interface HostStorage {
   id: string;
-  type: "dir" | "zfspool" | "lvmthin" | "lvm" | "nfs";
-  path: string;
+  type: string; // dir, zfspool, lvmthin, lvm, nfs, cifs, pbs ...
+  path?: string;
   used: number;
   total: number;
   content: string[];
+  active?: boolean;
+  shared?: boolean;
 }
 
 export interface HostNetwork {

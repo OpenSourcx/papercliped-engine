@@ -1,16 +1,27 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Rule } from "@papercliped-engine/automations";
+import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
+import { api, ApiError, type MachineSpec } from "./api.ts";
 import { demoData, demoHost, newOrg } from "./demo.ts";
+import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
 import { wouldLoop } from "./orgTree.ts";
-import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
+import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type HostStorage, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
- * The console's state. Today it is backed by demo data kept in the browser; the shape matches what the host broker and
- * ePaperclip will serve, so swapping in the real API replaces this file's internals, not the pages.
+ * The console's state. Served by the host service, the host and its machines are live: read from Proxmox as the
+ * signed-in user every few seconds, and powered through the service. Everything ePaperclip will own (organizations,
+ * agents, tasks, rules, users) is still demo data kept in the browser until the fork lands; the shapes match, so
+ * swapping in the real API replaces this file's internals, not the pages.
  */
 
 interface Engine {
+  /** True when the host and machines come from this device's Proxmox, as the signed-in user. */
+  live: boolean;
+  /** Set when the last live refresh failed. */
+  liveError: string | null;
+  /** False until the first live answer arrives, so pages can wait instead of reporting "not found". */
+  ready: boolean;
   setup: SetupState | null;
   data: EngineData;
   host: HostMetrics;
@@ -26,6 +37,11 @@ interface Engine {
   updateUser: (id: string, patch: Partial<User>) => void;
   setConnectorAccess: (id: string, who: "pin" | string, on: boolean) => void;
   guestPower: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot") => { ok: boolean; error?: string };
+  /** Creates a container. Live, Proxmox creates and starts it as the signed-in user; in the demo it appears at once. */
+  createMachine: (spec: MachineSpec & { org: string | null; os: string }) => Promise<{ ok: true; vmid: number } | { ok: false; error: string }>;
+  addProject: (org: string, name: string, lead: string | null) => void;
+  addGoal: (org: string, title: string, due: string | null) => void;
+  addRoutine: (org: string, name: string, schedule: string, agent: string) => void;
   snapshot: (vmid: number, name: string, description: string) => { ok: boolean; error?: string };
   deleteSnapshot: (vmid: number, name: string) => void;
   addTask: (org: string, title: string, agent: string | null) => void;
@@ -52,6 +68,8 @@ export function orgNameError(name: string, orgs: Org[]): string | null {
 }
 
 export function EngineProvider({ children }: { children: ReactNode }) {
+  const { session } = useSession();
+  const live = session.mode === "live";
   const [setup, setSetup] = useState<SetupState | null>(() => readJson<SetupState | null>("epc.setup", null));
   const [data, setData] = useState<EngineData>(() => {
     const saved = readJson<EngineData | null>("epc.data", null);
@@ -61,12 +79,41 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     return demoData(saved.orgs[0]?.name ?? null);
   });
   const [host, setHost] = useState<HostMetrics>(() => demoHost(setup?.deviceName ?? "pve"));
+  const [guests, setGuests] = useState<Guest[] | null>(null);
+  const [storage, setStorage] = useState<HostStorage[]>([]);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => writeJson("epc.data", data), [data]);
+
+  // Live: read the host as the signed-in user every five seconds (and right after an action).
+  const orgs = data.orgs;
+  useEffect(() => {
+    if (!live) return;
+    let alive = true;
+    const load = () =>
+      api.host().then(
+        (h) => {
+          if (!alive) return;
+          setHost((prev) => liveHostMetrics(h, prev));
+          setGuests((prev) => liveGuests(h, orgs, prev ?? []));
+          setStorage(liveStorage(h));
+          setLiveError(null);
+        },
+        (e) => alive && !(e instanceof ApiError && e.code === "signed_out") && setLiveError(e instanceof ApiError ? e.message : "Can't reach this device"),
+      );
+    load();
+    const t = setInterval(load, 5000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [live, orgs, refreshTick]);
   useEffect(() => (setup ? writeJson("epc.setup", setup) : removeKey("epc.setup")), [setup]);
 
-  // Live-looking metrics: a gentle random walk, like the host's own graphs.
+  // Demo: live-looking metrics, a gentle random walk like the host's own graphs.
   useEffect(() => {
+    if (live) return;
     const t = setInterval(() => {
       setHost((h) => {
         const cpuPct = Math.min(95, Math.max(1, h.cpuPct + (Math.random() - 0.5) * 3));
@@ -75,23 +122,28 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       });
     }, 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [live]);
 
   const completeSetup = useCallback<Engine["completeSetup"]>((s, firstOrg) => {
     setSetup({ ...s, completedAt: new Date().toISOString() });
-    setHost(demoHost(s.deviceName));
+    if (!live) setHost(demoHost(s.deviceName));
     const d = demoData(firstOrg);
     d.users[0] = { ...d.users[0], name: s.ownerName || "You" };
     setData(d);
-  }, []);
+  }, [live]);
 
   const updateGuest = (vmid: number, fn: (g: Guest) => Guest) => setData((d) => ({ ...d, guests: d.guests.map((x) => (x.vmid === vmid ? fn(x) : x)) }));
   const updateOrg = (slug: string, fn: (o: Org) => Org) => setData((d) => ({ ...d, orgs: d.orgs.map((o) => (o.slug === slug ? fn(o) : o)) }));
 
+  const view = useMemo<EngineData>(() => (live ? { ...data, guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage]);
+
   const value = useMemo<Engine>(
     () => ({
+      live,
+      liveError,
+      ready: !live || guests !== null,
       setup,
-      data,
+      data: view,
       host,
       completeSetup,
       resetAll: () => {
@@ -128,15 +180,53 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           }),
         })),
       guestPower: (vmid, action) => {
-        const g = data.guests.find((x) => x.vmid === vmid);
+        const g = view.guests.find((x) => x.vmid === vmid);
         if (!g) return { ok: false, error: "Unknown machine" };
         if (g.protected) return { ok: false, error: `${g.name} is protected` };
         const up = action === "start" || action === "reboot";
         const label = { start: "Start", shutdown: "Shutdown", stop: "Stop", reboot: "Reboot" }[action];
+        if (live) {
+          // Proxmox decides whether this user may do it; the result shows in the machine's task log.
+          const log = (ok: boolean, what: string) => setGuests((list) => (list ?? []).map((x) => (x.vmid === vmid ? { ...x, tasks: [{ id: `${vmid}-${Date.now()}`, what, at: new Date().toISOString(), ok }, ...(x.tasks ?? [])].slice(0, 30) } : x)));
+          api.power(vmid, action).then(
+            () => {
+              log(true, label);
+              setTimeout(() => setRefreshTick((n) => n + 1), 1500);
+            },
+            (e) => {
+              const msg = e instanceof ApiError ? e.message : "Can't reach this device";
+              log(false, `${label}: ${msg}`);
+              setData((d) => ({ ...d, notices: [{ id: `n-${Date.now()}`, kind: "info" as const, title: `${label} ${g.name} failed`, body: msg, at: new Date().toISOString(), read: false }, ...d.notices].slice(0, 50) }));
+            },
+          );
+          return { ok: true };
+        }
         updateGuest(vmid, (x) => ({ ...x, status: up ? "running" : "stopped", cpuPct: up ? 2 : 0, memUsed: up ? x.memMax * 0.2 : 0, tasks: [{ id: `${vmid}-${Date.now()}`, what: label, at: new Date().toISOString(), ok: true }, ...(x.tasks ?? [])].slice(0, 30) }));
         return { ok: true };
       },
+      createMachine: async (spec) => {
+        const { org, os, ...rest } = spec;
+        if (live) {
+          try {
+            const r = await api.createMachine(rest);
+            setTimeout(() => setRefreshTick((n) => n + 1), 1200);
+            return { ok: true, vmid: r.vmid };
+          } catch (e) {
+            return { ok: false, error: e instanceof ApiError ? e.message : "Can't reach this device" };
+          }
+        }
+        if (view.guests.some((g) => g.name === spec.name)) return { ok: false, error: "A machine with that name exists." };
+        const vmid = Math.max(99, ...view.guests.map((g) => g.vmid)) + 1;
+        const at = new Date().toISOString();
+        const guest: Guest = { vmid, name: spec.name, type: "lxc", status: "running", cpuPct: 3, cores: spec.cores, memUsed: spec.memoryMb * 1024 ** 2 * 0.12, memMax: spec.memoryMb * 1024 ** 2, diskMax: spec.diskGb * 1e9, org, protected: false, ip: `192.168.1.${100 + (vmid % 150)}`, os, tags: org ? [org] : [], snapshots: [], tasks: [{ id: `${vmid}-start`, what: "Start", at, ok: true }, { id: `${vmid}-create`, what: "Create", at, ok: true }] };
+        setData((d) => ({ ...d, guests: [...d.guests, guest] }));
+        return { ok: true, vmid };
+      },
+      addProject: (org, name, lead) => updateOrg(org, (o) => ({ ...o, projects: [...o.projects, { id: `p-${Date.now()}`, name, tasks: 0, done: 0, lead }], activity: [{ id: `ac-${Date.now()}`, who: "You", what: `started the project ${name}`, at: new Date().toISOString() }, ...o.activity] })),
+      addGoal: (org, title, due) => updateOrg(org, (o) => ({ ...o, goals: [...o.goals, { id: `g-${Date.now()}`, title, progress: 0, due }], activity: [{ id: `ac-${Date.now()}`, who: "You", what: `set the goal "${title}"`, at: new Date().toISOString() }, ...o.activity] })),
+      addRoutine: (org, name, schedule, agent) => updateOrg(org, (o) => ({ ...o, routines: [...o.routines, { id: `r-${Date.now()}`, name, schedule, agent, lastRun: null, enabled: true }], activity: [{ id: `ac-${Date.now()}`, who: "You", what: `added the routine ${name}`, at: new Date().toISOString() }, ...o.activity] })),
       snapshot: (vmid, name, description) => {
+        if (live) return { ok: false, error: "Snapshots from ePaperclip are coming next. Use the Proxmox console on port 8006 for now." };
         const g = data.guests.find((x) => x.vmid === vmid);
         if (!g) return { ok: false, error: "Unknown machine" };
         if (!/^[A-Za-z][A-Za-z0-9_-]{1,39}$/.test(name)) return { ok: false, error: "Use 2 to 40 letters, digits, - or _, starting with a letter." };
@@ -174,7 +264,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
       revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),
     }),
-    [setup, data, host, completeSetup],
+    [live, liveError, guests, setup, data, view, host, completeSetup],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

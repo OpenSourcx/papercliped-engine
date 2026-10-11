@@ -50,12 +50,31 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const register = useCallback((source: string, a: QuickActions | null, priority: number) => {
     if (a) registry.current.set(source, { priority, actions: a });
     else registry.current.delete(source);
-    let best: [string, { priority: number; actions: QuickActions }] | null = null;
-    for (const entry of registry.current) if (!best || entry[1].priority > best[1].priority) best = entry;
-    setActions(best ? best[1].actions : null);
-    setActiveSource(best ? best[0] : null);
+    // The most specific set leads (a machine's power actions); the page's broader suggestions follow it, so the island
+    // always shows everything you can do from here.
+    const ranked = [...registry.current].sort((a, b) => b[1].priority - a[1].priority);
+    const best = ranked[0];
+    if (!best) {
+      setActions(null);
+      setActiveSource(null);
+      return;
+    }
+    const items = [...best[1].actions.items];
+    for (const [, r] of ranked.slice(1)) for (const it of r.actions.items) if (!items.some((x) => x.id === it.id)) items.push({ ...it, more: true });
+    setActions({ context: best[1].actions.context, items });
+    setActiveSource(best[0]);
   }, []);
-  const findLatest = useCallback((id: string) => (activeSource ? latestBySource.current.get(activeSource)?.items.find((x) => x.id === id) : undefined), [activeSource]);
+  const findLatest = useCallback(
+    (id: string) => {
+      const sources = [activeSource, ...[...registry.current].sort((a, b) => b[1].priority - a[1].priority).map(([s]) => s)];
+      for (const s of sources) {
+        const hit = s ? latestBySource.current.get(s)?.items.find((x) => x.id === id) : undefined;
+        if (hit) return hit;
+      }
+      return undefined;
+    },
+    [activeSource],
+  );
   const [confirm, setConfirm] = useState<QuickAction | null>(null);
   const seen = useRef(new Set(engine.data.notices.map((n) => n.id)));
   const engineRef = useRef(engine);

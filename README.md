@@ -16,9 +16,11 @@ Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](do
 | `packages/proxmox-client` | Minimal Proxmox VE API client (API tokens, verified TLS, task waiting) | Working, tested |
 | `packages/automations` | Pin's deterministic trigger engine: rule validation, plain-language read-back, mode-aware decisions | Working, tested |
 | `services/host-broker` | The only holder of the Proxmox token: resource groups for companies, system scope for Pin, protected guests, lease expiry, audit log, HTTP API | Working, tested against a fake Proxmox; not yet run against a real host |
-| `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island, org dashboards, guests, automations, Integrated Access Control, connectors, appearance | Working on demo data; not yet connected to the broker |
+| `services/epaperclip` | The host service: serves the console on port 443 with the node's own certificate, signs people in with their Proxmox accounts (Integrated Access Control) and acts on Proxmox as them | Working, tested against a fake Proxmox |
+| `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island and page-aware quick actions, org dashboards, machines, drives, automations, Integrated Access Control, connectors, appearance | Live host, machines, drives and graphs through the host service; organizations and agents still on demo data |
+| `deploy/` | systemd unit and installer for a Proxmox VE host | Ready to try |
 
-Not built yet: connecting the console to the broker, the ePaperclip fork, the model-backed Pin runtime, the installer. See the roadmap.
+Not built yet: the ePaperclip fork (organizations, agents and tasks on the console are demo data until then), the model-backed Pin runtime, live consoles, the installer ISO. See the roadmap.
 
 ## Develop
 
@@ -29,6 +31,19 @@ pnpm test
 ```
 
 Requires Node 22 or later and pnpm.
+
+## Install on a Proxmox host
+
+```sh
+pnpm install && pnpm build        # from this repository
+sudo ./deploy/install.sh          # on the Proxmox VE host, from the same checkout
+```
+
+Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP, with two-factor if you use it). What each person can see and do is exactly what their Proxmox permissions allow. The stock Proxmox UI stays at `https://<host>:8006/` as the emergency console. Details in [services/epaperclip/README.md](services/epaperclip/README.md).
+
+## Try the console without a host
+
+`pnpm --filter @papercliped-engine/console dev` runs the console on its own, on demo data.
 
 ## Run the broker
 

@@ -70,3 +70,44 @@ describe("ProxmoxClient", () => {
     await expect(client(bad.transport).waitTask("pve", "UPID:1", { sleep })).rejects.toThrow(/unable to create CT/);
   });
 });
+
+describe("user sessions (Integrated Access Control)", () => {
+  it("signs in with Proxmox's own login and acts as that user", async () => {
+    const { seen, transport } = recorder([
+      { status: 200, body: { data: { username: "sam@pve", ticket: "PVE:sam@pve:ABC", CSRFPreventionToken: "csrf123" } } },
+      { status: 200, body: { data: [] } },
+      { status: 200, body: { data: "UPID:3" } },
+    ]);
+    const r = await ProxmoxClient.login({ baseUrl: "https://pve.test:8006", transport }, { username: "sam", realm: "pve", password: "pw" });
+    expect(r).toEqual({ username: "sam@pve", ticket: "PVE:sam@pve:ABC", csrf: "csrf123", needTfa: false });
+    expect(new URLSearchParams(seen[0].body)).toEqual(new URLSearchParams({ username: "sam", password: "pw", realm: "pve" }));
+    expect(seen[0].headers.Authorization).toBeUndefined();
+
+    const c = new ProxmoxClient({ baseUrl: "https://pve.test:8006", ticket: r.ticket, csrf: r.csrf!, transport });
+    await c.clusterResources();
+    await c.guestPower("pve", "lxc", 9001, "start");
+    expect(seen[1].headers.Cookie).toBe("PVEAuthCookie=PVE%3Asam%40pve%3AABC");
+    expect(seen[1].headers.CSRFPreventionToken).toBeUndefined(); // reads need no CSRF token
+    expect(seen[2].headers.CSRFPreventionToken).toBe("csrf123"); // writes do
+  });
+
+  it("reports a two-factor step and answers it with the challenge", async () => {
+    const { seen, transport } = recorder([
+      { status: 200, body: { data: { username: "ana@pve", ticket: "PVE:!tfa!xyz", NeedTFA: 1 } } },
+      { status: 200, body: { data: { username: "ana@pve", ticket: "PVE:ana@pve:OK", CSRFPreventionToken: "c" } } },
+    ]);
+    const first = await ProxmoxClient.login({ baseUrl: "https://pve.test:8006", transport }, { username: "ana@pve", password: "pw" });
+    expect(first.needTfa).toBe(true);
+    expect(first.csrf).toBeNull();
+    const second = await ProxmoxClient.login({ baseUrl: "https://pve.test:8006", transport }, { username: "ana@pve", password: "totp:123456", tfaChallenge: first.ticket });
+    expect(second.needTfa).toBe(false);
+    expect(new URLSearchParams(seen[1].body).get("tfa-challenge")).toBe("PVE:!tfa!xyz");
+  });
+
+  it("turns bad credentials into a 401 without detail", async () => {
+    const { transport } = recorder([{ status: 401, body: "" }]);
+    const err = await ProxmoxClient.login({ baseUrl: "https://pve.test:8006", transport }, { username: "x", password: "y" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ProxmoxError);
+    expect(err.status).toBe(401);
+  });
+});

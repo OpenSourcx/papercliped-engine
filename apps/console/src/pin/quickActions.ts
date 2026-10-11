@@ -11,8 +11,10 @@ export interface QuickAction {
   danger?: boolean;
   /** Ask before running; for actions that cut power or lose work. */
   confirm?: { title: string; body: string; label: string };
-  /** Shown in the More menu instead of the main row. */
+  /** Shown in the More panel instead of the main row. */
   more?: boolean;
+  /** do: acts on this page; ask: a question for Pin; go: a related page. Decides where it shows in the island. */
+  group?: "do" | "ask" | "go";
 }
 
 export interface QuickActions {

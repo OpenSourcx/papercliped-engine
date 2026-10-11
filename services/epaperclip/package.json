@@ -1,0 +1,15 @@
+{
+  "name": "@papercliped-engine/epaperclip",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The ePaperclip host service: serves the console, signs users in with Proxmox's own login, and acts on Proxmox as the signed-in user.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/epaperclip.mjs --banner:js=\"// ePaperclip host service\"",
+    "start": "node --experimental-strip-types src/main.ts"
+  },
+  "dependencies": { "@papercliped-engine/proxmox-client": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.10.0", "esbuild": "^0.28.2", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}

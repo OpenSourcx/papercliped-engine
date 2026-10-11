@@ -33,7 +33,8 @@ Status: draft. This describes the target system and marks which parts exist in t
 | `packages/proxmox-client` | Typed, minimal Proxmox VE API client. TLS always verified. | Yes |
 | `services/host-broker` | Holds the Proxmox token. Exposes a small allowlisted API with two kinds of caller: Pin (system scope) and companies (resource-group scope). Enforces hard limits and protected guests. Audit log. | Yes (core logic) |
 | `packages/automations` | Deterministic trigger engine. Evaluates rules against host metrics and decides actions. Mode-aware: Assistant proposes, Agent acts. | Yes |
-| `apps/console` | The single UI: Paperclip's style as a system manager, Pin's island, onboarding, IAC screens, design framework. Routes are `/<device>/home` and `/<device>/<org>`. | Yes (demo data) |
+| `services/epaperclip` | The host service: serves the console, signs users in through Proxmox's own login, and calls Proxmox as the signed-in user. | Yes |
+| `apps/console` | The single UI: Paperclip's style as a system manager, Pin's island, onboarding, IAC screens, design framework. Routes are `/<device>/home` and `/<device>/<org>`. | Yes (live host data; org data still demo) |
 | ePaperclip (`upstream/paperclip` fork) | Paperclip, redesigned and extended. | Planned |
 | Pin | Copilot runtime: modes, skills, `SOUL.md`/`MEMORY.md`, turns language into rules and tasks. | Planned |
 | Installer | ISO and apt repository on top of upstream Proxmox VE packages. | Planned |
@@ -107,7 +108,21 @@ Machine consoles and the host shell use Proxmox's own terminal proxy, relayed by
 
 The console's terminal is written against a transport interface, so the demo shell and the live relay are interchangeable.
 
+## Runs on the host
+
+ePaperclip is not a guest on the machine it manages. It runs on the Proxmox host itself, next to `pveproxy`, as systemd services:
+
+| Service | Listens | Does |
+| --- | --- | --- |
+| `epaperclip` | `:443` | Serves the console and its API with the node's own certificate (`/etc/pve/local/pve-ssl.pem`). Talks to Proxmox on `https://127.0.0.1:8006`, verified against the cluster CA. Runs as its own user with only `CAP_NET_BIND_SERVICE`. |
+| `epaperclip-broker` (planned on the host) | loopback | Holds the Proxmox token for Pin, automations and company leases. |
+| stock Proxmox UI | `:8006` | Unchanged, kept as the emergency console. |
+
+`deploy/install.sh` installs the first; the others follow as they move onto the host.
+
 ## Integrated Access Control (IAC)
+
+**Sign-in is Proxmox's own.** The console's login page sends the username, password and realm to the `epaperclip` service, which calls Proxmox's `/access/ticket`, including the two-factor step (`tfa-challenge` with `totp:` or `recovery:` codes). From then on the service calls Proxmox with that user's ticket, so Proxmox's permissions decide what each person sees and can change: a user without `Sys.Audit` gets no node graphs, one without `VM.PowerMgmt` can't power a guest, one without `VM.Allocate` can't create a machine. The browser never sees the Proxmox ticket; it holds a random session id in an `HttpOnly`, `SameSite=Strict`, `Secure` cookie. Every change also needs an `X-EPC-Request` header and a same-site `Origin`. Failed sign-ins are rate limited per address and per user. Sessions renew the Proxmox ticket while in use and end after two hours idle or twelve hours in total. Served without the service (in development), the console runs on demo data.
 
 Every ePaperclip user is also a real Proxmox user (for example `sam@pve`). ePaperclip is the source of truth: creating, changing or removing a user, their organization roles and their policies updates the matching Proxmox user, roles and ACLs, so access is the same in the console and in the stock Proxmox UI. Policies are allow or deny rules over actions and resources; each is mirrored as a Proxmox role. Organization access maps to the organization's pool. The console screens exist; the sync backend is planned and will run through the broker with its own narrowly scoped permission (`User.Modify` and `Permissions.Modify` on the relevant paths).
 

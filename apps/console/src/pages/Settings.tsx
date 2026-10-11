@@ -1,15 +1,30 @@
 import { useNavigate } from "react-router-dom";
-import { BookOpen, FileText, Server } from "lucide-react";
+import { BookOpen, FileText, LogOut, Server, ShieldCheck } from "lucide-react";
+import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
 import { Button, Card, Chip, PageHeader, Segmented, SectionTitle, PageFrame } from "../ui/primitives.tsx";
 
 export function Settings() {
-  const { setup, host, setPinMode, resetAll } = useEngine();
+  const { setup, host, setPinMode, resetAll, live } = useEngine();
+  const { session, signOut } = useSession();
   const navigate = useNavigate();
   return (
     <PageFrame width="3xl" className="space-y-4">
       <PageHeader title="General" />
+      {session.mode === "live" && (
+        <Card className="p-5">
+          <SectionTitle>Account</SectionTitle>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="h-10 w-10 rounded-lg bg-surface-2 flex items-center justify-center"><ShieldCheck className="h-5 w-5 text-ink-2" /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{session.user.username}</div>
+              <div className="text-[13px] text-ink-3">Signed in with Proxmox. What you can see and change here is what this Proxmox user is allowed to.</div>
+            </div>
+            <Button onClick={() => void signOut()}><LogOut className="h-4 w-4" />Sign out</Button>
+          </div>
+        </Card>
+      )}
       <Card className="p-5">
         <SectionTitle>Device</SectionTitle>
         <div className="flex items-center gap-3">
@@ -41,7 +56,7 @@ export function Settings() {
       </Card>
       <Card className="p-5">
         <SectionTitle>Demo</SectionTitle>
-        <p className="text-[14px] text-ink-2">The console is running on demo data in this browser. Starting over clears it and runs onboarding again.</p>
+        <p className="text-[14px] text-ink-2">{live ? "The host and its machines are live. Organizations, agents, tasks and rules are still demo data in this browser until ePaperclip's backend lands. Starting over clears that and runs onboarding again." : "The console is running on demo data in this browser. Starting over clears it and runs onboarding again."}</p>
         <Button variant="danger" className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>Start over</Button>
       </Card>
     </PageFrame>

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { House, Menu, Plug, Plus, Settings, X } from "lucide-react";
 import { ContextSidebar } from "./ContextSidebar.tsx";
+import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
@@ -120,10 +121,14 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
 
 function UserChip({ name, expanded }: { name: string; expanded?: boolean }) {
   const tip = useTip();
+  const { session } = useSession();
+  const { liveError } = useEngine();
+  const sub = session.mode === "live" ? (liveError ? `Offline · ${session.user.username}` : `Live · ${session.user.username}`) : "Demo data";
+  const tone = session.mode === "live" && !liveError ? "text-good" : "text-warning";
   return (
     <span ref={tip.ref} {...tip.handlers} className={cn("relative flex items-center", expanded ? "gap-3" : "justify-center w-[72px]")}>
       <Avatar name={name} hue={32} size={40} />
-      {expanded ? <span className="text-[14px]">{name}<span className="block text-[11px] text-warning">Demo data</span></span> : tip.anchor && <Tip label={name} sub="Demo data · owner@pve" anchor={tip.anchor} />}
+      {expanded ? <span className="text-[14px] min-w-0">{name}<span className={cn("block text-[11px] truncate", tone)}>{sub}</span></span> : tip.anchor && <Tip label={name} sub={session.mode === "live" ? sub : "Demo data · owner@pve"} anchor={tip.anchor} />}
     </span>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Bot, Check, Cpu, Globe, Server, Sparkles } from "lucide-react";
+import { useSession } from "../auth/session.tsx";
 import { orgNameError, useEngine } from "../data/store.tsx";
 import type { PinMode, SetupState } from "../data/types.ts";
 import { cn, slugify } from "../lib/storage.ts";
@@ -63,15 +64,17 @@ const PROVIDERS = [
 
 export function Onboarding() {
   const engine = useEngine();
+  const { session } = useSession();
+  const liveUser = session.mode === "live" ? session.user : null;
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [org, setOrg] = useState("");
   const [skipOrg, setSkipOrg] = useState(false);
-  const [owner, setOwner] = useState("");
+  const [owner, setOwner] = useState(liveUser && liveUser.name !== "root" ? liveUser.name : "");
   const [mode, setMode] = useState<PinMode>("assistant");
   const [provider, setProvider] = useState<string | null>(null);
   const [access, setAccess] = useState<SetupState["pinAccess"]>({ system: true, orgs: true, connectors: true, docs: true });
-  const [device, setDevice] = useState("pve");
+  const [device, setDevice] = useState(liveUser?.node ?? "pve");
   const [finishing, setFinishing] = useState(false);
 
   const next = (e?: FormEvent) => {
