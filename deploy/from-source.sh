@@ -4,6 +4,8 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/<branch>/deploy/from-source.sh | EPC_REF=<branch> bash
 #
+# While the repository is private, also set EPC_GITHUB_TOKEN to a read-only token (and send it to curl too).
+#
 # Nothing here uses or changes the host's own Node.js: the build runs on the same pinned, checksum-verified Node.js the
 # service itself uses, inside a temporary folder that is deleted afterwards.
 set -euo pipefail
@@ -21,7 +23,9 @@ fi
 
 work="$(mktemp -d /var/tmp/epaperclip-build.XXXXXX)"; trap 'rm -rf "$work"' EXIT
 echo "epaperclip: fetching $REF"
-git clone --quiet --depth 1 --branch "$REF" "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+# A private repository needs a read-only token: EPC_GITHUB_TOKEN. It is passed to git for this one command only.
+auth=(); [ -z "${EPC_GITHUB_TOKEN:-}" ] || auth=(-c "http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' "$EPC_GITHUB_TOKEN" | base64 -w0)")
+git "${auth[@]}" clone --quiet --depth 1 --branch "$REF" "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
 
 # Reuse the installer's pinned Node.js version and checksums, so there is one place to update them.
 eval "$(grep -E '^NODE_(VERSION|SHA256_(x64|arm64))=' "$work/src/deploy/install.sh")"
