@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Test stand-in: shows the end of what the systemctl stand-in captured from each -u unit.
+n=30; units=()
+while [ "$#" -gt 0 ]; do case "$1" in -u) units+=("${2%.service}"); shift ;; -n) n="$2"; shift ;; esac; shift; done
+for u in "${units[@]}"; do tail -n "$n" "${STUB_STATE:?}/$u.log" 2>/dev/null; done
+exit 0

@@ -1,0 +1,10 @@
+{
+  "name": "epaperclip-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The engine ePaperclip runs: Paperclip (MIT), the published npm package at an exact version, installed with npm ci from package-lock.json.",
+  "license": "MIT",
+  "dependencies": {
+    "paperclipai": "2026.1005.0"
+  }
+}

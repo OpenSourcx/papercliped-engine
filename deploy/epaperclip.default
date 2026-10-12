@@ -7,3 +7,8 @@
 #EPC_TLS_KEY=/etc/pve/local/pve-ssl.key
 #EPC_STATIC=/opt/epaperclip/console
 #EPC_MAX_UPLOAD_GB=64
+# Set by the unit; change them only together with the engine's own settings in /etc/epaperclip/engine.env.
+#EPC_STATE_DIR=/var/lib/epaperclip
+#EPC_ENGINE_URL=http://127.0.0.1:3100
+#EPC_ENGINE_PUBLIC_URL=http://127.0.0.1:3100
+#EPC_ENGINE_DIR=/opt/epaperclip/engine

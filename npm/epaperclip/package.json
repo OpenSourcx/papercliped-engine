@@ -1,0 +1,31 @@
+{
+  "name": "epaperclip",
+  "version": "0.0.0",
+  "description": "Install ePaperclip on a Proxmox VE host: the console on port 443, signed in with Proxmox accounts, and its engine on loopback.",
+  "license": "MIT",
+  "author": "OpenSourcx",
+  "homepage": "https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/INSTALL.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenSourcx/papercliped-engine.git",
+    "directory": "npm/epaperclip"
+  },
+  "keywords": ["proxmox", "pve", "paperclip", "agents", "installer"],
+  "type": "module",
+  "bin": {
+    "epaperclip": "bin/epaperclip.js"
+  },
+  "files": [
+    "bin/epaperclip.js",
+    "payload/",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": ["linux"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepack": "node scripts/prepack.mjs"
+  }
+}

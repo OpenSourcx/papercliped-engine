@@ -14,7 +14,7 @@ Each phase ends with something that runs on a real Proxmox host.
 ## Phase 2: ePaperclip
 
 - [x] Engine decision: run the published, pinned `paperclipai` package unmodified (no fork to carry), behind the host service with managed per-user accounts; see `docs/ENGINE.md`
-- [ ] Install the engine as a locked-down loopback service (private Node, lockfile, secrets generated at install)
+- [x] Install the engine as a locked-down loopback service (private Node, lockfile, secrets generated at install): `epaperclip-engine.service`, `npm ci --ignore-scripts` from `engine/package-lock.json`, test-started as its own user, database copied before an engine upgrade
 - [ ] Host service: vault, managed engine accounts, `/engine/api` and events WebSocket proxy
 - [ ] Container-session engine: a Paperclip sandbox provider that leases containers from the broker in the company's resource group
 - [ ] Resource groups in the company model: creating a company creates its pool, range, tag and limits through the broker; "let Pin decide" sizing
@@ -64,6 +64,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Store plugins mirror Paperclip's built-in adapter types (enable/disable) with bundled, licensed logos and monogram fallbacks
 - [x] Store: signed marketplace index (Ed25519, expiry, no rollback, strict entry formats, npm entries pinned by integrity hash), fetched only by the host service; publish and key scripts in `scripts/`, rotation documented in `marketplace/README.md`
 - [x] Installer hardening: preflight checks, pinned and verified private Node.js, staged install with automatic rollback, `--status`/`--rollback`/`--uninstall`, release packaging and workflow, `get.sh` and `from-source.sh`
+- [x] Installer tests on simulated hosts in CI (`deploy/test/run.sh`): install, upgrade, rollback, broken versions, services that won't start, preflight refusals, uninstall and purge, the .deb and the npm command, and a real engine install
+- [x] Packages: `.deb` with a signed APT repository on GitHub Pages, the `epaperclip` npm package, all running the same installer
 - [ ] Installer: test on clean Proxmox 8 and 9 hosts (single node, cluster, ZFS and LVM), publish the first release
 - [ ] Marketplace: generate and pin the first-party signing key, create the public catalog repository, CI publish job; install npm entries through Paperclip's adapter and plugin APIs once the runtime exists
 - [ ] Store: remove an installed ISO or template from the Store, and update plugins from a published index
@@ -86,6 +88,6 @@ Each phase ends with something that runs on a real Proxmox host.
 
 ## Phase 5: the system
 
-- [ ] Installer ISO and apt repository on top of upstream Proxmox VE packages, with our own name and branding
+- [ ] Installer ISO on top of upstream Proxmox VE packages, with our own name and branding (the APT repository for ePaperclip itself exists)
 - [ ] Vault root key, unlock and recovery
 - [ ] Kill switch and emergency console documentation

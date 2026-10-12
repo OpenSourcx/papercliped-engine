@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowLeftRight, Check, KeyRound, ShieldCheck, ShieldX, UserPlus } from "lucide-react";
+import { LiveAccess } from "./access/LiveAccess.tsx";
 import { useEngine } from "../data/store.tsx";
 import { Modal } from "../ui/Modal.tsx";
 import type { Role, User } from "../data/types.ts";
@@ -114,6 +115,10 @@ function UserPanel({ user, onClose }: { user: User; onClose: () => void }) {
 }
 
 export function Access() {
+  return useEngine().live ? <LiveAccess /> : <DemoAccess />;
+}
+
+function DemoAccess() {
   const { data } = useEngine();
   const [tab, setTab] = useState<"users" | "policies">("users");
   const [open, setOpen] = useState<string | null>(null);

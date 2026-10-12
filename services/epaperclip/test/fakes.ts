@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>() };
+  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>() };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -99,7 +99,46 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       companies.set(id, { name: body.name ?? "Org", members: new Map([[uid, "owner"]]) });
       return json(res, 201, { id, name: body.name, status: "active" });
     }
-    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: "active" })));
+    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => st.admins.has(uid!) || c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: "active" })));
+    // Membership: list, change role, archive; invitations with a role, accepted by the invitee.
+    const mem = p.match(/^\/api\/companies\/([\w-]+)\/(members|invites)(?:\/([\w.-]+)(\/archive)?)?$/);
+    if (mem) {
+      const c = companies.get(mem[1]);
+      if (!c) return json(res, 404, { error: "Company not found" });
+      const manager = st.admins.has(uid!) || ["owner", "admin"].includes(c.members.get(uid!) ?? "");
+      if (mem[2] === "members" && req.method === "GET" && !mem[3]) {
+        if (!manager && !c.members.has(uid)) return json(res, 403, { error: "Not a member" });
+        const list = [...c.members].map(([id, role]) => ({ id: `m.${mem[1]}.${id}`, principalType: "user", principalId: id, membershipRole: role, status: "active" }));
+        const gone = [...st.archived].filter((k) => k.startsWith(`${mem[1]}|`)).map((k) => ({ id: `m.${mem[1]}.${k.split("|")[1]}`, principalType: "user", principalId: k.split("|")[1], membershipRole: "viewer", status: "archived" }));
+        return json(res, 200, { members: [...list, ...gone], access: {} });
+      }
+      if (!manager) return json(res, 403, { error: "Permission denied" });
+      if (mem[2] === "invites" && req.method === "POST") {
+        const token = `pcp_invite_${++st.invites}`;
+        st.inviteTokens.set(token, { companyId: mem[1], role: (b() as { humanRole?: string }).humanRole ?? "operator" });
+        return json(res, 201, { id: `inv${st.invites}`, token });
+      }
+      const target = mem[3]?.split(".").slice(2).join(".");
+      if (mem[2] === "members" && target && req.method === "PATCH") {
+        if (!c.members.has(target)) return json(res, 404, { error: "Member not found" });
+        c.members.set(target, (b() as { membershipRole: string }).membershipRole);
+        return json(res, 200, { id: mem[3], membershipRole: c.members.get(target), status: "active" });
+      }
+      if (mem[2] === "members" && target && mem[4] && req.method === "POST") {
+        c.members.delete(target);
+        st.archived.add(`${mem[1]}|${target}`);
+        return json(res, 200, { member: { id: mem[3], status: "archived" } });
+      }
+    }
+    const accept = p.match(/^\/api\/invites\/([\w-]+)\/accept$/);
+    if (accept && req.method === "POST") {
+      const inv = st.inviteTokens.get(accept[1]);
+      if (!inv || !uid) return json(res, 404, { error: "Invite not found" });
+      st.inviteTokens.delete(accept[1]);
+      companies.get(inv.companyId)!.members.set(uid, inv.role);
+      st.archived.delete(`${inv.companyId}|${uid}`);
+      return json(res, 202, { status: "approved", requestType: "human" });
+    }
     const co = p.match(/^\/api\/companies\/([\w-]+)(\/(agents|issues|approvals))?$/);
     if (co) {
       const c = companies.get(co[1]);
@@ -181,6 +220,10 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
 /** A small Proxmox: two users (sam is an administrator, lee isn't), a few guests, and pools. */
 export function fakePve() {
   const users: Record<string, { admin: boolean }> = { "sam@pve": { admin: true }, "lee@pve": { admin: false } };
+  // Proxmox's own records: users with their details, ACL entries, groups.
+  const pveUsers = new Map<string, Record<string, unknown>>([["sam@pve", { userid: "sam@pve", enable: 1, firstname: "Sam" }], ["lee@pve", { userid: "lee@pve", enable: 1 }]]);
+  const acl: { path: string; ugid: string; type: string; roleid: string; propagate: number }[] = [{ path: "/", ugid: "sam@pve", type: "user", roleid: "Administrator", propagate: 1 }];
+  const groups = new Map<string, string>([["ops", "Operations"]]);
   const tickets = new Map<string, string>();
   const pools = new Map<string, { comment?: string; members: unknown[] }>([["existing", { members: [] }]]);
   const calls: { method: string; path: string; body?: string }[] = [];
@@ -201,7 +244,49 @@ export function fakePve() {
     const user = tickets.get(decodeURIComponent((req.headers.Cookie ?? "").replace("PVEAuthCookie=", "")));
     if (!user) return { status: 401, body: "" };
     const admin = users[user].admin;
-    if (path === "/access/permissions") return ok(admin ? { "/": { "Sys.Modify": 1, "Sys.Audit": 1 } } : { "/vms": { "VM.Audit": 1 } });
+    if (path === "/access/permissions") return ok(admin ? { [u.searchParams.get("path") ?? "/"]: { "Sys.Modify": 1, "Sys.Audit": 1, "User.Modify": 1, "Permissions.Modify": 1 } } : { "/vms": { "VM.Audit": 1 } });
+    const f = new URLSearchParams(req.body ?? "");
+    const deny = { status: 403, body: JSON.stringify({ message: "Permission check failed\n" }) };
+    if (path === "/access/users" && req.method === "GET") return ok([...pveUsers.values()].map((x) => ({ ...x, groups: x.groups ?? "" })));
+    if (path === "/access/users" && req.method === "POST") {
+      if (!admin) return deny;
+      const id = f.get("userid")!;
+      if (pveUsers.has(id)) return { status: 500, body: JSON.stringify({ message: `create user failed: user '${id}' already exists\n` }) };
+      pveUsers.set(id, Object.fromEntries([...f.entries()].filter(([k]) => k !== "password").map(([k, v]) => [k, k === "enable" ? Number(v) : v])));
+      users[id] = { admin: false };
+      return ok(null);
+    }
+    const pu = path.match(/^\/access\/users\/([^/]+)$/);
+    if (pu) {
+      const id = decodeURIComponent(pu[1]);
+      if (!pveUsers.has(id)) return { status: 500, body: JSON.stringify({ message: `no such user ('${id}')\n` }) };
+      if (req.method === "GET") return ok(pveUsers.get(id));
+      if (!admin) return deny;
+      if (req.method === "PUT") {
+        pveUsers.set(id, { ...pveUsers.get(id), ...Object.fromEntries([...f.entries()].map(([k, v]) => [k, k === "enable" ? Number(v) : v])) });
+        return ok(null);
+      }
+      if (req.method === "DELETE") {
+        pveUsers.delete(id);
+        delete users[id];
+        for (let i = acl.length - 1; i >= 0; i--) if (acl[i].ugid === id) acl.splice(i, 1);
+        return ok(null);
+      }
+    }
+    if (path === "/access/acl" && req.method === "GET") return ok(acl);
+    if (path === "/access/acl" && req.method === "PUT") {
+      if (!admin) return deny;
+      for (const r of f.get("roles")!.split(",")) for (const ug of f.get("users")!.split(",")) {
+        const i = acl.findIndex((a) => a.path === f.get("path") && a.ugid === ug && a.roleid === r);
+        if (f.get("delete") === "1") { if (i >= 0) acl.splice(i, 1); }
+        else if (i < 0) acl.push({ path: f.get("path")!, ugid: ug, type: "user", roleid: r, propagate: 1 });
+      }
+      return ok(null);
+    }
+    if (path === "/access/domains") return ok([{ realm: "pve", type: "pve" }, { realm: "pam", type: "pam" }]);
+    if (path === "/access/groups" && req.method === "GET") return ok([...groups].map(([groupid, comment]) => ({ groupid, comment })));
+    if (path === "/access/groups" && req.method === "POST") return admin ? (groups.set(f.get("groupid")!, f.get("comment") ?? ""), ok(null)) : deny;
+    if (path === "/access/password" && req.method === "PUT") return admin && f.get("confirmation-password") === "right" ? ok(null) : deny;
     if (path === "/version") return ok({ version: "9.0.3" });
     if (path === "/nodes/pve/status") return admin ? ok({ cpu: 0.25, memory: { used: 4, total: 16 }, uptime: 100, kversion: "Linux 6" }) : { status: 403, body: "" };
     if (path === "/cluster/resources" && u.searchParams.get("type") === "storage") return ok([{ type: "storage", node: "pve", storage: "local", plugintype: "dir", content: "iso", status: "available", disk: 1, maxdisk: 10 }]);
@@ -222,7 +307,7 @@ export function fakePve() {
     if (pool && req.method === "DELETE") return admin ? (pools.delete(pool[1]), ok(null)) : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, pools, calls };
+  return { transport, pools, calls, pveUsers, acl, groups };
 }
 
 /**

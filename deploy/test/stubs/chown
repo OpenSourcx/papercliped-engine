@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Test stand-in: the service users don't exist on a test machine. Recorded and skipped, unless the tests run as root
+# with STUB_RUN_AS_NOBODY=1, when the service users become nobody (65534) and the change is real.
+echo "chown $*" >>"${STUB_STATE:?}/calls"
+if [ "$(/usr/bin/id -u)" -eq 0 ] && [ "${STUB_RUN_AS_NOBODY:-}" = 1 ]; then
+  args=(); for a in "$@"; do args+=("$(echo "$a" | sed -E 's/^(epaperclip(-engine)?):(epaperclip(-engine)?)$/65534:65534/')"); done
+  exec /bin/chown "${args[@]}"
+fi
+exit 0

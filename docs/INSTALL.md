@@ -1,16 +1,53 @@
 # Installing ePaperclip on Proxmox
 
-ePaperclip runs on your Proxmox host and serves its console at `https://<host>/` (port 443). People sign in with their Proxmox accounts, and every action runs as that person, so Proxmox's own permissions still decide what they can do. Proxmox's own web interface keeps running on `:8006`; it is never changed, and it is your way back in if anything goes wrong.
+ePaperclip runs on your Proxmox host and serves its console at `https://<host>/` (port 443). People sign in with their Proxmox accounts, and every action runs as that person, so Proxmox's own permissions still decide what they can do. Behind the console runs the engine, [Paperclip](https://github.com/paperclipai/paperclip), as a second service that only listens on the host itself. Proxmox's own web interface keeps running on `:8006`. It is never changed, and it is your way back in if anything goes wrong.
 
-You need: Proxmox VE 8 or newer, root access (the web shell works: Datacenter → your node → **Shell**), and internet access from the host.
+## What you need
+
+- Proxmox VE 8 or newer, and root access. The web shell works: Datacenter → your node → **Shell**.
+- Memory: 4 GB or more recommended. The installer refuses hosts with less than 2 GB. At idle the engine uses about 1 GB (0.5 GB for the server, 0.4 GB for its database).
+- Disk: about 3 GB free where `/opt` and `/var/lib` live (1.4 GB for the engine's packages, room for its data).
+- Internet access during the install, to nodejs.org and registry.npmjs.org (and to the package source you use).
 
 ## Install
 
-Latest release (once releases are published):
+Three ways, one installer. Whichever you pick, the same `deploy/install.sh` does the work and makes the same promises (below).
+
+### With apt (recommended)
+
+Add ePaperclip's signed package repository once, then install:
+
+```sh
+curl -fsSL https://opensourcx.github.io/papercliped-engine/apt/epaperclip-archive-keyring.gpg \
+  -o /usr/share/keyrings/epaperclip-archive-keyring.gpg
+gpg --show-keys /usr/share/keyrings/epaperclip-archive-keyring.gpg   # check the fingerprint below
+echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://opensourcx.github.io/papercliped-engine/apt stable main" \
+  > /etc/apt/sources.list.d/epaperclip.list
+apt update
+apt install epaperclip
+```
+
+The key's fingerprint is `B8A0 77BE 1EB3 B107 D11A  15DF 3A07 D686 6306 BE32` (ePaperclip Releases &lt;releases@papercliped.co&gt;). It is also in this repository at [`deploy/apt/epaperclip-archive-keyring.asc`](../deploy/apt/epaperclip-archive-keyring.asc). apt only accepts packages signed with it, and only from this repository: `signed-by=` keeps the key from vouching for anything else.
+
+Updates come with the rest of the system: `apt update && apt upgrade`. The package also adds an `epaperclip` command: `epaperclip status`, `epaperclip rollback`, `epaperclip uninstall`.
+
+### With npm
+
+If the host has Node.js 18 or newer:
+
+```sh
+npx epaperclip install
+```
+
+or `npm install -g epaperclip`, then `epaperclip install`. Host Node.js only starts this command. The services run on the installer's own pinned Node.js. Upgrade with `npx epaperclip@latest install`.
+
+### With one command
 
 ```sh
 curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash
 ```
+
+This downloads the latest release, checks it against its published SHA-256 and runs the installer inside it. Run it again to upgrade.
 
 From a branch, building on the host (a few minutes):
 
@@ -18,26 +55,95 @@ From a branch, building on the host (a few minutes):
 curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/<branch>/deploy/from-source.sh | EPC_REF=<branch> bash
 ```
 
-The installer first checks everything it needs and changes nothing if something is missing. It brings its own checksum-verified Node.js (your system's isn't touched), test-starts the new version on a spare port, then swaps it in. If the swapped-in service doesn't come up healthy, the previous version is put back automatically (on a first install, everything is removed).
+### What the installer promises
 
-When it finishes it prints the address. Open it, and sign in with your Proxmox username and password, with the realm you use for Proxmox itself.
+- It checks everything it needs first, and changes nothing if something is missing. It checks Proxmox VE 8+, memory, disk, that ports 443 and 3100 are free, pveproxy, and the node certificate.
+- It brings its own Node.js: a pinned version, checked against a pinned SHA-256, in `/opt/epaperclip/node`. Your system's Node.js isn't used or changed.
+- It installs the engine with `npm ci` from the lockfile in this repository (`engine/package-lock.json`). That pins Paperclip at an exact version, checks every package against its integrity hash, and runs no package's install scripts.
+- It builds the new version beside the old one and test-starts it on a spare local port. A new engine is test-started as its own user, against a throwaway data directory. Only then is the new version swapped in.
+- If the swapped-in services don't come up healthy, it puts the previous version back by itself: programs, both systemd units and, if the engine version changed, the engine's database. On a first install, everything is removed.
+
+When it finishes it prints the address. Open it and sign in with your Proxmox username and password, using the realm you use for Proxmox itself. The engine's first start sets up its database (a few hundred migrations), which takes up to a few minutes. The installer waits for it and shows progress.
+
+## What goes where
+
+| Path | What |
+| --- | --- |
+| `/opt/epaperclip/` | the programs: `node/` (private Node.js), `epaperclip.mjs` (host service), `console/`, `engine/` (Paperclip and its packages, about 1.4 GB), `VERSION` |
+| `/opt/epaperclip.prev/` | the previous version, kept for `--rollback` |
+| `/etc/systemd/system/epaperclip.service` | the host service: port 443, user `epaperclip` |
+| `/etc/systemd/system/epaperclip-engine.service` | the engine: `127.0.0.1:3100` only, user `epaperclip-engine` |
+| `/etc/default/epaperclip` | host service settings (port, certificate, upload size) |
+| `/etc/epaperclip/engine.env` | engine settings and secrets, mode 0600. Written once at install with fresh random secrets, never overwritten (an upgrade only adds a setting that is missing) |
+| `/var/lib/epaperclip/` | the host service's vault key and its settings, every secret in them encrypted by the vault |
+| `/var/lib/epaperclip-engine/` | the engine's data: its PostgreSQL database, its secrets key, its hourly backups |
+| `/usr/share/epaperclip/` | with apt only: the package's copy of the release, which the installer runs from |
+
+Both services are locked down by systemd: their own users, no access to home directories, a read-only system, and only their own data directory writable. The engine gets no capabilities at all and is capped at 3 GB of memory. Nothing in Proxmox's own configuration is changed.
 
 ## Afterwards
 
-The installer comes with every download and clone of the repository (`deploy/install.sh`):
+| Command | apt or npm | Does |
+| --- | --- | --- |
+| `./deploy/install.sh` | `epaperclip install` | install, or upgrade to this version |
+| `./deploy/install.sh --status` | `epaperclip status` | versions, whether both services run and answer, where the data and latest backup are |
+| `./deploy/install.sh --rollback` | `epaperclip rollback` | go back to the previous version |
+| `./deploy/install.sh --uninstall` | `epaperclip uninstall` | remove it, keeping data and settings |
+| `./deploy/install.sh --purge` | `epaperclip uninstall --purge` | remove it with its data, settings and users |
 
-| Command | Does |
-| --- | --- |
-| `./deploy/install.sh` | install, or upgrade to this version |
-| `./deploy/install.sh --status` | version, whether it's running, whether it answers |
-| `./deploy/install.sh --rollback` | go back to the previous version |
-| `./deploy/install.sh --uninstall` | remove it (settings stay; `--purge` removes those too) |
+With apt, `apt remove epaperclip` is `--uninstall` and `apt purge epaperclip` also deletes the data. The installer comes with every download (`deploy/install.sh`). With apt it is at `/usr/share/epaperclip/deploy/install.sh`.
 
-Settings are in `/etc/default/epaperclip` (port, certificate, upload size). Restart after changing them: `systemctl restart epaperclip`. Logs: `journalctl -u epaperclip`.
+Logs: `journalctl -u epaperclip` and `journalctl -u epaperclip-engine`. Restart after changing settings: `systemctl restart epaperclip` (or `epaperclip-engine`).
+
+### Upgrade
+
+Upgrade the way you installed: `apt upgrade`, `npx epaperclip@latest install`, or the `get.sh` command again. The installer reuses the installed engine when its lockfile hasn't changed. A new engine version is installed fresh and test-started first. It then migrates the database forward on its first start, so the installer first keeps a copy of the database in `/var/lib/epaperclip-engine/pre-upgrade/`. Only the latest copy is kept.
+
+If an apt upgrade fails, the installer has already put the previous version back and apt reports the error. Run `apt upgrade` again once the cause is fixed.
+
+### Rollback
+
+`--rollback` (or `epaperclip rollback`) swaps the previous version and its units back in. If the engine version changes with it, the database copy from before the upgrade is put back. The newer database is kept beside it, as `instances/default/db.from-<version>-<date>`, not deleted. There is one step of history: after a rollback there is no "previous" until the next upgrade.
+
+### Uninstall
+
+`--uninstall` stops and removes both services and everything in `/opt`. It keeps `/var/lib/epaperclip-engine`, `/var/lib/epaperclip`, `/etc/epaperclip` and `/etc/default/epaperclip`, and says where they are. Installing again picks them up as they were. `--purge` removes those too, with the two service users.
+
+## Backups
+
+- **The engine backs itself up every hour** into `/var/lib/epaperclip-engine/instances/default/data/backups/` (compressed SQL, kept for 7 days). `--status` shows the latest one.
+- Back up, off the host:
+  - `/var/lib/epaperclip-engine` (the engine's data and its backups)
+  - `/etc/epaperclip` (the engine's secrets: without them, sessions and agent keys from the old install won't work)
+  - `/var/lib/epaperclip` (the host service's vault: without it, the stored engine sign-ins and connector keys can't be read)
+
+  Keep the three together. Stop both services for a consistent copy of the engine's live database (`systemctl stop epaperclip epaperclip-engine`), or rely on its hourly SQL backups.
+- Proxmox's own backup jobs cover guests, not the host's files, so include these paths in whatever backs up the host itself.
 
 ## If something's wrong
 
 - **The page doesn't load.** If the Proxmox firewall is on, allow TCP 443 (Datacenter → Firewall → Add: direction in, ACCEPT, tcp, port 443). Use `:8006` meanwhile.
 - **Port 443 is taken.** Set `EPC_LISTEN=0.0.0.0:8443` in `/etc/default/epaperclip`, then `systemctl restart epaperclip`.
-- **Clusters.** Install on each node you want to reach it from; every node serves its own console and signs in against the same cluster accounts.
-- **Remove everything.** `./deploy/install.sh --uninstall`. Proxmox is untouched either way.
+- **The engine doesn't start.** `journalctl -u epaperclip-engine -n 100`. The console keeps working for the host itself while the engine is down.
+- **Clusters.** Install on each node you want to reach it from. Every node serves its own console and engine, and signs in against the same cluster accounts.
+- **Remove everything.** `./deploy/install.sh --purge`. Proxmox is untouched either way.
+
+## For maintainers: releases and signing
+
+A tag like `v0.1.0` runs `.github/workflows/release.yml`. It builds and tests (including `deploy/test/run.sh`, the installer's tests on simulated hosts, and a real engine install from the lockfile), then publishes:
+
+- the GitHub release: `epaperclip.tar.gz`, its checksum, `get.sh` and `epaperclip_<version>_all.deb`
+- the APT repository: `scripts/publish-apt.sh` signs it and pushes it to the `gh-pages` branch under `apt/`. GitHub Pages must serve that branch (Settings → Pages → Deploy from a branch → `gh-pages`, `/`). It needs the secret `APT_SIGNING_KEY` (and `APT_SIGNING_PASSPHRASE` if the key has one). It signs only with the key whose public half is in `deploy/apt/epaperclip-archive-keyring.asc`, and skips with a notice when the secret isn't set.
+- the npm package `epaperclip` (`npm/epaperclip`), with provenance. It needs the secret `NPM_TOKEN` and skips with a notice when it isn't set.
+
+To replace the signing key (it expires 2029-10-11; see `deploy/apt/README.md`), on a trusted machine:
+
+```sh
+gpg --quick-gen-key "ePaperclip Releases <releases@papercliped.co>" ed25519 sign 3y
+gpg --armor --export <FINGERPRINT> > deploy/apt/epaperclip-archive-keyring.asc     # commit this, update the fingerprint here
+gpg --armor --export-secret-keys <FINGERPRINT>                                        # paste into the APT_SIGNING_KEY secret, never commit it
+```
+
+Users then need the new keyring file. Announce it before the old key expires.
+
+To change the engine version, edit `engine/package.json`, then regenerate the lockfile with the installer's Node.js version: `node scripts/engine-lock.mjs --fresh`. It also checks that `npm ci` accepts the result.

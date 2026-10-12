@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Test stand-in: records the user (the last argument) in STUB_STATE/users instead of creating it.
+echo "useradd $*" >>"${STUB_STATE:?}/calls"
+u="${*: -1}"
+grep -qx "$u" "$STUB_STATE/users" 2>/dev/null && { echo "useradd: user '$u' already exists" >&2; exit 9; }
+echo "$u" >>"$STUB_STATE/users"

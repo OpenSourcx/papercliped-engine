@@ -1,0 +1,4 @@
+# Filled from release/epaperclip.tar.gz by scripts/prepack.mjs when the package is packed.
+payload/
+LICENSE
+*.tgz
