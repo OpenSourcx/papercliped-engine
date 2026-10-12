@@ -30,8 +30,8 @@ describe("the Store's catalog", () => {
   });
 
   it("marks installed plugins and filters by section and search", () => {
-    const items = buildStoreItems({ ...base, installedPlugins: new Set(["codex"]) });
-    expect(items.find((i) => i.id === "codex")?.status).toBe("installed");
+    const items = buildStoreItems({ ...base, installedPlugins: new Set(["codex_local"]) });
+    expect(items.find((i) => i.id === "codex_local")?.status).toBe("installed");
     expect(filterItems(items, "plugin", "").every((i) => i.category === "plugin")).toBe(true);
     expect(filterItems(items, "home", "ALPINE").map((i) => i.id)).toEqual(["alpine"]);
     expect(filterItems(items, "os", "nothing-like-this")).toEqual([]);

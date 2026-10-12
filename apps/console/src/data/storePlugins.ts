@@ -2,7 +2,7 @@ import type { Connector } from "./types.ts";
 
 /**
  * Plugins the Store offers for ePaperclip and Pin. Connectors join the system-wide connector list (and then get the
- * per-organization access switches); adapters are how agents run (Claude Code, Codex ...); skills teach Pin new jobs.
+ * per-organization access switches); adapters are Paperclip's built-in ways to run agents (Claude Code, Codex ...), which the Store switches on and off; skills teach Pin new jobs.
  * Which are installed is kept on this device; the runtime that executes adapters and skills arrives with the
  * ePaperclip fork, and the Store says so on those cards.
  */
@@ -28,10 +28,22 @@ export const PLUGINS: PluginEntry[] = [
   { id: "gmail", kind: "connector", connectorKind: "mail", name: "Gmail", vendor: "Google", summary: "Let agents draft and read mail you choose to share." },
   { id: "tailscale", kind: "connector", connectorKind: "network", name: "Tailscale", vendor: "Tailscale", summary: "Reach this device and your connected AI apps from anywhere, without opening ports." },
   { id: "cloudflared", kind: "connector", connectorKind: "network", name: "Cloudflare Tunnel", vendor: "Cloudflare", summary: "Publish this console and the connector address through a tunnel." },
-  { id: "claude-code", kind: "adapter", name: "Claude Code", vendor: "Anthropic", summary: "Run agents with Claude Code, in a container or on the device." },
-  { id: "codex", kind: "adapter", name: "Codex", vendor: "OpenAI", summary: "Run agents with OpenAI's Codex." },
-  { id: "gemini-cli", kind: "adapter", name: "Gemini CLI", vendor: "Google", summary: "Run agents with Google's Gemini command-line agent." },
-  { id: "opencode", kind: "adapter", name: "OpenCode", vendor: "OpenCode", summary: "Run agents with the open-source OpenCode, with any model you connect." },
+  // Paperclip's built-in adapters, by their Paperclip type. They come with Paperclip, so the Store enables and disables them.
+  { id: "claude_local", kind: "adapter", name: "Claude Code", vendor: "Built in to Paperclip", summary: "Run agents with Claude Code, on the device." },
+  { id: "codex_local", kind: "adapter", name: "Codex", vendor: "Built in to Paperclip", summary: "Run agents with Codex, on the device." },
+  { id: "cursor", kind: "adapter", name: "Cursor", vendor: "Built in to Paperclip", summary: "Run agents with Cursor's agent." },
+  { id: "cursor_cloud", kind: "adapter", name: "Cursor Cloud", vendor: "Built in to Paperclip", summary: "Hand work to Cursor's cloud agents." },
+  { id: "gemini_local", kind: "adapter", name: "Gemini CLI", vendor: "Built in to Paperclip", summary: "Run agents with Gemini CLI, on the device." },
+  { id: "grok_local", kind: "adapter", name: "Grok Build", vendor: "Built in to Paperclip", summary: "Run agents with Grok Build, on the device." },
+  { id: "hermes_local", kind: "adapter", name: "Hermes", vendor: "Built in to Paperclip", summary: "Run agents with Hermes, on the device." },
+  { id: "hermes_gateway", kind: "adapter", name: "Hermes Gateway", vendor: "Built in to Paperclip", summary: "Reach a Hermes agent through its gateway." },
+  { id: "kimi_local", kind: "adapter", name: "Kimi Code", vendor: "Built in to Paperclip", summary: "Run agents with Kimi Code, on the device." },
+  { id: "opencode_local", kind: "adapter", name: "OpenCode", vendor: "Built in to Paperclip", summary: "Run agents with OpenCode and any model you connect." },
+  { id: "openclaw_gateway", kind: "adapter", name: "OpenClaw Gateway", vendor: "Built in to Paperclip", summary: "Reach an OpenClaw agent through its gateway." },
+  { id: "pi_local", kind: "adapter", name: "Pi", vendor: "Built in to Paperclip", summary: "Run agents with Pi, on the device." },
+  { id: "paperclip_runner", kind: "adapter", name: "Paperclip Runner", vendor: "Built in to Paperclip", summary: "Paperclip's own runner for agent work." },
+  { id: "http", kind: "adapter", name: "HTTP", vendor: "Built in to Paperclip", summary: "Wake an agent that lives behind a web address." },
+  { id: "process", kind: "adapter", name: "Process", vendor: "Built in to Paperclip", summary: "Run any command as an agent." },
   { id: "update-guardian", kind: "skill", name: "Update guardian", vendor: "ePaperclip", summary: "Pin snapshots every machine, applies Proxmox updates and checks they came back healthy." },
   { id: "security-auditor", kind: "skill", name: "Security auditor", vendor: "ePaperclip", summary: "Pin reviews your firewall, open ports and users weekly and tells you what looks risky." },
   { id: "cost-watcher", kind: "skill", name: "Cost watcher", vendor: "ePaperclip", summary: "Pin watches agent spending against budgets and warns before a limit is hit." },
@@ -39,6 +51,6 @@ export const PLUGINS: PluginEntry[] = [
 ];
 
 /** Installed by default in a fresh console: what the demo organizations already use. */
-export const DEFAULT_PLUGINS = ["claude-code", "codex"];
+export const DEFAULT_PLUGINS = ["claude_local", "codex_local"];
 
 export const pluginById = (id: string) => PLUGINS.find((p) => p.id === id);

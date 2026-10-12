@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Bot, Cable, Code2, Mail, MessageSquare, Network } from "lucide-react";
+import { BRAND_ICONS } from "../data/brandIcons.ts";
 import { useEngine } from "../data/store.tsx";
 import type { Connector } from "../data/types.ts";
 import { Avatar, Card, PageHeader, Status, Toggle, PageFrame } from "../ui/primitives.tsx";
@@ -28,7 +29,7 @@ export function Connectors() {
               <tr key={c.id} className="border-b border-line last:border-0">
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{ICON[c.kind]}</span>
+                    <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{BRAND_ICONS[c.id] ? <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" role="img" aria-label={BRAND_ICONS[c.id].title}><path d={BRAND_ICONS[c.id].path} /></svg> : ICON[c.kind]}</span>
                     <div>
                       <div className="font-medium">{c.name}</div>
                       {c.status === "connected" ? <Status kind="good" label="Connected" /> : <Status kind="warning" label="Needs setup" />}

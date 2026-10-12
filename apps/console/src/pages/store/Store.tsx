@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Check, Download, ExternalLink, FileUp, Loader2, Package, Puzzle, Search, Store as StoreIcon, Trash2 } from "lucide-react";
+import { BRAND_ICONS } from "../../data/brandIcons.ts";
 import { ApiError } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
@@ -12,7 +13,16 @@ import { useStoreItems } from "./useStore.ts";
 
 const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
 
-function Tile({ name, size = 44 }: { name: string; size?: number }) {
+/** An item's logo from the icons the console ships with, or a coloured monogram when there isn't one. */
+function Tile({ id, name, size = 44 }: { id: string; name: string; size?: number }) {
+  const icon = BRAND_ICONS[id];
+  if (icon) {
+    return (
+      <span className="grid place-items-center rounded-xl bg-surface-2 border border-line text-ink shrink-0" style={{ width: size, height: size }}>
+        <svg viewBox="0 0 24 24" width={size * 0.55} height={size * 0.55} fill="currentColor" role="img" aria-label={icon.title}><path d={icon.path} /></svg>
+      </span>
+    );
+  }
   const h = tileHue(name);
   return (
     <span className="grid place-items-center rounded-xl font-semibold shrink-0 text-white" style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${h} 62% 46%), hsl(${(h + 40) % 360} 62% 36%))`, fontSize: size * 0.42 }} aria-hidden>
@@ -22,6 +32,7 @@ function Tile({ name, size = 44 }: { name: string; size?: number }) {
 }
 
 function StatusChip({ it }: { it: StoreItem }) {
+  if (it.kind === "adapter") return it.status === "installed" ? <Chip tone="accent"><Check className="h-3 w-3 mr-1" />Enabled</Chip> : <Chip>Built in</Chip>;
   if (it.status === "installed") return <Chip tone="accent"><Check className="h-3 w-3 mr-1" />Installed</Chip>;
   if (it.status === "update") return <Chip tone="warning">Update available</Chip>;
   if (it.status === "manual") return <Chip>Bring your own ISO</Chip>;
@@ -43,7 +54,7 @@ export function Store() {
       {list.map((it) => (
         <button key={it.id} onClick={() => open(it.id)} className="text-left">
           <Card interactive className="p-4 flex gap-3 h-full">
-            <Tile name={it.name} />
+            <Tile id={it.id} name={it.name} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2"><span className="font-medium truncate">{it.name}</span>{it.badge && <span className="text-[11px] text-ink-3 shrink-0">{it.badge}</span>}</div>
               <div className="text-[12px] text-ink-3 truncate">{it.vendor}{it.latestVersion ? ` · ${it.latestVersion}` : ""}</div>
@@ -146,7 +157,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          {plugin && (it.status === "installed" ? <Button variant="danger" onClick={() => engine.uninstallPlugin(plugin.id)}><Trash2 className="h-4 w-4" />Remove</Button> : <Button variant="primary" onClick={() => engine.installPlugin(plugin.id)}><Download className="h-4 w-4" />Install</Button>)}
+          {plugin && (it.status === "installed" ? <Button variant="danger" onClick={() => engine.uninstallPlugin(plugin.id)}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" onClick={() => engine.installPlugin(plugin.id)}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
           {it.kind === "manual" && it.lib?.kind === "manual" && (
             <>
               <Button onClick={() => nav("?modal=upload&content=iso", { replace: true })}><FileUp className="h-4 w-4" />Upload ISO</Button>
@@ -159,7 +170,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex gap-3 items-start"><Tile name={it.name} size={56} /><div><p className="text-[14px] text-ink-2">{it.summary}</p><div className="mt-2 flex flex-wrap gap-2 items-center"><StatusChip it={it} />{it.badge && <Chip>{it.badge}</Chip>}</div></div></div>
+        <div className="flex gap-3 items-start"><Tile id={it.id} name={it.name} size={56} /><div><p className="text-[14px] text-ink-2">{it.summary}</p><div className="mt-2 flex flex-wrap gap-2 items-center"><StatusChip it={it} />{it.badge && <Chip>{it.badge}</Chip>}</div></div></div>
         {it.status === "update" && <p className="text-[13px] text-ink-2">You have {it.haveVersion ?? "an older version"}. {it.latestVersion} is the newest the vendor lists. Your older copy stays until you remove it.</p>}
         {installed && it.volid && <p className="text-[13px] text-ink-3">On this device as <span className="font-mono text-ink-2">{it.volid}</span>.</p>}
         {it.kind === "iso" && l && <p className="text-[13px] text-ink-3">Downloads <span className="font-mono text-ink-2">{l.filename}</span> and checks its {l.algorithm.toUpperCase()} checksum against {it.vendor}'s own list.</p>}
@@ -168,7 +179,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {it.lib?.kind === "manual" && <p className="text-[13px] text-ink-3">{it.lib.note}</p>}
         {it.kind === "template" && it.template?.infopage && <p className="text-[13px] text-ink-3">A container system from Proxmox's template list.</p>}
         {plugin && plugin.kind === "connector" && <p className="text-[13px] text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
-        {plugin && plugin.kind !== "connector" && <p className="text-[13px] text-ink-3">{plugin.kind === "adapter" ? "Agents can be set to run with this once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Installing now saves your choice.</p>}
+        {plugin && plugin.kind !== "connector" && <p className="text-[13px] text-ink-3">{plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Your choice is saved now.</p>}
         {needsStorage && installable && (
           storages.length ? (
             <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Install to</span>
