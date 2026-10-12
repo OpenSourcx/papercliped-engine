@@ -260,7 +260,7 @@ export const STORAGE_DEFS: StorageTypeDef[] = [
       F.username({ placeholder: "admin" }),
       { key: "keyring", label: "Key ring", kind: "secret", secret: true, help: "The client's key ring contents, for an external cluster. Never shown again." },
       { key: "fs-name", label: "File system name", kind: "string", pattern: "^[A-Za-z][\\w.-]{0,63}$", patternMessage: "Use the Ceph file system's name." },
-      { key: "path", label: "Path in the file system", kind: "string", pattern: PATH_RE, patternMessage: "Use an absolute path.", placeholder: "/" },
+      { key: "path", label: "Path in the file system", kind: "string", createOnly: true, pattern: PATH_RE, patternMessage: "Use an absolute path.", placeholder: "/" },
       { key: "subdir", label: "Subdirectory", kind: "string", advanced: true, pattern: PATH_RE, patternMessage: "Use an absolute path." },
       { key: "fuse", label: "Mount through FUSE", kind: "bool", advanced: true, help: "Use the user-space client instead of the kernel client." },
       F.contentDirs(),
