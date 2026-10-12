@@ -92,8 +92,8 @@ export function useSkillCatalog(enabled: boolean) {
 export function useSkillWrites(companyId: string) {
   const keys = [qk.skills(companyId), qk.skillSources(companyId)];
   return {
-    syncAgent: useWrite(({ agentId, desired }: { agentId: string; desired: string[] }) => engine.skills.syncAgent(agentId, desired), [qk.agentSkills(companyId, ""), ["engine", "co", companyId, "agent-skills"], ...keys]),
-    installCatalog: useWrite((body: Record<string, unknown>) => engine.skills.installCatalog(companyId, body), keys),
+    syncAgent: useWrite(({ agentId, mode, desired }: { agentId: string; mode: "add" | "remove" | "replace"; desired: string[] }) => engine.skills.syncAgent(agentId, mode, desired), [qk.agentSkills(companyId, ""), ["engine", "co", companyId, "agent-skills"], ["engine", "co", companyId, "skill"], ...keys]),
+    installCatalog: useWrite((catalogSkillId: string) => engine.skills.installCatalog(companyId, { catalogSkillId }), keys),
     refreshSource: useWrite((sourceId: string) => engine.skills.refreshSource(companyId, sourceId), keys),
   };
 }

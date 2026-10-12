@@ -13,6 +13,7 @@ import { LiveTasks } from "./live/LiveTasks.tsx";
 import { LiveRoutines } from "./live/LiveRoutines.tsx";
 import { LiveDecisions, LiveInbox } from "./live/LiveInbox.tsx";
 import { LiveOrgSettings } from "./live/LiveSettings.tsx";
+import { LiveSkills } from "./live/LiveSkills.tsx";
 import { LiveCosts } from "./live/LiveCosts.tsx";
 import { LiveActivity, LiveGoals, LiveProjects } from "./live/LiveWork.tsx";
 
@@ -374,3 +375,4 @@ export const Agents = pick(<LiveAgents />, <DemoAgents />);
 export const Costs = pick(<LiveCosts />, <DemoCosts />);
 export const Activity = pick(<LiveActivity />, <DemoActivity />);
 export const OrgSettings = pick(<LiveOrgSettings />, <DemoOrgSettings />);
+export const Skills = pick(<LiveSkills />, <ComingFromPaperclip title="Skills" body="Reusable skills you can give your agents, from the skills catalog." />);

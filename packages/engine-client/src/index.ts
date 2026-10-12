@@ -376,7 +376,7 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       sources: (companyId: string) => call<Record<string, unknown>[]>("GET", P.skillSources, { companyId }),
       refreshSource: (companyId: string, sourceId: string) => call<unknown>("POST", P.skillSourceRefresh, { companyId, sourceId }, {}),
       forAgent: (agentId: string) => call<AgentSkillSnapshot>("GET", P.agentSkills, { id: agentId }),
-      syncAgent: (agentId: string, desiredSkills: string[]) => call<AgentSkillSnapshot>("POST", P.agentSkillsSync, { id: agentId }, { desiredSkills }),
+      syncAgent: (agentId: string, mode: "add" | "remove" | "replace", desiredSkills: string[]) => call<AgentSkillSnapshot>("POST", P.agentSkillsSync, { id: agentId }, { mode, desiredSkills }),
     },
     artifacts: {
       list: (companyId: string, query?: { kind?: string; q?: string; limit?: number; cursor?: string }) => call<CompanyArtifactsResponse>("GET", P.artifacts, { companyId }, undefined, query),

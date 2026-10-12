@@ -17,7 +17,7 @@ import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
-import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Tasks } from "./pages/org/OrgPages.tsx";
+import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks } from "./pages/org/OrgPages.tsx";
 import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
@@ -102,7 +102,7 @@ export function App() {
             <Route path="chat" element={<ComingFromPaperclip title="Chat" body="Talk with your agents in threads, with their runs and tool calls inline." />} />
             <Route path="artifacts" element={<ComingFromPaperclip title="Artifacts" body="Files, documents and outputs your agents produce, versioned per task." />} />
             <Route path="workspaces" element={<ComingFromPaperclip title="Workspaces" body="Code workspaces your agents work in, with diffs and branches." />} />
-            <Route path="skills" element={<ComingFromPaperclip title="Skills" body="Reusable skills you can give your agents, from the skills catalog." />} />
+            <Route path="skills" element={<Skills />} />
           </Route>
         </Route>
       </Route>
