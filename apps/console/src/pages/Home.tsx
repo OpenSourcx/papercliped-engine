@@ -8,6 +8,8 @@ import { usePin } from "../pin/PinContext.tsx";
 import { modalHref, settingsHref } from "../modals/useModals.ts";
 import { ArcMeter, BarMeter } from "../ui/meters.tsx";
 import { Avatar, Card, SectionTitle, Status } from "../ui/primitives.tsx";
+import { errorText, useCanCreateOrgs, useEngineStatus, useOrgs } from "../data/engine/queries.ts";
+import { EngineUnavailable, Loading } from "./org/live/common.tsx";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -32,18 +34,24 @@ function OrgCard({ org, device }: { org: Org; device: string }) {
             {working.length > 0 ? <Status kind="working" label={`${working.length} of ${org.agents.length} agents working`} /> : <Status kind="idle" label={org.agents.length ? "Idle" : "No agents yet"} />}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <BarMeter label="CPU" pct={cpuPct} value={`${org.usage.cpuCores.toFixed(1)} / ${rg.cores} cores`} />
-          <BarMeter label="Memory" pct={memPct} value={`${(org.usage.memoryMb / 1024).toFixed(1)} / ${(rg.memoryMb / 1024).toFixed(0)} GiB`} />
-        </div>
-        <div className="mt-3 text-[12px] text-ink-3 truncate">{working[0]?.task ? `Now: ${working[0].task}` : `${org.usage.guests} of ${rg.maxGuests} containers in use`}</div>
+        {org.engine && org.engine.resourceGroup !== "set" ? (
+          <div className="mt-4 text-[13px] text-ink-3">{org.agents.length} agent{org.agents.length === 1 ? "" : "s"} · {org.engine.resourceGroup === "missing" ? "no resource group yet" : `tasks ${org.engine.prefix}-1, ${org.engine.prefix}-2`}</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <BarMeter label="CPU" pct={rg.cores ? cpuPct : 0} value={`${org.usage.cpuCores.toFixed(1)} / ${rg.cores} cores`} />
+              <BarMeter label="Memory" pct={rg.memoryMb ? memPct : 0} value={`${(org.usage.memoryMb / 1024).toFixed(1)} / ${(rg.memoryMb / 1024).toFixed(0)} GiB`} />
+            </div>
+            <div className="mt-3 text-[12px] text-ink-3 truncate">{working[0]?.task ? `Now: ${working[0].task}` : `${org.usage.guests} of ${rg.maxGuests} containers in use`}</div>
+          </>
+        )}
       </Card>
     </Link>
   );
 }
 
 export function Home() {
-  const { setup, host, data } = useEngine();
+  const { setup, host, data, live } = useEngine();
   const pin = usePin();
   const device = setup?.deviceName ?? "pve";
   const name = (setup?.ownerName || "there").split(" ")[0];
@@ -51,6 +59,9 @@ export function Home() {
   const running = machines.filter((g) => g.status === "running").length;
   const working = data.orgs.flatMap((o) => o.agents).filter((a) => a.status === "working").length;
   const activeRules = data.rules.filter((r) => r.enabled).length;
+  // Live, only engine instance admins (Proxmox node administrators) can create organizations; the demo always can.
+  const liveCanCreate = useCanCreateOrgs();
+  const canCreate = live ? liveCanCreate : true;
 
   return (
     <div>
@@ -138,19 +149,39 @@ export function Home() {
         </section>
 
         <section>
-          <SectionTitle action={<Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
+          <SectionTitle action={canCreate && <Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
+          <LiveOrgsState />
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.orgs.map((o) => <OrgCard key={o.slug} org={o} device={device} />)}
-            <Link to={modalHref("new-org")} className="block">
-              <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
-                <Plus className="h-5 w-5" />
-                <span className="text-[14px]">New organization</span>
-                <span className="text-[12px]">or ask Pin to create one</span>
+            {canCreate ? (
+              <Link to={modalHref("new-org")} className="block">
+                <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
+                  <Plus className="h-5 w-5" />
+                  <span className="text-[14px]">New organization</span>
+                  <span className="text-[12px]">or ask Pin to create one</span>
+                </div>
+              </Link>
+            ) : canCreate === false && (
+              <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 text-center px-6">
+                <span className="text-[14px] text-ink-2">{data.orgs.length ? "Need another organization?" : "No organizations yet"}</span>
+                <span className="text-[12px]">A Proxmox administrator creates organizations and invites people to them. Ask one to add you.</span>
               </div>
-            </Link>
+            )}
           </div>
         </section>
       </div>
     </div>
+  );
+}
+
+/** Live: says when organizations can't be shown (engine not ready, or a failed read). Nothing in the demo. */
+function LiveOrgsState() {
+  const gate = useEngineStatus();
+  const orgs = useOrgs();
+  if (gate.state === "demo" || (gate.state === "ready" && orgs.data)) return null;
+  return (
+    <Card className="mb-4">
+      {gate.state === "checking" || (gate.state === "ready" && orgs.isPending) ? <Loading label="Loading organizations" /> : gate.state === "ready" ? <p className="px-5 py-4 text-[14px] text-ink-2" role="alert">{errorText(orgs.error)}</p> : <EngineUnavailable gate={gate} compact />}
+    </Card>
   );
 }

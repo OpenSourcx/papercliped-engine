@@ -14,6 +14,14 @@ export interface Session {
   createdAt: number;
   renewedAt: number; // when the Proxmox ticket was last issued
   lastSeen: number;
+  /** The person's engine session (their managed engine account's cookie). Server-side only, never sent to the browser. */
+  engine?: EngineLogin;
+}
+
+export interface EngineLogin {
+  cookie: string; // the Cookie header the engine expects, e.g. "paperclip-default.session_token=..."
+  userId: string | null;
+  at: number;
 }
 
 export interface PendingTfa {
@@ -59,6 +67,14 @@ export class SessionStore {
     }
     s.lastSeen = t;
     return s;
+  }
+
+  /** Like get, but doesn't count as use: for long-lived sockets checking that their session still exists. */
+  peek(id: string): Session | null {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const t = this.now();
+    return t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS ? null : s;
   }
 
   needsRenewal(s: Session): boolean {
