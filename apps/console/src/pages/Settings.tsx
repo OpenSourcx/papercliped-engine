@@ -2,11 +2,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { BookOpen, FileText, LogOut, Server, ShieldCheck } from "lucide-react";
 import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
+import { usePin } from "../pin/PinContext.tsx";
 import { formatBytes, formatUptime } from "../lib/storage.ts";
 import { Button, Card, Chip, PageHeader, Segmented, SectionTitle, PageFrame } from "../ui/primitives.tsx";
 
 export function Settings() {
-  const { setup, host, setPinMode, resetAll, live } = useEngine();
+  const { setup, host, resetAll, live } = useEngine();
+  const pin = usePin();
   const { session, signOut } = useSession();
   const navigate = useNavigate();
   return (
@@ -40,7 +42,7 @@ export function Settings() {
         <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-compact text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-ink-2">Mode</div>
-          <Segmented value={setup?.pinMode ?? "assistant"} onChange={setPinMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+          <Segmented value={setup?.pinMode ?? "assistant"} label="Pin's mode" onChange={pin.setMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
         </div>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[[<FileText key="s" className="h-4 w-4" />, "SOUL.md", "Who Pin is and how it behaves"], [<BookOpen key="m" className="h-4 w-4" />, "MEMORY.md", "What Pin has learned about you and this device"]].map(([icon, file, body]) => (
