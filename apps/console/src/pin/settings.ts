@@ -8,7 +8,8 @@ import { pinApi, type ConnectorInfo, type ModelInfo, type PinSettings } from "./
  * against a fake.
  */
 export interface PinSettingsSource {
-  load(): Promise<{ settings: PinSettings; connectors: ConnectorInfo[] }>;
+  /** connectorsError: the connector list failed but the settings loaded, so Pin's mode can still be changed. */
+  load(): Promise<{ settings: PinSettings; connectors: ConnectorInfo[]; connectorsError?: string }>;
   models(provider: string): Promise<ModelInfo[]>;
   save(s: PinSettings): Promise<PinSettings>;
 }
@@ -16,8 +17,8 @@ export interface PinSettingsSource {
 export function liveSettingsSource(api = pinApi()): PinSettingsSource {
   return {
     load: async () => {
-      const [settings, connectors] = await Promise.all([api.settings(), api.connectors()]);
-      return { settings, connectors };
+      const [settings, connectors] = await Promise.all([api.settings(), api.connectors().then((list) => ({ list }), (e: Error) => ({ list: [] as ConnectorInfo[], error: e.message }))]);
+      return { settings, connectors: connectors.list, ...("error" in connectors ? { connectorsError: connectors.error } : {}) };
     },
     models: (provider) => api.models(provider),
     save: (s) => api.saveSettings(s),

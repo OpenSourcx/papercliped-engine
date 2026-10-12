@@ -14,6 +14,7 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [connectors, setConnectors] = useState<ConnectorInfo[]>([]);
+  const [connectorsError, setConnectorsError] = useState<string | null>(null);
   const [saved, setSaved] = useState<PinSettings | null>(null);
   const [draft, setDraft] = useState<PinSettings | null>(null);
   const [models, setModels] = useState<{ provider: string; state: "loading" | "ready" | "error"; list: ModelInfo[]; error?: string } | null>(null);
@@ -28,6 +29,7 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
       (r) => {
         if (!alive) return;
         setConnectors(r.connectors);
+        setConnectorsError(r.connectorsError ?? null);
         setSaved(r.settings);
         setDraft(r.settings);
         setLoadState("ready");
@@ -106,7 +108,12 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
   return (
     <div className="space-y-8">
       <Section title="Model" body="The provider Pin thinks with and the model it uses. Keys stay on this device; Pin never sees them.">
-        {ready.length === 0 ? (
+        {connectorsError ? (
+          <Notice tone="warning" title="Couldn't list the model providers" action={<Button size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button>}>
+            <span className="block">{connectorsError}</span>
+            <span className="block">Pin's mode below can still be changed.</span>
+          </Notice>
+        ) : ready.length === 0 ? (
           <Notice tone="warning" title="Pin needs a model provider" action={<Link to="?settings=connectors" className="transition-control inline-flex h-8 items-center rounded-md bg-surface-2 border border-line px-3 text-compact font-medium hover:bg-surface-3">Add a model provider</Link>}>
             Add a provider's key in Connectors, then pick it here. Until then Pin answers from its built-in demo replies.
           </Notice>
@@ -149,7 +156,9 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
       </Section>
 
       <Section title="Connectors Pin may use" body="Only what's switched on here. Organizations choose their own connectors separately.">
-        {tools.length === 0 ? (
+        {connectorsError ? (
+          <p className="text-compact text-ink-3">Connectors show here once the list loads.</p>
+        ) : tools.length === 0 ? (
           <p className="text-compact text-ink-3">No connectors yet. <Link to="?settings=connectors" className="text-accent hover:underline">Add one in Connectors</Link>.</p>
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line">
