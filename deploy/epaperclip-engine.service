@@ -1,0 +1,55 @@
+[Unit]
+Description=ePaperclip engine (Paperclip, loopback only)
+Documentation=https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/ENGINE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=epaperclip-engine
+Group=epaperclip-engine
+# Generated once at install (secrets, loopback address, port 3100); upgrades never rewrite it.
+EnvironmentFile=/etc/epaperclip/engine.env
+Environment=PAPERCLIP_HOME=/var/lib/epaperclip-engine HOME=/var/lib/epaperclip-engine
+WorkingDirectory=/opt/epaperclip/engine
+ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/engine/node_modules/@paperclipai/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+# Stop asks the engine first, so it can shut its embedded PostgreSQL down cleanly; anything left is killed after 90 s.
+KillMode=mixed
+TimeoutStopSec=90
+
+# Its data (embedded PostgreSQL, secrets master key, hourly backups) lives here and nowhere else.
+StateDirectory=epaperclip-engine
+StateDirectoryMode=0700
+
+# Binds 127.0.0.1:3100 only; the host service is the only way in. No capabilities at all.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+UMask=0077
+# The server (~0.5 GB) and PostgreSQL (~0.4 GB) at idle, with room for work; the host itself stays protected.
+MemoryMax=3G
+# PostgreSQL backends plus the agent processes the engine starts.
+TasksMax=4096
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

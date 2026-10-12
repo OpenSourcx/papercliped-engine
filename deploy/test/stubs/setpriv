@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Test stand-in: runs the command without changing user, or, as root with STUB_RUN_AS_NOBODY=1, as nobody (65534).
+# The installer test-starts the engine under `env -i`, so the state folder is also found from where this stub is linked
+# (<host>/bin -> <host>/stub), and run-as-nobody from a marker file there.
+S="${STUB_STATE:-$(cd "$(dirname "$0")/.." && pwd)/stub}"
+echo "setpriv $*" >>"$S/calls"
+nobody="${STUB_RUN_AS_NOBODY:-}"; [ -f "$S/run-as-nobody" ] && nobody=1
+while [ "$#" -gt 0 ] && [ "${1#--}" != "$1" ]; do shift; done
+if [ "$(/usr/bin/id -u)" -eq 0 ] && [ "$nobody" = 1 ]; then exec /usr/bin/setpriv --reuid=65534 --regid=65534 --clear-groups "$@"; fi
+exec "$@"
