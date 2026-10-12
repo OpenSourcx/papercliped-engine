@@ -87,7 +87,7 @@ export interface CreateCompanyBody { name: string; description?: string | null; 
 export interface CreateAgentBody { name: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; adapterType: string; adapterConfig?: Record<string, unknown>; budgetMonthlyCents?: number }
 export interface UpdateAgentBody { adapterType?: string; adapterConfig?: Record<string, unknown>; runtimeConfig?: Record<string, unknown>; name?: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; budgetMonthlyCents?: number }
 export interface CreateIssueBody { title: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; parentId?: string | null }
-export interface UpdateIssueBody { title?: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; comment?: string }
+export interface UpdateIssueBody { labelIds?: string[]; title?: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; comment?: string }
 export interface CreateGoalBody { title: string; description?: string | null; level?: GoalLevel; status?: GoalStatus; parentId?: string | null; ownerAgentId?: string | null }
 export interface CreateProjectBody { name: string; description?: string | null; status?: ProjectStatus; leadAgentId?: string | null; targetDate?: string | null; goalIds?: string[] }
 
@@ -105,8 +105,12 @@ export interface RunLogChunk { content: string; nextOffset?: number; [k: string]
 export interface RunEvent { id: number; seq: number; eventType: string; stream: string | null; level: string | null; message: string | null; payload: unknown; createdAt: string }
 export interface AgentPermissionsBody { canCreateAgents?: boolean; canCreateSkills?: boolean }
 export interface BudgetPolicyBody { scopeType: "company" | "agent" | "project"; scopeId: string; amount: number; metric?: string; windowKind?: string; warnPercent?: number; hardStopEnabled?: boolean; notifyEnabled?: boolean; isActive?: boolean }
+export interface IssueDocumentFull { id: string; key: string; title: string | null; format: string; body: string; latestRevisionNumber: number; updatedAt: string }
 export interface SearchParams { q: string; scope?: string; limit?: number }
 export interface CreateSecretBody { name: string; value: string; description?: string | null; provider?: string }
+
+/** The engine's largest attachment (it refuses more; the console checks first so the answer is immediate). */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export class EngineError extends Error {
   readonly status: number;
@@ -438,7 +442,8 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     },
     tasks: {
       labels: (companyId: string) => call<IssueLabel[]>("GET", P.labels, { companyId }),
-      documents: (issueId: string) => call<Record<string, unknown>[]>("GET", P.issueDocuments, { id: issueId }),
+      createLabel: (companyId: string, body: { name: string; color: string }) => call<IssueLabel>("POST", P.labels, { companyId }, body),
+      documents: (issueId: string) => call<IssueDocumentFull[]>("GET", P.issueDocuments, { id: issueId }),
       approvals: (issueId: string) => call<Approval[]>("GET", P.issueApprovals, { id: issueId }),
       children: (companyId: string, parentId: string) => call<Issue[]>("GET", P.issues, { companyId }, undefined, { parentId }),
     },

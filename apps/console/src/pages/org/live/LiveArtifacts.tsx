@@ -24,7 +24,7 @@ export function previewKind(contentType: string | null, mediaKind: string): Prev
 }
 const MAX_PREVIEW = 200_000;
 
-function Preview({ path, contentType, mediaKind, title }: { path: string; contentType: string | null; mediaKind: string; title: string }) {
+export function Preview({ path, contentType, mediaKind, title }: { path: string; contentType: string | null; mediaKind: string; title: string }) {
   const kind = previewKind(contentType, mediaKind);
   const url = engine.artifacts.pathUrl(path);
   const [text, setText] = useState<string | null>(null);
