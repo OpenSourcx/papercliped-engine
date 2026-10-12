@@ -9,6 +9,8 @@ import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, EmptyState, Input, PageFrame, Segmented, Status } from "../../ui/primitives.tsx";
 import { tabsFor, volName } from "./content.ts";
+import { StorageAdmin } from "./StorageAdmin.tsx";
+import { VolumeDetails } from "./VolumeDetails.tsx";
 
 const ICON: Partial<Record<ContentKind, React.ReactNode>> = { iso: <Disc3 className="h-4 w-4" />, vztmpl: <Package className="h-4 w-4" />, backup: <Database className="h-4 w-4" />, images: <Monitor className="h-4 w-4" />, rootdir: <Box className="h-4 w-4" /> };
 
@@ -27,6 +29,7 @@ export function StorageDetail() {
   const [q, setQ] = useState("");
   const [confirm, setConfirm] = useState<StorageItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [details, setDetails] = useState<StorageItem | null>(null);
 
   useEffect(() => {
     if (!s) return;
@@ -93,6 +96,7 @@ export function StorageDetail() {
           <div className="text-compact text-ink-3">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""} · {device}</div>
         </div>
         {s.active === false ? <Status kind="off" label="Unavailable" /> : <Status kind="good" label="Active" />}
+        <StorageAdmin id={s.id} />
       </div>
       <Card className="p-5 mb-5">
         <BarMeter label={`${formatBytes(Math.max(0, s.total - s.used))} free`} pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
@@ -152,6 +156,7 @@ export function StorageDetail() {
                         <span className="inline-flex items-center gap-1">
                           {i.content === "iso" && <Button size="sm" variant="ghost" onClick={() => nav(`?modal=new-machine&kind=vm`)} title="Create a VM that boots this"><Monitor className="h-3.5 w-3.5" />New VM</Button>}
                           {i.content === "vztmpl" && <Button size="sm" variant="ghost" onClick={() => nav(`?modal=new-machine`)} title="Create a container from it"><Box className="h-3.5 w-3.5" />New container</Button>}
+                          <Button size="sm" variant="ghost" onClick={() => setDetails(i)} aria-label={`Details of ${volName(i.volid)}`}>Details</Button>
                           <button onClick={() => setConfirm(i)} disabled={i.protected} title={i.protected ? "Protected; remove protection in Proxmox first" : "Delete"} aria-label={`Delete ${volName(i.volid)}`} className={cn("h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-3")}><Trash2 className="h-4 w-4" /></button>
                         </span>
                       </td>
@@ -170,6 +175,7 @@ export function StorageDetail() {
         </>
       )}
 
+      {details && <VolumeDetails storage={s.id} item={details} onClose={() => setDetails(null)} onDelete={() => { setConfirm(details); setDetails(null); }} onSaved={() => setItems((l) => (l ?? []).map((x) => (x.volid === details.volid ? { ...x } : x)))} />}
       {confirm && (
         <Modal
           size="sm"
