@@ -5,7 +5,7 @@ import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
 import { api, ApiError, type HardwareChange, type MachineSpec, type RestoreSpec, type VmSpec } from "./api.ts";
 import { demoBackend, liveBackend, parseBackupName, type Backend } from "./backend.ts";
-import { demoData, demoHost, newOrg } from "./demo.ts";
+import { demoData, demoHost, liveData, newOrg } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
 import { defaultPinData } from "./pin.ts";
 import { wouldLoop } from "./orgTree.ts";
@@ -102,6 +102,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const live = session.mode === "live";
   const [setup, setSetup] = useState<SetupState | null>(() => readJson<SetupState | null>("epc.setup", null));
   const [data, setData] = useState<EngineData>(() => {
+    if (live) return liveData();
     const saved = readJson<EngineData | null>("epc.data", null);
     if (!saved) return demoData(null);
     // Demo data saved by an older console build: fill in what it lacks rather than crash.
@@ -146,7 +147,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     [backend],
   );
 
-  useEffect(() => writeJson("epc.data", data), [data]);
+  // Only the demo is kept in the browser. A live console shows what the host has, never a browser-side copy.
+  useEffect(() => { if (!live) writeJson("epc.data", data); }, [data, live]);
 
   // Live: read the host as the signed-in user every five seconds (and right after an action).
   const orgs = data.orgs;
@@ -188,7 +190,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
 
   const completeSetup = useCallback<Engine["completeSetup"]>((s, firstOrg) => {
     setSetup({ ...s, completedAt: new Date().toISOString() });
-    if (!live) setHost(demoHost(s.deviceName));
+    if (live) return;
+    setHost(demoHost(s.deviceName));
     const d = demoData(firstOrg);
     d.users[0] = { ...d.users[0], name: s.ownerName || "You" };
     setData(d);
@@ -306,7 +309,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       resetAll: () => {
         removeKey("epc.data");
         setSetup(null);
-        setData(demoData(null));
+        setData(live ? liveData() : demoData(null));
       },
       setPinMode: (m) => {
         setSetup((s) => (s ? { ...s, pinMode: m } : s));
@@ -327,6 +330,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       },
       logPin: (kind, text) => logTo(kind, text),
       createOrg: (name, size, by = "user", memory = "postgres") => {
+        if (live) return { ok: false, error: "Organizations arrive with the Paperclip engine, which isn't on this device yet, so there's nowhere to keep them." };
         const err = orgNameError(name, data.orgs);
         if (err) return { ok: false, error: err };
         const org = { ...newOrg(name.trim(), { ...size, createdBy: by }), memory };

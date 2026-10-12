@@ -195,6 +195,7 @@ function ActivityList({ entries }: { entries: PinLogEntry[] }) {
 /** The full conversation with Pin, on the page instead of the island. */
 function PinChat() {
   const pin = usePin();
+  const engine = useEngine();
   const [draft, setDraft] = useState("");
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -215,7 +216,7 @@ function PinChat() {
             <Bot className="h-6 w-6 mx-auto text-ink-3" />
             <p className="text-[14px] text-ink-2 mt-3">Ask about the device, an organization, or tell Pin what to automate.</p>
             <div className="flex flex-wrap justify-center gap-2 mt-4">
-              {["How is my server?", "Which agents are idle?", "If a VM uses more than 80% CPU for 5 minutes, notify me", "Create a company called Lumen"].map((s) => (
+              {["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])].map((s) => (
                 <button key={s} onClick={() => pin.send(s, { inPlace: true })} className="text-[12px] px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2">{s}</button>
               ))}
             </div>

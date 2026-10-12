@@ -52,6 +52,14 @@ export function newOrg(name: string, opts: { createdBy?: "user" | "pin"; cores?:
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 
+/**
+ * What a live console starts from: nothing invented. Machines and storage come from Proxmox; organizations, agents,
+ * connectors, users and rules show up only when the host really has them, and empty screens say so.
+ */
+export function liveData(): EngineData {
+  return { orgs: [], guests: [], users: [], policies: [], connectors: [], rules: [], notices: [], apps: { mode: "full", sessions: [], activity: [] }, host: { storage: [], network: [], backups: [] } };
+}
+
 export function demoData(firstOrgName: string | null): EngineData {
   const orgs: Org[] = [];
   if (firstOrgName) {

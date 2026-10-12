@@ -11,13 +11,17 @@ import { Toggle } from "../ui/primitives.tsx";
 const STEPS = 5;
 
 function Shell({ step, title, subtitle, children, onBack }: { step: number; title: ReactNode; subtitle?: ReactNode; children: ReactNode; onBack?: () => void }) {
+  // On a live device there is no organization step: organizations come with the Paperclip engine, so the first screen is step 2.
+  const live = useSession().session.mode === "live";
+  const total = live ? STEPS - 1 : STEPS;
+  const at = live ? step - 1 : step;
   return (
     <div className="min-h-dvh relative flex flex-col items-center px-5">
       <div className="absolute inset-0 hero-glow opacity-60 pointer-events-none" aria-hidden />
       <div className="relative w-full max-w-[480px] pt-[14vh] pb-16">
-        <div className="flex items-center justify-center gap-1.5 mb-10" aria-label={`Step ${step + 1} of ${STEPS}`}>
-          {Array.from({ length: STEPS }, (_, i) => (
-            <span key={i} className={cn("h-1.5 rounded-full transition-all duration-500", i === step ? "w-5 bg-ink" : i < step ? "w-1.5 bg-ink-2" : "w-1.5 bg-surface-3")} />
+        <div className="flex items-center justify-center gap-1.5 mb-10" aria-label={`Step ${at + 1} of ${total}`}>
+          {Array.from({ length: total }, (_, i) => (
+            <span key={i} className={cn("h-1.5 rounded-full transition-all duration-500", i === at ? "w-5 bg-ink" : i < at ? "w-1.5 bg-ink-2" : "w-1.5 bg-surface-3")} />
           ))}
         </div>
         <div key={step} className="fade-in">
@@ -67,7 +71,7 @@ export function Onboarding() {
   const { session } = useSession();
   const liveUser = session.mode === "live" ? session.user : null;
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(liveUser ? 1 : 0);
   const [org, setOrg] = useState("");
   const [skipOrg, setSkipOrg] = useState(false);
   const [owner, setOwner] = useState(liveUser && liveUser.name !== "root" ? liveUser.name : "");
@@ -81,7 +85,7 @@ export function Onboarding() {
     e?.preventDefault();
     setStep((s) => Math.min(STEPS - 1, s + 1));
   };
-  const back = step > 0 ? () => setStep((s) => s - 1) : undefined;
+  const back = step > (liveUser ? 1 : 0) ? () => setStep((s) => s - 1) : undefined;
   const orgErr = org.trim() ? orgNameError(org, []) : null;
   const deviceSlug = slugify(device);
 
@@ -165,7 +169,7 @@ export function Onboarding() {
               </button>
             ))}
           </div>
-          <p className="text-[12px] text-ink-3 mt-3">{provider ? "You'll finish signing in from Connectors once the console opens." : "No account yet? Pin works in a limited demo mode until you connect one."}</p>
+          <p className="text-[12px] text-ink-3 mt-3">{provider ? "You'll finish signing in from Connectors once the console opens." : "No account yet? Pin can still run quick actions, but it can't chat until you connect one."}</p>
           <div className="flex items-center justify-between mt-6">
             <button type="button" onClick={() => { setProvider(null); next(); }} className="text-[14px] text-ink-3 hover:text-ink-2">Do this later</button>
             <Continue />

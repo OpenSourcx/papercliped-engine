@@ -61,13 +61,13 @@ export function Home() {
             {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
           </h1>
           <p className="text-ink-3 mt-4 text-[15px] fade-in">
-            {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {working ? `${working} agents working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
+            {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {data.orgs.length === 0 ? `${data.guests.filter((g) => g.status === "running").length} machines running` : working ? `${working} agents working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
           </p>
           <div className="mt-9 text-left">
             <PinComposer />
           </div>
           <div className="flex flex-wrap justify-center gap-2 mt-4">
-            {["How is my server?", "Which agents are idle?", "If a VM uses more than 80% CPU for 5 minutes, notify me"].map((s) => (
+            {[...["How is my server?"], ...(data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me"].map((s) => (
               <button key={s} onClick={() => pin.send(s)} className="text-[13px] px-3.5 h-8 rounded-full border border-line bg-surface/60 hover:bg-surface-2 text-ink-2 transition">
                 {s}
               </button>
