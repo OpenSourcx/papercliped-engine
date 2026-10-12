@@ -390,7 +390,9 @@ export class AgentContainers {
       for (const id of ["plugin", "environments", "enforce"] as StepId[]) set(id, false, `Couldn't check the engine: ${errText(e)}`);
     }
     const done = steps.filter((s) => s.done).length;
-    let state: ContainersState = done === steps.length ? "ready" : done === 0 ? "not_set_up" : "partial";
+    // "Not set up" means none of the real work is there (a lone enforcement flag or an empty list of organizations isn't).
+    const core = steps.filter((s) => ["access", "key", "template", "grant", "plugin"].includes(s.id) && s.done).length;
+    let state: ContainersState = done === steps.length ? "ready" : core === 0 ? "not_set_up" : "partial";
     if (state !== "ready" && (checkError || (st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.finishedAt !== undefined))) state = "error";
     if (state === "not_set_up" && checkError) state = "error";
     if (this.stored().lastState !== state) this.save({ lastState: state });
@@ -526,6 +528,7 @@ export class AgentContainers {
     job.status = "done";
     job.finishedAt = this.now();
     this.log(job, "info", "Agent containers are ready.");
+    this.save({ lastState: "ready" });
     this.finish(job);
   }
 

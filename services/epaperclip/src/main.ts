@@ -75,7 +75,19 @@ sweep.unref();
 
 server.listen(port, host, () => console.log(`epaperclip: listening on ${devHttp ? "http" : "https"}://${listen}`));
 // Settle the engine's service account in the background, retrying while the engine starts.
-void handle.engine?.start();
+// Once the engine is up, keep agents off the host: it refuses to run them anywhere but in a container (docs/ENGINE.md).
+// Then keep organizations' container environments in step (new organizations, new agents) every minute.
+void handle.engine?.start().then(async () => {
+  const enforce = async () => {
+    const r = await handle.containers.enforce();
+    if (!r.ok) console.warn(`epaperclip: couldn't set the engine's managed-sandbox-only policy: ${r.error}`);
+  };
+  await enforce();
+  const tick = setInterval(() => {
+    void enforce().then(() => handle.containers.reconcile()).catch(() => {});
+  }, 60_000);
+  tick.unref();
+});
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
     handle.engine?.stop();

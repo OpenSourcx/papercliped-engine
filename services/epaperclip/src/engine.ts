@@ -157,6 +157,12 @@ const json = (text: string): unknown => {
 /** A close code that may be sent on: reserved ones become 1000, or 1011 when the engine's side dropped abnormally. */
 const closeCode = (code: number, fromEngine: boolean) => (code === 1000 || (code >= 1001 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) || (code >= 3000 && code <= 4999) ? code : code === 1006 && fromEngine ? 1011 : 1000);
 
+/** Optional checks around one forwarded request. `inspect` runs before it is sent and may throw to refuse it. */
+export interface ForwardHooks {
+  inspect?: (method: string, path: string, body: Buffer | null) => void;
+  after?: (method: string, path: string, status: number) => void;
+}
+
 export class EngineGateway {
   readonly url: URL;
   readonly publicUrl: string;
@@ -555,7 +561,7 @@ export class EngineGateway {
   // ---- The /engine/api proxy
 
   /** Forwards one browser request to the engine as the signed-in person, streaming both bodies. */
-  async forward(req: IncomingMessage, res: ServerResponse, s: Session, maxBytes: number): Promise<void> {
+  async forward(req: IncomingMessage, res: ServerResponse, s: Session, maxBytes: number, hooks: ForwardHooks = {}): Promise<void> {
     const method = req.method ?? "GET";
     if (!METHODS.has(method)) throw new HttpError(405, "method", "Method not allowed");
     const target = enginePath(req.url ?? "/");
@@ -584,6 +590,8 @@ export class EngineGateway {
         if (heldBytes > maxBytes) throw new HttpError(413, "too_large", `Uploads are limited to ${Math.floor(maxBytes / 1024 ** 2)} MiB`);
       }
     }
+    // A caller's check of the request (it may refuse it) while the first part of the body is in hand.
+    hooks.inspect?.(method, target, complete ? Buffer.concat(held) : null);
     let streamed = false;
 
     const attempt = (login: EngineLogin) =>
@@ -625,6 +633,7 @@ export class EngineGateway {
       throw e instanceof EngineDown ? engineUnavailable() : e;
     }
     this.absorb(login, upRes.headers["set-cookie"]);
+    hooks.after?.(method, target, upRes.statusCode ?? 0);
 
     const out: Record<string, string | string[]> = {};
     for (const name of RESPONSE_HEADERS) {

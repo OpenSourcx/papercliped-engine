@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>() };
+  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], secretBodies: 0 };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -89,6 +89,106 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       else st.admins.delete(decodeURIComponent(promote[1]));
       return json(res, 200, { ok: true });
     }
+    // ---- Agent containers: plugins, instance settings, environments, secrets and agents' default environment.
+    const isAdmin = st.admins.has(uid!);
+    if (p === "/api/plugins" && req.method === "GET") return json(res, 200, st.plugins);
+    if (p === "/api/plugins/install" && req.method === "POST") {
+      if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
+      const bd = b() as { packageName?: string; isLocalPath?: boolean };
+      if (!bd.packageName || bd.isLocalPath !== true) return json(res, 400, { error: "packageName is required" });
+      if (st.pluginInstallError) return json(res, 400, { error: st.pluginInstallError });
+      const existing = st.plugins.find((x) => x.pluginKey === "epaperclip.proxmox-sandbox-provider");
+      if (existing) {
+        existing.status = "ready";
+        return json(res, 200, existing);
+      }
+      const rec = { id: `pl_${st.plugins.length + 1}`, pluginKey: "epaperclip.proxmox-sandbox-provider", status: "ready", lastError: null, packageName: bd.packageName };
+      st.plugins.push(rec);
+      return json(res, 200, rec);
+    }
+    const plug = p.match(/^\/api\/plugins\/([\w-]+)(\/enable)?$/);
+    if (plug) {
+      const rec = st.plugins.find((x) => x.id === plug[1]);
+      if (!rec) return json(res, 404, { error: "Plugin not found" });
+      if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
+      if (plug[2] && req.method === "POST") {
+        rec.status = "ready";
+        return json(res, 200, rec);
+      }
+      if (req.method === "DELETE") {
+        st.plugins.splice(st.plugins.indexOf(rec), 1);
+        return json(res, 200, { ok: true });
+      }
+    }
+    if (p === "/api/instance/settings/experimental") {
+      if (req.method === "GET") return json(res, 200, { enableManagedSandboxOnly: st.managedSandboxOnly });
+      if (!isAdmin) return json(res, 403, { error: "Instance admin access required" });
+      const bd = b() as { enableManagedSandboxOnly?: boolean };
+      if (typeof bd.enableManagedSandboxOnly === "boolean") st.managedSandboxOnly = bd.enableManagedSandboxOnly;
+      return json(res, 200, { enableManagedSandboxOnly: st.managedSandboxOnly });
+    }
+    const sec = p.match(/^\/api\/companies\/([\w-]+)\/secrets$/);
+    if (sec && req.method === "POST") {
+      if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
+      st.secretBodies++;
+      const bd = b() as { name: string; value: string };
+      const id = `00000000-0000-4000-8000-${String(st.secrets.size + 1).padStart(12, "0")}`;
+      st.secrets.set(id, { companyId: sec[1], name: bd.name, value: bd.value });
+      return json(res, 201, { id, name: bd.name });
+    }
+    const secId = p.match(/^\/api\/secrets\/([\w-]+)(\/rotate)?$/);
+    if (secId) {
+      const rec = st.secrets.get(secId[1]);
+      if (!rec) return json(res, 404, { error: "Secret not found" });
+      if (secId[2] && req.method === "POST") {
+        rec.value = (b() as { value: string }).value;
+        return json(res, 200, { id: secId[1] });
+      }
+      if (req.method === "DELETE") {
+        st.secrets.delete(secId[1]);
+        return json(res, 200, { ok: true });
+      }
+    }
+    const envList = p.match(/^\/api\/companies\/([\w-]+)\/environments$/);
+    if (envList && req.method === "GET") return json(res, 200, [...st.envs.values()]);
+    if (envList && req.method === "POST") {
+      if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
+      st.envBodies.push(body.toString());
+      const bd = b() as { name: string; driver: string; config: Record<string, unknown>; metadata?: unknown };
+      if ([...st.envs.values()].some((e) => e.name === bd.name)) return json(res, 409, { error: `An environment named "${bd.name}" already exists for this instance.` });
+      // Like the engine: a secret-ref field must name a saved secret.
+      for (const k of ["apiTokenSecret", "sshPrivateKey"]) if (!st.secrets.has(String(bd.config[k]))) return json(res, 422, { error: `Secret referenced at ${k} was not found` });
+      const env = { id: `00000000-0000-4000-9000-${String(st.envs.size + 1).padStart(12, "0")}`, name: bd.name, driver: bd.driver, status: "active", config: bd.config, metadata: bd.metadata ?? null };
+      st.envs.set(env.id, env);
+      return json(res, 201, env);
+    }
+    const envOne = p.match(/^\/api\/environments\/([\w-]+)$/);
+    if (envOne) {
+      const env = st.envs.get(envOne[1]);
+      if (!env) return json(res, 404, { error: "Environment not found" });
+      if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
+      if (req.method === "PATCH") {
+        const bd = b() as { config?: Record<string, unknown>; status?: string };
+        if (bd.config) env.config = { ...env.config, ...bd.config };
+        if (bd.status) env.status = bd.status;
+        return json(res, 200, env);
+      }
+      if (req.method === "DELETE") {
+        st.envs.delete(env.id);
+        return json(res, 200, { ok: true });
+      }
+    }
+    const agentOne = p.match(/^\/api\/agents\/([\w-]+)$/);
+    if (agentOne && req.method === "PATCH") {
+      for (const list of st.agents.values()) {
+        const a = list.find((x) => x.id === agentOne[1]);
+        if (a) {
+          Object.assign(a, b());
+          return json(res, 200, a);
+        }
+      }
+      return json(res, 404, { error: "Agent not found" });
+    }
     if (p === "/api/cli-auth/me") return json(res, 200, { user: { id: uid }, userId: uid, isInstanceAdmin: st.admins.has(uid!), companyIds: memberships(uid).map((m) => m.companyId), memberships: memberships(uid), source: "session" });
     if (p === "/api/companies" && req.method === "POST") {
       // Like the real engine: only instance admins create organizations; the creator owns it.
@@ -142,9 +242,13 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
     const co = p.match(/^\/api\/companies\/([\w-]+)(\/(agents|issues|approvals))?$/);
     if (co) {
       const c = companies.get(co[1]);
-      if (!c || !c.members.has(uid)) return json(res, 403, { error: "Not a member" });
+      // Instance admins (the service account) may list an organization's agents.
+      if (!c || !(c.members.has(uid) || (co[3] === "agents" && st.admins.has(uid)))) return json(res, 403, { error: "Not a member" });
       if (!co[3]) return json(res, 200, { id: co[1], name: c.name, status: "active" });
-      if (co[3] === "agents") return json(res, 200, [{ id: "a1", name: "CEO", role: "ceo", status: "idle" }]);
+      if (co[3] === "agents") {
+        if (!st.agents.has(co[1])) st.agents.set(co[1], [{ id: `a1-${co[1]}`, name: "CEO", role: "ceo", status: "idle", defaultEnvironmentId: null }]);
+        return json(res, 200, st.agents.get(co[1]));
+      }
       if (co[3] === "issues") return json(res, 200, [{ id: "i1", identifier: "NW-1", title: "Ship it", status: "todo" }, { id: "i2", title: "Old", status: "done" }]);
       return json(res, 200, [{ id: "ap1", type: "hire_agent", status: "pending" }]);
     }
@@ -228,6 +332,21 @@ export function fakePve() {
   const pools = new Map<string, { comment?: string; members: unknown[] }>([["existing", { members: [] }]]);
   const calls: { method: string; path: string; body?: string }[] = [];
   let n = 0;
+  // Agent containers: roles, tokens, guests created through the API, and tasks.
+  const roles = new Map<string, string>();
+  const tokens = new Map<string, Set<string>>();
+  const tokenSecrets: string[] = [];
+  const guests = new Map<number, Record<string, string | number>>();
+  const failures = new Set<string>();
+  const storageFiles = new Map<string, string[]>([["local", []]]);
+  const tasks = new Map<string, string>();
+  const catalog = ["debian-12-standard_12.7-1_amd64.tar.zst", "debian-12-standard_12.12-1_amd64.tar.zst", "debian-13-standard_13.1-2_amd64.tar.zst", "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"];
+  let nextVmid = 9000;
+  const task = (what: string, fail?: string) => {
+    const upid = `UPID:pve:0000${tasks.size + 1}:00000001:00000001:${what}:x:sam@pve:`;
+    tasks.set(upid, failures.has(what) ? `${fail ?? what + " failed on purpose"}` : "OK");
+    return upid;
+  };
   const ok = (data: unknown) => ({ status: 200, body: JSON.stringify({ data }) });
   const transport: Transport = async (req) => {
     const u = new URL(req.url);
@@ -276,12 +395,90 @@ export function fakePve() {
     if (path === "/access/acl" && req.method === "GET") return ok(acl);
     if (path === "/access/acl" && req.method === "PUT") {
       if (!admin) return deny;
-      for (const r of f.get("roles")!.split(",")) for (const ug of f.get("users")!.split(",")) {
+      const isTok = f.has("tokens");
+      for (const r of f.get("roles")!.split(",")) for (const ug of (f.get(isTok ? "tokens" : "users") ?? "").split(",")) {
         const i = acl.findIndex((a) => a.path === f.get("path") && a.ugid === ug && a.roleid === r);
         if (f.get("delete") === "1") { if (i >= 0) acl.splice(i, 1); }
-        else if (i < 0) acl.push({ path: f.get("path")!, ugid: ug, type: "user", roleid: r, propagate: 1 });
+        else if (i < 0) acl.push({ path: f.get("path")!, ugid: ug, type: isTok ? "token" : "user", roleid: r, propagate: 1 });
       }
       return ok(null);
+    }
+    // ---- Agent containers
+    if (path === "/access/roles" && req.method === "GET") return ok([...roles].map(([roleid, privs]) => ({ roleid, privs })));
+    if (path === "/access/roles" && req.method === "POST") {
+      if (!admin) return deny;
+      if (failures.has("role")) return { status: 500, body: JSON.stringify({ message: "role creation refused on purpose\n" }) };
+      roles.set(f.get("roleid")!, f.get("privs")!);
+      return ok(null);
+    }
+    const rl = path.match(/^\/access\/roles\/(\w+)$/);
+    if (rl) {
+      if (req.method === "GET") return roles.has(rl[1]) ? ok({ privs: roles.get(rl[1]) }) : { status: 500, body: JSON.stringify({ message: "role does not exist\n" }) };
+      if (!admin) return deny;
+      if (req.method === "PUT") return roles.set(rl[1], [roles.get(rl[1]), f.get("privs")].filter(Boolean).join(",")), ok(null);
+      if (req.method === "DELETE") return roles.delete(rl[1]), ok(null);
+    }
+    const tk = path.match(/^\/access\/users\/([^/]+)\/token(?:\/(\w+))?$/);
+    if (tk) {
+      const uid = decodeURIComponent(tk[1]);
+      if (req.method === "GET" && !tk[2]) return pveUsers.has(uid) ? ok([...(tokens.get(uid) ?? [])].map((tokenid) => ({ tokenid }))) : { status: 500, body: "{}" };
+      if (!admin) return deny;
+      if (req.method === "POST") {
+        const set = tokens.get(uid) ?? new Set<string>();
+        if (set.has(tk[2])) return { status: 500, body: JSON.stringify({ message: "Token already exists\n" }) };
+        set.add(tk[2]);
+        tokens.set(uid, set);
+        const secret = `${randomBytes(4).toString("hex")}-1111-4222-8333-${randomBytes(6).toString("hex")}`;
+        tokenSecrets.push(secret);
+        return ok({ "full-tokenid": `${uid}!${tk[2]}`, info: { privsep: "1" }, value: secret });
+      }
+      if (req.method === "DELETE") {
+        tokens.get(uid)?.delete(tk[2]);
+        for (let i = acl.length - 1; i >= 0; i--) if (acl[i].ugid === `${uid}!${tk[2]}`) acl.splice(i, 1);
+        return ok(null);
+      }
+    }
+    if (path === "/nodes/pve/storage") return ok([{ storage: "local", type: "dir", active: 1, enabled: 1 }, { storage: "local-lvm", type: "lvmthin", active: 1, enabled: 1 }].filter((x) => (u.searchParams.get("content") === "vztmpl" ? x.storage === "local" : true)));
+    if (path === "/nodes/pve/network") return ok([{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }]);
+    if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok(catalog.map((template) => ({ template, type: "lxc", section: "system" })));
+    if (path === "/nodes/pve/aplinfo" && req.method === "POST") {
+      if (!admin) return deny;
+      const upid = task("download");
+      if (!failures.has("download")) storageFiles.get(f.get("storage")!)!.push(f.get("template")!);
+      return ok(upid);
+    }
+    const sc = path.match(/^\/nodes\/pve\/storage\/([\w-]+)\/content$/);
+    if (sc) return ok((storageFiles.get(sc[1]) ?? []).map((file) => ({ volid: `${sc[1]}:vztmpl/${file}`, content: "vztmpl" })));
+    if (path === "/cluster/nextid") {
+      while (guests.has(nextVmid)) nextVmid++;
+      return ok(String(nextVmid));
+    }
+    if (path === "/cluster/resources" && u.searchParams.get("type") === "vm") {
+      return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, ...[...guests].map(([vmid, g]) => ({ id: `lxc/${vmid}`, type: "lxc", vmid, node: "pve", name: g.hostname, status: g.status, tags: g.tags, template: g.template ?? 0 }))]);
+    }
+    if (path === "/nodes/pve/lxc" && req.method === "POST") {
+      if (!admin) return deny;
+      const vmid = Number(f.get("vmid"));
+      if (guests.has(vmid)) return { status: 500, body: JSON.stringify({ message: `CT ${vmid} already exists\n` }) };
+      if (failures.has("create")) return { status: 500, body: JSON.stringify({ message: "unable to create CT: storage 'local-lvm' is full\n" }) };
+      guests.set(vmid, { hostname: f.get("hostname")!, unprivileged: Number(f.get("unprivileged")), tags: f.get("tags")!, status: "stopped", template: 0, "ssh-public-keys": f.get("ssh-public-keys")!, features: f.get("features")! });
+      return ok(task("create"));
+    }
+    const ct = path.match(/^\/nodes\/pve\/lxc\/(\d+)(?:\/(config|status\/start|status\/shutdown|status\/stop|interfaces|template))?$/);
+    if (ct && guests.has(Number(ct[1]))) {
+      const g = guests.get(Number(ct[1]))!;
+      if (ct[2] === "config") return ok({ unprivileged: g.unprivileged, template: g.template, tags: g.tags, hostname: g.hostname });
+      if (ct[2] === "status/start") return g.status = "running", ok(task("start"));
+      if (ct[2] === "status/shutdown" || ct[2] === "status/stop") return g.status = "stopped", ok(task("shutdown"));
+      if (ct[2] === "interfaces") return ok([{ name: "lo", inet: "127.0.0.1/8" }, { name: "eth0", inet: "10.9.8.7/24", hwaddr: "aa" }]);
+      if (ct[2] === "template") return failures.has("template") ? { status: 500, body: JSON.stringify({ message: "can't convert on purpose\n" }) } : (g.template = 1, ok(null));
+      if (req.method === "DELETE") return guests.delete(Number(ct[1])), ok(task("destroy"));
+    }
+    const tsk = path.match(/^\/nodes\/pve\/tasks\/([^/]+)\/(status|log)$/);
+    if (tsk) {
+      const res = tasks.get(decodeURIComponent(tsk[1]));
+      if (res === undefined) return { status: 404, body: "" };
+      return tsk[2] === "status" ? ok({ status: "stopped", exitstatus: res }) : ok([{ n: 1, t: res === "OK" ? "TASK OK" : res }]);
     }
     if (path === "/access/domains") return ok([{ realm: "pve", type: "pve" }, { realm: "pam", type: "pam" }]);
     if (path === "/access/groups" && req.method === "GET") return ok([...groups].map(([groupid, comment]) => ({ groupid, comment })));
@@ -307,7 +504,7 @@ export function fakePve() {
     if (pool && req.method === "DELETE") return admin ? (pools.delete(pool[1]), ok(null)) : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, pools, calls, pveUsers, acl, groups };
+  return { transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles };
 }
 
 /**
@@ -366,3 +563,28 @@ export const wsOpen = (url: string, headers: Record<string, string>) =>
 export const until = async (fn: () => boolean, ms = 2000) => {
   for (let i = 0; i < ms / 10 && !fn(); i++) await new Promise((r) => setTimeout(r, 10));
 };
+
+/** A fake ssh: records what it was asked to run and can be made to fail. */
+export function fakeSsh(over: Partial<{ available: boolean; probeFails: number; exitCode: number }> = {}) {
+  const st = { available: over.available ?? true, probeFails: over.probeFails ?? 0, exitCode: over.exitCode ?? 0, probes: 0, scripts: [] as string[], targets: [] as { host: string; user: string; privateKey: string }[] };
+  return {
+    st,
+    runner: {
+      async available() {
+        return st.available ? { ok: true as const, version: "OpenSSH_9.2" } : { ok: false as const, reason: "The ssh command isn't installed on this host (fake)." };
+      },
+      async probe(t: { host: string; user: string; privateKey: string }) {
+        st.probes++;
+        st.targets.push(t);
+        return st.probes <= st.probeFails ? { ok: false, error: "Connection refused" } : { ok: true };
+      },
+      async run(t: { host: string; user: string; privateKey: string }, script: string, onLine: (l: string) => void) {
+        st.scripts.push(script);
+        st.targets.push(t);
+        onLine("  -> Installing packages");
+        onLine("  -> Self-test");
+        return { exitCode: st.exitCode, timedOut: false };
+      },
+    },
+  };
+}

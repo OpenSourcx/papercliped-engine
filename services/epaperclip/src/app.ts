@@ -17,6 +17,8 @@ import { StateStore } from "./state.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
+import { AgentContainers, parseSetup } from "./containers.ts";
+import type { SshRunner } from "./containers-ssh.ts";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -51,6 +53,8 @@ export interface AppDeps {
   engine?: { url: string; publicUrl?: string; installDir?: string; sleep?: (ms: number) => Promise<void> };
   /** Outbound HTTP to model providers (connector tests, Pin); tests inject a fake. */
   fetch?: HttpFetch;
+  /** Agent containers: where the built provider plugin is installed, and how ssh runs. Tests inject fakes. */
+  containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
 }
 
 const COOKIE = "epc_session";
@@ -353,6 +357,8 @@ export function createApp(d: AppDeps) {
   const connectors = new Connectors(state, outbound, now);
   const pin = new Pin({ state, connectors, fetch: outbound, now });
 
+  const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
+
   const needEngine = (): EngineGateway => {
     if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
     return gateway;
@@ -492,6 +498,8 @@ export function createApp(d: AppDeps) {
         state.setSetting("resourceGroups", { ...all, [companyId]: group });
         // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
         const warnings = existing ? [] : await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
+        warnings.push(...(await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId)).catch((e: Error) => [e.message])));
         return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
@@ -506,6 +514,45 @@ export function createApp(d: AppDeps) {
       delete rest[companyId];
       state.setSetting("resourceGroups", rest);
       return sendJson(res, 200, { ok: true, pool: existing.pool, poolRemoved });
+    }
+
+    // ---- Agent containers: agents run in unprivileged Proxmox containers, set up by a Proxmox administrator.
+    if (method === "GET" && path === "/api/agent-containers") {
+      requireSession(req);
+      return sendJson(res, 200, await asUser(req, res, async (pve) => {
+        const admin = await isNodeAdmin(pve);
+        return containers.status(admin ? pve : null, admin);
+      }));
+    }
+    if (method === "POST" && path === "/api/agent-containers/setup") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const over = parseSetup(await readJson(req));
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can set up agent containers");
+        return containers.startSetup(() => clientFor(s), s.username, over);
+      });
+      return sendJson(res, r.alreadyRunning ? 200 : 202, r);
+    }
+    const acJob = path.match(/^\/api\/agent-containers\/jobs\/([0-9a-f]{12})$/);
+    if (method === "GET" && acJob) {
+      requireSession(req);
+      await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can see agent containers jobs");
+      });
+      const j = containers.getJob(acJob[1]);
+      if (!j) throw new HttpError(404, "not_found", "No such job");
+      return sendJson(res, 200, j);
+    }
+    if (method === "DELETE" && path === "/api/agent-containers") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const b = await readJson(req);
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can remove agent containers");
+        return containers.startTeardown(() => clientFor(s), s.username, b.confirm);
+      });
+      return sendJson(res, 202, r);
     }
 
     // ---- Integrated Access Control: people and permissions are Proxmox users and ACLs; the engine follows.
@@ -1549,11 +1596,41 @@ export function createApp(d: AppDeps) {
     gateway.relayEvents(req, socket, head, s, () => d.sessions.peek(s.id) !== null).catch(() => socket.destroy());
   };
 
+  /**
+   * The one change to the engine that would let agents run on the host again is turning its managed-sandbox-only policy
+   * off. The engine's API would let a Proxmox administrator do that from here, so this refuses it (the engine stays
+   * unmodified; someone with a shell on the host could still change its database).
+   */
+  const engineGuard = (method: string, target: string, body: Buffer | null) => {
+    if (method === "GET" || method === "HEAD") return;
+    let p: string;
+    try {
+      p = decodeURIComponent(target.split("?")[0]).toLowerCase().replace(/\/+$/, "");
+    } catch {
+      return;
+    }
+    if (p !== "/api/instance/settings/experimental") return;
+    let ok = false;
+    try {
+      const v = body === null ? null : JSON.parse(body.toString("utf8") || "{}");
+      ok = v !== null && typeof v === "object" && !Array.isArray(v) && !("enableManagedSandboxOnly" in v && v.enableManagedSandboxOnly !== true);
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new HttpError(403, "agents_on_host_refused", "ePaperclip keeps agents off the host: the engine's managed-sandbox-only setting can't be turned off from here.");
+  };
+
   /** /engine/api/*: the engine, as the signed-in person. Changes need the same header and Origin as our own API. */
   const engineProxy = async (req: IncomingMessage, res: ServerResponse) => {
     const s = requireSession(req);
     if (req.method !== "GET" && req.method !== "HEAD") requireSameSite(req);
-    await needEngine().forward(req, res, s, maxUpload);
+    await needEngine().forward(req, res, s, maxUpload, {
+      inspect: engineGuard,
+      // New agents default to their organization's container environment right away.
+      after: (m, p, status) => {
+        if (status >= 200 && status < 300 && m === "POST" && /^\/api\/companies\/[^/]+\/agent(s|-hires)(\/|\?|$)/i.test(p)) void containers.reconcile().catch(() => {});
+      },
+    });
   };
 
   const handle = async function handle(req: IncomingMessage, res: ServerResponse) {
@@ -1582,5 +1659,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, engine: gateway });
+  return Object.assign(handle, { upgrade, engine: gateway, containers });
 }
