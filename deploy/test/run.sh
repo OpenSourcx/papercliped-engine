@@ -279,6 +279,31 @@ s_deb() {
   rm -f "$R/fake-engine.mjs"
 }
 
+s_npm() {
+  # The npm package's command (npm/epaperclip/bin/epaperclip.js) with a release as its payload, the way it is packed.
+  new_host npm; make_release 1.0.0 2026.1005.0
+  local N="$H/npm"; mkdir -p "$N/bin" "$N/payload"; cp "$REPO/npm/epaperclip/bin/epaperclip.js" "$N/bin/"; cp -r "$R" "$N/payload/epaperclip"
+  epc() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" node "$N/bin/epaperclip.js" "$@" >"$H/out" 2>&1; RC=$?; }
+  epc install
+  check "epaperclip install (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ] && host_health && engine_health'
+  epc status
+  check "epaperclip status" eval '[ "$RC" -eq 0 ] && has "epaperclip-engine.service: running"'
+  epc rollback
+  check "epaperclip rollback passes through (nothing to go back to)" eval '[ "$RC" -ne 0 ] && has "no previous version"'
+  epc frobnicate
+  check "unknown command: usage, exit 2" eval '[ "$RC" -eq 2 ] && has "usage: epaperclip"'
+  epc uninstall --purge
+  check "epaperclip uninstall --purge" eval '[ "$RC" -eq 0 ] && [ ! -e "$H/prefix" ] && [ ! -e "$H/engine-home" ]'
+  rm "$H/bin/pveversion"; export PATH="$H/bin:$(dirname "$(command -v node)"):/usr/local/bin:/usr/bin:/bin"
+  if [ -x /usr/bin/pveversion ] || [ -x /usr/sbin/pveversion ]; then echo "  skip not-Proxmox check (this machine has pveversion)"
+  else epc install; check "refuses on a host without pveversion" eval '[ "$RC" -ne 0 ] && has "this isn.t a Proxmox VE host" && [ ! -e "$H/prefix" ]'; fi
+  if [ "$(/usr/bin/id -u)" -eq 0 ]; then
+    chmod 0755 "$WORK" "$H" "$N" "$N/bin"; chmod 0644 "$N/bin/epaperclip.js"
+    /usr/bin/setpriv --reuid=65534 --regid=65534 --clear-groups node "$N/bin/epaperclip.js" status >"$H/out" 2>&1; RC=$?
+    check "refuses to run when not root" eval '[ "$RC" -ne 0 ] && has "run as root"'
+  fi
+}
+
 s_real_engine() {
   [ "${EPC_TEST_REAL_ENGINE:-}" = 1 ] || { echo "  skip (set EPC_TEST_REAL_ENGINE=1, as root, with internet)"; return 0; }
   [ "$(id -u)" -eq 0 ] || { bad "needs root"; return 0; }
@@ -293,7 +318,7 @@ s_real_engine() {
   check "installed paperclipai matches the lockfile" eval '[ "$(node -p "require(\"$H/prefix/engine/node_modules/paperclipai/package.json\").version")" = "$(node -p "require(\"$REPO/engine/package-lock.json\").packages[\"node_modules/paperclipai\"].version")" ]'
 }
 
-ALL=(fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb real_engine)
+ALL=(fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"
