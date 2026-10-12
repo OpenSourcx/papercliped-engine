@@ -71,10 +71,16 @@ new_host() {
 # A release folder laid out like the downloaded one. make_release <version> <engine version> [variant]
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
-  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine"
+  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
   cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs} "$R/deploy/"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
+  # The agent container provider, as the release carries it (built code and lockfile; packages are installed at install time).
+  local P="$R/plugins/proxmox-sandbox"
+  echo 'export default {};' >"$P/dist/manifest.js"; echo 'export {};' >"$P/dist/worker.js"
+  printf '{\n  "name": "@epaperclip/plugin-proxmox-sandbox",\n  "version": "%s",\n  "dependencies": { "@paperclipai/plugin-sdk": "%s" }\n}\n' "$1" "$2" >"$P/package.json"
+  printf '{\n  "name": "@epaperclip/plugin-proxmox-sandbox",\n  "lockfileVersion": 3,\n  "packages": {}\n}\n' >"$P/package-lock.json"
+  echo '#!/usr/bin/env bash' >"$P/template/provision.sh"; echo 'NODE_VERSION="24.21.0"' >"$P/template/versions.sh"
   echo '<!doctype html><title>console</title>' >"$R/console/index.html"
   echo "$1" >"$R/VERSION"
   printf '{\n  "name": "epaperclip-engine",\n  "private": true,\n  "dependencies": {\n    "paperclipai": "%s"\n  }\n}\n' "$2" >"$R/engine/package.json"
@@ -130,7 +136,9 @@ s_fresh() {
   check "new engine was test-started as its own user first" grep -q "setpriv --reuid=epaperclip-engine" "$H/stub/calls"
   check "says where the engine data and its backups are" has "backs itself up every hour into $H/engine-home/instances/default/data/backups"
   check "nothing left behind" eval '! leftovers'
+  check "the agent container provider is installed (built code, template scripts, packages dir) and readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" ] && [ -f "$H/prefix/plugins/proxmox-sandbox/template/provision.sh" ] && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ] && [ "$(stat -c %u "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js")" = 0 ] && [ "$(stat -c %A "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" | cut -c8)" = r ] && [ "$(stat -c %A "$H/prefix/plugins" | cut -c10)" = x ]'
   install --status
+  check "--status names the provider" has "agent container provider: 1.0.0"
   check "--status: both services" eval 'has "epaperclip.service: running" && has "epaperclip-engine.service: running"'
   check "--status: engine version and health" eval 'has "engine: paperclipai 2026.1005.0" && has "engine health: ok" && has "setup: bootstrap_pending"'
 }
@@ -165,6 +173,7 @@ s_rollback() {
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
   install --rollback
   check "--rollback (exit 0) to 1.0.0" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
+  check "the previous version's agent container provider is back (and the newer one went with its version)" eval 'grep -q "\"version\": \"1.0.0\"" "$H/prefix/plugins/proxmox-sandbox/package.json" && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ]'
   check "previous engine back and healthy" eval 'engine_health | grep -q 2026.1005.0 && host_health'
   check "database from before the upgrade restored" [ "$(schema)" = 2026.1005.0 ]
   check "newer database kept aside, not deleted" eval 'compgen -G "$H/engine-home/instances/default/db.from-2026.1100.0-*" && grep -q 2026.1100.0 "$H"/engine-home/instances/default/db.from-2026.1100.0-*/schema_version'
@@ -243,6 +252,8 @@ s_preflight() {
   check "port 3100 taken: refused" eval '[ "$RC" -ne 0 ] && has "listening on port 3100" && [ ! -e "$H/prefix" ]'
   new_host pveproxy-down; export STUB_PVEPROXY_DOWN=1; make_release 1.0.0 2026.1005.0; install
   check "pveproxy down: refused" eval '[ "$RC" -ne 0 ] && has "pveproxy" && [ ! -e "$H/prefix" ]'
+  new_host no-provider; make_release 1.0.0 2026.1005.0; rm -rf "$R/plugins"; install
+  check "a download without the agent container provider: refused" eval '[ "$RC" -ne 0 ] && has "plugins/proxmox-sandbox/dist/manifest.js is missing" && [ ! -e "$H/prefix" ]'
   new_host bad-option; make_release 1.0.0 2026.1005.0; install --frobnicate
   check "unknown option: refused" eval '[ "$RC" -ne 0 ] && has "unknown option --frobnicate" && [ ! -e "$H/prefix" ]'
 }
@@ -252,7 +263,7 @@ s_uninstall() {
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
   install --uninstall
   check "--uninstall (exit 0)" [ "$RC" -eq 0 ]
-  check "programs and units removed, services stopped" eval '[ ! -e "$H/prefix" ] && [ ! -e "$H/prefix.prev" ] && [ -z "$(ls -A "$H/units")" ] && inactive epaperclip && inactive epaperclip-engine'
+  check "programs (including the agent container provider) and units removed, services stopped" eval '[ ! -e "$H/prefix" ] && [ ! -e "$H/prefix/plugins" ] && [ ! -e "$H/prefix.prev" ] && [ -z "$(ls -A "$H/units")" ] && inactive epaperclip && inactive epaperclip-engine'
   check "engine data, vault and settings kept" eval '[ "$(schema)" = 2026.1005.0 ] && [ -d "$H/host-state" ] && [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ] && [ -f "$H/default/epaperclip" ]'
   check "says where the data is" has "$H/engine-home"
   install
@@ -316,10 +327,17 @@ s_real_engine() {
   unset EPC_SKIP_ENGINE_NPM EPC_SKIP_NODE; export STUB_RUN_AS_NOBODY=1 EPC_ENGINE_WAIT=300; touch "$H/stub/run-as-nobody"
   make_release 1.0.0 x
   cp "$REPO/engine/package.json" "$REPO/engine/package-lock.json" "$R/engine/"
+  # The real provider (built, with its real lockfile) when it has been built here; its packages are installed for real.
+  if [ -f "$REPO/plugins/proxmox-sandbox/dist/manifest.js" ]; then
+    rm -rf "$R/plugins/proxmox-sandbox"; mkdir -p "$R/plugins/proxmox-sandbox"
+    (cd "$REPO/plugins/proxmox-sandbox" && cp -r dist template package.json package-lock.json README.md "$R/plugins/proxmox-sandbox/")
+    REAL_PLUGIN=1
+  fi
   install
   check "real engine installs from engine/ with the pinned Node.js (exit 0)" [ "$RC" -eq 0 ]
   check "real engine healthy, running as nobody" eval 'engine_health | grep -q "\"status\":\"ok\"" && [ "$(stat -c %u "$H/engine-home/instances/default/db")" = 65534 ]'
   check "engine tree is root's and its database binaries are linked" eval '[ "$(stat -c %u "$H/prefix/engine/node_modules")" = 0 ] && [ -L "$H/prefix/engine/node_modules/@embedded-postgres/linux-$( [ "$(uname -m)" = aarch64 ] && echo arm64 || echo x64)/native/lib/libpq.so.5" ]'
+  [ "${REAL_PLUGIN:-}" != 1 ] || check "the provider's production packages were installed from its lockfile, readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/node_modules/@paperclipai/plugin-sdk/package.json" ] && [ "$(stat -c %u "$H/prefix/plugins/proxmox-sandbox/node_modules")" = 0 ] && setpriv --reuid=65534 --regid=65534 --clear-groups node -e "import(process.argv[1]).then((m)=>{if(!m.default?.id)process.exit(1)})" "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js"'
   check "installed paperclipai matches the lockfile" eval '[ "$(node -p "require(\"$H/prefix/engine/node_modules/paperclipai/package.json\").version")" = "$(node -p "require(\"$REPO/engine/package-lock.json\").packages[\"node_modules/paperclipai\"].version")" ]'
 }
 

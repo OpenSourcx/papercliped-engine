@@ -48,6 +48,34 @@ export interface ResourceGroupState extends ResourceGroupSize {
   updatedBy?: string;
 }
 
+/** Agent containers: agents run in unprivileged Proxmox containers, set up once by a Proxmox administrator. */
+export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
+export interface ContainersStep { id: string; label: string; done: boolean; detail?: string }
+export interface ContainersParams { storage: string; templateStorage: string; bridge: string; pool: string; size: { cores: number; memoryMb: number; diskGb: number } }
+export interface ContainersStatus {
+  state: ContainersState;
+  steps: ContainersStep[];
+  pluginInstalled: boolean;
+  environments: { companyId: string; environmentId: string; ok: boolean }[];
+  template: { vmid?: number; name?: string; exists: boolean };
+  token: { exists: boolean };
+  canManage: boolean;
+  job: { id: string; status: "running" | "done" | "failed" } | null;
+  params?: ContainersParams | null;
+  error?: string;
+}
+export interface ContainersJob {
+  id: string;
+  kind: "setup" | "teardown";
+  status: "running" | "done" | "failed";
+  startedAt: number;
+  finishedAt?: number;
+  startedBy: string;
+  steps: { id: string; label: string; state: "pending" | "running" | "done" | "failed" | "skipped"; detail?: string }[];
+  log: { t: number; level: "info" | "warn" | "error"; text: string }[];
+  error?: string;
+}
+
 export class HostError extends Error {
   readonly status: number;
   readonly code: string | null;
@@ -89,6 +117,12 @@ export const host = {
     setKey: (id: string, apiKey: string) => call<{ connector: ConnectorState }>("PUT", `/api/connectors/${enc(id)}/credential`, { apiKey }).then((r) => r.connector),
     test: (id: string) => call<{ connector: ConnectorState }>("POST", `/api/connectors/${enc(id)}/test`, {}).then((r) => r.connector),
     remove: (id: string) => call<unknown>("DELETE", `/api/connectors/${enc(id)}/credential`),
+  },
+  agentContainers: {
+    get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
+    setup: (choices: Partial<ContainersParams>) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/setup", choices),
+    job: (id: string) => call<ContainersJob>("GET", `/api/agent-containers/jobs/${enc(id)}`),
+    teardown: (confirm: string) => call<{ jobId: string }>("DELETE", "/api/agent-containers", { confirm }),
   },
   resourceGroups: {
     /** The groups of every organization the person belongs to. One without an entry has no resource group yet. */

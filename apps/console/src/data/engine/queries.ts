@@ -233,3 +233,37 @@ export function useConnectorAction() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.connectors }),
   });
 }
+
+// ---- Agent containers
+
+/** Whether agents can run: they run only in containers, so only once an administrator has set those up. Refreshed while it isn't ready. */
+export function useAgentContainers() {
+  const live = useSession().session.mode === "live";
+  return useQuery({ queryKey: qk.agentContainers, queryFn: host.agentContainers.get, enabled: live, retry: 1, refetchInterval: (q) => (q.state.data?.state === "ready" ? 120_000 : q.state.data?.job?.status === "running" ? 3_000 : 30_000) });
+}
+
+/** The job behind a setup or teardown, polled until it ends. It runs on the host, so it carries on if this page closes. */
+export function useContainersJob(id: string | null) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.agentContainersJob(id ?? ""),
+    queryFn: async () => {
+      const j = await host.agentContainers.job(id!);
+      if (j.status !== "running") void qc.invalidateQueries({ queryKey: qk.agentContainers });
+      return j;
+    },
+    enabled: id !== null,
+    retry: 2,
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== "running" ? false : 1_500),
+  });
+}
+
+export function useContainersSetup() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: host.agentContainers.setup, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
+}
+
+export function useContainersTeardown() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: host.agentContainers.teardown, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
+}

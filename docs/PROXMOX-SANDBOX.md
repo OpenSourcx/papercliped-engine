@@ -4,6 +4,10 @@
 
 Checked against `paperclipai@2026.1005.0` and `@paperclipai/plugin-sdk@2026.1005.0`, and installed into a running engine of that version (see [Verification](#verification)).
 
+## Set up from the console
+
+You don't have to do any of the manual steps below. After installing ePaperclip, a Proxmox administrator opens **Settings, Agent containers** and presses **Set up agent containers**. The host service then does steps 1 to 3 and "Installing the plugin" and "Creating the environment" below through the Proxmox API as the signed-in administrator, builds the template with the same `template/provision.sh` and `template/versions.sh` this folder ships, and installs the plugin into the engine from `/opt/epaperclip/plugins/proxmox-sandbox`. What it creates, and what it doesn't, is in [ENGINE.md](ENGINE.md#agent-containers). The manual steps stay here as the reference, and for a setup the console can't make (a plugin for a different engine, a shared cluster, your own storage layout).
+
 ## What it does
 
 For every agent run, Paperclip asks the provider for a lease. The provider:
@@ -220,7 +224,7 @@ Agent credentials go in as adapter environment variables backed by Paperclip sec
 - **No provider-side expiry.** Paperclip's `requestedExpiresAt` cannot be enforced by Proxmox, so the provider returns no expiry and Paperclip fails closed for callers that need one.
 - **One node.** Containers are created on the configured node; there is no placement across a cluster.
 - **Reused containers keep running** until Paperclip destroys them; they hold their memory while idle.
-- The engine logs the body of rejected API requests, which can include pasted secrets; prefer saving secrets first and referencing them.
+- The engine logs the body of rejected API requests, which can include pasted secrets; prefer saving secrets first and referencing them. (The console setup does: it saves the token secret and the SSH key as Paperclip secrets first, and the environment names them by id.)
 
 ## Verification
 

@@ -31,6 +31,12 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Proxmox sandbox provider (tests, then the build the release ships)
+        run: |
+          npm --prefix plugins/proxmox-sandbox ci
+          npm --prefix plugins/proxmox-sandbox run typecheck
+          npm --prefix plugins/proxmox-sandbox test
+          npm --prefix plugins/proxmox-sandbox run build
       - run: node scripts/package-release.mjs "${GITHUB_REF_NAME}"
       - name: Build the Debian package
         run: bash scripts/build-deb.sh

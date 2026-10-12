@@ -26,6 +26,7 @@ import { StateStore } from "./state.ts";
  *   EPC_ENGINE_URL         where the engine listens                     (default http://127.0.0.1:3100)
  *   EPC_ENGINE_PUBLIC_URL  the engine's PAPERCLIP_PUBLIC_URL, sent as Origin (default EPC_ENGINE_URL)
  *   EPC_ENGINE_DIR         where the engine is installed, for its version  (default /opt/epaperclip/engine)
+ *   EPC_PLUGIN_DIR         the built Proxmox sandbox provider (default /opt/epaperclip/plugins/proxmox-sandbox)
  */
 
 const env = process.env;
@@ -58,6 +59,8 @@ const handle = createApp({
   secureCookies: !devHttp,
   maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
   consolePort: port,
+  // The built Proxmox sandbox provider the installer puts beside the engine (agent containers).
+  containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
@@ -75,7 +78,19 @@ sweep.unref();
 
 server.listen(port, host, () => console.log(`epaperclip: listening on ${devHttp ? "http" : "https"}://${listen}`));
 // Settle the engine's service account in the background, retrying while the engine starts.
-void handle.engine?.start();
+// Once the engine is up, keep agents off the host: it refuses to run them anywhere but in a container (docs/ENGINE.md).
+// Then keep organizations' container environments in step (new organizations, new agents) every minute.
+void handle.engine?.start().then(async () => {
+  const enforce = async () => {
+    const r = await handle.containers.enforce();
+    if (!r.ok) console.warn(`epaperclip: couldn't set the engine's managed-sandbox-only policy: ${r.error}`);
+  };
+  await enforce();
+  const tick = setInterval(() => {
+    void enforce().then(() => handle.containers.reconcile()).catch(() => {});
+  }, 60_000);
+  tick.unref();
+});
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
     handle.engine?.stop();

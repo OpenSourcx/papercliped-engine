@@ -1,8 +1,9 @@
-import { Cable, Palette, Plug, RefreshCw, Settings as Gear, ShieldCheck } from "lucide-react";
+import { Cable, Container, Palette, Plug, RefreshCw, Settings as Gear, ShieldCheck } from "lucide-react";
 import { Access } from "../pages/Access.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
 import { Apps } from "../pages/Apps.tsx";
 import { Connectors } from "../pages/Connectors.tsx";
+import { AgentContainersSettings } from "../pages/containers/AgentContainers.tsx";
 import { NewMachineModal } from "../pages/machines/NewMachine.tsx";
 import { NewOrgModal } from "../pages/NewOrg.tsx";
 import { QuickCreateModal } from "../pages/org/QuickCreate.tsx";
@@ -24,6 +25,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "access", group: "Access", label: "Access control", icon: <ShieldCheck className="h-4 w-4" />, render: () => <Access /> },
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
   { id: "connectors", group: "Access", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
+  { id: "agent-containers", group: "Access", label: "Agent containers", icon: <Container className="h-4 w-4" />, render: () => <AgentContainersSettings /> },
   { id: "appearance", group: "You", label: "Appearance", icon: <Palette className="h-4 w-4" />, render: () => <Appearance /> },
 ];
 

@@ -63,6 +63,9 @@ else
   SRC_BUNDLE="$ROOT/services/epaperclip/dist/epaperclip.mjs"; SRC_CONSOLE="$ROOT/apps/console/dist"
 fi
 SRC_ENGINE="$ROOT/engine"
+# The Proxmox sandbox provider (agent containers): built code and lockfile; its production packages are installed below.
+SRC_PLUGIN="$ROOT/plugins/proxmox-sandbox"
+PLUGIN_REL="plugins/proxmox-sandbox"
 
 listen_port() {
   local l=""
@@ -101,6 +104,7 @@ engine_version() {
   echo "${v:-none}"
 }
 engine_fingerprint() { cat "$1/package.json" "$1/package-lock.json" 2>/dev/null | sha256sum | cut -d' ' -f1; }
+plugin_version() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "${1:-$PREFIX}/$PLUGIN_REL/package.json" 2>/dev/null | head -n1; }
 host_name() { hostname -f 2>/dev/null || hostname; }
 host_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
 latest_backup() { ls -1t "$BACKUPS" 2>/dev/null | head -n1; }
@@ -139,6 +143,7 @@ case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge) ;; *) di
 if [ "$ACTION" = "--status" ]; then
   say "version: $(installed_version)$([ -d "$PREV" ] && echo " (previous: $(installed_version "$PREV"))")"
   say "engine: paperclipai $(engine_version "$PREFIX/engine")$([ -d "$PREV" ] && echo " (previous: $(engine_version "$PREV/engine"))")"
+  say "agent container provider: $(plugin_version || echo none) ($PREFIX/$PLUGIN_REL)"
   for u in "${UNITS[@]}"; do if active "$u"; then say "$u.service: running"; else say "$u.service: not running"; fi; done
   if h="$(curl -fs --max-time 3 "$(engine_url)/api/health" 2>/dev/null)"; then
     say "engine health: ok on 127.0.0.1:$ENGINE_PORT (setup: $(echo "$h" | sed -n 's/.*"bootstrapStatus":"\([^"]*\)".*/\1/p'))"
@@ -210,7 +215,8 @@ case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64) ARCH=arm64 ;; *) ARCH=""; nee
 for c in curl tar xz sha256sum useradd setpriv setsid ss systemctl; do command -v "$c" >/dev/null || need "the '$c' command is missing (apt-get install -y curl xz-utils util-linux iproute2)"; done
 [ -f "$SRC_BUNDLE" ] || need "the service isn't built (expected $SRC_BUNDLE). From a checkout: pnpm install && pnpm build"
 [ -f "$SRC_CONSOLE/index.html" ] || need "the console isn't built (expected $SRC_CONSOLE/index.html)"
-for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/engine-links.mjs engine/package.json engine/package-lock.json; do
+for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/engine-links.mjs engine/package.json engine/package-lock.json \
+  $PLUGIN_REL/dist/manifest.js $PLUGIN_REL/dist/worker.js $PLUGIN_REL/package.json $PLUGIN_REL/package-lock.json $PLUGIN_REL/template/provision.sh $PLUGIN_REL/template/versions.sh; do
   [ -f "$ROOT/$f" ] || need "$f is missing from this download"
 done
 systemctl is-active -q pveproxy 2>/dev/null || need "Proxmox's own web service (pveproxy) isn't running, and ePaperclip signs people in through it"
@@ -239,13 +245,17 @@ snapshot_mb=0
 if [ "$old_engine" != "none" ] && [ "$old_engine" != "$new_engine" ] && [ -d "$DB_DIR" ]; then
   snapshot_mb=$(( $(du -sk "$DB_DIR" | cut -f1) / 1024 + 1 ))
 fi
-if [ "$engine_reuse" -eq 0 ] && [ "${EPC_SKIP_ENGINE_NPM:-}" != "1" ]; then
+# The provider's production packages: kept when its lockfile is unchanged.
+plugin_fingerprint() { cat "$1/package.json" "$1/package-lock.json" 2>/dev/null | sha256sum | cut -d' ' -f1; }
+plugin_reuse=0
+if [ -d "$PREFIX/$PLUGIN_REL/node_modules" ] && [ "$(plugin_fingerprint "$PREFIX/$PLUGIN_REL")" = "$(plugin_fingerprint "$SRC_PLUGIN")" ]; then plugin_reuse=1; fi
+if { [ "$engine_reuse" -eq 0 ] || [ "$plugin_reuse" -eq 0 ]; } && [ "${EPC_SKIP_ENGINE_NPM:-}" != "1" ]; then
   curl -fsI --max-time 15 https://registry.npmjs.org/paperclipai >/dev/null 2>&1 || need "the engine is installed from registry.npmjs.org, which this host can't reach right now"
 fi
 
 # Disk: about 1.4 GB for a new engine tree (the previous one is kept for rollback), 400 MB for the rest, and room for
 # the engine's data, plus a copy of its database before an engine upgrade.
-opt_mb=400; [ "$engine_reuse" -eq 1 ] || opt_mb=$((opt_mb + 1800))
+opt_mb=450; [ "$engine_reuse" -eq 1 ] || opt_mb=$((opt_mb + 1800))
 var_mb=$((500 + snapshot_mb))
 if [ "$(dev_of "$(dirname "$PREFIX")")" = "$(dev_of "$(dirname "$ENGINE_HOME")")" ]; then
   free="$(mb_free "$(dirname "$PREFIX")")"
@@ -378,6 +388,26 @@ else
   "$NODE" "$ROOT/deploy/engine-links.mjs" "$STAGE/engine" >/dev/null || die "the engine's database binaries couldn't be prepared. Nothing was changed."
   [ -f "$STAGE/$ENGINE_ENTRY" ] || die "the engine installed, but $ENGINE_ENTRY isn't in it. Nothing was changed."
   engine_fresh=1
+fi
+# The provider the engine loads for agent containers (setup is done from the console, by a Proxmox administrator). It sits
+# under the install prefix so an upgrade, a rollback and an uninstall move it with everything else. Its production
+# packages come from its own lockfile, checked against integrity hashes, with no install scripts, like the engine's.
+install -d -m 0755 "$STAGE/$PLUGIN_REL"
+cp -r "$SRC_PLUGIN/dist" "$SRC_PLUGIN/template" "$STAGE/$PLUGIN_REL/"
+install -m 0644 "$SRC_PLUGIN/package.json" "$SRC_PLUGIN/package-lock.json" "$STAGE/$PLUGIN_REL/"
+[ ! -f "$SRC_PLUGIN/README.md" ] || install -m 0644 "$SRC_PLUGIN/README.md" "$STAGE/$PLUGIN_REL/"
+if [ "$plugin_reuse" -eq 1 ]; then
+  cp -al "$PREFIX/$PLUGIN_REL/node_modules" "$STAGE/$PLUGIN_REL/node_modules" 2>/dev/null || cp -a "$PREFIX/$PLUGIN_REL/node_modules" "$STAGE/$PLUGIN_REL/node_modules"
+elif [ "${EPC_SKIP_ENGINE_NPM:-}" = "1" ]; then
+  install -d "$STAGE/$PLUGIN_REL/node_modules"   # testing only
+else
+  say "installing the agent container provider's packages from its lockfile"
+  : >"$TMPDIR_EPC/npmrc-user"; : >"$TMPDIR_EPC/npmrc-global"
+  (cd "$STAGE/$PLUGIN_REL" && HOME="$TMPDIR_EPC" "$NODE" "$NPM_CLI" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error \
+    --registry=https://registry.npmjs.org/ --userconfig="$TMPDIR_EPC/npmrc-user" --globalconfig="$TMPDIR_EPC/npmrc-global" \
+    --cache="$TMPDIR_EPC/npm-cache" --update-notifier=false) >"$TMPDIR_EPC/npm-plugin.log" 2>&1 \
+    || { tail -n 30 "$TMPDIR_EPC/npm-plugin.log" >&2; die "couldn't install the agent container provider's packages from registry.npmjs.org. Nothing was changed."; }
+  [ -f "$STAGE/$PLUGIN_REL/node_modules/@paperclipai/plugin-sdk/package.json" ] || die "the agent container provider installed, but its SDK isn't in it. Nothing was changed."
 fi
 chown -R root:root "$STAGE"
 chmod -R a+rX,go-w "$STAGE"
