@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId, useState, type ReactElement, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Copy, Lock } from "lucide-react";
 import { useSession } from "../../auth/session.tsx";
 import { iac } from "../../data/engine/host.ts";
-import { Button, Notice, Spinner } from "../../ui/primitives.tsx";
+import { Button, Field, Notice, Spinner } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { errorText } from "../../data/engine/queries.ts";
 
@@ -21,6 +21,21 @@ export function useMe(): string {
 export const dateOf = (seconds: number | null | undefined) => (seconds ? new Date(seconds * 1000).toLocaleDateString() : "never");
 export const dateOfMs = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString() : "never");
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** A Field whose label is tied to its control (the control gets an id unless it has one), so screen readers announce it. */
+export function AField({ label, hint, error, children, className }: { label: ReactNode; hint?: ReactNode; error?: ReactNode; children: ReactNode; className?: string }) {
+  const auto = useId();
+  const items = Children.toArray(children);
+  const first = items[0];
+  let id: string | undefined;
+  let control = children;
+  if (isValidElement(first)) {
+    const el = first as ReactElement<{ id?: string }>;
+    id = el.props.id ?? auto;
+    control = [cloneElement(el, { id }), ...items.slice(1)];
+  }
+  return <Field label={label} hint={hint} error={error} className={className} htmlFor={id}>{control}</Field>;
+}
 
 export function Loading() {
   return <div className="py-16 grid place-items-center"><Spinner label="Loading" /></div>;

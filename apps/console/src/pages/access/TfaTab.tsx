@@ -4,9 +4,9 @@ import { Plus, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { access, type TfaEntry } from "../../data/engine/access.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Chip, EmptyState, Field, Input, Notice, SectionTitle, Select, Toggle } from "../../ui/primitives.tsx";
+import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Select, Toggle } from "../../ui/primitives.tsx";
 import { QrCode } from "./qr.tsx";
-import { CopyButton, QueryState, SecretOnce, Table, Td, Th, dateOf, useIac, useMe } from "./shared.tsx";
+import { CopyButton, QueryState, SecretOnce, Table, Td, Th, dateOf, useIac, useMe, AField as Field } from "./shared.tsx";
 import { groupKey, newSecret, otpauthUri } from "./totp.ts";
 
 const TYPE_LABEL: Record<string, string> = { totp: "Authenticator app", recovery: "Recovery keys", webauthn: "Security key", u2f: "Security key (U2F)", yubico: "Yubico OTP" };

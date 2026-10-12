@@ -4,8 +4,8 @@ import { Plus, Trash2, Users } from "lucide-react";
 import { access, type Group } from "../../data/engine/access.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Field, Input, Notice, SectionTitle } from "../../ui/primitives.tsx";
-import { IAC_KEY, QueryState, ReadOnlyNote, Table, Td, Th, Warnings, plural, useIac } from "./shared.tsx";
+import { Button, Card, Chip, EmptyState, Input, Notice, SectionTitle } from "../../ui/primitives.tsx";
+import { IAC_KEY, QueryState, ReadOnlyNote, Table, Td, Th, Warnings, plural, useIac, AField as Field } from "./shared.tsx";
 
 const KEY = ["access", "groups"] as const;
 

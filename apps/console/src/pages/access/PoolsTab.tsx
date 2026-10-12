@@ -4,8 +4,8 @@ import { Boxes, Plus, Trash2, X } from "lucide-react";
 import { access, type Pool, type PoolOverview } from "../../data/engine/access.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Chip, EmptyState, Field, Input, Notice, SectionTitle, Select } from "../../ui/primitives.tsx";
-import { QueryState, ReadOnlyNote, Table, Td, Th, plural } from "./shared.tsx";
+import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Select } from "../../ui/primitives.tsx";
+import { QueryState, ReadOnlyNote, Table, Td, Th, plural, AField as Field } from "./shared.tsx";
 
 const KEY = ["access", "pools"] as const;
 
@@ -79,13 +79,13 @@ function PoolModal({ pool, data, onClose }: { pool: Pool | null; data: PoolOverv
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Add a machine">
                   <div className="flex gap-2">
-                    <Select value={addVm} onChange={(e) => setAddVm(e.target.value)}><option value="">Choose…</option>{data.candidates.machines.filter((m) => !inPool.has(String(m.vmid))).map((m) => <option key={m.vmid} value={m.vmid}>{m.name ?? "Machine"} ({m.vmid})</option>)}</Select>
+                    <Select aria-label="Add a machine" value={addVm} onChange={(e) => setAddVm(e.target.value)}><option value="">Choose…</option>{data.candidates.machines.filter((m) => !inPool.has(String(m.vmid))).map((m) => <option key={m.vmid} value={m.vmid}>{m.name ?? "Machine"} ({m.vmid})</option>)}</Select>
                     <Button disabled={!addVm} loading={change.isPending} onClick={() => change.mutate({ addVms: [addVm] })}><Plus className="h-4 w-4" />Add</Button>
                   </div>
                 </Field>
                 <Field label="Add a storage">
                   <div className="flex gap-2">
-                    <Select value={addStore} onChange={(e) => setAddStore(e.target.value)}><option value="">Choose…</option>{data.candidates.storage.filter((s) => !storeIn.has(s)).map((s) => <option key={s} value={s}>{s}</option>)}</Select>
+                    <Select aria-label="Add a storage" value={addStore} onChange={(e) => setAddStore(e.target.value)}><option value="">Choose…</option>{data.candidates.storage.filter((s) => !storeIn.has(s)).map((s) => <option key={s} value={s}>{s}</option>)}</Select>
                     <Button disabled={!addStore} loading={change.isPending} onClick={() => change.mutate({ addStorage: [addStore] })}><Plus className="h-4 w-4" />Add</Button>
                   </div>
                 </Field>

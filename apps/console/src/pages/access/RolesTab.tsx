@@ -4,8 +4,8 @@ import { Lock, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { access, type Acl, type Privilege, type Role } from "../../data/engine/access.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Chip, EmptyState, Field, Input, Notice, SectionTitle, Segmented, Select, Toggle } from "../../ui/primitives.tsx";
-import { QueryState, ReadOnlyNote, Table, Td, Th, plural, useIac } from "./shared.tsx";
+import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Segmented, Select, Toggle } from "../../ui/primitives.tsx";
+import { QueryState, ReadOnlyNote, Table, Td, Th, plural, useIac, AField as Field } from "./shared.tsx";
 
 const ROLES_KEY = ["access", "roles"] as const;
 const ACL_KEY = ["access", "acl"] as const;
