@@ -864,7 +864,7 @@ export function createApp(d: AppDeps) {
       const upid = decodeURIComponent(task[1]);
       // UPID:node:pid:pstart:starttime:type:id:user: — the id can hold a volume id with ":" and "/", so only the fixed
       // fields are pinned. It is URL-encoded on the way to Proxmox, and must name this node.
-      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:\w+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
+      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[\w-]+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
       const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(d.pve.node, upid), pve.taskLog(d.pve.node, upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
       return sendJson(res, 200, { status: status.status, exitstatus: (status as { exitstatus?: string }).exitstatus ?? null, log: log.map((l) => l.t) });
     }
