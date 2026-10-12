@@ -34,12 +34,13 @@ Requires Node 22 or later and pnpm.
 
 ## Install on a Proxmox host
 
+In the host's shell, as root:
+
 ```sh
-pnpm install && pnpm build        # from this repository
-sudo ./deploy/install.sh          # on the Proxmox VE host, from the same checkout
+curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash
 ```
 
-Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP, with two-factor if you use it). What each person can see and do is exactly what their Proxmox permissions allow. The stock Proxmox UI stays at `https://<host>:8006/` as the emergency console. Details in [services/epaperclip/README.md](services/epaperclip/README.md).
+Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP, with two-factor if you use it). What each person can see and do is exactly what their Proxmox permissions allow. The stock Proxmox UI stays at `https://<host>:8006/` as the emergency console. The installer checks the host first, brings its own verified Node.js, and rolls back by itself if the new version doesn't come up. Full guide, including installing from a branch, upgrading, rollback and uninstall: [docs/INSTALL.md](docs/INSTALL.md). Service details: [services/epaperclip/README.md](services/epaperclip/README.md).
 
 ## Try the console without a host
 

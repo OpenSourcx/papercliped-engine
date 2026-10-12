@@ -61,6 +61,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Store: one place for operating systems (newest installers resolved from each vendor's own checksum list and downloaded verified), ready-made container apps, driver disks and plugins; installed/update status, install to a chosen storage, "Create machine" from an installed item. Plugin installs (connectors, agent adapters, Pin skills) are saved on this device; their runtime arrives with the ePaperclip fork
 - [x] Store plugins mirror Paperclip's built-in adapter types (enable/disable) with bundled, licensed logos and monogram fallbacks
 - [x] Store: signed marketplace index (Ed25519, expiry, no rollback, strict entry formats, npm entries pinned by integrity hash), fetched only by the host service; publish and key scripts in `scripts/`, rotation documented in `marketplace/README.md`
+- [x] Installer hardening: preflight checks, pinned and verified private Node.js, staged install with automatic rollback, `--status`/`--rollback`/`--uninstall`, release packaging and workflow, `get.sh` and `from-source.sh`
+- [ ] Installer: test on clean Proxmox 8 and 9 hosts (single node, cluster, ZFS and LVM), publish the first release
 - [ ] Marketplace: generate and pin the first-party signing key, create the public catalog repository, CI publish job; install npm entries through Paperclip's adapter and plugin APIs once the runtime exists
 - [ ] Store: remove an installed ISO or template from the Store, and update plugins from a published index
 - [x] Storage content: browse ISO images, CT templates, backups and disks per storage; delete with confirmation
