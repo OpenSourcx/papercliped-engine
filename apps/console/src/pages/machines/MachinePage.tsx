@@ -116,10 +116,10 @@ export function MachinePage() {
       </div>
 
       {tab === "overview" && (
-        <div className="grid lg:grid-cols-3 gap-4 fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 fade-in">
           <Card className="p-5 lg:col-span-2">
             <SectionTitle>Usage</SectionTitle>
-            <div className="grid sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <BarMeter label="CPU" pct={g.cpuPct} value={`${g.cpuPct.toFixed(0)}% of ${g.cores} core${g.cores === 1 ? "" : "s"}`} />
               <BarMeter label="Memory" pct={g.memMax ? (g.memUsed / g.memMax) * 100 : 0} value={`${formatBytes(g.memUsed)} of ${formatBytes(g.memMax)}`} />
               <BarMeter label="Disk" pct={31} value={`${formatBytes(g.diskMax * 0.31)} of ${formatBytes(g.diskMax)}`} />

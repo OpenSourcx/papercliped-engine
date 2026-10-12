@@ -344,7 +344,7 @@ export function BackupJobModal({ onClose }: { onClose: () => void }) {
         <p className="text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</p>
       ) : (
         <div className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block">
               <span className="block text-compact text-ink-2 mb-2">When</span>
               <select value={preset} onChange={(e) => setPreset(e.target.value)} className={select}>{PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
@@ -357,7 +357,7 @@ export function BackupJobModal({ onClose }: { onClose: () => void }) {
             </label>
           </div>
           <MachinePicker all={all} setAll={setAll} vmids={vmids} setVmids={setVmids} />
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <fieldset>
               <legend className="text-compact text-ink-2 mb-2">Mode</legend>
               <Segmented value={mode} onChange={setMode} options={MODES.map((m) => ({ value: m.value, label: m.label }))} />

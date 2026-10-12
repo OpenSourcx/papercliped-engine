@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { describeRule } from "@papercliped-engine/automations";
-import { ArrowUp, Archive, BookOpen, Bot, Boxes, Building2, Cable, Check, Eye, FileText, HardDrive, Lightbulb, Network, Pencil, RotateCcw, Save, Sparkles, Workflow, Zap } from "lucide-react";
+import { Archive, BookOpen, Boxes, Building2, Cable, Check, Eye, FileText, HardDrive, Lightbulb, Network, Pencil, RotateCcw, Save, Sparkles, Workflow, Zap, Cpu } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { DEFAULT_MEMORY, DEFAULT_SOUL } from "../../data/pin.ts";
 import type { PinLogEntry } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
-import { PinCardView } from "../../pin/PinCards.tsx";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinIsland.tsx";
-import { Button, Card, Chip, PageFrame, Segmented, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, PageFrame, Segmented, Tabs, Toggle } from "../../ui/primitives.tsx";
+import { PinSettingsPanel } from "../../pin/PinSettings.tsx";
+import { PinThread } from "../../pin/PinThread.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -18,6 +19,7 @@ const TABS = [
   { id: "automations", label: "Automations" },
   { id: "activity", label: "Activity" },
   { id: "skills", label: "Skills" },
+  { id: "settings", label: "Settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -61,27 +63,26 @@ export function PinPage() {
   return (
     <PageFrame width="6xl">
       <div className="relative rounded-2xl border border-line overflow-hidden mb-6">
-        <div className="absolute inset-0 hero-glow opacity-70 pointer-events-none" aria-hidden />
-        <div className="relative flex flex-wrap items-center gap-5 p-6">
-          <PinOrb size={64} thinking={pin.thinking} />
-          <div className="flex-1 min-w-[220px]">
-            <h1 className="text-display font-semibold tracking-tight leading-tight">Pin</h1>
-            <p className="text-sm text-ink-2 mt-1">
+        <div className="absolute inset-0 hero-glow opacity-60 pointer-events-none" aria-hidden />
+        <div className="relative flex flex-wrap items-center gap-x-5 gap-y-4 p-5 sm:p-6">
+          <PinOrb size={56} thinking={pin.thinking || pin.streaming} />
+          <div className="flex-1 min-w-0 basis-56">
+            <h1 className="text-display font-semibold tracking-tight">Pin</h1>
+            <p className="text-sm text-ink-2 mt-1 text-pretty">
               {mode === "agent" ? "Agent mode: acts on its own and tells you after." : "Assistant mode: asks before it changes anything."} Watching {device} · {activeRules} automation{activeRules === 1 ? "" : "s"} on{last ? ` · last ${LOG_LABEL[last.kind].toLowerCase()} ${ago(last.at)}` : ""}
             </p>
+            <button type="button" onClick={() => setTab("settings")} className="transition-control mt-2 inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink">
+              <Cpu className="h-3.5 w-3.5" />{pin.settings?.provider ? <>Thinks with <span className="text-ink-2 font-medium">{pin.providerName}</span>{pin.settings.model && <> · <span className="font-mono text-ink-2">{pin.settings.model}</span></>}</> : "No model provider yet. Choose one in Settings."}
+            </button>
           </div>
-          <Segmented value={mode} onChange={(m) => engine.setPinMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+          <Segmented label="Pin's mode" value={mode} onChange={(m) => pin.setMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs className="mb-5" value={tab} onChange={setTab} tabs={TABS.map((t) => ({ id: t.id, label: t.label }))} />
 
       {tab === "overview" && (
-        <div className="grid lg:grid-cols-[1fr_340px] gap-5 fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 fade-in">
           <div className="space-y-5">
             <Card className="p-5">
               <h2 className="font-medium mb-1">What Pin may do</h2>
@@ -170,6 +171,11 @@ export function PinPage() {
           <ActivityList entries={engine.pin.log} />
         </Card>
       )}
+      {tab === "settings" && (
+        <Card className="p-5 sm:p-6 fade-in max-w-3xl">
+          <PinSettingsPanel source={pin.settingsSource} onSaved={pin.setSettings} />
+        </Card>
+      )}
       {tab === "skills" && <PinSkills onAsk={(q) => { setTab("chat"); pin.send(q, { inPlace: true }); }} onGo={(to) => nav(to)} />}
     </PageFrame>
   );
@@ -196,49 +202,25 @@ function ActivityList({ entries }: { entries: PinLogEntry[] }) {
 function PinChat() {
   const pin = usePin();
   const engine = useEngine();
-  const [draft, setDraft] = useState("");
-  const list = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" });
-  }, [pin.messages, pin.thinking]);
-  useEffect(() => input.current?.focus(), []);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    pin.send(draft, { inPlace: true });
-    setDraft("");
-  };
+  const samples = ["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])];
   return (
-    <Card className="flex flex-col h-[min(640px,calc(100dvh-300px))] fade-in">
-      <div ref={list} className="flex-1 overflow-y-auto p-5 space-y-3">
-        {pin.messages.length === 0 && (
-          <div className="text-center pt-12">
-            <Bot className="h-6 w-6 mx-auto text-ink-3" />
-            <p className="text-sm text-ink-2 mt-3">Ask about the device, an organization, or tell Pin what to automate.</p>
-            <div className="flex flex-wrap justify-center gap-2 mt-4">
-              {["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])].map((s) => (
-                <button key={s} onClick={() => pin.send(s, { inPlace: true })} className="text-xs px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2">{s}</button>
+    <Card className="flex flex-col h-[min(680px,calc(100dvh-280px))] min-h-96 overflow-hidden fade-in">
+      <PinThread
+        inPlace
+        autoFocus
+        className="flex-1"
+        empty={
+          <div className="flex flex-col items-center text-center pt-10 px-4">
+            <PinOrb size={40} />
+            <p className="text-sm text-ink-2 mt-4 max-w-sm text-pretty">Ask about the device, an organization, or tell Pin what to automate.</p>
+            <div className="flex flex-wrap justify-center gap-2 mt-5 max-w-xl">
+              {samples.map((q, i) => (
+                <button key={q} type="button" onClick={() => pin.send(q, { inPlace: true })} style={{ "--i": i } as CSSProperties} className="stagger-in transition-control text-compact px-3 py-1.5 rounded-full border border-line bg-surface-2/60 hover:bg-surface-3 text-ink-2 hover:text-ink">{q}</button>
               ))}
             </div>
           </div>
-        )}
-        {pin.messages.map((m) => (
-          <div key={m.id} className={cn("fade-in flex", m.from === "you" ? "justify-end" : "justify-start gap-2.5")}>
-            {m.from === "pin" && <span className="mt-0.5"><PinOrb size={22} /></span>}
-            <div className={cn("max-w-[78%] text-sm leading-relaxed", m.from === "you" ? "bg-surface-3 rounded-2xl rounded-br-md px-3.5 py-2" : "")}>
-              {m.text}
-              {m.card && <PinCardView card={m.card} done={m.done} onDone={() => pin.markDone(m.id)} />}
-            </div>
-          </div>
-        ))}
-        {pin.thinking && <div className="text-sm shimmer-text">Pin is thinking…</div>}
-      </div>
-      <form onSubmit={submit} className="p-3 border-t border-line">
-        <div className="flex items-center gap-2 rounded-full bg-surface-2 border border-line pl-4 pr-1.5 h-11 focus-within:border-line-strong">
-          <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Pin" aria-label="Message Pin" className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-3 min-w-0" />
-          <button type="submit" disabled={!draft.trim()} className="h-8 w-8 rounded-full bg-primary text-primary-ink flex items-center justify-center disabled:opacity-30" aria-label="Send"><ArrowUp className="h-4 w-4" /></button>
-        </div>
-      </form>
+        }
+      />
     </Card>
   );
 }
@@ -254,7 +236,7 @@ function PinFiles() {
   const dirty = text !== saved;
   const file = which === "soul" ? "SOUL.md" : "MEMORY.md";
   return (
-    <div className="grid lg:grid-cols-[240px_1fr] gap-5 fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5 fade-in">
       <div className="space-y-2">
         {([["soul", "SOUL.md", "Who Pin is: its character, its rules, what it cares about."], ["memory", "MEMORY.md", "What Pin knows about you and this device. It reads this before every conversation."]] as const).map(([k, f, body]) => (
           <button key={k} onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) setWhich(k); }} aria-pressed={which === k} className={cn("w-full text-left rounded-xl border p-3.5 transition", which === k ? "border-accent/50 bg-accent-soft" : "border-line hover:border-line-strong")}>
@@ -318,7 +300,7 @@ function PinSkills({ onAsk, onGo }: { onAsk: (q: string) => void; onGo: (to: str
     { icon: <BookOpen className="h-4 w-4" />, name: "Proxmox docs", body: "Looks things up in the Proxmox VE documentation when it answers.", on: access.docs, needs: "Read the Proxmox docs", ask: "How do I add a serial console to a VM?", to: "" },
   ];
   return (
-    <div className="grid sm:grid-cols-2 gap-3 fade-in">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 fade-in">
       {skills.map((s) => (
         <Card key={s.name} className={cn("p-4", !s.on && "opacity-60")}>
           <div className="flex items-center gap-3">

@@ -42,7 +42,7 @@ export function Settings() {
           <div className="text-sm text-ink-2">Mode</div>
           <Segmented value={setup?.pinMode ?? "assistant"} onChange={setPinMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
         </div>
-        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[[<FileText key="s" className="h-4 w-4" />, "SOUL.md", "Who Pin is and how it behaves"], [<BookOpen key="m" className="h-4 w-4" />, "MEMORY.md", "What Pin has learned about you and this device"]].map(([icon, file, body]) => (
             <div key={String(file)} className="rounded-lg border border-line p-3">
               <div className="flex items-center gap-2 font-mono text-compact">{icon}{file}</div>

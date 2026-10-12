@@ -215,7 +215,7 @@ function DnsHosts() {
     }
   };
   return (
-    <div className="grid lg:grid-cols-[360px_1fr] gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
       <Card className="p-5 h-fit">
         <h2 className="font-medium mb-1">DNS</h2>
         <p className="text-xs text-ink-3 mb-4">Where the host looks up names. Containers copy this unless they set their own.</p>
@@ -272,7 +272,7 @@ function Sdn() {
           <Button size="sm" variant="primary" onClick={async () => { setApplying(true); await act("apply"); setApplying(false); }} disabled={applying}>{applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Apply</Button>
         </Card>
       )}
-      <div className="grid lg:grid-cols-[320px_1fr] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5">
         <div>
           <div className="flex items-center justify-between mb-2"><h2 className="font-medium">Zones</h2><Button size="sm" variant="ghost" onClick={() => setForm({ kind: "zone" })}><Plus className="h-3.5 w-3.5" />Zone</Button></div>
           <Card className="divide-y divide-line">
@@ -351,7 +351,7 @@ function SdnForm({ form, zones, onClose, onSave }: { form: { kind: "zone" } | { 
           </>
         )}
         {form.kind === "vnet" && (
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block"><span className="block text-compact text-ink-2 mb-2">Zone</span><select value={zone} onChange={(e) => setZone(e.target.value)} className="h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm">{zones.map((z) => <option key={z}>{z}</option>)}</select></label>
             <label className="block"><span className="block text-compact text-ink-2 mb-2">VLAN tag <span className="text-ink-3">(VLAN zones)</span></span><Input type="number" min={1} max={4094} value={tag} onChange={(e) => setTag(e.target.value)} /></label>
             <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Description</span><Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Northwind Labs network" /></label>
@@ -359,7 +359,7 @@ function SdnForm({ form, zones, onClose, onSave }: { form: { kind: "zone" } | { 
         )}
         {form.kind === "subnet" && (
           <>
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="block"><span className="block text-compact text-ink-2 mb-2">Network</span><Input value={cidr} onChange={(e) => setCidr(e.target.value)} className="font-mono" /></label>
               <label className="block"><span className="block text-compact text-ink-2 mb-2">Gateway</span><Input value={gateway} onChange={(e) => setGateway(e.target.value)} className="font-mono" /></label>
               <label className="block"><span className="block text-compact text-ink-2 mb-2">DHCP from</span><Input value={dhcpStart} onChange={(e) => setDhcpStart(e.target.value)} className="font-mono" /></label>
@@ -466,7 +466,7 @@ export function IfaceModal({ onClose }: { onClose: () => void }) {
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Name</span><Input value={iface} onChange={(e) => setIface(e.target.value)} disabled={!!editing} spellCheck={false} className="font-mono" /></label>
         )}
         {type === "vlan" && !editing && iface && <p className="text-xs text-ink-3 -mt-2">Creates <span className="font-mono">{iface}</span>.</p>}
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Address <span className="text-ink-3">(optional)</span></span><Input value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="10.10.0.1/24" spellCheck={false} className="font-mono" /></label>
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Gateway <span className="text-ink-3">(optional)</span></span><Input value={gateway} onChange={(e) => setGateway(e.target.value)} placeholder="Only one interface should have one" spellCheck={false} className="font-mono" /></label>
         </div>

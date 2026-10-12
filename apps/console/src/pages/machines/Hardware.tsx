@@ -61,7 +61,7 @@ export function Hardware({ g }: { g: Guest }) {
   const later = hw.type === "qemu" && running;
 
   return (
-    <div className="grid lg:grid-cols-2 gap-5 fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 fade-in">
       <Card className="p-5">
         <SectionTitle>Processor and memory</SectionTitle>
         <div className="grid grid-cols-2 gap-4">
@@ -300,7 +300,7 @@ function OptionsModal({ g, hw, onClose, onDone }: { g: Guest; hw: GuestHardware;
     <Modal size="lg" icon={<Settings2 className="h-5 w-5" />} title="Options" subtitle={`${g.name} #${g.vmid}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</Button></>}>
       <div className="space-y-4">
         {section("General")}
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block"><span className="block text-compact text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-xs mt-1.5 text-critical">{nameErr}</span>}</label>
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
           {vm && (

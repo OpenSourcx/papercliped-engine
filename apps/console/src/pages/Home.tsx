@@ -90,7 +90,7 @@ export function Home() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-10">
         <section>
           <SectionTitle action={<Link to={`/${device}/machines`} className="text-compact text-ink-3 hover:text-ink">View machines</Link>}>This device</SectionTitle>
-          <div className="grid lg:grid-cols-[1fr_280px] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <Card className="p-4 sm:p-6 flex flex-col">
               <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-6 items-center justify-items-center">
                 <ArcMeter label="CPU" pct={host.cpuPct} caption={`of ${host.cpus} CPUs`} />

@@ -111,7 +111,7 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
             Add a provider's key in Connectors, then pick it here. Until then Pin answers from its built-in demo replies.
           </Notice>
         ) : (
-          <div role="radiogroup" aria-label="Model provider" className="grid sm:grid-cols-2 gap-2">
+          <div role="radiogroup" aria-label="Model provider" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {providers.map((p) => (
               <Choice key={p.id} selected={provider === p.id} disabled={!p.configured} onSelect={() => set({ provider: p.id, model: provider === p.id ? draft.model : null })} icon={<Cpu className="h-4 w-4" />} title={p.name}>
                 {p.configured ? (
@@ -142,7 +142,7 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
       </Section>
 
       <Section title="Mode" body="How much Pin does on its own. You can switch any time.">
-        <div role="radiogroup" aria-label="Mode" className="grid sm:grid-cols-2 gap-2">
+        <div role="radiogroup" aria-label="Mode" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Choice selected={draft.mode === "assistant"} onSelect={() => set({ mode: "assistant" })} icon={<Sparkles className="h-4 w-4" />} title="Assistant">Watches and suggests. Asks before it changes anything.</Choice>
           <Choice selected={draft.mode === "agent"} onSelect={() => set({ mode: "agent" })} icon={<Bot className="h-4 w-4" />} title="Agent">Acts on its own within what it may do, and tells you after.</Choice>
         </div>

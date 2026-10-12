@@ -56,6 +56,8 @@ interface PinCtx {
   /** Pin's provider, model, mode and connectors, once known (live: from the host service). */
   settings: PinSettings | null;
   setSettings: (s: PinSettings) => void;
+  /** The chosen provider's display name ("Anthropic"), when known. */
+  providerName: string | null;
   settingsSource: PinSettingsSource;
   /** Switches Assistant/Agent everywhere: the console at once, and the host service's saved settings when live. */
   setMode: (m: "assistant" | "agent") => void;
@@ -75,6 +77,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const [streaming, setStreaming] = useState(false);
   const [peek, setPeek] = useState<{ title: string; body?: string } | null>(null);
   const [settings, setSettings] = useState<PinSettings | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
   const registry = useRef(new Map<string, { priority: number; actions: QuickActions }>());
   const latestBySource = useRef(new Map<string, QuickActions | null>());
   const [actions, setActions] = useState<QuickActions | null>(null);
@@ -131,6 +134,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
       (r) => {
         if (!alive) return;
         setSettings(r.settings);
+        setNames(Object.fromEntries(r.connectors.map((c) => [c.id, c.name])));
         if (engineRef.current.setup && engineRef.current.setup.pinMode !== r.settings.mode) engineRef.current.setPinMode(r.settings.mode);
       },
       () => undefined,
@@ -255,6 +259,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
       markDone: (id) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, done: true } : x))),
       resolveTool: (id, p) => setMessages((m) => m.map((x) => (x.id === id && x.tool ? { ...x, tool: { ...x.tool, ...p } } : x))),
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
+      providerName: settings?.provider ? names[settings.provider] ?? settings.provider : null,
       setMode: (m) => {
         engineRef.current.setPinMode(m);
         if (settings && settings.mode !== m) {
@@ -264,7 +269,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [state, messages, thinking, streaming, stop, peek, send, tab, actions, register, findLatest, confirm, settings, settingsSource],
+    [state, messages, thinking, streaming, stop, peek, send, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

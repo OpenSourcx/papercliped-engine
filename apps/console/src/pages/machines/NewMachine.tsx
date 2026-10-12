@@ -132,7 +132,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
     >
       <div className="space-y-5">
         <Segmented value={kind} onChange={(k) => { setKind(k); setSize("small"); }} options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Name</span>
             <Input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true); }} onKeyDown={(e) => e.key === "Enter" && create()} autoFocus spellCheck={false} />
@@ -183,7 +183,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
             )}
           </label>
         ) : (
-          <div className="grid sm:grid-cols-[1fr_200px] gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_200px] gap-4">
             <label className="block">
               <span className="block text-compact text-ink-2 mb-2">Boot from</span>
               <select value={iso} onChange={(e) => setIso(e.target.value)} className={select}>
@@ -207,7 +207,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-180")} />{kind === "lxc" ? "Sign-in and storage" : "Storage"}
           </button>
           {advanced && (
-            <div className="grid sm:grid-cols-2 gap-4 mt-3 fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 fade-in">
               {kind === "lxc" && (
                 <label className="block">
                   <span className="block text-compact text-ink-2 mb-2">Root password <span className="text-ink-3">(optional)</span></span>

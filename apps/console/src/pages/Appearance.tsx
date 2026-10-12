@@ -51,7 +51,7 @@ export function Appearance() {
           </label>
         </div>
       </Card>
-      <Card className="p-5 mt-4 grid sm:grid-cols-2 gap-6">
+      <Card className="p-5 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
         <Range label="Corner radius" value={settings.radius} min={0.25} max={1.25} step={0.125} onChange={(v) => update({ radius: v })} format={(v) => `${Math.round(v * 16)}px`} />
         <Range label="Text size" value={settings.fontScale} min={0.9} max={1.15} step={0.05} onChange={(v) => update({ fontScale: v })} format={(v) => `${Math.round(v * 100)}%`} />
         <Range label="Glass blur" value={settings.glassBlur} min={0} max={40} step={2} onChange={(v) => update({ glassBlur: v })} format={(v) => `${v}px`} />

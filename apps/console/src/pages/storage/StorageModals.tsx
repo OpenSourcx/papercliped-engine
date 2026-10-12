@@ -174,7 +174,7 @@ export function DownloadUrlModal({ onClose }: { onClose: () => void }) {
           <Input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://cdimage.debian.org/…/debian-13.1.0-amd64-netinst.iso" spellCheck={false} />
           {urlErr && <span className="block text-xs mt-1.5 text-critical">{urlErr}</span>}
         </label>
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Save as</span>
             <Input value={filename} onChange={(e) => { setFilename(e.target.value); setTouchedName(true); }} spellCheck={false} />
@@ -182,7 +182,7 @@ export function DownloadUrlModal({ onClose }: { onClose: () => void }) {
           </label>
           <StoragePicker kind={kind} value={storage} onChange={setStorage} />
         </div>
-        <div className="grid sm:grid-cols-[140px_1fr] gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4">
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Checksum</span>
             <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)} className={select}>{["sha256", "sha512", "sha1", "md5", "sha224", "sha384"].map((a) => <option key={a}>{a}</option>)}</select>
@@ -241,7 +241,7 @@ export function TemplatesModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal size="lg" icon={<Package className="h-5 w-5" />} title="Container templates" subtitle="Ready-made systems for new containers, from Proxmox's catalog." onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
       <div className="space-y-4">
-        <div className="grid sm:grid-cols-[1fr_220px] gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 items-end">
           <div className="flex flex-wrap items-center gap-3">
             <Segmented value={section} onChange={setSection} options={[{ value: "system", label: "Systems" }, { value: "turnkeylinux", label: "Apps (TurnKey)" }]} />
             <div className="relative flex-1 min-w-[160px]">

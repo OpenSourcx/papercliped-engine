@@ -119,7 +119,7 @@ export function TimeSeriesChart({ title, series, times, format, yMax, binary, he
             <rect x={m.l} y={m.t} width={w} height={h} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
           </svg>
           {hover !== null && (
-            <div className="pointer-events-none absolute top-2 z-10 rounded-lg border border-line-strong bg-surface-3 px-3 py-2 text-xs shadow-xl" style={{ left: Math.min(Math.max(x(hover) + 12, 8), width - 180) }}>
+            <div className="pointer-events-none absolute top-2 z-(--z-raised) rounded-lg border border-line-strong bg-surface-3 px-3 py-2 text-xs shadow-overlay" style={{ left: Math.min(Math.max(x(hover) + 12, 8), width - 180) }}>
               <div className="text-ink-3 mb-1">{new Date(times[hover] * 1000).toLocaleString()}</div>
               {series.map((s, i) => (
                 <div key={s.key} className="flex items-center gap-2 tabular-nums">

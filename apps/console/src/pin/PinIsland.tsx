@@ -48,7 +48,7 @@ export function islandBox(view: View, vp: { w: number; h: number }, measured: nu
   const room = vp.w - 16;
   switch (view) {
     case "open": return { width: Math.min(480, room), height: Math.min(640, vp.h - 20), radius: 24 };
-    case "actions": return { width: Math.min(680, room), height: Math.max(56, (measured ?? 54) + 2), radius: 28 };
+    case "actions": return { width: Math.min(720, room), height: Math.max(56, (measured ?? 54) + 2), radius: 28 };
     case "peek": return { width: Math.min(380, room), height: Math.max(60, (measured ?? 58) + 2), radius: 28 };
     case "status": return { width: Math.min(300, room), height: 40, radius: 20 };
     default: return { width: 184, height: 40, radius: 20 };

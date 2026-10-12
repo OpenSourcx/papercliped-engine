@@ -213,7 +213,7 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
                 </div>
               )}
             </fieldset>
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="block"><span className="block text-compact text-ink-2 mb-2">From</span><Input list="fw-refs" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
               <label className="block"><span className="block text-compact text-ink-2 mb-2">To</span><Input list="fw-refs" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
               <datalist id="fw-refs">{refs.map((r) => <option key={r.ref} value={r.ref}>{r.type === "ipset" ? "IP set" : "Alias"} {r.name}</option>)}</datalist>
@@ -221,7 +221,7 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
             <p className="text-xs text-ink-3 -mt-2">Addresses like 192.168.1.20, networks like 10.0.0.0/8, an alias name, or an IP set as +name.</p>
           </>
         )}
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Interface <span className="text-ink-3">(optional)</span></span><Input value={iface} onChange={(e) => setIface(e.target.value)} placeholder={scope.startsWith("guest-") ? "net0" : "vmbr0"} className="font-mono" /></label>
           {type !== "group" && <label className="block"><span className="block text-compact text-ink-2 mb-2">Log</span><select value={log} onChange={(e) => setLog(e.target.value)} className={select}><option value="nolog">Don't log</option><option value="info">Info</option><option value="warning">Warning</option><option value="debug">Debug</option></select></label>}
           <div className="flex items-end justify-between h-full pb-2"><span className="text-sm">On</span><Toggle checked={enable} onChange={setEnable} label="Rule on" /></div>
@@ -351,7 +351,7 @@ function IpSets({ scope }: { scope: string }) {
     setTick((n) => n + 1);
   };
   return (
-    <div className="grid md:grid-cols-[240px_1fr] gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
       <div>
         <p className="text-compact text-ink-3 mb-2">Lists of addresses to use in rules as +name.</p>
         <Card className="divide-y divide-line">
@@ -411,7 +411,7 @@ function SecurityGroups() {
     setTick((n) => n + 1);
   };
   return (
-    <div className="grid md:grid-cols-[260px_1fr] gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
       <div>
         <p className="text-compact text-ink-3 mb-2">Reusable sets of rules. Add one to any firewall with a single "security group" rule.</p>
         <Card className="divide-y divide-line">

@@ -161,7 +161,7 @@ export function Onboarding() {
     return (
       <Shell step={3} onBack={back} title="Connect an AI account" subtitle="Pin and your agents think with the account you connect. The key goes into the Vault, never into an agent.">
         <form onSubmit={next}>
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {PROVIDERS.map((p) => (
               <button key={p.id} type="button" onClick={() => setProvider(p.id === provider ? null : p.id)} aria-pressed={provider === p.id} className={cn("text-left rounded-2xl border p-4 transition", provider === p.id ? "border-accent/60 bg-accent-soft" : "border-line bg-surface/60 hover:border-line-strong")}>
                 <span className="flex items-center gap-2 font-semibold text-body"><span className="text-ink-2">{p.icon}</span>{p.name}</span>

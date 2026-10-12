@@ -59,7 +59,7 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
 });
 
 export function Card({ className, children, interactive, style }: { className?: string; children: ReactNode; interactive?: boolean; style?: CSSProperties }) {
-  return <div style={style} className={cn("rounded-xl border border-line bg-surface", interactive && "transition-control hover:border-line-strong hover:bg-surface-2", className)}>{children}</div>;
+  return <div style={style} className={cn("relative rounded-xl border border-line bg-surface", interactive && "transition-control hover:border-line-strong hover:bg-surface-2", className)}>{children}</div>;
 }
 
 /** A small uppercase label over a group. Hierarchy comes from position and weight, not from boxes. */
@@ -133,7 +133,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
       onClick={() => onChange(!checked)}
       className={cn("transition-control relative inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 disabled:opacity-40", checked ? "bg-accent" : "bg-surface-3")}
     >
-      <span aria-hidden className={cn("h-5 w-5 rounded-full bg-surface shadow-raised transition-transform duration-(--duration-base) ease-spring", checked ? "translate-x-4" : "translate-x-0")} />
+      <span aria-hidden className={cn("h-5 w-5 rounded-full bg-on-status shadow-raised transition-transform duration-(--duration-base) ease-spring", checked ? "translate-x-4" : "translate-x-0")} />
     </button>
   );
 }
