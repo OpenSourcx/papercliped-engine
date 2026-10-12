@@ -2,21 +2,52 @@ import type {
   ActivityEvent,
   Agent,
   AgentRole,
+  AgentSkillSnapshot,
   Approval,
+  AttentionFeed,
+  AttentionItem,
+  BudgetIncident,
+  BudgetOverview,
+  BudgetPolicySummary,
   Company,
+  CompanyArtifact,
+  CompanyArtifactsResponse,
+  CompanySearchResponse,
+  CompanySecret,
+  CompanySkillDetail,
+  CompanySkillFileDetail,
+  CompanySkillListItem,
   CostByAgent,
+  CostByAgentModel,
+  CostByProject,
+  CostByProviderModel,
   CostSummary,
   DashboardSummary,
+  ExecutionWorkspace,
   Goal,
   GoalLevel,
   GoalStatus,
   HeartbeatRun,
+  InboxDismissal,
   Issue,
+  IssueAttachment,
   IssueComment,
+  IssueLabel,
   IssuePriority,
   IssueStatus,
+  IssueWorkProduct,
   Project,
   ProjectStatus,
+  Routine,
+  RoutineDetail,
+  RoutineListItem,
+  RoutineRevision,
+  RoutineRun,
+  RoutineRunSummary,
+  RoutineTrigger,
+  RoutineTriggerSecretMaterial,
+  SidebarBadges,
+  WorkspaceOverviewResponse,
 } from "@paperclipai/shared";
 
 /**
@@ -24,7 +55,12 @@ import type {
  * Proxmox session and forwards the request as that person's engine account. Types are Paperclip's own, from
  * @paperclipai/shared at the pinned engine version. Dates in them arrive as ISO strings over HTTP.
  */
-export type { ActivityEvent, Agent, AgentRole, Approval, Company, CostByAgent, CostSummary, DashboardSummary, Goal, GoalLevel, GoalStatus, HeartbeatRun, Issue, IssueComment, IssuePriority, IssueStatus, Project, ProjectStatus };
+export type {
+  ActivityEvent, Agent, AgentRole, AgentSkillSnapshot, Approval, AttentionFeed, AttentionItem, BudgetIncident, BudgetOverview, BudgetPolicySummary, Company, CompanyArtifact, CompanyArtifactsResponse, CompanySearchResponse,
+  CompanySecret, CompanySkillDetail, CompanySkillFileDetail, CompanySkillListItem, CostByAgent, CostByAgentModel, CostByProject, CostByProviderModel, CostSummary, DashboardSummary, ExecutionWorkspace, Goal, GoalLevel,
+  GoalStatus, HeartbeatRun, InboxDismissal, Issue, IssueAttachment, IssueComment, IssueLabel, IssuePriority, IssueStatus, IssueWorkProduct, Project, ProjectStatus, Routine, RoutineDetail, RoutineListItem,
+  RoutineRevision, RoutineRun, RoutineRunSummary, RoutineTrigger, RoutineTriggerSecretMaterial, SidebarBadges, WorkspaceOverviewResponse,
+};
 
 /** Paperclip's enums as values, so the console needn't load the shared package at runtime. `satisfies` keeps them in step with its types. */
 export const AGENT_ROLES = ["ceo", "cto", "cmo", "cfo", "security", "engineer", "designer", "pm", "qa", "devops", "researcher", "general"] as const satisfies readonly AgentRole[];
