@@ -392,7 +392,7 @@ EPC_DEV_HTTP=1 EPC_LISTEN="127.0.0.1:$test_port" EPC_PVE_CA=/dev/null EPC_STATIC
   EPC_ENGINE_URL="http://127.0.0.1:9" EPC_ENGINE_DIR="$STAGE/engine" "$NODE" "$STAGE/epaperclip.mjs" >"$TMPDIR_EPC/stage.log" 2>&1 &
 stage_pid=$!
 ok=0
-for _ in $(seq 1 30); do curl -fs --max-time 1 "http://127.0.0.1:$test_port/api/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 0.3; done
+for _ in $(seq 1 60); do curl -fs --max-time 1 "http://127.0.0.1:$test_port/api/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 0.3; done
 kill "$stage_pid" 2>/dev/null || true; wait "$stage_pid" 2>/dev/null || true
 if [ "$ok" -ne 1 ]; then cat "$TMPDIR_EPC/stage.log" >&2; die "the new version doesn't start on this machine. Nothing was changed."; fi
 

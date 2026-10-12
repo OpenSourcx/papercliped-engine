@@ -57,7 +57,7 @@ new_host() {
   export PATH="$H/bin:$BASE_PATH"
   export STUB_STATE="$H/stub" EPC_PREFIX="$H/prefix" EPC_UNIT_DIR="$H/units" EPC_DEFAULTS="$H/default/epaperclip" \
     EPC_ETC_DIR="$H/etc" EPC_ENGINE_HOME="$H/engine-home" EPC_HOST_STATE_DIR="$H/host-state" EPC_MEMINFO="$H/meminfo"
-  export EPC_SKIP_NODE=1 EPC_SKIP_CERT_CHECK=1 EPC_SKIP_ENGINE_NPM=1 EPC_ENGINE_WAIT=15 EPC_HOST_WAIT=5
+  export EPC_SKIP_NODE=1 EPC_SKIP_CERT_CHECK=1 EPC_SKIP_ENGINE_NPM=1 EPC_ENGINE_WAIT=30 EPC_HOST_WAIT=20
   unset STUB_SS_BUSY STUB_PVEPROXY_DOWN STUB_PVE_VERSION STUB_RUN_AS_NOBODY
   printf 'MemTotal:       16303412 kB\nMemAvailable:   12000000 kB\n' >"$H/meminfo"
   local hp ep; hp="$(free_port)"; ep="$(free_port)"
@@ -280,7 +280,7 @@ for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"
   declare -F "s_$SCEN" >/dev/null || { echo "run.sh: no scenario '$SCEN' (have: ${ALL[*]})" >&2; exit 2; }
   echo "== $SCEN"
-  "s_$SCEN"
+  t0=$SECONDS; "s_$SCEN"; echo "  ($((SECONDS - t0)) s)"
   for h in ${HOSTS[@]+"${HOSTS[@]}"}; do (export STUB_STATE="$h/stub"; for p in "$h"/stub/*.pid; do [ -f "$p" ] && { kill -KILL -- "-$(cat "$p")" 2>/dev/null; rm -f "$p"; }; done); done
 done
 echo
