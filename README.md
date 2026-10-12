@@ -18,7 +18,7 @@ Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](do
 | `services/host-broker` | The only holder of the Proxmox token: resource groups for companies, system scope for Pin, protected guests, lease expiry, audit log, HTTP API | Working, tested against a fake Proxmox; not yet run against a real host |
 | `services/epaperclip` | The host service: serves the console on port 443 with the node's own certificate, signs people in with their Proxmox accounts (Integrated Access Control) and acts on Proxmox as them | Working, tested against a fake Proxmox |
 | `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island and page-aware quick actions, org dashboards, machines, drives, automations, Integrated Access Control, connectors, appearance | Live host, machines, drives and graphs through the host service; organizations and agents still on demo data |
-| `deploy/` | systemd unit and installer for a Proxmox VE host | Ready to try |
+| `deploy/`, `engine/` | Installer, systemd units for the host service and the engine, the engine's pinned lockfile, and the installer's tests (`deploy/test/run.sh`); packaged as a release download, a `.deb` with a signed APT repository, and the `epaperclip` npm package | Ready to try; not yet run on a real Proxmox host |
 
 Not built yet: the ePaperclip fork (organizations, agents and tasks on the console are demo data until then), the model-backed Pin runtime, live consoles, the installer ISO. See the roadmap.
 
@@ -34,13 +34,15 @@ Requires Node 22 or later and pnpm.
 
 ## Install on a Proxmox host
 
-In the host's shell, as root:
+In the host's shell, as root, add the signed APT repository and install (or use `npx epaperclip install`, or the `get.sh` one-liner; all three run the same installer):
 
 ```sh
-curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash
+curl -fsSL https://opensourcx.github.io/papercliped-engine/apt/epaperclip-archive-keyring.gpg -o /usr/share/keyrings/epaperclip-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://opensourcx.github.io/papercliped-engine/apt stable main" > /etc/apt/sources.list.d/epaperclip.list
+apt update && apt install epaperclip
 ```
 
-Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP, with two-factor if you use it). What each person can see and do is exactly what their Proxmox permissions allow. The stock Proxmox UI stays at `https://<host>:8006/` as the emergency console. The installer checks the host first, brings its own verified Node.js, and rolls back by itself if the new version doesn't come up. Full guide, including installing from a branch, upgrading, rollback and uninstall: [docs/INSTALL.md](docs/INSTALL.md). Service details: [services/epaperclip/README.md](services/epaperclip/README.md).
+Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP, with two-factor if you use it). What each person can see and do is exactly what their Proxmox permissions allow. The stock Proxmox UI stays at `https://<host>:8006/` as the emergency console. The installer checks the host first (Proxmox VE 8+, 4 GB of memory recommended, about 3 GB of disk), brings its own verified Node.js, installs the engine from its lockfile as a loopback-only service, and rolls back by itself if the new version doesn't come up. Full guide, including the key's fingerprint, upgrades, rollback, uninstall and backups: [docs/INSTALL.md](docs/INSTALL.md). Service details: [services/epaperclip/README.md](services/epaperclip/README.md).
 
 ## Try the console without a host
 
