@@ -155,6 +155,17 @@ const NAMED: Record<string, (s: string) => string | null> = {
 const MULTILINE = new Set(["description", "body"]);
 /** Webhook headers and secrets are property strings with a base64 value (name=X-Token,value=...). */
 const WEBHOOK_ITEM = /^name=[A-Za-z0-9_-]{1,64}(?:,value=[A-Za-z0-9+/]*={0,2})?$/;
+/** List settings whose entries have a fixed shape. */
+const ITEM_PATTERNS: Record<string, [RegExp, string]> = {
+  header: [WEBHOOK_ITEM, "entries look like name=X-Token,value=<base64>"],
+  secret: [WEBHOOK_ITEM, "entries look like name=token,value=<base64>"],
+  "match-field": [/^(?:regex|exact):[A-Za-z0-9_-]{1,64}=.{1,256}$/, "entries look like exact:type=vzdump"],
+  "match-severity": [/^(?:info|notice|warning|error|unknown)$/, "entries are info, notice, warning, error or unknown"],
+  "match-calendar": [/^[A-Za-z0-9:*,./ -]{1,64}$/, "entries are calendar events such as mon..fri 08:00-18:00"],
+  target: [/^[A-Za-z][A-Za-z0-9_-]{1,63}$/, "entries are target names"],
+  mailto: [/^[^\s@,;<>"]{1,64}@[A-Za-z0-9.-]{1,253}$/, "entries are email addresses"],
+  "mailto-user": [/^[^\s@,;<>"]{1,64}@[A-Za-z0-9._-]{1,64}$/, "entries are Proxmox users such as sam@pve"],
+};
 
 export interface Checked {
   /** Values ready to send to Proxmox (booleans are 1/0, property strings are composed, arrays stay arrays). */
@@ -181,8 +192,9 @@ export function checkValue(name: string, f: FieldSchema, v: unknown, nested = fa
       if (!Array.isArray(v) || v.length > 64) return bad(`${label} must be a list of up to 64 entries`);
       const items = f.items ?? { type: "string", description: "" };
       return v.map((x) => {
-        if (name === "header" || name === "secret") {
-          if (typeof x !== "string" || !WEBHOOK_ITEM.test(x)) return bad(`${label} entries look like name=X-Token,value=<base64>`);
+        const fixed = ITEM_PATTERNS[name];
+        if (fixed) {
+          if (typeof x !== "string" || !fixed[0].test(x)) return bad(`${label} ${fixed[1]}`);
           return x;
         }
         const c = checkValue(label, items, x, true);
