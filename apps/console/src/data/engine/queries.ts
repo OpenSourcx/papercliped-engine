@@ -76,7 +76,7 @@ export function useResourceGroup(companyId: string | null | undefined) {
   return { ...q, group: q.data ? q.data.find((g) => g.companyId === companyId) ?? null : undefined };
 }
 
-function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean } = {}) {
+export function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean } = {}) {
   const ready = useEngineReady();
   const interval = usePollInterval(companyId);
   return useQuery({ queryKey: key, queryFn: () => fn(companyId!), enabled: ready && !!companyId, refetchInterval: opts.poll === false ? false : interval });
