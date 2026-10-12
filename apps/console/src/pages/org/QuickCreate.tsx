@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useEngine } from "../../data/store.tsx";
 import { Button, Input } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
+import type { Org } from "../../data/types.ts";
+import { errorText, useCreateGoal, useCreateProject } from "../../data/engine/queries.ts";
 
 export type QuickKind = "new-project" | "new-goal" | "new-routine";
 
@@ -27,6 +29,7 @@ export function QuickCreateModal({ kind, onClose }: { kind: QuickKind; onClose: 
   const [schedule, setSchedule] = useState(SCHEDULES[1]);
 
   if (!org) return null;
+  if (org.engine) return <LiveQuickCreate kind={kind} org={org} companyId={org.engine.companyId} onClose={onClose} />;
   const save = () => {
     const t = text.trim();
     if (!t) return;
@@ -71,6 +74,40 @@ export function QuickCreateModal({ kind, onClose }: { kind: QuickKind; onClose: 
           </label>
         )}
       </div>
+    </Modal>
+  );
+}
+
+/** Live: projects and goals are created in the engine. Routines aren't offered from here yet. */
+function LiveQuickCreate({ kind, org, companyId, onClose }: { kind: QuickKind; org: Org; companyId: string; onClose: () => void }) {
+  const engine = useEngine();
+  const navigate = useNavigate();
+  const project = useCreateProject(companyId);
+  const goal = useCreateGoal(companyId);
+  const [text, setText] = useState("");
+  const c = COPY[kind];
+  const m = kind === "new-project" ? project : goal;
+  if (kind === "new-routine") {
+    return (
+      <Modal title={c.title} subtitle={`In ${org.name}`} onClose={onClose} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
+        <p className="text-[14px] text-ink-2">Routines can't be created from the console yet.</p>
+      </Modal>
+    );
+  }
+  const save = () => {
+    const t = text.trim();
+    if (!t || m.isPending) return;
+    const done = () => { onClose(); navigate(`/${engine.setup?.deviceName ?? "pve"}/${org.slug}/${c.page}`); };
+    if (kind === "new-project") project.mutate({ name: t, status: "planned" }, { onSuccess: done });
+    else goal.mutate({ title: t, level: "company", status: "active" }, { onSuccess: done });
+  };
+  return (
+    <Modal title={c.title} subtitle={`In ${org.name}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={!text.trim() || m.isPending}>{c.cta}</Button></>}>
+      <label className="block">
+        <span className="block text-[13px] text-ink-2 mb-2">{c.field}</span>
+        <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder={c.placeholder} />
+      </label>
+      {m.error && <p className="text-[13px] text-critical mt-2" role="alert">{errorText(m.error)}</p>}
     </Modal>
   );
 }

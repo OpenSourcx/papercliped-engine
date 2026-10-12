@@ -1,11 +1,35 @@
-import type { Agent, Approval, Company, Goal, Issue, Project } from "@paperclipai/shared";
+import type {
+  ActivityEvent,
+  Agent,
+  AgentRole,
+  Approval,
+  Company,
+  CostByAgent,
+  CostSummary,
+  DashboardSummary,
+  Goal,
+  GoalLevel,
+  GoalStatus,
+  HeartbeatRun,
+  Issue,
+  IssueComment,
+  IssuePriority,
+  IssueStatus,
+  Project,
+  ProjectStatus,
+} from "@paperclipai/shared";
 
 /**
  * The Paperclip engine's API, as the console reaches it: through the host service at /engine/api, which checks the
  * Proxmox session and forwards the request as that person's engine account. Types are Paperclip's own, from
- * @paperclipai/shared at the pinned engine version.
+ * @paperclipai/shared at the pinned engine version. Dates in them arrive as ISO strings over HTTP.
  */
-export type { Agent, Approval, Company, Goal, Issue, Project };
+export type { ActivityEvent, Agent, AgentRole, Approval, Company, CostByAgent, CostSummary, DashboardSummary, Goal, GoalLevel, GoalStatus, HeartbeatRun, Issue, IssueComment, IssuePriority, IssueStatus, Project, ProjectStatus };
+
+/** Paperclip's enums as values, so the console needn't load the shared package at runtime. `satisfies` keeps them in step with its types. */
+export const AGENT_ROLES = ["ceo", "cto", "cmo", "cfo", "security", "engineer", "designer", "pm", "qa", "devops", "researcher", "general"] as const satisfies readonly AgentRole[];
+export const ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"] as const satisfies readonly IssueStatus[];
+export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const satisfies readonly IssuePriority[];
 
 export interface BoardAccess {
   user: { id: string; name: string | null; email: string } | null;
@@ -16,11 +40,20 @@ export interface BoardAccess {
   source: string;
 }
 
-export interface IssueComment { id: string; issueId: string; body: string; createdAt: string; authorUserId?: string | null; authorAgentId?: string | null }
-export interface ActivityEntry { id: string; action: string; entityType: string; entityId: string; actorType: string; actorId: string; createdAt: string; details?: Record<string, unknown> | null }
-export interface CostSummary { [k: string]: unknown }
-export interface Member { id: string; principalType: string; principalId: string; membershipRole: string; status: string; user?: { name?: string | null; email?: string | null } | null }
-export interface AdapterInfo { type: string; label?: string; builtIn?: boolean; models?: { id: string; label?: string }[]; [k: string]: unknown }
+export type ActivityEntry = ActivityEvent;
+export interface Member { id: string; companyId: string; principalType: string; principalId: string; membershipRole: string | null; status: string; createdAt: string; user: { id: string; name: string | null; email: string | null; image?: string | null } | null }
+export interface MembersAnswer { members: Member[]; access: { currentUserRole: string | null; canManageMembers: boolean; canInviteUsers: boolean } }
+export interface AdapterInfo { type: string; label: string; source: "builtin" | "external"; modelsCount: number; loaded: boolean; disabled: boolean; [k: string]: unknown }
+export interface AdapterModel { id: string; label: string }
+
+/** Request bodies, as Paperclip's validators (createCompanySchema, createAgentSchema, createIssueSchema, ...) accept them. */
+export interface CreateCompanyBody { name: string; description?: string | null; budgetMonthlyCents?: number }
+export interface CreateAgentBody { name: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; adapterType: string; adapterConfig?: Record<string, unknown>; budgetMonthlyCents?: number }
+export interface UpdateAgentBody { name?: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; budgetMonthlyCents?: number }
+export interface CreateIssueBody { title: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; parentId?: string | null }
+export interface UpdateIssueBody { title?: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; comment?: string }
+export interface CreateGoalBody { title: string; description?: string | null; level?: GoalLevel; status?: GoalStatus; parentId?: string | null; ownerAgentId?: string | null }
+export interface CreateProjectBody { name: string; description?: string | null; status?: ProjectStatus; leadAgentId?: string | null; targetDate?: string | null; goalIds?: string[] }
 
 export class EngineError extends Error {
   readonly status: number;
@@ -58,7 +91,9 @@ export const ENGINE_PATHS = {
   members: "/api/companies/{companyId}/members",
   routines: "/api/companies/{companyId}/routines",
   liveRuns: "/api/companies/{companyId}/live-runs",
+  heartbeatRuns: "/api/companies/{companyId}/heartbeat-runs",
   adapters: "/api/adapters",
+  adapterModels: "/api/companies/{companyId}/adapters/{type}/models",
 } as const;
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -94,37 +129,38 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     companies: {
       list: () => call<Company[]>("GET", P.companies),
       get: (companyId: string) => call<Company>("GET", P.company, { companyId }),
-      create: (body: { name: string; description?: string | null; budgetMonthlyCents?: number }) => call<Company>("POST", P.companies, {}, body),
+      create: (body: CreateCompanyBody) => call<Company>("POST", P.companies, {}, body),
       update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">>) => call<Company>("PATCH", P.company, { companyId }, body),
       archive: (companyId: string) => call<unknown>("DELETE", P.company, { companyId }),
-      dashboard: (companyId: string) => call<Record<string, unknown>>("GET", P.dashboard, { companyId }),
-      members: (companyId: string) => call<Member[]>("GET", P.members, { companyId }),
+      dashboard: (companyId: string) => call<DashboardSummary>("GET", P.dashboard, { companyId }),
+      members: (companyId: string) => call<MembersAnswer>("GET", P.members, { companyId }),
     },
     agents: {
       list: (companyId: string) => call<Agent[]>("GET", P.agents, { companyId }),
       get: (id: string) => call<Agent>("GET", P.agent, { id }),
-      create: (companyId: string, body: { name: string; role?: string; title?: string | null; reportsTo?: string | null; adapterType: string; adapterConfig?: Record<string, unknown>; capabilities?: string | null; budgetMonthlyCents?: number }) => call<Agent>("POST", P.agents, { companyId }, body),
-      update: (id: string, body: Partial<Agent>) => call<Agent>("PATCH", P.agent, { id }, body),
+      create: (companyId: string, body: CreateAgentBody) => call<Agent>("POST", P.agents, { companyId }, body),
+      update: (id: string, body: UpdateAgentBody) => call<Agent>("PATCH", P.agent, { id }, body),
       remove: (id: string) => call<unknown>("DELETE", P.agent, { id }),
-      wakeup: (id: string, reason?: string) => call<unknown>("POST", P.agentWakeup, { id }, reason ? { reason } : {}),
+      wakeup: (id: string, reason?: string) => call<unknown>("POST", P.agentWakeup, { id }, { source: "on_demand", triggerDetail: "manual", ...(reason ? { reason } : {}) }),
       pause: (id: string) => call<Agent>("POST", P.agentPause, { id }, {}),
       resume: (id: string) => call<Agent>("POST", P.agentResume, { id }, {}),
+      runs: (companyId: string, agentId?: string, limit = 20) => call<HeartbeatRun[]>("GET", P.heartbeatRuns, { companyId }, undefined, { agentId, limit }),
     },
     issues: {
       list: (companyId: string, query?: { status?: string; assigneeAgentId?: string; projectId?: string; q?: string }) => call<Issue[]>("GET", P.issues, { companyId }, undefined, query),
       get: (id: string) => call<Issue>("GET", P.issue, { id }),
-      create: (companyId: string, body: { title: string; description?: string | null; status?: string; priority?: string; assigneeAgentId?: string | null; projectId?: string | null; goalId?: string | null; parentId?: string | null }) => call<Issue>("POST", P.issues, { companyId }, body),
-      update: (id: string, body: Record<string, unknown>) => call<Issue>("PATCH", P.issue, { id }, body),
+      create: (companyId: string, body: CreateIssueBody) => call<Issue>("POST", P.issues, { companyId }, body),
+      update: (id: string, body: UpdateIssueBody) => call<Issue>("PATCH", P.issue, { id }, body),
       comments: (id: string) => call<IssueComment[]>("GET", P.issueComments, { id }),
       comment: (id: string, body: string) => call<IssueComment>("POST", P.issueComments, { id }, { body }),
     },
     goals: {
       list: (companyId: string) => call<Goal[]>("GET", P.goals, { companyId }),
-      create: (companyId: string, body: { title: string; description?: string | null; level?: string; parentId?: string | null }) => call<Goal>("POST", P.goals, { companyId }, body),
+      create: (companyId: string, body: CreateGoalBody) => call<Goal>("POST", P.goals, { companyId }, body),
     },
     projects: {
       list: (companyId: string) => call<Project[]>("GET", P.projects, { companyId }),
-      create: (companyId: string, body: { name: string; description?: string | null; goalId?: string | null }) => call<Project>("POST", P.projects, { companyId }, body),
+      create: (companyId: string, body: CreateProjectBody) => call<Project>("POST", P.projects, { companyId }, body),
     },
     approvals: {
       list: (companyId: string, status?: string) => call<Approval[]>("GET", P.approvals, { companyId }, undefined, { status }),
@@ -133,12 +169,13 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     },
     costs: {
       summary: (companyId: string) => call<CostSummary>("GET", P.costSummary, { companyId }),
-      byAgent: (companyId: string) => call<CostSummary[]>("GET", P.costByAgent, { companyId }),
+      byAgent: (companyId: string) => call<CostByAgent[]>("GET", P.costByAgent, { companyId }),
     },
     activity: (companyId: string, limit = 50) => call<ActivityEntry[]>("GET", P.activity, { companyId }, undefined, { limit }),
     routines: (companyId: string) => call<Record<string, unknown>[]>("GET", P.routines, { companyId }),
     liveRuns: (companyId: string) => call<Record<string, unknown>[]>("GET", P.liveRuns, { companyId }),
     adapters: () => call<AdapterInfo[]>("GET", P.adapters),
+    adapterModels: (companyId: string, type: string) => call<AdapterModel[]>("GET", P.adapterModels, { companyId, type }),
   };
 }
 
