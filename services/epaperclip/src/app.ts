@@ -1375,7 +1375,11 @@ export function createApp(d: AppDeps) {
       // Proxmox's own reasons ("file exists", "checksum mismatch", "storage does not support content type") help the
       // user fix the request, and they could read them in Proxmox's UI anyway.
       if (e instanceof ProxmoxError && e.detail) return sendJson(res, e.status >= 400 && e.status < 500 ? 400 : 502, { error: e.detail.slice(0, 500), code: "proxmox_rejected" });
-      if (e instanceof ProxmoxError) return sendJson(res, 502, { error: "Proxmox didn't answer as expected", code: "proxmox_error" });
+      if (e instanceof ProxmoxError) {
+        // For the host's log (journalctl -u epaperclip): what Proxmox said, never what was sent. Messages carry only the method, path and status.
+        console.error(`epaperclip: ${e.message}`);
+        return sendJson(res, 502, { error: "Proxmox didn't answer as expected", code: "proxmox_error" });
+      }
       const net = (e as { code?: unknown })?.code;
       if (typeof net === "string" && /^E[A-Z]+|CERT|SELF_SIGNED|UNABLE_TO_VERIFY/.test(net)) return sendJson(res, 502, { error: `Can't reach Proxmox (${net})`, code: "proxmox_unreachable" });
       return sendJson(res, 500, { error: "Internal error", code: "internal" });

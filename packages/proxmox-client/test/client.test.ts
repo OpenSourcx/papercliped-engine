@@ -1,3 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { createServer } from "node:https";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ProxmoxClient, ProxmoxError, type Transport } from "../src/index.ts";
 
@@ -156,5 +162,43 @@ describe("storage content and uploads", () => {
     const { transport } = recorder([{ status: 400, body: { errors: { filename: "already exists" } } }]);
     const err = await new ProxmoxClient({ baseUrl: "https://pve.test:8006", ticket: "t", csrf: "c", transport }).downloadTemplate("pve", "local", "x").catch((e) => e);
     expect(err.detail).toBe("filename: already exists");
+  });
+});
+
+describe("the real transport against a server as strict as Proxmox's", () => {
+  it("sends form bodies with an exact Content-Length, never chunked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pve-tls-"));
+    execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", join(dir, "k.pem"), "-out", join(dir, "c.pem"), "-days", "1", "-subj", "/CN=pve", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore" });
+    const cert = readFileSync(join(dir, "c.pem"), "utf8");
+    const seen: { length: string | undefined; chunked: boolean; body: string }[] = [];
+    const server = createServer({ cert, key: readFileSync(join(dir, "k.pem")) }, (req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        seen.push({ length: req.headers["content-length"], chunked: /chunked/i.test(String(req.headers["transfer-encoding"] ?? "")), body });
+        // Proxmox answers 501 to a chunked request body.
+        if (/chunked/i.test(String(req.headers["transfer-encoding"] ?? ""))) { res.writeHead(501); return res.end(); }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { username: "root@pam", ticket: "PVE:root@pam:ABC", CSRFPreventionToken: "tok" } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const baseUrl = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const r = await ProxmoxClient.login({ baseUrl, caPem: cert }, { username: "root", password: "pässword&=1", realm: "pam" });
+      expect(r).toMatchObject({ username: "root@pam", needTfa: false });
+      expect(seen[0]).toMatchObject({ chunked: false, length: String(Buffer.byteLength(seen[0].body)) });
+      expect(new URLSearchParams(seen[0].body).get("password")).toBe("pässword&=1");
+    } finally {
+      server.close();
+      server.closeAllConnections();
+    }
+  });
+
+  it("keeps Proxmox's reason when a sign-in fails some other way than bad credentials", async () => {
+    const { transport } = recorder([{ status: 500, body: JSON.stringify({ message: "pam module failure" }) }]);
+    const err = await ProxmoxClient.login({ baseUrl: "https://pve.test:8006", transport }, { username: "x", password: "y" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ProxmoxError);
+    expect(err.detail).toBe("pam module failure");
   });
 });

@@ -201,10 +201,15 @@ export interface TaskStatus {
   exitstatus?: string; // OK, or an error message
 }
 
-function nodeTransport(caPem?: string): Transport {
+/**
+ * Proxmox's web server doesn't accept chunked request bodies, which is what Node sends when a body is written without a
+ * length. Always send the exact Content-Length.
+ */
+export function nodeTransport(caPem?: string): Transport {
   return (req) =>
     new Promise((resolve, reject) => {
-      const r = httpsRequest(req.url, { method: req.method, headers: req.headers, ca: caPem, timeout: 30_000 }, (res) => {
+      const headers = req.body ? { ...req.headers, "Content-Length": String(Buffer.byteLength(req.body)) } : req.headers;
+      const r = httpsRequest(req.url, { method: req.method, headers, ca: caPem, timeout: 30_000 }, (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
@@ -278,7 +283,16 @@ export class ProxmoxClient {
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams(params).toString(),
     });
-    if (res.status !== 200) throw new ProxmoxError(`Proxmox login failed (${res.status})`, res.status === 0 ? 502 : res.status);
+    if (res.status !== 200) {
+      let why: string | null = null;
+      try {
+        const b = JSON.parse(res.body || "{}") as { message?: string; errors?: Record<string, string> };
+        why = (b.errors ? Object.entries(b.errors).map(([k, v]) => `${k}: ${v}`).join("; ") : b.message)?.trim() || null;
+      } catch {
+        // Not JSON: Proxmox put its reason, if any, in the status line.
+      }
+      throw new ProxmoxError(`Proxmox login failed (${res.status})${why ? `: ${why}` : ""}`, res.status === 0 ? 502 : res.status, res.status === 401 ? null : why);
+    }
     const data = (JSON.parse(res.body || "{}") as { data?: { username?: string; ticket?: string; CSRFPreventionToken?: string; NeedTFA?: number } }).data;
     if (!data?.ticket || !data.username) throw new ProxmoxError("Proxmox login returned no ticket", 502);
     return { username: data.username, ticket: data.ticket, csrf: data.CSRFPreventionToken ?? null, needTfa: data.NeedTFA === 1 };
