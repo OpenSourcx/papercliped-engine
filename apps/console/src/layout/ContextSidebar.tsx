@@ -4,6 +4,8 @@ import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, Fo
 import { useEngine } from "../data/store.tsx";
 import type { Guest, Org } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
+import { isOpen } from "../data/engine/labels.tsx";
+import { useApprovals, useIssues } from "../data/engine/queries.ts";
 
 /**
  * The second column, like a Discord channel list. On the device it manages the machine; inside an organization it
@@ -82,6 +84,64 @@ function DeviceSidebar() {
 }
 
 function OrgSidebar({ org }: { org: Org }) {
+  return org.engine ? <LiveOrgSidebar org={org} companyId={org.engine.companyId} /> : <DemoOrgSidebar org={org} />;
+}
+
+/** Live: only what the engine backs. Counts come from the same cached answers the pages use. */
+function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
+  const { setup, data } = useEngine();
+  const d = setup?.deviceName ?? "pve";
+  const b = `/${d}/${org.slug}`;
+  const machines = data.guests.filter((g) => g.org === org.slug);
+  const issues = useIssues(companyId);
+  const approvals = useApprovals(companyId);
+  const rg = org.resourceGroup;
+  const open = (issues.data ?? []).filter((t) => isOpen(t.status)).length;
+  const pending = (approvals.data ?? []).filter((a) => a.status === "pending").length;
+  return (
+    <>
+      <Link to={`${b}/settings`} className="px-3 h-14 flex items-center gap-2 border-b border-line hover:bg-surface-2/60 transition-colors">
+        <div className="min-w-0 flex-1">
+          <div className="text-body font-semibold truncate">{org.name}</div>
+          <div className="text-micro text-ink-3">{org.engine?.resourceGroup === "set" ? `${org.usage.cpuCores.toFixed(1)}/${rg.cores} cores · ${(org.usage.memoryMb / 1024).toFixed(1)}/${Math.round(rg.memoryMb / 1024)} GiB` : `Tasks ${org.engine?.prefix}-…`}</div>
+        </div>
+        <ChevronDown className="h-4 w-4 text-ink-3" />
+      </Link>
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
+        <div className="mt-3 space-y-px">
+          <Item to={b} end icon={<LayoutDashboard className="h-4 w-4" />}>Dashboard</Item>
+          <Item to={`${b}/decisions`} icon={<Vote className="h-4 w-4" />} count={pending}>Decisions</Item>
+        </div>
+        <Section id="sec-work" label="Work">
+          <Item to={`${b}/tasks`} icon={<ListChecks className="h-4 w-4" />} count={open}>Tasks</Item>
+          <Item to={`${b}/projects`} icon={<FolderOpen className="h-4 w-4" />}>Projects</Item>
+          <Item to={`${b}/goals`} icon={<Target className="h-4 w-4" />}>Goals</Item>
+        </Section>
+        <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+          {machines.length === 0 && <p className="px-2 text-xs text-ink-3 py-1">None running</p>}
+          {machines.map((g) => <Item key={g.vmid} to={`${b}/machines/${g.vmid}`} icon={<MachineIcon g={g} />} muted={g.status !== "running"}>{g.name}</Item>)}
+        </Section>
+        <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+          {org.agents.length === 0 && <Link to={`${b}/agents?new=1`} className="block px-2 text-xs text-ink-3 hover:text-ink py-1">No agents yet · create one</Link>}
+          {org.agents.map((a) => (
+            <Item key={a.id} to={`${b}/agents/${a.id}`} icon={<span className="relative inline-flex"><Users className="h-4 w-4" />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status}>
+              {a.name}
+            </Item>
+          ))}
+        </Section>
+        <Section id="sec-org" label="Organization">
+          <Item to={`${b}/org`} icon={<Boxes className="h-4 w-4" />}>Org chart</Item>
+          <Item to={`${b}/members`} icon={<Users className="h-4 w-4" />}>Members</Item>
+          <Item to={`${b}/costs`} icon={<CircleDollarSign className="h-4 w-4" />}>Costs</Item>
+          <Item to={`${b}/activity`} icon={<History className="h-4 w-4" />}>Activity</Item>
+          <Item to={`${b}/settings`} icon={<Settings className="h-4 w-4" />}>Settings</Item>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+function DemoOrgSidebar({ org }: { org: Org }) {
   const { setup, data } = useEngine();
   const d = setup?.deviceName ?? "pve";
   const b = `/${d}/${org.slug}`;

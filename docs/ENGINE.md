@@ -30,7 +30,7 @@ Paperclip has a trusted-header sign-in, but it is its "Paperclip Cloud" lane and
 2. When a Proxmox user first signs in, the host service creates a **managed engine account** for them (`POST /api/auth/sign-up/email`) with a long random password that only the service knows, stored encrypted in the service's vault. The user never sees or types it.
 3. On each sign-in the host service opens an engine session for that user and keeps its cookie server-side. The browser only ever holds the host service's own session cookie.
 4. The browser talks to `/engine/api/*`. The host service checks the Proxmox session and the `X-EPC-Request` header, then forwards to the engine as that user. The live-events WebSocket is forwarded the same way.
-5. Organizations (Paperclip "companies") are created by the user's own session. What each Proxmox user can see maps to engine memberships: the service creates and accepts invites and sets roles, driven by Proxmox permissions (IAC).
+5. Organizations (Paperclip "companies") can only be created by an engine instance admin. Proxmox decides who that is: on every sign-in, a person with `Sys.Modify` on `/` (an administrator of this node) is made an engine instance admin by the service account, and someone who lost that right in Proxmox loses it in the engine. Everyone else works in the organizations they are invited to (engine memberships and roles).
 
 Verified end to end: sign-up, first-admin claim, two organizations created, and a second user who sees no organizations and cannot claim admin.
 

@@ -8,6 +8,9 @@ import { cn } from "../../lib/storage.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind } from "../../ui/primitives.tsx";
+import { LiveAgents } from "./live/LiveAgents.tsx";
+import { LiveTasks } from "./live/LiveTasks.tsx";
+import { LiveActivity, LiveCosts, LiveDecisions, LiveGoals, LiveOrgSettings, LiveProjects } from "./live/LiveWork.tsx";
 
 const ago = (iso: string | null) => {
   if (!iso) return "never";
@@ -51,7 +54,7 @@ export function Inbox() {
   );
 }
 
-export function Tasks() {
+function DemoTasks() {
   const { addTask, setTaskStatus } = useEngine();
   const [filter, setFilter] = useState<"open" | "all" | "done">("open");
   const [params, setParams] = useSearchParams();
@@ -110,7 +113,7 @@ export function Tasks() {
   );
 }
 
-export function Projects() {
+function DemoProjects() {
   return (
     <OrgGate>
       {(org) => (
@@ -132,7 +135,7 @@ export function Projects() {
   );
 }
 
-export function Goals() {
+function DemoGoals() {
   return (
     <OrgGate>
       {(org) => (
@@ -176,7 +179,7 @@ export function Routines() {
   );
 }
 
-export function Decisions() {
+function DemoDecisions() {
   const { decideApproval } = useEngine();
   return (
     <OrgGate>
@@ -206,7 +209,7 @@ export function Decisions() {
 
 const AGENT: Record<Agent["status"], [StatusKind, string]> = { working: ["working", "Working"], idle: ["idle", "Idle"], paused: ["paused", "Paused"], error: ["critical", "Error"] };
 
-export function Agents() {
+function DemoAgents() {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <OrgGate>
@@ -248,7 +251,7 @@ export function Agents() {
   );
 }
 
-export function Costs() {
+function DemoCosts() {
   return (
     <OrgGate>
       {(org) => {
@@ -277,7 +280,7 @@ export function Costs() {
   );
 }
 
-export function Activity() {
+function DemoActivity() {
   return (
     <OrgGate>
       {(org) => (
@@ -320,7 +323,7 @@ export function OrgConnectors() {
   );
 }
 
-export function OrgSettings() {
+function DemoOrgSettings() {
   return (
     <OrgGate>
       {(org) => (
@@ -352,3 +355,16 @@ export function ComingFromPaperclip({ title, body }: { title: string; body: stri
     </PageFrame>
   );
 }
+
+// Live, each page reads the organization's work from the engine; the demo keeps its in-browser data.
+const pick = (live: ReactNode, demo: ReactNode) => function Page() {
+  return <>{useEngine().live ? live : demo}</>;
+};
+export const Tasks = pick(<LiveTasks />, <DemoTasks />);
+export const Projects = pick(<LiveProjects />, <DemoProjects />);
+export const Goals = pick(<LiveGoals />, <DemoGoals />);
+export const Decisions = pick(<LiveDecisions />, <DemoDecisions />);
+export const Agents = pick(<LiveAgents />, <DemoAgents />);
+export const Costs = pick(<LiveCosts />, <DemoCosts />);
+export const Activity = pick(<LiveActivity />, <DemoActivity />);
+export const OrgSettings = pick(<LiveOrgSettings />, <DemoOrgSettings />);

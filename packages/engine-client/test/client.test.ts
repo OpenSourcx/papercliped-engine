@@ -22,6 +22,23 @@ describe("the engine client", () => {
     expect(seen[2].url).toBe("/engine/api/companies/co1/issues?status=todo");
   });
 
+  it("sends the bodies Paperclip's validators accept", async () => {
+    const seen: { url: string; body: unknown }[] = [];
+    const c = createEngineClient({ fetch: async (url, init) => { seen.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined }); return new Response("{}", { status: 200 }); } });
+    await c.agents.create("co1", { name: "Forge", role: "engineer", adapterType: "process", adapterConfig: { command: "echo" } });
+    await c.agents.wakeup("a1");
+    await c.agents.runs("co1", "a1", 5);
+    await c.issues.update("i1", { status: "done" });
+    await c.approvals.reject("ap1", "Not now");
+    await c.adapterModels("co1", "codex_local");
+    expect(seen[0]).toEqual({ url: "/engine/api/companies/co1/agents", body: { name: "Forge", role: "engineer", adapterType: "process", adapterConfig: { command: "echo" } } });
+    expect(seen[1].body).toEqual({ source: "on_demand", triggerDetail: "manual" });
+    expect(seen[2].url).toBe("/engine/api/companies/co1/heartbeat-runs?agentId=a1&limit=5");
+    expect(seen[3]).toEqual({ url: "/engine/api/issues/i1", body: { status: "done" } });
+    expect(seen[4]).toEqual({ url: "/engine/api/approvals/ap1/reject", body: { decisionNote: "Not now" } });
+    expect(seen[5].url).toBe("/engine/api/companies/co1/adapters/codex_local/models");
+  });
+
   it("turns engine errors into EngineError with the engine's message", async () => {
     const c = createEngineClient({ fetch: async () => new Response(JSON.stringify({ error: "Board access required", code: "forbidden" }), { status: 403 }) });
     const e = await c.companies.list().catch((x) => x);

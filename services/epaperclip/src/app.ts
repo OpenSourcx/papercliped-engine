@@ -1,5 +1,6 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { LIBRARY, isoEntries, pickLatest, type Latest } from "@papercliped-engine/os-library";
@@ -10,6 +11,11 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { SessionStore, type Session } from "./sessions.ts";
+import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
+import { StateStore } from "./state.ts";
+import { EngineGateway, type EngineStatus } from "./engine.ts";
+import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
+import { Pin, type PinToolHost } from "./pin.ts";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -38,24 +44,19 @@ export interface AppDeps {
   staticDir: string | null;
   secureCookies: boolean;
   now?: () => number;
+  /** The service's state and vault. Without one, state lives in memory for this run only. */
+  state?: StateStore;
+  /** Where the engine is. Without it, the engine routes answer 503 and no engine accounts are made. */
+  engine?: { url: string; publicUrl?: string; installDir?: string; sleep?: (ms: number) => Promise<void> };
+  /** Outbound HTTP to model providers (connector tests, Pin); tests inject a fake. */
+  fetch?: HttpFetch;
 }
 
 const COOKIE = "epc_session";
-const MAX_BODY = 8 * 1024;
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".md": "text/plain; charset=utf-8" };
 const TIMEFRAMES = ["hour", "day", "week", "month", "year"];
 const POWER = ["start", "shutdown", "stop", "reboot", "reset"];
-
-class HttpError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
 
 /** Counts failed logins per client address and per username; too many in 15 minutes locks that key for 15 minutes. */
 class LoginLimiter {
@@ -85,14 +86,6 @@ class LoginLimiter {
   }
 }
 
-function cookieValue(req: IncomingMessage, name: string): string | undefined {
-  for (const part of (req.headers.cookie ?? "").split(";")) {
-    const [k, ...v] = part.trim().split("=");
-    if (k === name) return v.join("=");
-  }
-  return undefined;
-}
-
 function baseHeaders(res: ServerResponse, secure: boolean) {
   res.setHeader("Content-Security-Policy", CSP);
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -100,30 +93,6 @@ function baseHeaders(res: ServerResponse, secure: boolean) {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
   if (secure) res.setHeader("Strict-Transport-Security", "max-age=31536000");
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string | string[]> = {}) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(text), ...extraHeaders });
-  res.end(text);
-}
-
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) throw new HttpError(415, "json_only", "Send JSON");
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const c of req) {
-    size += (c as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, "too_large", "Request body too large");
-    chunks.push(c as Buffer);
-  }
-  try {
-    const v = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error();
-    return v;
-  } catch {
-    throw new HttpError(400, "bad_json", "Body must be a JSON object");
-  }
 }
 
 /** "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst" -> "Debian 12 standard" */
@@ -293,6 +262,37 @@ export function backupOf(volid: string): { type: GuestType; vmid: number } | nul
 
 const str = (v: unknown, max = 256) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null);
 
+/** The Proxmox side of an organization: a pool for its machines and the limits it should stay within. */
+export interface ResourceGroup {
+  name: string;
+  pool: string;
+  cores: number;
+  memoryMb: number;
+  diskGb: number;
+  maxGuests: number;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+export function parseResourceGroup(b: Record<string, unknown>): Pick<ResourceGroup, "name" | "cores" | "memoryMb" | "diskGb" | "maxGuests"> {
+  const bad = (msg: string): never => {
+    throw new HttpError(400, "bad_request", msg);
+  };
+  const int = (v: unknown, lo: number, hi: number, what: string) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : bad(`${what} must be between ${lo} and ${hi}`));
+  const name = typeof b.name === "string" && b.name.trim().length > 0 && b.name.length <= 80 && !/[\u0000-\u001f\u007f]/.test(b.name) ? b.name.trim() : bad("Give the resource group a name of up to 80 characters");
+  return { name, cores: int(b.cores, 1, 1024, "Cores"), memoryMb: int(b.memoryMb, 256, 16_777_216, "Memory"), diskGb: int(b.diskGb, 1, 1_048_576, "Disk"), maxGuests: int(b.maxGuests, 1, 1000, "Machines") };
+}
+
+/** "Northwind Labs" -> "northwind-labs", for the pool id epc-<slug>. */
+export const poolSlug = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24)
+    .replace(/-+$/, "") || "org";
+
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
   const limiter = new LoginLimiter(now);
@@ -345,9 +345,37 @@ export function createApp(d: AppDeps) {
     }
   };
 
+  const state = d.state ?? new StateStore(null);
+  const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
+  const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
+  const connectors = new Connectors(state, outbound, now);
+  const pin = new Pin({ state, connectors, fetch: outbound, now });
+
+  const needEngine = (): EngineGateway => {
+    if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
+    return gateway;
+  };
+
+  /** Administrators of this node, as Proxmox sees them: Sys.Modify on "/". */
+  const isNodeAdmin = async (pve: ProxmoxClient): Promise<boolean> => {
+    try {
+      const p = await pve.call<Record<string, Record<string, number>>>("GET", "/access/permissions", { path: "/" });
+      return p?.["/"]?.["Sys.Modify"] === 1;
+    } catch (e) {
+      if (e instanceof ProxmoxError && e.status === 403) return false;
+      throw e;
+    }
+  };
+
   const signIn = (res: ServerResponse, username: string, ticket: string, csrf: string) => {
     const s = d.sessions.create(username, ticket, csrf);
     sendJson(res, 200, { user: { username } }, { "Set-Cookie": cookie(s.id, 12 * 3600) });
+    // Open (or create) the person's engine account in the background; sign-in to the console never waits on the engine.
+    // Proxmox node administrators administer the engine too (they can create organizations); checked on every sign-in.
+    gateway
+      ?.loginFor(s)
+      .then(async () => gateway!.syncAdmin(s, await isNodeAdmin(await clientFor(s))))
+      .catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
   };
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
@@ -418,6 +446,108 @@ export function createApp(d: AppDeps) {
       const s = requireSession(req);
       const [name, realm] = s.username.split("@");
       return sendJson(res, 200, { user: { username: s.username, name, realm, node: d.pve.node } });
+    }
+
+    // ---- The engine, connectors and Pin.
+    if (method === "GET" && path === "/api/engine/status") {
+      requireSession(req);
+      const status: EngineStatus = gateway ? await gateway.status() : { installed: false, reachable: false, ready: false, version: null, bootstrap: "pending", serviceAccount: "pending", error: "The engine isn't set up on this host." };
+      return sendJson(res, 200, status);
+    }
+
+    if (method === "GET" && path === "/api/resource-groups") {
+      const s = requireSession(req);
+      const me = await needEngine().me(s);
+      const member = new Set((me.memberships ?? []).filter((m) => m.status === "active").map((m) => m.companyId));
+      const all = state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {};
+      const groups = Object.entries(all).filter(([id]) => member.has(id)).map(([companyId, g]) => ({ companyId, ...g }));
+      return sendJson(res, 200, { groups });
+    }
+
+    const rg = path.match(/^\/api\/resource-groups\/([A-Za-z0-9_-]{1,64})$/);
+    if (rg && (method === "PUT" || method === "DELETE")) {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const companyId = rg[1];
+      const spec = method === "PUT" ? parseResourceGroup(await readJson(req)) : null;
+      // Organization limits are set by its owners and admins; Proxmox then decides whether this person may make the pool.
+      const m = await needEngine().membership(s, companyId);
+      if (!m) throw new HttpError(403, "not_member", "You aren't a member of that organization");
+      if (m.role !== "owner" && m.role !== "admin") throw new HttpError(403, "forbidden", "Only the organization's owners and admins can change its resources");
+      const all = state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {};
+      const existing = all[companyId];
+      if (spec) {
+        const pool = await asUser(req, res, async (pve) => {
+          if (existing) return existing.pool;
+          const taken = new Set([...(await pve.pools().catch(() => [])).map((p) => p.poolid), ...Object.values(all).map((g) => g.pool)]);
+          const base = `epc-${poolSlug(spec.name)}`;
+          const free = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find((p) => !taken.has(p));
+          if (!free) throw new HttpError(409, "pool_taken", "Pick a more distinctive name; pools with this name already exist");
+          await pve.call("POST", "/pools", { poolid: free, comment: `ePaperclip organization: ${spec.name}` });
+          return free;
+        });
+        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username };
+        state.setSetting("resourceGroups", { ...all, [companyId]: group });
+        return sendJson(res, 200, { group: { companyId, ...group } });
+      }
+      if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
+      const poolRemoved = await asUser(req, res, async (pve) => {
+        const info = await pve.call<{ members?: unknown[] }>("GET", `/pools/${encodeURIComponent(existing.pool)}`).catch((e) => (e instanceof ProxmoxError && e.status === 404 ? null : Promise.reject(e)));
+        if (!info) return true;
+        if ((info.members ?? []).length) return false;
+        // Proxmox may refuse (no Pool.Allocate): the mapping still goes, the empty pool stays.
+        return pve.call("DELETE", `/pools/${encodeURIComponent(existing.pool)}`).then(() => true, (e) => (e instanceof ProxmoxError && e.status === 403 ? false : Promise.reject(e)));
+      });
+      const rest = { ...all };
+      delete rest[companyId];
+      state.setSetting("resourceGroups", rest);
+      return sendJson(res, 200, { ok: true, pool: existing.pool, poolRemoved });
+    }
+
+    if (method === "GET" && path === "/api/connectors") {
+      const canManage = await asUser(req, res, (pve) => isNodeAdmin(pve));
+      return sendJson(res, 200, { connectors: connectors.list(), canManage });
+    }
+
+    const conn = path.match(/^\/api\/connectors\/([a-z]{1,32})\/(credential|test)$/);
+    if (conn) {
+      const id = conn[1];
+      if (!isProvider(id)) throw new HttpError(404, "not_found", "Unknown connector");
+      const allowed = conn[2] === "credential" ? method === "PUT" || method === "DELETE" : method === "POST";
+      if (!allowed) throw new HttpError(405, "method", "Method not allowed");
+      requireSameSite(req);
+      const s = requireSession(req);
+      const body = method === "PUT" ? await readJson(req) : null;
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change connectors");
+      if (method === "PUT") return sendJson(res, 200, { connector: connectors.setKey(id, body!.apiKey, s.username) });
+      if (method === "DELETE") {
+        connectors.remove(id);
+        return sendJson(res, 200, { ok: true });
+      }
+      return sendJson(res, 200, { connector: await connectors.test(id) });
+    }
+
+    if (path === "/api/pin/settings" && (method === "GET" || method === "PUT")) {
+      if (method === "PUT") requireSameSite(req);
+      const s = requireSession(req);
+      return sendJson(res, 200, method === "GET" ? pin.settings(s.username) : pin.saveSettings(s.username, await readJson(req)));
+    }
+
+    if (method === "GET" && path === "/api/pin/models") {
+      const s = requireSession(req);
+      const provider = url.searchParams.get("provider") ?? pin.settings(s.username).provider;
+      if (!isProvider(provider)) throw new HttpError(400, "bad_request", "Unknown provider");
+      return sendJson(res, 200, { provider, models: await pin.models(provider) });
+    }
+
+    if (method === "POST" && path === "/api/pin/chat") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const prepared = pin.prepare(s.username, await readJson(req, 512 * 1024));
+      const gone = new AbortController();
+      res.on("close", () => !res.writableFinished && gone.abort());
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p) };
+      return pin.chat(res, prepared, host, gone.signal);
     }
 
     if (method === "GET" && path === "/api/host") {
@@ -1301,21 +1431,22 @@ export function createApp(d: AppDeps) {
   // One-time VNC sessions: created by POST /api/guests/:vmid/vnc for one signed-in session, used once within 30 seconds.
   const vncSessions = new Map<string, { session: string; node: string; vmid: number; port: string; ticket: string; expires: number }>();
 
-  // Live consoles: same session cookie, and the Origin must be this host (WebSockets get no CORS protection).
-  const upgrade = createConsoleRelay({
+  // Sockets (consoles and engine events): same session cookie, and the Origin must be this host (WebSockets get no CORS protection).
+  const socketPrecheck = (req: IncomingMessage) => {
+    const origin = req.headers.origin;
+    let host: string | null = null;
+    try {
+      host = origin ? new URL(origin).host : null;
+    } catch {
+      host = null;
+    }
+    if (!host || host !== req.headers.host) return { status: 403, reason: "Forbidden" };
+    if (!d.sessions.get(cookieValue(req, COOKIE))) return { status: 401, reason: "Unauthorized" };
+    return null;
+  };
+  const consoleUpgrade = createConsoleRelay({
     connect: d.connect ?? realConnect(d.pve.caPem),
-    precheck: (req) => {
-      const origin = req.headers.origin;
-      let host: string | null = null;
-      try {
-        host = origin ? new URL(origin).host : null;
-      } catch {
-        host = null;
-      }
-      if (!host || host !== req.headers.host) return { status: 403, reason: "Forbidden" };
-      if (!d.sessions.get(cookieValue(req, COOKIE))) return { status: 401, reason: "Unauthorized" };
-      return null;
-    },
+    precheck: socketPrecheck,
     authorize: async (req, url) => {
       const s = d.sessions.get(cookieValue(req, COOKIE));
       if (!s) throw new Error("Your session ended. Sign in again.");
@@ -1360,11 +1491,28 @@ export function createApp(d: AppDeps) {
     },
   });
 
+  // The engine's live events for one organization, relayed as the signed-in person.
+  const upgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (!new URL(req.url ?? "/", "http://epaperclip").pathname.startsWith("/engine/")) return consoleUpgrade(req, socket, head);
+    const refused = socketPrecheck(req);
+    if (refused || !gateway) return void socket.end(`HTTP/1.1 ${refused?.status ?? 503} ${refused?.reason ?? "Service Unavailable"}\r\nConnection: close\r\n\r\n`);
+    const s = d.sessions.get(cookieValue(req, COOKIE))!;
+    gateway.relayEvents(req, socket, head, s, () => d.sessions.peek(s.id) !== null).catch(() => socket.destroy());
+  };
+
+  /** /engine/api/*: the engine, as the signed-in person. Changes need the same header and Origin as our own API. */
+  const engineProxy = async (req: IncomingMessage, res: ServerResponse) => {
+    const s = requireSession(req);
+    if (req.method !== "GET" && req.method !== "HEAD") requireSameSite(req);
+    await needEngine().forward(req, res, s, maxUpload);
+  };
+
   const handle = async function handle(req: IncomingMessage, res: ServerResponse) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
+      if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });
       return serveStatic(req, res, url);
     } catch (e) {
@@ -1385,5 +1533,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade });
+  return Object.assign(handle, { upgrade, engine: gateway });
 }

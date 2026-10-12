@@ -1,6 +1,7 @@
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Box, Cable, Sparkles } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
+import { LiveDashboard } from "./org/live/LiveDashboard.tsx";
 import { TASK_ICON, TASK_LABEL } from "../data/meta.tsx";
 import type { Agent } from "../data/types.ts";
 import { formatBytes } from "../lib/storage.ts";
@@ -9,7 +10,7 @@ import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind, 
 
 const AGENT_STATUS: Record<Agent["status"], [StatusKind, string]> = { working: ["working", "Working"], idle: ["idle", "Idle"], paused: ["paused", "Paused"], error: ["critical", "Error"] };
 
-export function OrgDashboard() {
+function DemoOrgDashboard() {
   const { org: slug } = useParams();
   const { setup, data } = useEngine();
   const device = setup?.deviceName ?? "pve";
@@ -113,4 +114,9 @@ export function OrgDashboard() {
       </Card>
     </PageFrame>
   );
+}
+
+/** An organization's home. Live, it is built from the engine's dashboard; the demo shows its in-browser data. */
+export function OrgDashboard() {
+  return useEngine().live ? <LiveDashboard /> : <DemoOrgDashboard />;
 }
