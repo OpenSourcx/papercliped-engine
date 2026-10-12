@@ -271,7 +271,7 @@ export function SchemaForm({ schema, value, onChange, only, labels, hints, disab
           );
         }
         return (
-          <Field key={k} label={f.required ? label : label} hint={f.type === "array" ? `${hint} One per line.` : hint} htmlFor={id}>
+          <Field key={k} label={f.required ? <>{label} <span className="text-ink-3 font-normal">(required)</span></> : label} hint={f.type === "array" ? `${hint} One per line.` : hint} htmlFor={id}>
             <Leaf id={id} name={k} field={f} value={value[k]} onChange={(v) => set(k, v)} disabled={disabled} />
           </Field>
         );
@@ -303,3 +303,38 @@ export function SaveBar({ dirty, busy, onSave, onReset, error, saved }: { dirty:
 }
 
 export const Spin = () => <Loader2 className="h-4 w-4 animate-spin" aria-hidden />;
+
+/**
+ * Create or edit one named object (a notification target, a matcher, a metric server) from its definition.
+ * On edit only what changed is sent, and settings that hold secrets stay blank unless something is typed.
+ */
+export function ObjectModal({ title, subtitle, schema, only, initial, nameLabel, name: fixedName, hints, extra, onSubmit, onClose, submitLabel }: { title: string; subtitle?: string; schema: Schema; only?: string[]; initial: Values; nameLabel: string; name: string | null; hints?: Record<string, string>; extra?: ReactNode; onSubmit: (name: string, values: Values) => Promise<unknown>; onClose: () => void; submitLabel: string }) {
+  const creating = fixedName === null;
+  const [name, setName] = useState(fixedName ?? "");
+  const [value, setValue] = useState<Values>(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keys = (only ?? Object.keys(schema)).filter((k) => schema[k]);
+  const go = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmit(name, creating ? Object.fromEntries(keys.filter((k) => value[k] !== undefined && value[k] !== "").map((k) => [k, value[k]])) : changedValues(initial, value, keys));
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal size="lg" title={title} subtitle={subtitle} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={creating && !/^[A-Za-z][A-Za-z0-9_-]+$/.test(name)} onClick={() => void go()}>{submitLabel}</Button></>}>
+      <div className="space-y-5">
+        {creating && <Field label={nameLabel} hint="Letters, numbers, - and _. It can't be changed later." htmlFor="obj-name"><Input id="obj-name" value={name} onChange={(e) => setName(e.target.value)} className="font-mono" autoFocus /></Field>}
+        {extra}
+        <SchemaForm schema={schema} value={value} onChange={setValue} only={keys} hints={hints} />
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
