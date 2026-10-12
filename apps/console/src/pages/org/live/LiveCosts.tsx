@@ -98,7 +98,7 @@ export function LiveCosts() {
           {s.budgetCents ? <BarMeter className="mt-3" label="Month to date" pct={s.utilizationPercent} value={`${Math.round(s.utilizationPercent)}%`} /> : null}
           <div className="mt-4 flex flex-wrap items-end gap-2">
             <label className="block"><span className="block text-compact font-medium text-ink-2 mb-1.5">Monthly budget for {org.name} (US dollars)</span>
-              <Input aria-label="Monthly budget in dollars" inputMode="decimal" className="w-48" value={orgBudget ?? (s.budgetCents ? String(s.budgetCents / 100) : "")} onChange={(e) => setOrgBudget(e.target.value)} placeholder="0 means no limit" /></label>
+              <div className="w-48"><Input aria-label="Monthly budget in dollars" inputMode="decimal" value={orgBudget ?? (s.budgetCents ? String(s.budgetCents / 100) : "")} onChange={(e) => setOrgBudget(e.target.value)} placeholder="0 means no limit" /></div></label>
             <Button disabled={orgBudget === null || centsOf(orgBudget) === null} loading={ow.budget.isPending} onClick={saveOrgBudget}>Save budget</Button>
           </div>
           <ActionError error={ow.budget.error} />
@@ -128,7 +128,7 @@ export function LiveCosts() {
               <Avatar name={a.name} hue={210} size={28} />
               <span className="w-32 text-sm truncate">{a.name}</span>
               <BarMeter className="flex-1 min-w-48" label="This month" pct={a.budgetMonthlyCents ? (a.spentMonthlyCents / a.budgetMonthlyCents) * 100 : 0} value={a.budgetMonthlyCents ? `${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}` : `${dollars(a.spentMonthlyCents)}, no limit`} />
-              <Input aria-label={`Monthly budget for ${a.name} in dollars`} inputMode="decimal" className="w-28" value={value} onChange={(e) => setAgentBudget({ ...agentBudget, [a.id]: e.target.value })} placeholder="No limit" />
+              <div className="w-28"><Input aria-label={`Monthly budget for ${a.name} in dollars`} inputMode="decimal" value={value} onChange={(e) => setAgentBudget({ ...agentBudget, [a.id]: e.target.value })} placeholder="No limit" /></div>
               <Button size="sm" disabled={!dirty || cents === null} loading={bw.agent.isPending && bw.agent.variables?.agentId === a.id} onClick={() => cents !== null && bw.agent.mutate({ agentId: a.id, cents }, { onSuccess: () => setAgentBudget(({ [a.id]: _gone, ...rest }) => rest) })}>Save</Button>
             </div>
           );

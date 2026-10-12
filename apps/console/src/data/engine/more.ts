@@ -177,6 +177,6 @@ export function useInboxCounts(companyIds: string[]): Map<string, number> {
   const ready = useEngineReady();
   const results = useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.badges(id), queryFn: () => engine.inbox.badges(id), enabled: ready, refetchInterval: 60_000, retry: false })) });
   const out = new Map<string, number>();
-  results.forEach((r, i) => { const b = r.data; if (b) out.set(companyIds[i], b.inbox + b.approvals + b.failedRuns + b.joinRequests); });
+  results.forEach((r, i) => { const b = r.data; if (b) out.set(companyIds[i], b.inbox); });
   return out;
 }
