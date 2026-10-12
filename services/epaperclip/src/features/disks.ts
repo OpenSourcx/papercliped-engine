@@ -50,7 +50,7 @@ export function mapDisk(d: RawDisk) {
     mounted: d.mounted === true,
     gpt: d.gpt === true,
     health: d.health ?? null,
-    // Proxmox reports the wear it has left as a percentage "used"; 100 minus that is life remaining.
+    // Proxmox's own screen shows 100 minus this as the wear, so the value is the life left: 100 is new.
     wearoutPct: wear !== null && Number.isFinite(wear) ? wear : null,
     rpm: typeof d.rpm === "number" ? d.rpm : null,
     parent: d.parent ?? null,
