@@ -2,9 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError, type LiveUser, type Realm } from "../data/api.ts";
 import { cn } from "../lib/storage.ts";
-import { PinOrb } from "../pin/PinIsland.tsx";
+import { PinOrb } from "../pin/PinOrb.tsx";
+import { controlClass } from "../ui/primitives.tsx";
 
-const inputCls = "h-12 w-full rounded-xl bg-surface-2/80 border border-line px-4 text-body placeholder:text-ink-3 outline-none focus:border-line-strong focus:ring-2 focus:ring-accent/25";
+const inputCls = cn(controlClass, "h-12 px-4 text-body rounded-xl");
 
 /**
  * Sign in with your Proxmox account. The password goes to this device's host service, which checks it with Proxmox's
@@ -96,7 +97,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
               </label>
             )}
             <FormError text={error} />
-            <button type="submit" disabled={busy || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition active:scale-[0.98]">
+            <button type="submit" disabled={busy || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
             </button>
           </form>
@@ -107,7 +108,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
               <input key={String(recovery)} autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} placeholder={recovery ? "" : "123456"} className={cn(inputCls, !recovery && "tracking-code tabular-nums")} />
             </label>
             <FormError text={error} />
-            <button type="submit" disabled={busy || !code.trim()} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition active:scale-[0.98]">
+            <button type="submit" disabled={busy || !code.trim()} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Verify <ShieldCheck className="h-4 w-4" /></>}
             </button>
             <div className="flex justify-between text-sm">

@@ -6,7 +6,7 @@ import { orgNameError, useEngine } from "../data/store.tsx";
 import type { PinMode, SetupState } from "../data/types.ts";
 import { cn, slugify } from "../lib/storage.ts";
 import { PinOrb } from "../pin/PinIsland.tsx";
-import { Toggle } from "../ui/primitives.tsx";
+import { Toggle, controlClass } from "../ui/primitives.tsx";
 
 const STEPS = 5;
 
@@ -41,7 +41,7 @@ function Shell({ step, title, subtitle, children, onBack }: { step: number; titl
 
 function Continue({ disabled, label = "Continue" }: { disabled?: boolean; label?: string }) {
   return (
-    <button type="submit" disabled={disabled} className="h-11 px-6 rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition active:scale-[0.98]">
+    <button type="submit" disabled={disabled} className="h-11 px-6 rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
       {label} <ArrowRight className="h-4 w-4" />
     </button>
   );
@@ -57,7 +57,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
   );
 }
 
-const inputCls = "h-12 w-full rounded-xl bg-surface-2/80 border border-line px-4 text-body placeholder:text-ink-3 outline-none focus:border-line-strong focus:ring-2 focus:ring-accent/25";
+const inputCls = cn(controlClass, "h-12 px-4 text-body rounded-xl");
 
 const PROVIDERS = [
   { id: "anthropic", name: "Anthropic", body: "Claude subscription or API key", icon: <Sparkles className="h-4 w-4" /> },
@@ -145,7 +145,7 @@ export function Onboarding() {
               ["assistant", "Assistant", "Watches your system, answers questions and handles light tasks. Asks you before doing anything bigger."],
               ["agent", "Agent", "Works on its own: runs tasks, follows your schedule and acts on triggers, then tells you what it did."],
             ] as const).map(([v, t, b]) => (
-              <button key={v} type="button" onClick={() => setMode(v)} aria-pressed={mode === v} className={cn("text-left rounded-2xl border p-4 transition flex gap-3", mode === v ? "border-accent/60 bg-accent-soft" : "border-line bg-surface/60 hover:border-line-strong")}>
+              <button key={v} type="button" onClick={() => setMode(v)} aria-pressed={mode === v} className={cn("text-left rounded-2xl border p-4 transition-control flex gap-3", mode === v ? "border-accent/60 bg-accent-soft" : "border-line bg-surface/60 hover:border-line-strong")}>
                 <span className={cn("mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center shrink-0", mode === v ? "bg-accent border-accent text-primary-ink" : "border-line-strong")}>{mode === v && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
                 <span><span className="block font-semibold">{t}</span><span className="block text-sm text-ink-2 mt-0.5">{b}</span></span>
               </button>
@@ -163,7 +163,7 @@ export function Onboarding() {
         <form onSubmit={next}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {PROVIDERS.map((p) => (
-              <button key={p.id} type="button" onClick={() => setProvider(p.id === provider ? null : p.id)} aria-pressed={provider === p.id} className={cn("text-left rounded-2xl border p-4 transition", provider === p.id ? "border-accent/60 bg-accent-soft" : "border-line bg-surface/60 hover:border-line-strong")}>
+              <button key={p.id} type="button" onClick={() => setProvider(p.id === provider ? null : p.id)} aria-pressed={provider === p.id} className={cn("text-left rounded-2xl border p-4 transition-control", provider === p.id ? "border-accent/60 bg-accent-soft" : "border-line bg-surface/60 hover:border-line-strong")}>
                 <span className="flex items-center gap-2 font-semibold text-body"><span className="text-ink-2">{p.icon}</span>{p.name}</span>
                 <span className="block text-compact text-ink-3 mt-1">{p.body}</span>
               </button>

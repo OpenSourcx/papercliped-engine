@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import "@xterm/xterm/css/xterm.css";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import { cn } from "../lib/storage.ts";
@@ -37,6 +38,13 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    // The canvas renderer draws text itself. xterm's default DOM renderer injects <style> elements, which the strict
+    // CSP (style-src 'self') blocks, losing colours and cell sizing on a real host.
+    try {
+      term.loadAddon(new CanvasAddon());
+    } catch {
+      // no canvas (very old browser): the DOM renderer still shows plain text
+    }
     term.open(host.current);
     const refit = () => {
       try {

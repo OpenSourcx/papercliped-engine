@@ -20,6 +20,7 @@
     "@papercliped-engine/os-library": "workspace:*",
     "@papercliped-engine/proxmox-client": "workspace:*",
     "@tanstack/react-query": "^5.90.2",
+    "@xterm/addon-canvas": "0.7.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "clsx": "^2.1.1",

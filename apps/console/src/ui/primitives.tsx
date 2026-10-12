@@ -140,7 +140,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
 
 export function Segmented<T extends string>({ value, options, onChange, size = "md", label }: { value: T; options: { value: T; label: ReactNode }[]; onChange: (v: T) => void; size?: "sm" | "md"; label?: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full rounded-full bg-surface-2 border border-line p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full overflow-x-auto [scrollbar-width:none] rounded-full bg-surface-2 border border-line p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -148,7 +148,7 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cn("transition-control rounded-full font-medium whitespace-nowrap", size === "sm" ? "px-2.5 h-7 text-xs" : "px-3.5 h-8 text-compact", value === o.value ? "bg-surface-3 text-ink shadow-raised" : "text-ink-3 hover:text-ink")}
+          className={cn("transition-control shrink-0 rounded-full font-medium whitespace-nowrap", size === "sm" ? "px-2.5 h-7 text-xs" : "px-3.5 h-8 text-compact", value === o.value ? "bg-surface-3 text-ink shadow-raised" : "text-ink-3 hover:text-ink")}
         >
           {o.label}
         </button>
