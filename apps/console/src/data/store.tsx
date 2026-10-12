@@ -1,5 +1,6 @@
 import { DEFAULT_PLUGINS, pluginById, type PluginEntry } from "./storePlugins.ts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import type { Rule } from "@papercliped-engine/automations";
 import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
@@ -7,15 +8,19 @@ import { api, ApiError, type HardwareChange, type MachineSpec, type RestoreSpec,
 import { demoBackend, liveBackend, parseBackupName, type Backend } from "./backend.ts";
 import { demoData, demoHost, liveData, newOrg } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
+import { withUsage } from "./engine/map.ts";
+import { useLiveOrgs } from "./engine/orgs.ts";
+import { engine } from "./engine/queries.ts";
+import { qk } from "./engine/keys.ts";
 import { defaultPinData } from "./pin.ts";
 import { wouldLoop } from "./orgTree.ts";
 import { RESERVED, type AppMode, type AppSession, type EngineData, type Guest, type HostMetrics, type HostStorage, type PinData, type PinLogEntry, type Task, type Notice, type Org, type PinMode, type SetupState, type User } from "./types.ts";
 
 /**
  * The console's state. Served by the host service, the host and its machines are live: read from Proxmox as the
- * signed-in user every few seconds, and powered through the service. Everything ePaperclip will own (organizations,
- * agents, tasks, rules, users) is still demo data kept in the browser until the fork lands; the shapes match, so
- * swapping in the real API replaces this file's internals, not the pages.
+ * signed-in user every few seconds, and powered through the service. Organizations and their agents come from the
+ * Paperclip engine (data/engine), and each organization's pages read its tasks, goals, approvals and costs from there.
+ * In the demo, all of it is in-browser data with the same shapes.
  */
 
 interface Engine {
@@ -97,7 +102,17 @@ export function orgNameError(name: string, orgs: Org[]): string | null {
   return null;
 }
 
+/** Live: engine answers are cached and refreshed by react-query. The demo never asks it for anything. */
 export function EngineProvider({ children }: { children: ReactNode }) {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 2, refetchOnWindowFocus: true } } }));
+  return (
+    <QueryClientProvider client={client}>
+      <EngineStateProvider>{children}</EngineStateProvider>
+    </QueryClientProvider>
+  );
+}
+
+function EngineStateProvider({ children }: { children: ReactNode }) {
   const { session } = useSession();
   const live = session.mode === "live";
   const [setup, setSetup] = useState<SetupState | null>(() => readJson<SetupState | null>("epc.setup", null));
@@ -150,8 +165,13 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   // Only the demo is kept in the browser. A live console shows what the host has, never a browser-side copy.
   useEffect(() => { if (!live) writeJson("epc.data", data); }, [data, live]);
 
+  // Live: organizations come from the engine. Machines are matched to them by resource-group pool.
+  const liveOrgs = useLiveOrgs();
+  const queryClient = useQueryClient();
+  const orgsRef = useRef<Org[]>(data.orgs);
+  orgsRef.current = live ? liveOrgs.orgs ?? [] : data.orgs;
+
   // Live: read the host as the signed-in user every five seconds (and right after an action).
-  const orgs = data.orgs;
   useEffect(() => {
     if (!live) return;
     let alive = true;
@@ -160,7 +180,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         (h) => {
           if (!alive) return;
           setHost((prev) => liveHostMetrics(h, prev));
-          setGuests((prev) => liveGuests(h, orgs, prev ?? []));
+          setGuests((prev) => liveGuests(h, orgsRef.current, prev ?? []));
           setStorage(liveStorage(h));
           setLiveError(null);
         },
@@ -172,7 +192,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       alive = false;
       clearInterval(t);
     };
-  }, [live, orgs, refreshTick]);
+  }, [live, refreshTick]);
   useEffect(() => (setup ? writeJson("epc.setup", setup) : removeKey("epc.setup")), [setup]);
 
   // Demo: live-looking metrics, a gentle random walk like the host's own graphs.
@@ -207,7 +227,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     });
   storageRef.current = live ? storage : data.host.storage;
   guestsRef.current = live ? guests ?? [] : data.guests;
-  const view = useMemo<EngineData>(() => (live ? { ...data, guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage]);
+  const view = useMemo<EngineData>(() => (live ? { ...data, orgs: withUsage(liveOrgs.orgs ?? [], guests ?? []), guests: guests ?? [], host: { ...data.host, storage } } : data), [live, data, guests, storage, liveOrgs.orgs]);
 
   const value = useMemo<Engine>(
     () => ({
@@ -330,7 +350,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       },
       logPin: (kind, text) => logTo(kind, text),
       createOrg: (name, size, by = "user", memory = "postgres") => {
-        if (live) return { ok: false, error: "Organizations arrive with the Paperclip engine, which isn't on this device yet, so there's nowhere to keep them." };
+        // Live, organizations are created in the engine, which answers asynchronously: the Create an organization dialog does it.
+        if (live) return { ok: false, error: "Create organizations from the Create an organization dialog; they're kept in the engine." };
         const err = orgNameError(name, data.orgs);
         if (err) return { ok: false, error: err };
         const org = { ...newOrg(name.trim(), { ...size, createdBy: by }), memory };
@@ -447,13 +468,21 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         }),
       toggleRoutine: (org, id) => updateOrg(org, (o) => ({ ...o, routines: o.routines.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
       setReportsTo: (org, agentId, managerId) => {
-        const o = data.orgs.find((x) => x.slug === org);
+        const o = view.orgs.find((x) => x.slug === org);
         const a = o?.agents.find((x) => x.id === agentId);
         if (!o || !a) return { ok: false, error: "Unknown agent" };
         if (managerId === agentId) return { ok: false, error: "An agent can't report to itself." };
         if (managerId && !o.agents.some((x) => x.id === managerId)) return { ok: false, error: "Unknown manager" };
         if (wouldLoop(o.agents, agentId, managerId)) return { ok: false, error: `${a.name} manages that agent, so it can't report to them.` };
         const mgr = o.agents.find((x) => x.id === managerId);
+        if (live && o.engine) {
+          const companyId = o.engine.companyId;
+          engine.agents.update(agentId, { reportsTo: managerId }).then(
+            () => queryClient.invalidateQueries({ queryKey: qk.agents(companyId) }),
+            (e) => setData((d) => ({ ...d, notices: [{ id: `n-${Date.now()}`, kind: "info" as const, title: `Couldn't move ${a.name}`, body: e instanceof Error ? e.message : "The engine refused the change.", at: new Date().toISOString(), read: false }, ...d.notices].slice(0, 50) })),
+          );
+          return { ok: true };
+        }
         updateOrg(org, (x) => ({ ...x, agents: x.agents.map((ag) => (ag.id === agentId ? { ...ag, reportsTo: managerId } : ag)), activity: [{ id: `ac-${Date.now()}`, who: "You", what: `moved ${a.name} to report to ${mgr?.name ?? "you"}`, at: new Date().toISOString() }, ...x.activity] }));
         return { ok: true };
       },
@@ -462,7 +491,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
       revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),
     }),
-    [live, liveError, guests, setup, data, view, host, completeSetup, backend, watchTask, running, contentVersion],
+    [live, liveError, guests, setup, data, view, host, completeSetup, backend, watchTask, running, contentVersion, queryClient],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

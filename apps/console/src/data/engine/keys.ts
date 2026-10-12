@@ -1,0 +1,28 @@
+/** Cache keys. Everything about one organization sits under qk.company(id), so one call can refresh all of it. */
+export const qk = {
+  status: ["engine", "status"] as const,
+  me: ["engine", "me"] as const,
+  orgs: ["engine", "companies"] as const,
+  adapters: ["engine", "adapters"] as const,
+  connectors: ["host", "connectors"] as const,
+  company: (id: string) => ["engine", "co", id] as const,
+  detail: (id: string) => ["engine", "co", id, "detail"] as const,
+  resourceGroup: (id: string) => ["engine", "co", id, "resource-group"] as const,
+  dashboard: (id: string) => ["engine", "co", id, "dashboard"] as const,
+  agents: (id: string) => ["engine", "co", id, "agents"] as const,
+  agent: (id: string, agentId: string) => ["engine", "co", id, "agent", agentId] as const,
+  runs: (id: string, agentId?: string) => (agentId ? (["engine", "co", id, "runs", agentId] as const) : (["engine", "co", id, "runs"] as const)),
+  issues: (id: string) => ["engine", "co", id, "issues"] as const,
+  issue: (id: string, ref: string) => ["engine", "co", id, "issue", ref] as const,
+  comments: (id: string, ref: string) => ["engine", "co", id, "comments", ref] as const,
+  /** Every open task and comment thread in the organization (tasks are cached by the reference in the address, which may be an id or a key like ACME-4). */
+  anyIssue: (id: string) => ["engine", "co", id, "issue"] as const,
+  anyComments: (id: string) => ["engine", "co", id, "comments"] as const,
+  goals: (id: string) => ["engine", "co", id, "goals"] as const,
+  projects: (id: string) => ["engine", "co", id, "projects"] as const,
+  approvals: (id: string) => ["engine", "co", id, "approvals"] as const,
+  costs: (id: string) => ["engine", "co", id, "costs"] as const,
+  activity: (id: string) => ["engine", "co", id, "activity"] as const,
+  members: (id: string) => ["engine", "co", id, "members"] as const,
+  models: (id: string, type: string) => ["engine", "co", id, "models", type] as const,
+};

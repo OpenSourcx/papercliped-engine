@@ -64,6 +64,8 @@ export interface Org {
   approvals: { id: string; title: string; requestedBy: string; kind: "hire" | "budget" | "action"; status: "pending" | "approved" | "rejected"; at: string }[];
   inbox: { id: string; title: string; from: string; at: string; read: boolean }[];
   activity: { id: string; who: string; what: string; at: string }[];
+  /** Live only: the engine company behind this organization. Its work (tasks, goals, approvals...) is read from the engine, not kept here. */
+  engine?: { companyId: string; prefix: string; description: string | null; status: string; budgetMonthlyCents: number; spentMonthlyCents: number; resourceGroup: "set" | "missing" | "unknown" };
 }
 
 export type TaskStatus = "todo" | "in_progress" | "in_review" | "done" | "blocked";
