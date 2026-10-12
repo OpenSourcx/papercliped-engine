@@ -30,11 +30,11 @@ export function ArcMeter({ label, pct, caption }: { label: string; pct: number; 
           {v > 0.5 && <path d={arc(v / 100)} fill="none" stroke="var(--accent)" strokeWidth={stroke} strokeLinecap="round" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pt-[6%]">
-          <div className="text-[clamp(20px,5.5vw,34px)] font-semibold tracking-tight tabular-nums leading-none">{v.toFixed(0)}<span className="text-[0.6em] text-ink-2">%</span></div>
-          <div className="text-[clamp(11px,3vw,13px)] font-medium text-ink-2 mt-1">{label}</div>
+          <div className="text-meter font-semibold tracking-tight tabular-nums leading-none">{v.toFixed(0)}<span className="text-unit text-ink-2">%</span></div>
+          <div className="text-meter-caption font-medium text-ink-2 mt-1">{label}</div>
         </div>
       </div>
-      <figcaption className="text-[clamp(11px,3vw,13px)] text-ink-3 tabular-nums text-center leading-snug">{caption}</figcaption>
+      <figcaption className="text-meter-caption text-ink-3 tabular-nums text-center leading-snug">{caption}</figcaption>
     </figure>
   );
 }
@@ -43,12 +43,12 @@ export function BarMeter({ label, pct, value, className }: { label: string; pct:
   const v = clamp(pct);
   return (
     <div className={cn("min-w-0", className)} title={`${label}: ${value}`}>
-      <div className="flex items-baseline justify-between gap-2 text-[12px] mb-1.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs mb-1.5">
         <span className="text-ink-3">{label}</span>
         <span className="text-ink-2 tabular-nums truncate">{value}</span>
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in oklab, var(--accent) 16%, transparent)" }} role="meter" aria-label={label} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full rounded-full bg-accent transition-[width] duration-700" style={{ width: `${v}%` }} />
+        <div className="h-full rounded-full bg-accent transition-[width] duration-(--duration-deliberate)" style={{ width: `${v}%` }} />
       </div>
     </div>
   );

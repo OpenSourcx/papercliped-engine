@@ -51,21 +51,21 @@ export function MachineActionModal({ onClose }: { onClose: () => void }) {
     >
       <div className="space-y-3">
         {blocker ? (
-          <p className="text-[13px] text-warning inline-flex items-start gap-2">{protectedNow && !running && <Lock className="h-4 w-4 shrink-0 mt-px" />}{blocker}</p>
+          <p className="text-compact text-warning inline-flex items-start gap-2">{protectedNow && !running && <Lock className="h-4 w-4 shrink-0 mt-px" />}{blocker}</p>
         ) : (
           <>
             {action === "destroy" && (
-              <ul className="text-[13px] text-ink-2 list-disc pl-5 space-y-1">
+              <ul className="text-compact text-ink-2 list-disc pl-5 space-y-1">
                 <li>{disks ? `${disks} disk${disks === 1 ? " is" : "s are"} deleted` : "Its disks are deleted"}.</li>
                 <li>It's taken off backup schedules. <span className="text-ink-3">Backups already taken stay on their storage.</span></li>
                 <li>Snapshots go with it.</li>
               </ul>
             )}
-            {action === "template" && <p className="text-[13px] text-ink-2">Use Clone on a template to make new machines quickly, as linked clones that share its disk.</p>}
-            <label className="block"><span className="block text-[12px] text-ink-3 mb-1.5">Type <span className="font-mono text-ink-2">{g.name}</span> to confirm</span><Input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && typed === g.name && go()} spellCheck={false} className="font-mono" /></label>
+            {action === "template" && <p className="text-compact text-ink-2">Use Clone on a template to make new machines quickly, as linked clones that share its disk.</p>}
+            <label className="block"><span className="block text-xs text-ink-3 mb-1.5">Type <span className="font-mono text-ink-2">{g.name}</span> to confirm</span><Input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && typed === g.name && go()} spellCheck={false} className="font-mono" /></label>
           </>
         )}
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );

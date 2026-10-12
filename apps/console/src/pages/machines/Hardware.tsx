@@ -5,10 +5,10 @@ import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, SectionTitle, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, Input, SectionTitle, Toggle, selectClass } from "../../ui/primitives.tsx";
 import { volName } from "../storage/content.ts";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 const MEMORY = [512, 1024, 2048, 4096, 8192, 12288, 16384, 24576, 32768, 65536];
 
 /** A machine's hardware, editable like Proxmox's Hardware and Options panels, with plain words and safe defaults. */
@@ -46,8 +46,8 @@ export function Hardware({ g }: { g: Guest }) {
     };
   }, [g.vmid, engine.backend, engine.contentVersion, tick]);
 
-  if (error) return <p role="alert" className="text-[13px] text-critical">{error}</p>;
-  if (!hw) return <Card className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading hardware…</Card>;
+  if (error) return <p role="alert" className="text-compact text-critical">{error}</p>;
+  if (!hw) return <Card className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading hardware…</Card>;
 
   const dirty = cores !== hw.cores || sockets !== hw.sockets || memory !== hw.memoryMb || (hw.type === "lxc" && swap !== hw.swapMb);
   const save = async () => {
@@ -61,46 +61,46 @@ export function Hardware({ g }: { g: Guest }) {
   const later = hw.type === "qemu" && running;
 
   return (
-    <div className="grid lg:grid-cols-2 gap-5 fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 fade-in">
       <Card className="p-5">
         <SectionTitle>Processor and memory</SectionTitle>
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
-            <span className="flex items-center gap-2 text-[13px] text-ink-2 mb-2"><Cpu className="h-3.5 w-3.5" />Cores</span>
+            <span className="flex items-center gap-2 text-compact text-ink-2 mb-2"><Cpu className="h-3.5 w-3.5" />Cores</span>
             <Input type="number" min={1} max={512} value={cores} onChange={(e) => setCores(Math.max(1, Math.min(512, Number(e.target.value) || 1)))} />
           </label>
           {hw.type === "qemu" ? (
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Sockets</span>
+              <span className="block text-compact text-ink-2 mb-2">Sockets</span>
               <Input type="number" min={1} max={16} value={sockets} onChange={(e) => setSockets(Math.max(1, Math.min(16, Number(e.target.value) || 1)))} />
             </label>
           ) : (
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Swap</span>
+              <span className="block text-compact text-ink-2 mb-2">Swap</span>
               <select value={swap} onChange={(e) => setSwap(Number(e.target.value))} className={select}>{[0, 256, 512, 1024, 2048, 4096].concat(swap && ![0, 256, 512, 1024, 2048, 4096].includes(swap) ? [swap] : []).map((m) => <option key={m} value={m}>{m ? formatBytes(m * 1024 ** 2) : "None"}</option>)}</select>
             </label>
           )}
           <label className="block col-span-2">
-            <span className="flex items-center gap-2 text-[13px] text-ink-2 mb-2"><MemoryStick className="h-3.5 w-3.5" />Memory</span>
+            <span className="flex items-center gap-2 text-compact text-ink-2 mb-2"><MemoryStick className="h-3.5 w-3.5" />Memory</span>
             <select value={memory} onChange={(e) => setMemory(Number(e.target.value))} className={select}>{[...new Set([...MEMORY, hw.memoryMb])].sort((a, b) => a - b).map((m) => <option key={m} value={m}>{formatBytes(m * 1024 ** 2)}</option>)}</select>
           </label>
         </div>
         <div className="flex items-center justify-between gap-3 mt-4">
-          <p className="text-[12px] text-ink-3">{hw.type === "qemu" ? `${cores * sockets} vCPU${cores * sockets === 1 ? "" : "s"} in total. ` : ""}{later ? "Takes effect the next time the VM starts." : running ? "Containers pick this up right away." : ""}</p>
+          <p className="text-xs text-ink-3">{hw.type === "qemu" ? `${cores * sockets} vCPU${cores * sockets === 1 ? "" : "s"} in total. ` : ""}{later ? "Takes effect the next time the VM starts." : running ? "Containers pick this up right away." : ""}</p>
           <Button size="sm" variant="primary" onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save</Button>
         </div>
-        {hw.pending.length > 0 && <p className="text-[12px] text-warning mt-2">Waiting for a restart: {hw.pending.join(", ")}.</p>}
+        {hw.pending.length > 0 && <p className="text-xs text-warning mt-2">Waiting for a restart: {hw.pending.join(", ")}.</p>}
       </Card>
 
       <Card className="p-5">
         <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setOpts(true)}><Pencil className="h-3.5 w-3.5" />Edit</Button>}>Options</SectionTitle>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[14px]">
-          <dt className="text-ink-3">Name</dt><dd className="font-mono text-[13px]">{hw.name}</dd>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-ink-3">Name</dt><dd className="font-mono text-compact">{hw.name}</dd>
           <dt className="text-ink-3">Start at boot</dt><dd>{hw.onboot ? "Yes" : "No"}</dd>
           <dt className="text-ink-3">Tags</dt><dd className="flex flex-wrap gap-1">{hw.tags.length ? hw.tags.map((t) => <Chip key={t}>{t}</Chip>) : <span className="text-ink-3">None</span>}</dd>
           <dt className="text-ink-3">Protection</dt><dd>{hw.protection ? "On" : "Off"}</dd>
           <dt className="text-ink-3">Start order</dt><dd>{hw.startup.order !== null ? `${hw.startup.order}${hw.startup.up ? `, then wait ${hw.startup.up}s` : ""}` : <span className="text-ink-3">Any</span>}</dd>
-          {hw.boot && <><dt className="text-ink-3">Boot order</dt><dd className="font-mono text-[13px]">{hw.boot.join(" → ")}</dd></>}
+          {hw.boot && <><dt className="text-ink-3">Boot order</dt><dd className="font-mono text-compact">{hw.boot.join(" → ")}</dd></>}
           {hw.agent !== null && <><dt className="text-ink-3">Guest agent</dt><dd>{hw.agent ? "On" : "Off"}</dd></>}
           <dt className="text-ink-3">Type</dt><dd>{hw.type === "lxc" ? `Container · ${hw.ostype ?? "Linux"}` : `VM · ${hw.ostype === "win11" ? "Windows 11" : hw.ostype === "l26" ? "Linux" : hw.ostype ?? "Other"}`}</dd>
           {hw.description && <><dt className="text-ink-3">Notes</dt><dd className="text-ink-2 whitespace-pre-wrap line-clamp-4">{hw.description}</dd></>}
@@ -114,33 +114,33 @@ export function Hardware({ g }: { g: Guest }) {
             <div key={d.key} className="flex items-center gap-3 py-3">
               <HardDrive className="h-4 w-4 text-ink-3 shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-[14px]"><span className="font-mono">{d.key}</span>{d.mount && <span className="text-ink-3"> · mounted at {d.mount}</span>}</div>
-                <div className="text-[12px] text-ink-3 truncate font-mono" title={d.volume}>{d.storage ?? ""} · {volName(d.volume)}</div>
+                <div className="text-sm"><span className="font-mono">{d.key}</span>{d.mount && <span className="text-ink-3"> · mounted at {d.mount}</span>}</div>
+                <div className="text-xs text-ink-3 truncate font-mono" title={d.volume}>{d.storage ?? ""} · {volName(d.volume)}</div>
               </div>
-              <span className="text-[14px] tabular-nums">{d.sizeGb !== null ? `${d.sizeGb} GB` : "—"}</span>
+              <span className="text-sm tabular-nums">{d.sizeGb !== null ? `${d.sizeGb} GB` : "—"}</span>
               <Button size="sm" variant="ghost" onClick={() => setGrow({ key: d.key, size: d.sizeGb })}>Grow</Button>
             </div>
           ))}
           {hw.cdrom !== undefined && hw.type === "qemu" && (
             <div className="flex items-center gap-3 py-3">
               <Disc3 className="h-4 w-4 text-ink-3" />
-              <div className="flex-1 min-w-0 text-[14px]">CD drive <span className="text-ink-3 font-mono text-[12px]">{hw.cdrom ? volName(hw.cdrom) : "empty"}</span></div>
+              <div className="flex-1 min-w-0 text-sm">CD drive <span className="text-ink-3 font-mono text-xs">{hw.cdrom ? volName(hw.cdrom) : "empty"}</span></div>
             </div>
           )}
         </div>
-        <p className="text-[12px] text-ink-3 mt-2">Disks can grow but not shrink. The filesystem inside {hw.type === "lxc" ? "grows with it" : "may need extending from inside the VM"}.</p>
+        <p className="text-xs text-ink-3 mt-2">Disks can grow but not shrink. The filesystem inside {hw.type === "lxc" ? "grows with it" : "may need extending from inside the VM"}.</p>
       </Card>
 
       <Card className="p-5">
         <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setNic("new")}><Plus className="h-3.5 w-3.5" />Add</Button>}>Network devices</SectionTitle>
-        {hw.nics.length === 0 ? <p className="text-[14px] text-ink-3">No network devices. This machine is offline.</p> : (
+        {hw.nics.length === 0 ? <p className="text-sm text-ink-3">No network devices. This machine is offline.</p> : (
           <div className="divide-y divide-line">
             {hw.nics.map((n) => (
               <div key={n.key} className="flex items-center gap-3 py-3">
                 <Cable className="h-4 w-4 text-ink-3 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px]"><span className="font-mono">{n.name ?? n.key}</span> <span className="text-ink-3">on</span> <span className="font-mono">{n.bridge}</span>{n.tag ? <span className="text-ink-3"> · VLAN {n.tag}</span> : null}</div>
-                  <div className="text-[12px] text-ink-3 font-mono truncate">{[n.model, n.ip, n.gw && `gw ${n.gw}`, n.mac, n.firewall ? "firewall" : "no firewall", n.rate && `${n.rate} MB/s`].filter(Boolean).join(" · ")}</div>
+                  <div className="text-sm"><span className="font-mono">{n.name ?? n.key}</span> <span className="text-ink-3">on</span> <span className="font-mono">{n.bridge}</span>{n.tag ? <span className="text-ink-3"> · VLAN {n.tag}</span> : null}</div>
+                  <div className="text-xs text-ink-3 font-mono truncate">{[n.model, n.ip, n.gw && `gw ${n.gw}`, n.mac, n.firewall ? "firewall" : "no firewall", n.rate && `${n.rate} MB/s`].filter(Boolean).join(" · ")}</div>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => setNic(n)}><Pencil className="h-3.5 w-3.5" />Edit</Button>
                 <button onClick={() => setRemoveNic(n)} aria-label={`Remove ${n.key}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
@@ -183,9 +183,9 @@ function GrowModal({ vmid, disk, size, onClose, onDone }: { vmid: number; disk: 
     <Modal size="sm" icon={<HardDrive className="h-5 w-5" />} title={`Grow ${disk}`} subtitle="Adds space to the disk. Disks can't be made smaller again." onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={go} disabled={busy || by < 1}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Grow by {by} GB</Button></>}>
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">{[4, 8, 16, 32, 64].map((n) => <Button key={n} size="sm" variant={by === n ? "primary" : "secondary"} onClick={() => setBy(n)}>+{n} GB</Button>)}</div>
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Or add</span><Input type="number" min={1} max={65536} value={by} onChange={(e) => setBy(Math.max(0, Math.floor(Number(e.target.value) || 0)))} /></label>
-        {size !== null && <p className="text-[13px] text-ink-2">{size} GB → <span className="text-ink">{size + by} GB</span></p>}
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Or add</span><Input type="number" min={1} max={65536} value={by} onChange={(e) => setBy(Math.max(0, Math.floor(Number(e.target.value) || 0)))} /></label>
+        {size !== null && <p className="text-compact text-ink-2">{size} GB → <span className="text-ink">{size + by} GB</span></p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -224,28 +224,28 @@ function NicModal({ vmid, type, nic, onClose, onDone }: { vmid: number; type: "l
     <Modal icon={<Cable className="h-5 w-5" />} title={nic ? `Edit ${nic.name ?? nic.key}` : "Add a network device"} subtitle={nic?.mac ? `Keeps its MAC address ${nic.mac}.` : "Joins the machine to a bridge on this device."} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy || !bridge || (mode === "static" && type === "lxc" && !ip)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{nic ? "Save" : "Add"}</Button></>}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Bridge</span><select value={bridge} onChange={(e) => setBridge(e.target.value)} className={select}>{(bridges.length ? bridges.map((b) => b.iface) : [bridge]).map((b) => <option key={b}>{b}</option>)}</select></label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">VLAN tag <span className="text-ink-3">(optional)</span></span><Input type="number" min={1} max={4094} value={tag} onChange={(e) => setTag(e.target.value)} placeholder={vlanAware === false ? "Bridge isn't VLAN aware" : "None"} /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Bridge</span><select value={bridge} onChange={(e) => setBridge(e.target.value)} className={select}>{(bridges.length ? bridges.map((b) => b.iface) : [bridge]).map((b) => <option key={b}>{b}</option>)}</select></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">VLAN tag <span className="text-ink-3">(optional)</span></span><Input type="number" min={1} max={4094} value={tag} onChange={(e) => setTag(e.target.value)} placeholder={vlanAware === false ? "Bridge isn't VLAN aware" : "None"} /></label>
         </div>
         {type === "qemu" && (
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Model</span><select value={model} onChange={(e) => setModel(e.target.value)} className={select}><option value="virtio">VirtIO (fastest; Linux, or Windows with drivers)</option><option value="e1000e">Intel E1000E (works everywhere)</option><option value="e1000">Intel E1000</option><option value="vmxnet3">VMware vmxnet3</option><option value="rtl8139">Realtek RTL8139</option></select></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Model</span><select value={model} onChange={(e) => setModel(e.target.value)} className={select}><option value="virtio">VirtIO (fastest; Linux, or Windows with drivers)</option><option value="e1000e">Intel E1000E (works everywhere)</option><option value="e1000">Intel E1000</option><option value="vmxnet3">VMware vmxnet3</option><option value="rtl8139">Realtek RTL8139</option></select></label>
         )}
         {type === "lxc" && (
           <div className="space-y-3">
             <div className="flex gap-2">{(["dhcp", "static", "manual"] as const).map((m) => <Button key={m} size="sm" variant={mode === m ? "primary" : "secondary"} onClick={() => setMode(m)}>{m === "dhcp" ? "DHCP" : m === "static" ? "Static" : "None"}</Button>)}</div>
             {mode === "static" && (
               <div className="grid grid-cols-2 gap-4">
-                <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Address</span><Input value={ip} onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50/24" className="font-mono" /></label>
-                <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Gateway</span><Input value={gw} onChange={(e) => setGw(e.target.value)} placeholder="192.168.1.1" className="font-mono" /></label>
+                <label className="block"><span className="block text-compact text-ink-2 mb-2">Address</span><Input value={ip} onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50/24" className="font-mono" /></label>
+                <label className="block"><span className="block text-compact text-ink-2 mb-2">Gateway</span><Input value={gw} onChange={(e) => setGw(e.target.value)} placeholder="192.168.1.1" className="font-mono" /></label>
               </div>
             )}
           </div>
         )}
         <div className="grid grid-cols-2 gap-4 items-end">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Rate limit <span className="text-ink-3">(MB/s)</span></span><Input type="number" min={0} value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Unlimited" /></label>
-          <div className="flex items-center justify-between h-10"><span className="text-[14px]">Firewall</span><Toggle checked={firewall} onChange={setFirewall} label="Firewall" /></div>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Rate limit <span className="text-ink-3">(MB/s)</span></span><Input type="number" min={0} value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Unlimited" /></label>
+          <div className="flex items-center justify-between h-10"><span className="text-sm">Firewall</span><Toggle checked={firewall} onChange={setFirewall} label="Firewall" /></div>
         </div>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -295,54 +295,54 @@ function OptionsModal({ g, hw, onClose, onDone }: { g: Guest; hw: GuestHardware;
     onDone();
     onClose();
   };
-  const section = (t: string) => <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3 pt-1">{t}</h3>;
+  const section = (t: string) => <h3 className="text-micro font-semibold uppercase tracking-label text-ink-3 pt-1">{t}</h3>;
   return (
     <Modal size="lg" icon={<Settings2 className="h-5 w-5" />} title="Options" subtitle={`${g.name} #${g.vmid}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy || !!nameErr}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</Button></>}>
       <div className="space-y-4">
         {section("General")}
-        <div className="grid sm:grid-cols-2 gap-4">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-[12px] mt-1.5 text-critical">{nameErr}</span>}</label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-xs mt-1.5 text-critical">{nameErr}</span>}</label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
           {vm && (
-            <label className="block sm:col-span-2"><span className="block text-[13px] text-ink-2 mb-2">Operating system</span><select value={ostype} onChange={(e) => setOstype(e.target.value)} className={select}>{Object.entries(OS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Operating system</span><select value={ostype} onChange={(e) => setOstype(e.target.value)} className={select}>{Object.entries(OS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           )}
-          <label className="block sm:col-span-2"><span className="block text-[13px] text-ink-2 mb-2">Notes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-[14px] outline-none focus:border-line-strong" /></label>
+          <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Notes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm outline-none focus:border-line-strong" /></label>
         </div>
 
         {section("Starting and stopping")}
-        <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">Start when the device boots</div></div><Toggle checked={onboot} onChange={setOnboot} label="Start at boot" /></div>
+        <div className="flex items-center justify-between gap-4"><div><div className="text-sm">Start when the device boots</div></div><Toggle checked={onboot} onChange={setOnboot} label="Start at boot" /></div>
         <div className="grid grid-cols-3 gap-4">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Start order</span><Input type="number" min={0} max={9999} value={order} onChange={(e) => setOrder(e.target.value)} placeholder="Any" /></label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Wait after start <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={up} onChange={(e) => setUp(e.target.value)} placeholder="Default" /></label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Shutdown timeout <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={down} onChange={(e) => setDown(e.target.value)} placeholder="Default" /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Start order</span><Input type="number" min={0} max={9999} value={order} onChange={(e) => setOrder(e.target.value)} placeholder="Any" /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Wait after start <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={up} onChange={(e) => setUp(e.target.value)} placeholder="Default" /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Shutdown timeout <span className="text-ink-3">(s)</span></span><Input type="number" min={0} max={3600} value={down} onChange={(e) => setDown(e.target.value)} placeholder="Default" /></label>
         </div>
-        <p className="text-[12px] text-ink-3 -mt-2">Machines start in order, lowest first, waiting the delay before the next. They stop in the reverse order. Only applies to machines that start at boot.</p>
+        <p className="text-xs text-ink-3 -mt-2">Machines start in order, lowest first, waiting the delay before the next. They stop in the reverse order. Only applies to machines that start at boot.</p>
 
         {vm && (
           <>
             {section("Boot order")}
             <div className="rounded-lg border border-line divide-y divide-line">
-              {boot.length === 0 && <p className="px-3 py-2.5 text-[13px] text-ink-3">Proxmox picks the order.</p>}
+              {boot.length === 0 && <p className="px-3 py-2.5 text-compact text-ink-3">Proxmox picks the order.</p>}
               {boot.map((d, i) => (
-                <div key={d} className="flex items-center gap-2 px-3 h-10 text-[13px]"><span className="text-ink-3 tabular-nums w-5">{i + 1}</span><span className="flex-1 font-mono">{label(d)}</span>
+                <div key={d} className="flex items-center gap-2 px-3 h-10 text-compact"><span className="text-ink-3 tabular-nums w-5">{i + 1}</span><span className="flex-1 font-mono">{label(d)}</span>
                   <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move ${d} up`} className="h-7 w-7 rounded-md hover:bg-surface-2 disabled:opacity-30">↑</button>
                   <button onClick={() => move(i, 1)} disabled={i === boot.length - 1} aria-label={`Move ${d} down`} className="h-7 w-7 rounded-md hover:bg-surface-2 disabled:opacity-30">↓</button>
                   <button onClick={() => setBoot(boot.filter((x) => x !== d))} aria-label={`Don't boot from ${d}`} className="h-7 px-2 rounded-md hover:bg-surface-2 text-ink-3">Remove</button>
                 </div>
               ))}
               {unused.map((d) => (
-                <div key={d} className="flex items-center gap-2 px-3 h-10 text-[13px] text-ink-3"><span className="w-5" /><span className="flex-1 font-mono">{label(d)}</span><button onClick={() => setBoot([...boot, d])} aria-label={`Boot from ${d}`} className="h-7 px-2 rounded-md hover:bg-surface-2 text-ink-2">Add</button></div>
+                <div key={d} className="flex items-center gap-2 px-3 h-10 text-compact text-ink-3"><span className="w-5" /><span className="flex-1 font-mono">{label(d)}</span><button onClick={() => setBoot([...boot, d])} aria-label={`Boot from ${d}`} className="h-7 px-2 rounded-md hover:bg-surface-2 text-ink-2">Add</button></div>
               ))}
             </div>
             {hw.agent !== null && (
-              <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">QEMU guest agent</div><div className="text-[12px] text-ink-3">Lets Proxmox see the VM's addresses and shut it down cleanly. The agent must be installed inside.</div></div><Toggle checked={agent} onChange={setAgent} label="QEMU guest agent" /></div>
+              <div className="flex items-center justify-between gap-4"><div><div className="text-sm">QEMU guest agent</div><div className="text-xs text-ink-3">Lets Proxmox see the VM's addresses and shut it down cleanly. The agent must be installed inside.</div></div><Toggle checked={agent} onChange={setAgent} label="QEMU guest agent" /></div>
             )}
           </>
         )}
 
         {section("Safety")}
-        <div className="flex items-center justify-between gap-4"><div><div className="text-[14px]">Protection</div><div className="text-[12px] text-ink-3">Stops this machine and its disks from being deleted by accident. Turn it off to delete.</div></div><Toggle checked={protection} onChange={setProtection} label="Protection" /></div>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        <div className="flex items-center justify-between gap-4"><div><div className="text-sm">Protection</div><div className="text-xs text-ink-3">Stops this machine and its disks from being deleted by accident. Turn it off to delete.</div></div><Toggle checked={protection} onChange={setProtection} label="Protection" /></div>
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );

@@ -7,10 +7,10 @@ import { useEngine } from "../../data/store.tsx";
 import { formatBytes } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass } from "../../ui/primitives.tsx";
 import { volName } from "../storage/content.ts";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 const MODES = [
   { value: "snapshot", label: "Snapshot", hint: "No downtime. The machine keeps running while it's copied." },
   { value: "suspend", label: "Suspend", hint: "Pauses the machine briefly for a more consistent copy." },
@@ -60,7 +60,7 @@ export function BackupTable({ files, showMachine = true }: { files: BackupFile[]
   const nav = useNavigate();
   const device = engine.setup?.deviceName ?? "pve";
   return (
-    <table className="w-full text-[13px] min-w-[620px]">
+    <table className="w-full text-compact min-w-[620px]">
       <thead>
         <tr className="border-b border-line text-ink-3 text-left">
           <th className="font-normal px-4 h-10">Taken</th>
@@ -147,11 +147,11 @@ export function BackupsPage() {
     <PageFrame width="6xl">
       <PageHeader title="Backups" subtitle="Scheduled backups, every backup on this device, and restoring them." actions={<Button variant="primary" onClick={() => nav("?modal=backup-now")}><Archive className="h-4 w-4" />Back up now</Button>} />
 
-      <div className="flex items-center justify-between mb-2"><h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-3">Schedules</h2><Button size="sm" variant="ghost" onClick={() => nav("?modal=backup-job")}><CalendarClock className="h-3.5 w-3.5" />New schedule</Button></div>
-      {jobsError && <p role="alert" className="text-[13px] text-critical mb-3">{jobsError}</p>}
+      <div className="flex items-center justify-between mb-2"><h2 className="text-compact font-semibold uppercase tracking-label text-ink-3">Schedules</h2><Button size="sm" variant="ghost" onClick={() => nav("?modal=backup-job")}><CalendarClock className="h-3.5 w-3.5" />New schedule</Button></div>
+      {jobsError && <p role="alert" className="text-compact text-critical mb-3">{jobsError}</p>}
       <div className="space-y-3 mb-8">
         {jobs === null ? (
-          <Card className="p-6 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading schedules…</Card>
+          <Card className="p-6 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading schedules…</Card>
         ) : jobs.length === 0 ? (
           <Card><EmptyState icon={<CalendarClock className="h-5 w-5" />} title="No backup schedules" body="Nothing backs up on its own yet. A nightly schedule that keeps a few copies is a good start." action={<Button variant="primary" onClick={() => nav("?modal=backup-job")}>New schedule</Button>} /></Card>
         ) : (
@@ -161,28 +161,28 @@ export function BackupsPage() {
                 <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><CalendarClock className="h-4 w-4" /></span>
                 <div className="flex-1 min-w-[200px]">
                   <div className="font-medium">{describeSchedule(j.schedule)}</div>
-                  <div className="text-[12px] text-ink-3">{selection(j)} · to {j.storage ?? "—"} · {j.mode} · keeps {j.keepLast ?? "all"}{j.nextRun && j.enabled ? ` · next ${when(j.nextRun)}` : ""}</div>
-                  {j.comment && <div className="text-[12px] text-ink-2 mt-0.5">{j.comment}</div>}
+                  <div className="text-xs text-ink-3">{selection(j)} · to {j.storage ?? "—"} · {j.mode} · keeps {j.keepLast ?? "all"}{j.nextRun && j.enabled ? ` · next ${when(j.nextRun)}` : ""}</div>
+                  {j.comment && <div className="text-xs text-ink-2 mt-0.5">{j.comment}</div>}
                 </div>
                 <Toggle checked={j.enabled} onChange={() => toggle(j)} label={`${j.enabled ? "Disable" : "Enable"} this schedule`} />
                 <Button size="sm" variant="ghost" onClick={() => nav(`?modal=backup-job&id=${encodeURIComponent(j.id)}`)} aria-label="Edit schedule"><Pencil className="h-3.5 w-3.5" />Edit</Button>
                 <Button size="sm" variant="ghost" onClick={() => nav(`?modal=backup-now&${j.all ? "all=1" : `vmids=${j.vmids.join(",")}`}&storage=${j.storage ?? ""}`)}><Play className="h-3.5 w-3.5" />Run now</Button>
                 <button onClick={() => setRemoving(j)} aria-label="Delete schedule" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
               </div>
-              {j.keepLast !== null && j.keepLast < 3 && j.enabled && <p className="text-[12px] text-warning mt-3">Keeping only {j.keepLast} cop{j.keepLast === 1 ? "y" : "ies"} means one bad night can leave you without a good backup. Pin suggests keeping at least 3.</p>}
+              {j.keepLast !== null && j.keepLast < 3 && j.enabled && <p className="text-xs text-warning mt-3">Keeping only {j.keepLast} cop{j.keepLast === 1 ? "y" : "ies"} means one bad night can leave you without a good backup. Pin suggests keeping at least 3.</p>}
             </Card>
           ))
         )}
         {jobs !== null && unprotected.length > 0 && engine.data.guests.length > 0 && (
-          <p className="text-[12px] text-ink-3">Not covered by any schedule: {unprotected.slice(0, 6).map((g) => g.name).join(", ")}{unprotected.length > 6 ? ` and ${unprotected.length - 6} more` : ""}.</p>
+          <p className="text-xs text-ink-3">Not covered by any schedule: {unprotected.slice(0, 6).map((g) => g.name).join(", ")}{unprotected.length > 6 ? ` and ${unprotected.length - 6} more` : ""}.</p>
         )}
       </div>
 
-      <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-2">All backups</h2>
-      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+      <h2 className="text-compact font-semibold uppercase tracking-label text-ink-3 mb-2">All backups</h2>
+      {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
       <Card className="overflow-x-auto">
         {files === null ? (
-          <div className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
+          <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
         ) : files.length === 0 ? (
           <EmptyState icon={<Archive className="h-5 w-5" />} title="No backups yet" body="Back up a machine now, or set a schedule. Backups land on storages set up for them." />
         ) : (
@@ -203,12 +203,12 @@ function MachinePicker({ all, setAll, vmids, setVmids }: { all: boolean; setAll:
   const { data } = useEngine();
   return (
     <fieldset>
-      <legend className="text-[13px] text-ink-2 mb-2">Machines</legend>
+      <legend className="text-compact text-ink-2 mb-2">Machines</legend>
       <Segmented value={all ? "all" : "pick"} onChange={(v) => setAll(v === "all")} options={[{ value: "all", label: "All machines" }, { value: "pick", label: "Choose" }]} />
       {!all && (
         <div className="mt-2 max-h-[180px] overflow-y-auto rounded-lg border border-line divide-y divide-line">
           {data.guests.map((g) => (
-            <label key={g.vmid} className="flex items-center gap-3 px-3 h-9 text-[13px] cursor-pointer hover:bg-surface-2/60">
+            <label key={g.vmid} className="flex items-center gap-3 px-3 h-9 text-compact cursor-pointer hover:bg-surface-2/60">
               <input type="checkbox" checked={vmids.includes(g.vmid)} onChange={(e) => setVmids(e.target.checked ? [...vmids, g.vmid] : vmids.filter((v) => v !== g.vmid))} className="accent-[var(--accent)]" />
               <span className="flex-1">{g.name}</span>
               <span className="text-ink-3 tabular-nums">#{g.vmid}</span>
@@ -258,19 +258,19 @@ export function BackupNowModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-4">
         {!single && <MachinePicker all={all} setAll={setAll} vmids={vmids} setVmids={setVmids} />}
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">Storage</span>
-          {stores.length ? <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</select> : <p className="text-[13px] text-ink-3">No storage here is set up for backups.</p>}
+          <span className="block text-compact text-ink-2 mb-2">Storage</span>
+          {stores.length ? <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</select> : <p className="text-compact text-ink-3">No storage here is set up for backups.</p>}
         </label>
         <fieldset>
-          <legend className="text-[13px] text-ink-2 mb-2">Mode</legend>
+          <legend className="text-compact text-ink-2 mb-2">Mode</legend>
           <Segmented value={mode} onChange={setMode} options={MODES.map((m) => ({ value: m.value, label: m.label }))} />
-          <p className="text-[12px] text-ink-3 mt-1.5">{MODES.find((m) => m.value === mode)!.hint}</p>
+          <p className="text-xs text-ink-3 mt-1.5">{MODES.find((m) => m.value === mode)!.hint}</p>
         </fieldset>
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">Note <span className="text-ink-3">(optional)</span></span>
+          <span className="block text-compact text-ink-2 mb-2">Note <span className="text-ink-3">(optional)</span></span>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Before upgrading to Debian 13" maxLength={200} />
         </label>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -339,42 +339,42 @@ export function BackupJobModal({ onClose }: { onClose: () => void }) {
   const preview = useMemo(() => describeSchedule(schedule || null), [schedule]);
 
   return (
-    <Modal size="lg" icon={<CalendarClock className="h-5 w-5" />} title={id ? "Edit backup schedule" : "New backup schedule"} subtitle="Runs on the device on its own, and keeps the newest copies." onClose={onClose} footer={<><span className="mr-auto text-[12px] text-ink-3 hidden sm:block">{preview} · keeps {keepLast}</span><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={!loaded || busy || !schedule || !!scheduleErr || !storage || (!all && !vmids.length)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{id ? "Save" : "Create schedule"}</Button></>}>
+    <Modal size="lg" icon={<CalendarClock className="h-5 w-5" />} title={id ? "Edit backup schedule" : "New backup schedule"} subtitle="Runs on the device on its own, and keeps the newest copies." onClose={onClose} footer={<><span className="mr-auto text-xs text-ink-3 hidden sm:block">{preview} · keeps {keepLast}</span><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={!loaded || busy || !schedule || !!scheduleErr || !storage || (!all && !vmids.length)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{id ? "Save" : "Create schedule"}</Button></>}>
       {!loaded ? (
-        <p className="text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</p>
+        <p className="text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</p>
       ) : (
         <div className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">When</span>
+              <span className="block text-compact text-ink-2 mb-2">When</span>
               <select value={preset} onChange={(e) => setPreset(e.target.value)} className={select}>{PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
-              {preset === "custom" && <Input className="mt-2 font-mono text-[13px]" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="sat 02:00" spellCheck={false} />}
-              {scheduleErr && <span className="block text-[12px] mt-1.5 text-critical">{scheduleErr}</span>}
+              {preset === "custom" && <Input className="mt-2 font-mono text-compact" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="sat 02:00" spellCheck={false} />}
+              {scheduleErr && <span className="block text-xs mt-1.5 text-critical">{scheduleErr}</span>}
             </label>
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Storage</span>
+              <span className="block text-compact text-ink-2 mb-2">Storage</span>
               <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</select>
             </label>
           </div>
           <MachinePicker all={all} setAll={setAll} vmids={vmids} setVmids={setVmids} />
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <fieldset>
-              <legend className="text-[13px] text-ink-2 mb-2">Mode</legend>
+              <legend className="text-compact text-ink-2 mb-2">Mode</legend>
               <Segmented value={mode} onChange={setMode} options={MODES.map((m) => ({ value: m.value, label: m.label }))} />
-              <p className="text-[12px] text-ink-3 mt-1.5">{MODES.find((m) => m.value === mode)!.hint}</p>
+              <p className="text-xs text-ink-3 mt-1.5">{MODES.find((m) => m.value === mode)!.hint}</p>
             </fieldset>
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Keep the newest</span>
+              <span className="block text-compact text-ink-2 mb-2">Keep the newest</span>
               <Input type="number" min={1} max={1000} value={keepLast} onChange={(e) => setKeepLast(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} />
-              {keepLast < 3 && <span className="block text-[12px] mt-1.5 text-warning">Fewer than 3 copies leaves little room if a backup turns out bad.</span>}
+              {keepLast < 3 && <span className="block text-xs mt-1.5 text-warning">Fewer than 3 copies leaves little room if a backup turns out bad.</span>}
             </label>
           </div>
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Note <span className="text-ink-3">(optional)</span></span>
+            <span className="block text-compact text-ink-2 mb-2">Note <span className="text-ink-3">(optional)</span></span>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={200} />
           </label>
-          <div className="flex items-center justify-between"><span className="text-[14px]">Enabled</span><Toggle checked={enabled} onChange={setEnabled} label="Enabled" /></div>
-          {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+          <div className="flex items-center justify-between"><span className="text-sm">Enabled</span><Toggle checked={enabled} onChange={setEnabled} label="Enabled" /></div>
+          {error && <p role="alert" className="text-compact text-critical">{error}</p>}
         </div>
       )}
     </Modal>
@@ -407,7 +407,7 @@ export function RestoreModal({ onClose }: { onClose: () => void }) {
     }, () => setTargets([]));
   }, [engine.backend, b?.type]);
 
-  if (!b) return <Modal size="sm" title="Not a machine backup" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}><p className="text-[13px] text-ink-3 break-all">{volid}</p></Modal>;
+  if (!b) return <Modal size="sm" title="Not a machine backup" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}><p className="text-compact text-ink-3 break-all">{volid}</p></Modal>;
   const running = orig?.status === "running";
   const canReplace = !running;
   const confirmed = !replace || !orig || confirmText === orig.name;
@@ -428,25 +428,25 @@ export function RestoreModal({ onClose }: { onClose: () => void }) {
         <Segmented value={replace ? "replace" : "new"} onChange={(v) => setReplace(v === "replace")} options={[{ value: "new", label: "As a new machine" }, { value: "replace", label: "Over the original" }]} />
         {replace ? (
           !orig ? (
-            <p className="text-[13px] text-ink-2">The original machine #{b.vmid} no longer exists, so this restores it under its old number.</p>
+            <p className="text-compact text-ink-2">The original machine #{b.vmid} no longer exists, so this restores it under its old number.</p>
           ) : running ? (
             <Status kind="warning" label={`${orig.name} is running. Shut it down first; restoring over a running machine isn't allowed.`} />
           ) : (
-            <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-[13px]">
+            <div className="rounded-lg border border-critical/30 bg-critical/5 p-3 text-compact">
               <p className="text-ink-2">This erases {orig.name}'s current disks and replaces them with the backup. Anything changed since {when(b.at)} is lost.</p>
-              <label className="block mt-3"><span className="block text-[12px] text-ink-3 mb-1.5">Type <span className="font-mono text-ink-2">{orig.name}</span> to confirm</span><Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} spellCheck={false} /></label>
+              <label className="block mt-3"><span className="block text-xs text-ink-3 mb-1.5">Type <span className="font-mono text-ink-2">{orig.name}</span> to confirm</span><Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} spellCheck={false} /></label>
             </div>
           )
         ) : (
-          <p className="text-[13px] text-ink-2">A copy appears next to the original with a new number. Nothing existing is touched.</p>
+          <p className="text-compact text-ink-2">A copy appears next to the original with a new number. Nothing existing is touched.</p>
         )}
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">Restore disks to</span>
+          <span className="block text-compact text-ink-2 mb-2">Restore disks to</span>
           <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{targets.map((t) => <option key={t.storage} value={t.storage}>{t.storage}{t.avail !== null ? ` · ${formatBytes(t.avail)} free` : ""}</option>)}</select>
         </label>
-        <div className="flex items-center justify-between"><span className="text-[14px]">Start it when done</span><Toggle checked={start} onChange={setStart} label="Start it when done" /></div>
-        <p className="text-[11px] text-ink-3 font-mono break-all">{volName(volid)}</p>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        <div className="flex items-center justify-between"><span className="text-sm">Start it when done</span><Toggle checked={start} onChange={setStart} label="Start it when done" /></div>
+        <p className="text-micro text-ink-3 font-mono break-all">{volName(volid)}</p>
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );

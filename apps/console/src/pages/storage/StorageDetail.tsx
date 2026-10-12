@@ -63,7 +63,7 @@ export function StorageDetail() {
     return (items ?? []).filter((i) => i.content === tab?.kind && (!needle || i.volid.toLowerCase().includes(needle) || String(i.vmid ?? "").includes(needle))).sort((a, b) => (b.ctime ?? 0) - (a.ctime ?? 0));
   }, [items, tab, q]);
 
-  if (!s) return engine.ready ? <Navigate to={`/${device}/storage`} replace /> : <div className="p-10 text-ink-3 text-[14px]">Loading…</div>;
+  if (!s) return engine.ready ? <Navigate to={`/${device}/storage`} replace /> : <div className="p-10 text-ink-3 text-sm">Loading…</div>;
 
   const remove = async () => {
     if (!confirm) return;
@@ -85,12 +85,12 @@ export function StorageDetail() {
 
   return (
     <PageFrame width="6xl">
-      <div className="flex items-center gap-3 mb-1 text-[13px] text-ink-3"><Link to={`/${device}/storage`} className="hover:text-ink">Storage</Link><span>/</span><span className="text-ink-2">{s.id}</span></div>
+      <div className="flex items-center gap-3 mb-1 text-compact text-ink-3"><Link to={`/${device}/storage`} className="hover:text-ink">Storage</Link><span>/</span><span className="text-ink-2">{s.id}</span></div>
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <span className="h-11 w-11 rounded-xl bg-surface-2 flex items-center justify-center text-ink-2"><HardDrive className="h-5 w-5" /></span>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[26px] font-semibold tracking-tight leading-tight">{s.id}</h1>
-          <div className="text-[13px] text-ink-3">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""} · {device}</div>
+          <h1 className="text-heading font-semibold tracking-tight leading-tight">{s.id}</h1>
+          <div className="text-compact text-ink-3">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""} · {device}</div>
         </div>
         {s.active === false ? <Status kind="off" label="Unavailable" /> : <Status kind="good" label="Active" />}
       </div>
@@ -111,10 +111,10 @@ export function StorageDetail() {
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter" className="pl-9 h-9" aria-label="Filter files" />
             </div>
           </div>
-          {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+          {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
           <Card className="overflow-x-auto">
             {items === null && !error ? (
-              <div className="p-8 text-center text-ink-3 text-[14px] inline-flex items-center justify-center gap-2 w-full"><Loader2 className="h-4 w-4 animate-spin" />Reading {s.id}…</div>
+              <div className="p-8 text-center text-ink-3 text-sm inline-flex items-center justify-center gap-2 w-full"><Loader2 className="h-4 w-4 animate-spin" />Reading {s.id}…</div>
             ) : rows.length === 0 ? (
               <EmptyState
                 icon={ICON[tab!.kind] ?? <Database className="h-5 w-5" />}
@@ -129,7 +129,7 @@ export function StorageDetail() {
                 }
               />
             ) : (
-              <table className="w-full text-[13px] min-w-[640px]">
+              <table className="w-full text-compact min-w-[640px]">
                 <thead>
                   <tr className="border-b border-line text-ink-3 text-left">
                     <th className="font-normal px-4 h-10">Name</th>
@@ -143,7 +143,7 @@ export function StorageDetail() {
                 <tbody>
                   {rows.map((i) => (
                     <tr key={i.volid} className="border-b border-line last:border-0 hover:bg-surface-2/50">
-                      <td className="px-4 py-2.5"><span className="inline-flex items-center gap-2 min-w-0"><span className="text-ink-3 shrink-0">{ICON[i.content]}</span><span className="truncate font-mono text-[12.5px]" title={i.volid}>{volName(i.volid)}</span>{i.protected && <span className="text-[11px] text-ink-3 border border-line rounded px-1">protected</span>}</span>{i.notes && <div className="text-[12px] text-ink-3 truncate pl-6">{i.notes}</div>}</td>
+                      <td className="px-4 py-2.5"><span className="inline-flex items-center gap-2 min-w-0"><span className="text-ink-3 shrink-0">{ICON[i.content]}</span><span className="truncate font-mono text-xs" title={i.volid}>{volName(i.volid)}</span>{i.protected && <span className="text-micro text-ink-3 border border-line rounded px-1">protected</span>}</span>{i.notes && <div className="text-xs text-ink-3 truncate pl-6">{i.notes}</div>}</td>
                       {(tab!.kind === "backup" || tab!.kind === "images" || tab!.kind === "rootdir") && <td className="px-3 tabular-nums">{i.vmid ? <Link to={`/${device}/machines/${i.vmid}`} className="hover:underline">{engine.data.guests.find((g) => g.vmid === i.vmid)?.name ?? "Machine"} #{i.vmid}</Link> : "—"}</td>}
                       <td className="px-3 text-ink-2">{i.format ?? "—"}</td>
                       <td className="px-3 text-right tabular-nums whitespace-nowrap">{i.size !== null ? formatBytes(i.size) : "—"}</td>
@@ -163,8 +163,8 @@ export function StorageDetail() {
           </Card>
           {engine.running.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {engine.running.map((r) => <span key={r.upid} className="inline-flex items-center gap-2 text-[12px] text-ink-2 rounded-full border border-line px-3 h-7"><Loader2 className="h-3.5 w-3.5 animate-spin" />{r.label}</span>)}
-              <Link to={`/${device}/tasks`} className="text-[12px] text-ink-3 hover:text-ink inline-flex items-center gap-1 h-7"><Download className="h-3.5 w-3.5" />Tasks</Link>
+              {engine.running.map((r) => <span key={r.upid} className="inline-flex items-center gap-2 text-xs text-ink-2 rounded-full border border-line px-3 h-7"><Loader2 className="h-3.5 w-3.5 animate-spin" />{r.label}</span>)}
+              <Link to={`/${device}/tasks`} className="text-xs text-ink-3 hover:text-ink inline-flex items-center gap-1 h-7"><Download className="h-3.5 w-3.5" />Tasks</Link>
             </div>
           )}
         </>
@@ -178,7 +178,7 @@ export function StorageDetail() {
           onClose={() => setConfirm(null)}
           footer={<><Button variant="ghost" onClick={() => setConfirm(null)}>Cancel</Button><Button variant="danger" onClick={remove} disabled={deleting}>{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Delete</Button></>}
         >
-          <p className="font-mono text-[12px] text-ink-3 break-all">{confirm.volid}</p>
+          <p className="font-mono text-xs text-ink-3 break-all">{confirm.volid}</p>
         </Modal>
       )}
     </PageFrame>

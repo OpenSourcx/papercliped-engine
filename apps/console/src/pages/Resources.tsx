@@ -97,7 +97,7 @@ export function Resources() {
         <Segmented value={kind} onChange={setKind} options={[{ value: "all", label: "All" }, { value: "machines", label: "Machines" }, { value: "node", label: "Node" }, { value: "storage", label: "Storage" }]} />
       </div>
       <Card className="overflow-x-auto">
-        <table className="w-full text-[13px] min-w-[880px]">
+        <table className="w-full text-compact min-w-[880px]">
           <thead>
             <tr className="border-b border-line text-ink-3 text-left">
               {COLS.map((c) => (
@@ -115,7 +115,7 @@ export function Resources() {
             {rows.map((r) => (
               <tr key={r.key} onClick={() => r.to && nav(r.to)} className={cn("border-b border-line last:border-0", r.to && "cursor-pointer hover:bg-surface-2/60")}>
                 <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2 text-ink-2"><span className="text-ink-3">{ICON[r.kind]}</span>{KIND[r.kind]}</span></td>
-                <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2">{r.name}{r.detail && <span className="text-ink-3 tabular-nums">{r.detail}</span>}{r.status === "stopped" ? <Status kind="off" label="Stopped" className="text-[12px]" /> : r.status === "unavailable" ? <Status kind="off" label="Unavailable" className="text-[12px]" /> : null}</span></td>
+                <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2">{r.name}{r.detail && <span className="text-ink-3 tabular-nums">{r.detail}</span>}{r.status === "stopped" ? <Status kind="off" label="Stopped" className="text-xs" /> : r.status === "unavailable" ? <Status kind="off" label="Unavailable" className="text-xs" /> : null}</span></td>
                 <td className="px-3 text-right tabular-nums">{pct(r.disk)}</td>
                 <td className="px-3 text-right tabular-nums">{pct(r.mem)}</td>
                 <td className="px-3 text-right tabular-nums">{r.cpu === null ? <span className="text-ink-3">—</span> : `${pct(r.cpu)}${r.kind !== "node" ? "" : ` of ${host.cpus}`}`}</td>

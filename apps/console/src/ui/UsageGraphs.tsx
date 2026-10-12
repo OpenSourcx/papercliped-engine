@@ -49,8 +49,8 @@ export function UsageGraphs({ seed, base, kind, vmid }: { seed: number; base: Rr
         <Segmented size="sm" value={timeframe} onChange={setTimeframe} options={TIMEFRAMES.map((t) => ({ value: t.id, label: t.label }))} />
         <Segmented size="sm" value={cf} onChange={setCf} options={[{ value: "AVERAGE", label: "Average" }, { value: "MAX", label: "Maximum" }]} />
       </div>
-      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
-      <div className="grid lg:grid-cols-2 gap-4">
+      {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {kind === "node" ? (
           <TimeSeriesChart title="CPU and IO delay" series={[{ key: "cpu", label: "CPU", values: col("cpu", (v) => v * 100), area: true }, { key: "io", label: "IO delay", values: col("iowait", (v) => v * 100) }]} times={times} format={pct} />
         ) : (

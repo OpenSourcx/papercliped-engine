@@ -23,10 +23,10 @@ export function MachineTasks({ g }: { g: Guest }) {
   }, [g.vmid, engine.backend, engine.contentVersion, tick]);
   return (
     <div className="fade-in">
-      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+      {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
       <Card className="overflow-x-auto">
         {tasks === null && !error ? (
-          <div className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading history…</div>
+          <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading history…</div>
         ) : !tasks?.length ? (
           <EmptyState icon={<ListChecks className="h-5 w-5" />} title={`Nothing yet for ${g.name}`} body="Starts, backups, snapshots and other changes to this machine show up here as Proxmox runs them." />
         ) : (

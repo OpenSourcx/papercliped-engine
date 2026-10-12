@@ -6,7 +6,7 @@ import { iac, type DeviceRole, type IacOverview, type IacUser, type IacUserSpec,
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Toggle } from "../../ui/primitives.tsx";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm outline-none focus:border-line-strong";
 
 const DEVICE_LABEL: Record<DeviceRole | "custom", string> = { admin: "Administrator", operator: "Operator", viewer: "Viewer", none: "No device access", custom: "Custom (set in Proxmox)" };
 const DEVICE_HELP: Record<DeviceRole, string> = {
@@ -31,7 +31,7 @@ function useIac() {
 
 function Warnings({ items }: { items: string[] }) {
   if (!items.length) return null;
-  return <ul className="text-[13px] text-warning space-y-1 list-disc pl-5">{items.map((w, i) => <li key={i}>{w}</li>)}</ul>;
+  return <ul className="text-compact text-warning space-y-1 list-disc pl-5">{items.map((w, i) => <li key={i}>{w}</li>)}</ul>;
 }
 
 const roleOf = (u: IacUser | undefined, companyId: string): OrgRole | "" => (u?.orgs.find((o) => o.companyId === companyId)?.role as OrgRole | undefined) ?? "";
@@ -97,35 +97,35 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
       <div className="space-y-5">
         {creating && (
           <div className="grid sm:grid-cols-2 gap-4">
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-2">User name</span><Input value={userid} onChange={(e) => setUserid(e.target.value.toLowerCase())} placeholder="sam@pve" autoFocus spellCheck={false} className="font-mono" /><span className="block text-[12px] text-ink-3 mt-1.5">name@realm. {overview.realms.length ? `Realms here: ${overview.realms.map((r) => r.realm).join(", ")}.` : ""}</span></label>
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Password</span><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" /><span className="block text-[12px] text-ink-3 mt-1.5">At least 8 characters. Only used for the pve realm; other realms keep theirs.</span></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">User name</span><Input value={userid} onChange={(e) => setUserid(e.target.value.toLowerCase())} placeholder="sam@pve" autoFocus spellCheck={false} className="font-mono" /><span className="block text-xs text-ink-3 mt-1.5">name@realm. {overview.realms.length ? `Realms here: ${overview.realms.map((r) => r.realm).join(", ")}.` : ""}</span></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">Password</span><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" /><span className="block text-xs text-ink-3 mt-1.5">At least 8 characters. Only used for the pve realm; other realms keep theirs.</span></label>
           </div>
         )}
         <div className="grid sm:grid-cols-3 gap-4">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">First name</span><Input value={firstname} onChange={(e) => setFirstname(e.target.value)} /></label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Last name</span><Input value={lastname} onChange={(e) => setLastname(e.target.value)} /></label>
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Email</span><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">First name</span><Input value={firstname} onChange={(e) => setFirstname(e.target.value)} /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Last name</span><Input value={lastname} onChange={(e) => setLastname(e.target.value)} /></label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Email</span><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
         </div>
-        <div className="flex items-center gap-3"><Toggle checked={enabled} onChange={setEnabled} label="Account enabled" /><span className="text-[13px] text-ink-2">{enabled ? "Account enabled" : "Account disabled: they're signed out and can't sign in"}</span></div>
+        <div className="flex items-center gap-3"><Toggle checked={enabled} onChange={setEnabled} label="Account enabled" /><span className="text-compact text-ink-2">{enabled ? "Account enabled" : "Account disabled: they're signed out and can't sign in"}</span></div>
 
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">Device access</span>
+          <span className="block text-compact text-ink-2 mb-2">Device access</span>
           <select className={select} value={deviceRole} onChange={(e) => setDeviceRole(e.target.value as DeviceRole)}>
             {deviceRole === "custom" && <option value="custom">{DEVICE_LABEL.custom}</option>}
             {(["admin", "operator", "viewer", "none"] as const).map((r) => <option key={r} value={r}>{DEVICE_LABEL[r]}</option>)}
           </select>
-          <span className="block text-[12px] text-ink-3 mt-1.5">{deviceRole === "custom" ? "Their Proxmox permissions don't match a standard role, so they're left as they are. Choosing a role here replaces them." : DEVICE_HELP[deviceRole]}</span>
+          <span className="block text-xs text-ink-3 mt-1.5">{deviceRole === "custom" ? "Their Proxmox permissions don't match a standard role, so they're left as they are. Choosing a role here replaces them." : DEVICE_HELP[deviceRole]}</span>
         </label>
 
         <div>
-          <div className="text-[13px] text-ink-2 mb-2">Organizations</div>
+          <div className="text-compact text-ink-2 mb-2">Organizations</div>
           {overview.orgs.length === 0 ? (
-            <p className="text-[13px] text-ink-3">There are no organizations yet.</p>
+            <p className="text-compact text-ink-3">There are no organizations yet.</p>
           ) : (
             <div className="rounded-lg border border-line divide-y divide-line">
               {overview.orgs.map((o) => (
                 <div key={o.companyId} className="flex items-center gap-3 px-3 py-2.5">
-                  <div className="min-w-0 flex-1"><div className="text-[14px] truncate">{o.name}</div><div className="text-[12px] text-ink-3 font-mono truncate">{o.pool ? `pool ${o.pool}` : "no resource group yet"}</div></div>
+                  <div className="min-w-0 flex-1"><div className="text-sm truncate">{o.name}</div><div className="text-xs text-ink-3 font-mono truncate">{o.pool ? `pool ${o.pool}` : "no resource group yet"}</div></div>
                   <select className={`${select} !w-48`} value={orgRoles[o.companyId] ?? ""} onChange={(e) => setOrgRoles((r) => ({ ...r, [o.companyId]: e.target.value as OrgRole | "" }))} aria-label={`Role in ${o.name}`}>
                     {ORG_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
@@ -133,19 +133,19 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
               ))}
             </div>
           )}
-          <p className="text-[12px] text-ink-3 mt-2">An organization role also gives matching access to its machines in Proxmox, through the organization's resource group.</p>
+          <p className="text-xs text-ink-3 mt-2">An organization role also gives matching access to its machines in Proxmox, through the organization's resource group.</p>
         </div>
 
         {confirmDelete && user && (
           <div className="rounded-lg border border-critical/40 bg-critical/10 p-3 space-y-2">
-            <p className="text-[13px]">This deletes <span className="font-mono">{user.userid}</span> from Proxmox, removes them from every organization and signs them out. It can't be undone.</p>
+            <p className="text-compact">This deletes <span className="font-mono">{user.userid}</span> from Proxmox, removes them from every organization and signs them out. It can't be undone.</p>
             <div className="flex gap-2">
               <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={`Type ${user.userid} to confirm`} className="font-mono" spellCheck={false} />
               <Button variant="danger" disabled={typed !== user.userid || remove.isPending} onClick={() => remove.mutate()}>{remove.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Delete</Button>
             </div>
           </div>
         )}
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -160,9 +160,9 @@ function PasswordModal({ user, onClose }: { user: IacUser; onClose: () => void }
     <Modal size="sm" icon={<KeyRound className="h-5 w-5" />} title={`New password for ${user.name}`} subtitle="Proxmox asks for your own password to confirm." onClose={onClose}
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={password.length < 8 || !mine || set.isPending} onClick={() => set.mutate()}>{set.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Set password</Button></>}>
       <div className="space-y-4">
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">New password</span><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus autoComplete="new-password" /></label>
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Your password</span><Input type="password" value={mine} onChange={(e) => setMine(e.target.value)} autoComplete="current-password" /></label>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        <label className="block"><span className="block text-compact text-ink-2 mb-2">New password</span><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus autoComplete="new-password" /></label>
+        <label className="block"><span className="block text-compact text-ink-2 mb-2">Your password</span><Input type="password" value={mine} onChange={(e) => setMine(e.target.value)} autoComplete="current-password" /></label>
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -186,18 +186,18 @@ export function LiveAccess() {
         actions={data?.canManageUsers ? <Button variant="primary" onClick={() => setEditing("new")}><UserPlus className="h-4 w-4" />New user</Button> : undefined}
       />
       {q.isPending && <div className="py-16 grid place-items-center text-ink-3"><Loader2 className="h-5 w-5 animate-spin" /></div>}
-      {q.error && <p role="alert" className="text-[14px] text-critical">{errorText(q.error)}</p>}
+      {q.error && <p role="alert" className="text-sm text-critical">{errorText(q.error)}</p>}
       {data && (
         <>
-          {!data.canManageUsers && <p className="text-[13px] text-ink-3 mb-4 flex items-center gap-2"><Lock className="h-4 w-4" />Your Proxmox account can't manage users, so this list is read-only.</p>}
+          {!data.canManageUsers && <p className="text-compact text-ink-3 mb-4 flex items-center gap-2"><Lock className="h-4 w-4" />Your Proxmox account can't manage users, so this list is read-only.</p>}
           <Warnings items={[...data.warnings, ...notes]} />
           {data.users.length === 0 ? (
             <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No users" body="Proxmox didn't list any users for your account." />
           ) : (
             <Card className="overflow-x-auto mt-3">
-              <table className="w-full text-[14px] min-w-[760px]">
+              <table className="w-full text-sm min-w-[760px]">
                 <thead>
-                  <tr className="text-[12px] text-ink-3 border-b border-line text-left">
+                  <tr className="text-xs text-ink-3 border-b border-line text-left">
                     <th className="font-normal px-5 h-11">User</th>
                     <th className="font-normal px-3">Device access</th>
                     <th className="font-normal px-3">Organizations</th>
@@ -208,10 +208,10 @@ export function LiveAccess() {
                 <tbody>
                   {data.users.map((u) => (
                     <tr key={u.userid} className="border-b border-line last:border-0 hover:bg-surface-2/50">
-                      <td className="px-5 py-3"><button className="text-left" onClick={() => data.canManageUsers && setEditing(u)} disabled={!data.canManageUsers}><div className="font-medium">{u.name}</div><div className="text-[12px] text-ink-3 font-mono">{u.userid}</div></button></td>
+                      <td className="px-5 py-3"><button className="text-left" onClick={() => data.canManageUsers && setEditing(u)} disabled={!data.canManageUsers}><div className="font-medium">{u.name}</div><div className="text-xs text-ink-3 font-mono">{u.userid}</div></button></td>
                       <td className="px-3"><Chip tone={u.deviceRole === "admin" ? "accent" : u.deviceRole === "custom" ? "warning" : "neutral"}>{DEVICE_LABEL[u.deviceRole]}</Chip></td>
-                      <td className="px-3"><div className="flex flex-wrap gap-1.5">{u.orgs.length ? u.orgs.map((o) => <Chip key={o.companyId}>{orgName(data, o.companyId)} · {o.role}</Chip>) : <span className="text-[13px] text-ink-3">None</span>}</div></td>
-                      <td className="px-3 text-[13px] text-ink-2">{u.enabled ? "Active" : "Disabled"}{u.expire ? ` · expires ${new Date(u.expire * 1000).toLocaleDateString()}` : ""}</td>
+                      <td className="px-3"><div className="flex flex-wrap gap-1.5">{u.orgs.length ? u.orgs.map((o) => <Chip key={o.companyId}>{orgName(data, o.companyId)} · {o.role}</Chip>) : <span className="text-compact text-ink-3">None</span>}</div></td>
+                      <td className="px-3 text-compact text-ink-2">{u.enabled ? "Active" : "Disabled"}{u.expire ? ` · expires ${new Date(u.expire * 1000).toLocaleDateString()}` : ""}</td>
                       <td className="px-3">{data.canManageUsers && u.realmType === "pve" && <Button variant="ghost" size="sm" onClick={() => setPassword(u)} title="Set password"><KeyRound className="h-4 w-4" /></Button>}</td>
                     </tr>
                   ))}
@@ -219,7 +219,7 @@ export function LiveAccess() {
               </table>
             </Card>
           )}
-          <p className="text-[12px] text-ink-3 mt-4">Device access uses Proxmox's built-in roles (Administrator, or Auditor with VM and storage rights). Anything else set in Proxmox is shown as Custom and left alone.</p>
+          <p className="text-xs text-ink-3 mt-4">Device access uses Proxmox's built-in roles (Administrator, or Auditor with VM and storage rights). Anything else set in Proxmox is shown as Custom and left alone.</p>
         </>
       )}
       {editing && data && <UserModal overview={data} user={editing === "new" ? null : editing} onClose={() => setEditing(null)} onDone={setNotes} />}

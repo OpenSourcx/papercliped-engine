@@ -75,19 +75,19 @@ export function TimeSeriesChart({ title, series, times, format, yMax, binary, he
   return (
     <figure className={cn("rounded-xl border border-line bg-surface m-0", className)} aria-labelledby={`${id}-t`}>
       <div className="flex items-center gap-3 px-4 pt-3">
-        <figcaption id={`${id}-t`} className="text-[14px] font-medium flex-1">{title}</figcaption>
+        <figcaption id={`${id}-t`} className="text-sm font-medium flex-1">{title}</figcaption>
         {!single && (
-          <div className="flex items-center gap-3 text-[12px] text-ink-2" aria-label="Legend">
+          <div className="flex items-center gap-3 text-xs text-ink-2" aria-label="Legend">
             {series.map((s, i) => (
               <span key={s.key} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color(i) }} aria-hidden />{s.label}</span>
             ))}
           </div>
         )}
-        <button onClick={() => setTable((t) => !t)} aria-pressed={table} className="h-7 px-2 rounded-md text-[12px] text-ink-3 hover:text-ink hover:bg-surface-2 inline-flex items-center gap-1" title="Show as table"><Table2 className="h-3.5 w-3.5" />Table</button>
+        <button onClick={() => setTable((t) => !t)} aria-pressed={table} className="h-7 px-2 rounded-md text-xs text-ink-3 hover:text-ink hover:bg-surface-2 inline-flex items-center gap-1" title="Show as table"><Table2 className="h-3.5 w-3.5" />Table</button>
       </div>
       {table ? (
         <div className="max-h-[220px] overflow-y-auto px-4 py-3">
-          <table className="w-full text-[12px] tabular-nums">
+          <table className="w-full text-xs tabular-nums">
             <thead><tr className="text-ink-3 text-left"><th className="font-normal py-1">Time</th>{series.map((s) => <th key={s.key} className="font-normal py-1 text-right">{s.label}</th>)}</tr></thead>
             <tbody>
               {times.map((t, i) => (
@@ -119,7 +119,7 @@ export function TimeSeriesChart({ title, series, times, format, yMax, binary, he
             <rect x={m.l} y={m.t} width={w} height={h} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
           </svg>
           {hover !== null && (
-            <div className="pointer-events-none absolute top-2 z-10 rounded-lg border border-line-strong bg-surface-3 px-3 py-2 text-[12px] shadow-xl" style={{ left: Math.min(Math.max(x(hover) + 12, 8), width - 180) }}>
+            <div className="pointer-events-none absolute top-2 z-(--z-raised) rounded-lg border border-line-strong bg-surface-3 px-3 py-2 text-xs shadow-overlay" style={{ left: Math.min(Math.max(x(hover) + 12, 8), width - 180) }}>
               <div className="text-ink-3 mb-1">{new Date(times[hover] * 1000).toLocaleString()}</div>
               {series.map((s, i) => (
                 <div key={s.key} className="flex items-center gap-2 tabular-nums">

@@ -4,10 +4,10 @@ import { ApiError, type CatalogTemplate } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Input, Segmented, Toggle } from "../../ui/primitives.tsx";
+import { Button, Input, Segmented, Toggle, selectClass } from "../../ui/primitives.tsx";
 import { fileNameError, nameFromUrl, storagesWith, volName } from "./content.ts";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 const query = () => new URLSearchParams(window.location.search);
 
 function StoragePicker({ kind, value, onChange }: { kind: "iso" | "vztmpl"; value: string; onChange: (v: string) => void }) {
@@ -15,13 +15,13 @@ function StoragePicker({ kind, value, onChange }: { kind: "iso" | "vztmpl"; valu
   const list = storagesWith(data.host.storage, kind);
   return (
     <label className="block">
-      <span className="block text-[13px] text-ink-2 mb-2">Storage</span>
+      <span className="block text-compact text-ink-2 mb-2">Storage</span>
       {list.length ? (
         <select value={value} onChange={(e) => onChange(e.target.value)} className={select}>
           {list.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}
         </select>
       ) : (
-        <p className="text-[13px] text-ink-3">No storage on this device is set up for {kind === "iso" ? "ISO images" : "container templates"}.</p>
+        <p className="text-compact text-ink-3">No storage on this device is set up for {kind === "iso" ? "ISO images" : "container templates"}.</p>
       )}
     </label>
   );
@@ -100,20 +100,20 @@ export function UploadModal({ onClose }: { onClose: () => void }) {
           className={cn("w-full rounded-xl border border-dashed p-6 text-center transition", drag ? "border-accent bg-accent-soft" : "border-line-strong hover:border-accent/50")}
         >
           {file ? (
-            <span className="block"><span className="block font-mono text-[13px] break-all">{file.name}</span><span className="block text-[12px] text-ink-3 mt-1">{formatBytes(file.size)}</span></span>
+            <span className="block"><span className="block font-mono text-compact break-all">{file.name}</span><span className="block text-xs text-ink-3 mt-1">{formatBytes(file.size)}</span></span>
           ) : (
-            <span className="block text-[14px] text-ink-2">Drop a file here or <span className="text-accent">choose one</span><span className="block text-[12px] text-ink-3 mt-1">{kind === "iso" ? ".iso or .img" : ".tar.gz, .tar.xz or .tar.zst"}</span></span>
+            <span className="block text-sm text-ink-2">Drop a file here or <span className="text-accent">choose one</span><span className="block text-xs text-ink-3 mt-1">{kind === "iso" ? ".iso or .img" : ".tar.gz, .tar.xz or .tar.zst"}</span></span>
           )}
         </button>
         <input ref={input} type="file" className="hidden" accept={kind === "iso" ? ".iso,.img" : ".gz,.xz,.zst"} onChange={(e) => pick(e.target.files?.[0])} />
-        {nameErr && <p className="text-[12px] text-critical">{nameErr}</p>}
+        {nameErr && <p className="text-xs text-critical">{nameErr}</p>}
         {uploading && (
           <div>
-            <div className="flex justify-between text-[12px] text-ink-2 mb-1.5"><span>{progress! < 1 ? "Uploading" : "Proxmox is saving it"}</span><span className="tabular-nums">{Math.round(progress! * 100)}%</span></div>
-            <div className="h-2 rounded-full bg-surface-3 overflow-hidden" role="progressbar" aria-valuenow={Math.round(progress! * 100)} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${progress! * 100}%` }} /></div>
+            <div className="flex justify-between text-xs text-ink-2 mb-1.5"><span>{progress! < 1 ? "Uploading" : "Proxmox is saving it"}</span><span className="tabular-nums">{Math.round(progress! * 100)}%</span></div>
+            <div className="h-2 rounded-full bg-surface-3 overflow-hidden" role="progressbar" aria-valuenow={Math.round(progress! * 100)} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-accent transition-[width] duration-(--duration-base)" style={{ width: `${progress! * 100}%` }} /></div>
           </div>
         )}
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -170,34 +170,34 @@ export function DownloadUrlModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-4">
         <Segmented value={kind} onChange={setKind} options={[{ value: "iso", label: "ISO image" }, { value: "vztmpl", label: "Container template" }]} />
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">Address</span>
+          <span className="block text-compact text-ink-2 mb-2">Address</span>
           <Input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://cdimage.debian.org/…/debian-13.1.0-amd64-netinst.iso" spellCheck={false} />
-          {urlErr && <span className="block text-[12px] mt-1.5 text-critical">{urlErr}</span>}
+          {urlErr && <span className="block text-xs mt-1.5 text-critical">{urlErr}</span>}
         </label>
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Save as</span>
+            <span className="block text-compact text-ink-2 mb-2">Save as</span>
             <Input value={filename} onChange={(e) => { setFilename(e.target.value); setTouchedName(true); }} spellCheck={false} />
-            {nameErr && <span className="block text-[12px] mt-1.5 text-critical">{nameErr}</span>}
+            {nameErr && <span className="block text-xs mt-1.5 text-critical">{nameErr}</span>}
           </label>
           <StoragePicker kind={kind} value={storage} onChange={setStorage} />
         </div>
-        <div className="grid sm:grid-cols-[140px_1fr] gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4">
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Checksum</span>
+            <span className="block text-compact text-ink-2 mb-2">Checksum</span>
             <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)} className={select}>{["sha256", "sha512", "sha1", "md5", "sha224", "sha384"].map((a) => <option key={a}>{a}</option>)}</select>
           </label>
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Value <span className="text-ink-3">(optional, recommended)</span></span>
-            <Input value={sum} onChange={(e) => setSum(e.target.value)} placeholder="Paste from the download page" spellCheck={false} className="font-mono text-[12px]" />
-            {sumErr && <span className="block text-[12px] mt-1.5 text-critical">{sumErr}</span>}
+            <span className="block text-compact text-ink-2 mb-2">Value <span className="text-ink-3">(optional, recommended)</span></span>
+            <Input value={sum} onChange={(e) => setSum(e.target.value)} placeholder="Paste from the download page" spellCheck={false} className="font-mono text-xs" />
+            {sumErr && <span className="block text-xs mt-1.5 text-critical">{sumErr}</span>}
           </label>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <div><div className="text-[14px]">Verify the server's certificate</div><div className="text-[12px] text-ink-3">Leave on unless you trust a server with a self-signed certificate.</div></div>
+          <div><div className="text-sm">Verify the server's certificate</div><div className="text-xs text-ink-3">Leave on unless you trust a server with a self-signed certificate.</div></div>
           <Toggle checked={verify} onChange={setVerify} label="Verify the server's certificate" />
         </div>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
@@ -241,7 +241,7 @@ export function TemplatesModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal size="lg" icon={<Package className="h-5 w-5" />} title="Container templates" subtitle="Ready-made systems for new containers, from Proxmox's catalog." onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
       <div className="space-y-4">
-        <div className="grid sm:grid-cols-[1fr_220px] gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 items-end">
           <div className="flex flex-wrap items-center gap-3">
             <Segmented value={section} onChange={setSection} options={[{ value: "system", label: "Systems" }, { value: "turnkeylinux", label: "Apps (TurnKey)" }]} />
             <div className="relative flex-1 min-w-[160px]">
@@ -251,10 +251,10 @@ export function TemplatesModal({ onClose }: { onClose: () => void }) {
           </div>
           <StoragePicker kind="vztmpl" value={storage} onChange={setStorage} />
         </div>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
         <div className="rounded-xl border border-line max-h-[46vh] overflow-y-auto divide-y divide-line">
-          {list === null && !error && <div className="p-6 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading the catalog…</div>}
-          {list !== null && rows.length === 0 && <div className="p-6 text-center text-ink-3 text-[14px]">Nothing matches.</div>}
+          {list === null && !error && <div className="p-6 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading the catalog…</div>}
+          {list !== null && rows.length === 0 && <div className="p-6 text-center text-ink-3 text-sm">Nothing matches.</div>}
           {rows.map((t) => {
             const owned = have.has(t.template);
             const busy = started.has(t.template) && !owned;
@@ -262,11 +262,11 @@ export function TemplatesModal({ onClose }: { onClose: () => void }) {
               <div key={t.template} className="flex items-center gap-3 px-4 py-3">
                 <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0"><Package className="h-4 w-4" /></span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium truncate">{t.headline ?? t.template}</div>
-                  <div className="text-[12px] text-ink-3 font-mono truncate" title={t.template}>{t.template}</div>
+                  <div className="text-sm font-medium truncate">{t.headline ?? t.template}</div>
+                  <div className="text-xs text-ink-3 font-mono truncate" title={t.template}>{t.template}</div>
                 </div>
                 {owned ? (
-                  <span className="text-[12px] text-good inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />On {storage}</span>
+                  <span className="text-xs text-good inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />On {storage}</span>
                 ) : (
                   <Button size="sm" onClick={() => get(t)} disabled={busy || !storage}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}{busy ? "Downloading" : "Download"}</Button>
                 )}

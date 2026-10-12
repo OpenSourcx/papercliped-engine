@@ -6,9 +6,9 @@ import { useEngine } from "../../data/store.tsx";
 import { cn } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass } from "../../ui/primitives.tsx";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 const ACTION_STYLE: Record<string, string> = { ACCEPT: "text-good", DROP: "text-critical", REJECT: "text-warning" };
 
 /**
@@ -52,7 +52,7 @@ function LockoutModal({ message, onCancel, onChoose }: { message: string; onCanc
   };
   return (
     <Modal size="sm" icon={<ShieldAlert className="h-5 w-5 text-warning" />} title="This could lock you out" subtitle={message} onClose={onCancel} footer={<><Button variant="ghost" onClick={onCancel}>Cancel</Button><Button variant="danger" onClick={() => choose({ ignoreLockout: true })} disabled={busy}>Continue anyway</Button><Button variant="primary" onClick={() => choose({ keepConsole: true })} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Keep this console reachable</Button></>}>
-      <p className="text-[13px] text-ink-3">Proxmox keeps its own interface on :8006 and SSH reachable from the local network, but not ePaperclip. The recommended choice adds one host rule that lets the console's port in.</p>
+      <p className="text-compact text-ink-3">Proxmox keeps its own interface on :8006 and SSH reachable from the local network, but not ePaperclip. The recommended choice adds one host rule that lets the console's port in.</p>
     </Modal>
   );
 }
@@ -89,17 +89,17 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-2">
-        <div>{title && <h2 className="font-medium">{title}</h2>}{note && <p className="text-[12px] text-ink-3">{note}</p>}</div>
+        <div>{title && <h2 className="font-medium">{title}</h2>}{note && <p className="text-xs text-ink-3">{note}</p>}</div>
         <Button size="sm" variant="primary" onClick={() => setEditing("new")}><Plus className="h-3.5 w-3.5" />Add rule</Button>
       </div>
-      {error && <p role="alert" className="text-[13px] text-critical mb-2">{error}</p>}
+      {error && <p role="alert" className="text-compact text-critical mb-2">{error}</p>}
       <Card className="overflow-x-auto">
         {rules === null && !error ? (
-          <div className="p-6 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading rules…</div>
+          <div className="p-6 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading rules…</div>
         ) : !rules?.length ? (
           <EmptyState icon={<ListFilter className="h-5 w-5" />} title="No rules" body="With no rules, the default policy decides. Add rules for the traffic you want to let in." action={<Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" />Add rule</Button>} />
         ) : (
-          <table className="w-full text-[13px] min-w-[760px]">
+          <table className="w-full text-compact min-w-[760px]">
             <thead>
               <tr className="border-b border-line text-ink-3 text-left">
                 <th className="font-normal px-3 h-10 w-12">On</th>
@@ -116,11 +116,11 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
               {rules.map((r, i) => (
                 <tr key={`${r.pos}-${r.comment}-${r.action}`} className={cn("border-b border-line last:border-0 hover:bg-surface-2/50", !r.enable && "opacity-50")}>
                   <td className="px-3 py-2"><Toggle checked={r.enable} onChange={() => toggle(r)} label={`${r.enable ? "Disable" : "Enable"} rule ${i + 1}`} /></td>
-                  <td className="px-3 uppercase text-[12px] tracking-wide text-ink-2">{r.type === "group" ? "Group" : r.type}</td>
+                  <td className="px-3 uppercase text-xs tracking-wide text-ink-2">{r.type === "group" ? "Group" : r.type}</td>
                   <td className={cn("px-3 font-medium", ACTION_STYLE[r.action] ?? "text-ink")}>{r.type === "group" ? <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" />{r.action}</span> : r.action}</td>
-                  <td className="px-3 font-mono text-[12.5px]">{describeRule(r)}{r.log && r.log !== "nolog" ? <Chip className="ml-2">log {r.log}</Chip> : null}</td>
-                  <td className="px-3 font-mono text-[12.5px]">{r.source ?? <span className="text-ink-3">anywhere</span>}</td>
-                  <td className="px-3 font-mono text-[12.5px]">{r.dest ?? <span className="text-ink-3">anywhere</span>}</td>
+                  <td className="px-3 font-mono text-xs">{describeRule(r)}{r.log && r.log !== "nolog" ? <Chip className="ml-2">log {r.log}</Chip> : null}</td>
+                  <td className="px-3 font-mono text-xs">{r.source ?? <span className="text-ink-3">anywhere</span>}</td>
+                  <td className="px-3 font-mono text-xs">{r.dest ?? <span className="text-ink-3">anywhere</span>}</td>
                   <td className="px-3 text-ink-2 truncate max-w-[220px]">{r.comment ?? ""}</td>
                   <td className="px-3 whitespace-nowrap text-right">
                     <button onClick={() => move(r, r.pos - 1)} disabled={i === 0} aria-label="Move up" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
@@ -134,7 +134,7 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
           </table>
         )}
       </Card>
-      <p className="text-[12px] text-ink-3 mt-2">Rules are checked from the top; the first one that matches decides.</p>
+      <p className="text-xs text-ink-3 mt-2">Rules are checked from the top; the first one that matches decides.</p>
       {editing && <RuleModal scope={scope} rule={editing === "new" ? null : editing} onClose={() => setEditing(null)} onDone={reload} />}
       {removing && (
         <Modal size="sm" title="Delete this rule?" subtitle={`${removing.type.toUpperCase()} ${removing.action} ${describeRule(removing)}${removing.comment ? ` · ${removing.comment}` : ""}`} onClose={() => setRemoving(null)} footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" onClick={() => remove(removing)}><Trash2 className="h-4 w-4" />Delete</Button></>}>
@@ -199,11 +199,11 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
           {type !== "group" && <Segmented value={action} onChange={setAction} options={[{ value: "ACCEPT", label: "Allow" }, { value: "DROP", label: "Drop" }, { value: "REJECT", label: "Reject" }]} />}
         </div>
         {type === "group" ? (
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Group</span>{groups.length ? <select value={action} onChange={(e) => setAction(e.target.value)} className={select}>{groups.map((g) => <option key={g}>{g}</option>)}</select> : <p className="text-[13px] text-ink-3">No security groups yet. Create one on the Security groups tab.</p>}</label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Group</span>{groups.length ? <select value={action} onChange={(e) => setAction(e.target.value)} className={select}>{groups.map((g) => <option key={g}>{g}</option>)}</select> : <p className="text-compact text-ink-3">No security groups yet. Create one on the Security groups tab.</p>}</label>
         ) : (
           <>
             <fieldset>
-              <legend className="text-[13px] text-ink-2 mb-2">Traffic</legend>
+              <legend className="text-compact text-ink-2 mb-2">Traffic</legend>
               <Segmented size="sm" value={how} onChange={setHow} options={[{ value: "macro", label: "A service" }, { value: "ports", label: "Protocol and port" }, { value: "all", label: "Everything" }]} />
               {how === "macro" && <select value={macro} onChange={(e) => setMacro(e.target.value)} className={cn(select, "mt-2")}>{(macros.length ? macros : [{ macro, descr: "" }]).map((m) => <option key={m.macro} value={m.macro}>{m.macro}{m.descr ? ` — ${m.descr}` : ""}</option>)}</select>}
               {how === "ports" && (
@@ -213,21 +213,21 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
                 </div>
               )}
             </fieldset>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">From</span><Input list="fw-refs" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
-              <label className="block"><span className="block text-[13px] text-ink-2 mb-2">To</span><Input list="fw-refs" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block"><span className="block text-compact text-ink-2 mb-2">From</span><Input list="fw-refs" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
+              <label className="block"><span className="block text-compact text-ink-2 mb-2">To</span><Input list="fw-refs" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Anywhere" className="font-mono" /></label>
               <datalist id="fw-refs">{refs.map((r) => <option key={r.ref} value={r.ref}>{r.type === "ipset" ? "IP set" : "Alias"} {r.name}</option>)}</datalist>
             </div>
-            <p className="text-[12px] text-ink-3 -mt-2">Addresses like 192.168.1.20, networks like 10.0.0.0/8, an alias name, or an IP set as +name.</p>
+            <p className="text-xs text-ink-3 -mt-2">Addresses like 192.168.1.20, networks like 10.0.0.0/8, an alias name, or an IP set as +name.</p>
           </>
         )}
-        <div className="grid sm:grid-cols-3 gap-4">
-          <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Interface <span className="text-ink-3">(optional)</span></span><Input value={iface} onChange={(e) => setIface(e.target.value)} placeholder={scope.startsWith("guest-") ? "net0" : "vmbr0"} className="font-mono" /></label>
-          {type !== "group" && <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Log</span><select value={log} onChange={(e) => setLog(e.target.value)} className={select}><option value="nolog">Don't log</option><option value="info">Info</option><option value="warning">Warning</option><option value="debug">Debug</option></select></label>}
-          <div className="flex items-end justify-between h-full pb-2"><span className="text-[14px]">On</span><Toggle checked={enable} onChange={setEnable} label="Rule on" /></div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Interface <span className="text-ink-3">(optional)</span></span><Input value={iface} onChange={(e) => setIface(e.target.value)} placeholder={scope.startsWith("guest-") ? "net0" : "vmbr0"} className="font-mono" /></label>
+          {type !== "group" && <label className="block"><span className="block text-compact text-ink-2 mb-2">Log</span><select value={log} onChange={(e) => setLog(e.target.value)} className={select}><option value="nolog">Don't log</option><option value="info">Info</option><option value="warning">Warning</option><option value="debug">Debug</option></select></label>}
+          <div className="flex items-end justify-between h-full pb-2"><span className="text-sm">On</span><Toggle checked={enable} onChange={setEnable} label="Rule on" /></div>
         </div>
-        <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Comment</span><Input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={200} placeholder="Why this rule exists" /></label>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        <label className="block"><span className="block text-compact text-ink-2 mb-2">Comment</span><Input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={200} placeholder="Why this rule exists" /></label>
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
       {guard.modal}
     </Modal>
@@ -245,18 +245,18 @@ export function FirewallOptions({ scope }: { scope: string }) {
     engine.backend.firewallGet<{ options: Record<string, string | number> }>(scope, "options").then((r) => (setOpts(r.options), setError(null)), (e) => setError(e instanceof ApiError ? e.message : "Couldn't read the options"));
   }, [scope, engine.backend, tick]);
   const set = (patch: Record<string, string | boolean>) => guard.run((extra) => engine.backend.firewallPost(scope, "options", { ...patch, ...extra }), setError).then(() => setTick((n) => n + 1));
-  if (error) return <p role="alert" className="text-[13px] text-critical">{error}</p>;
-  if (!opts) return <Card className="p-6 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading options…</Card>;
+  if (error) return <p role="alert" className="text-compact text-critical">{error}</p>;
+  if (!opts) return <Card className="p-6 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading options…</Card>;
   const on = (k: string, d = 0) => Number(opts[k] ?? d) === 1;
   const level = scope === "datacenter" ? "cluster" : scope === "host" ? "node" : "guest";
   const row = (title: string, body: string, control: ReactNode) => (
     <div className="flex items-center gap-4 py-3">
-      <div className="flex-1 min-w-0"><div className="text-[14px]">{title}</div><div className="text-[12px] text-ink-3">{body}</div></div>
+      <div className="flex-1 min-w-0"><div className="text-sm">{title}</div><div className="text-xs text-ink-3">{body}</div></div>
       {control}
     </div>
   );
-  const policy = (k: string) => <select value={String(opts[k] ?? (k === "policy_in" ? "DROP" : "ACCEPT"))} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-[13px]"><option value="ACCEPT">Allow</option><option value="DROP">Drop</option><option value="REJECT">Reject</option></select>;
-  const logLevel = (k: string) => <select value={String(opts[k] ?? "nolog")} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-[13px]">{["nolog", "info", "notice", "warning", "err", "debug"].map((l) => <option key={l} value={l}>{l === "nolog" ? "Don't log" : l}</option>)}</select>;
+  const policy = (k: string) => <select value={String(opts[k] ?? (k === "policy_in" ? "DROP" : "ACCEPT"))} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-compact"><option value="ACCEPT">Allow</option><option value="DROP">Drop</option><option value="REJECT">Reject</option></select>;
+  const logLevel = (k: string) => <select value={String(opts[k] ?? "nolog")} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-compact">{["nolog", "info", "notice", "warning", "err", "debug"].map((l) => <option key={l} value={l}>{l === "nolog" ? "Don't log" : l}</option>)}</select>;
   return (
     <Card className="p-5 divide-y divide-line">
       {row(level === "cluster" ? "Firewall for the whole device" : level === "node" ? "Firewall on this host" : "Firewall for this machine", level === "cluster" ? "The master switch. Off means no machine or host rules apply." : level === "node" ? "Rules for traffic to the host itself." : "Also needs the firewall switch on the machine's network device (Hardware tab).", <Toggle checked={on("enable", level === "node" ? 1 : 0)} onChange={(v) => set({ enable: v })} label="Firewall on" />)}
@@ -296,16 +296,16 @@ function Aliases({ scope }: { scope: string }) {
   };
   return (
     <div>
-      <div className="flex items-center justify-between mb-2"><p className="text-[13px] text-ink-3">Names for addresses and networks, to use in rules instead of numbers.</p><Button size="sm" variant="primary" onClick={() => setForm({ old: null, name: "", cidr: "", comment: "" })}><Plus className="h-3.5 w-3.5" />Add alias</Button></div>
-      {error && <p role="alert" className="text-[13px] text-critical mb-2">{error}</p>}
+      <div className="flex items-center justify-between mb-2"><p className="text-compact text-ink-3">Names for addresses and networks, to use in rules instead of numbers.</p><Button size="sm" variant="primary" onClick={() => setForm({ old: null, name: "", cidr: "", comment: "" })}><Plus className="h-3.5 w-3.5" />Add alias</Button></div>
+      {error && <p role="alert" className="text-compact text-critical mb-2">{error}</p>}
       <Card className="divide-y divide-line">
-        {list?.length === 0 && <p className="p-5 text-[14px] text-ink-3">No aliases yet.</p>}
+        {list?.length === 0 && <p className="p-5 text-sm text-ink-3">No aliases yet.</p>}
         {list?.map((a) => (
           <div key={a.name} className="flex items-center gap-3 px-4 py-3">
             <Tag className="h-4 w-4 text-ink-3" />
-            <span className="font-mono text-[13px] w-40 truncate">{a.name}</span>
-            <span className="font-mono text-[13px] text-ink-2 flex-1">{a.cidr}</span>
-            <span className="text-[12px] text-ink-3 truncate max-w-[200px]">{a.comment ?? ""}</span>
+            <span className="font-mono text-compact w-40 truncate">{a.name}</span>
+            <span className="font-mono text-compact text-ink-2 flex-1">{a.cidr}</span>
+            <span className="text-xs text-ink-3 truncate max-w-[200px]">{a.comment ?? ""}</span>
             <button onClick={() => setForm({ old: a.name, name: a.name, cidr: a.cidr, comment: a.comment ?? "" })} aria-label={`Edit ${a.name}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Pencil className="h-4 w-4" /></button>
             <button onClick={async () => { await engine.backend.firewallPost(scope, `aliases/${encodeURIComponent(a.name)}/delete`).catch((e) => setError(e instanceof ApiError ? e.message : "Couldn't delete")); setTick((n) => n + 1); }} aria-label={`Delete ${a.name}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
           </div>
@@ -314,9 +314,9 @@ function Aliases({ scope }: { scope: string }) {
       {form && (
         <Modal size="sm" icon={<Tag className="h-5 w-5" />} title={form.old ? `Edit ${form.old}` : "Add an alias"} onClose={() => setForm(null)} footer={<><Button variant="ghost" onClick={() => setForm(null)}>Cancel</Button><Button variant="primary" onClick={save} disabled={!form.name || !form.cidr}>Save</Button></>}>
           <div className="space-y-3">
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Name</span><Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="office" className="font-mono" /></label>
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Address or network</span><Input value={form.cidr} onChange={(e) => setForm({ ...form, cidr: e.target.value })} placeholder="192.168.1.0/24" className="font-mono" /></label>
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-1.5">Comment</span><Input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} /></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Name</span><Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="office" className="font-mono" /></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Address or network</span><Input value={form.cidr} onChange={(e) => setForm({ ...form, cidr: e.target.value })} placeholder="192.168.1.0/24" className="font-mono" /></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Comment</span><Input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} /></label>
           </div>
         </Modal>
       )}
@@ -351,12 +351,12 @@ function IpSets({ scope }: { scope: string }) {
     setTick((n) => n + 1);
   };
   return (
-    <div className="grid md:grid-cols-[240px_1fr] gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
       <div>
-        <p className="text-[13px] text-ink-3 mb-2">Lists of addresses to use in rules as +name.</p>
+        <p className="text-compact text-ink-3 mb-2">Lists of addresses to use in rules as +name.</p>
         <Card className="divide-y divide-line">
           {sets?.map((s) => (
-            <button key={s.name} onClick={() => setOpen(s.name)} className={cn("w-full text-left px-4 py-2.5 font-mono text-[13px] flex items-center", open === s.name ? "bg-accent-soft" : "hover:bg-surface-2/60")}>
+            <button key={s.name} onClick={() => setOpen(s.name)} className={cn("w-full text-left px-4 py-2.5 font-mono text-compact flex items-center", open === s.name ? "bg-accent-soft" : "hover:bg-surface-2/60")}>
               <span className="flex-1">+{s.name}</span>
               <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); if (open === s.name) setOpen(null); void act(`ipsets/${encodeURIComponent(s.name)}/delete`); }} aria-label={`Delete ${s.name}`} className="text-ink-3 hover:text-critical"><Trash2 className="h-3.5 w-3.5" /></span>
             </button>
@@ -365,26 +365,26 @@ function IpSets({ scope }: { scope: string }) {
         </Card>
       </div>
       <div>
-        {error && <p role="alert" className="text-[13px] text-critical mb-2">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical mb-2">{error}</p>}
         {open ? (
           <Card className="divide-y divide-line">
-            <div className="px-4 py-3 font-mono text-[13px] font-medium">+{open}</div>
-            {entries.length === 0 && <p className="px-4 py-3 text-[13px] text-ink-3">Empty.</p>}
+            <div className="px-4 py-3 font-mono text-compact font-medium">+{open}</div>
+            {entries.length === 0 && <p className="px-4 py-3 text-compact text-ink-3">Empty.</p>}
             {entries.map((e) => (
               <div key={e.cidr} className="flex items-center gap-3 px-4 py-2.5">
-                <span className={cn("font-mono text-[13px] flex-1", e.nomatch && "line-through text-ink-3")}>{e.cidr}</span>
+                <span className={cn("font-mono text-compact flex-1", e.nomatch && "line-through text-ink-3")}>{e.cidr}</span>
                 {e.nomatch && <Chip>excluded</Chip>}
-                <span className="text-[12px] text-ink-3">{e.comment ?? ""}</span>
+                <span className="text-xs text-ink-3">{e.comment ?? ""}</span>
                 <button onClick={() => act(`ipsets/${encodeURIComponent(open)}/entries/${encodeURIComponent(e.cidr)}/delete`)} aria-label={`Remove ${e.cidr}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-2 p-3">
               <Input value={newEntry} onChange={(e) => setNewEntry(e.target.value)} placeholder="10.0.0.0/24 or an alias" className="h-9 font-mono flex-1 min-w-[180px]" />
-              <label className="inline-flex items-center gap-2 text-[13px] text-ink-2"><input type="checkbox" checked={nomatch} onChange={(e) => setNomatch(e.target.checked)} className="accent-[var(--accent)]" />Exclude</label>
+              <label className="inline-flex items-center gap-2 text-compact text-ink-2"><input type="checkbox" checked={nomatch} onChange={(e) => setNomatch(e.target.checked)} className="accent-[var(--accent)]" />Exclude</label>
               <Button size="sm" onClick={() => { void act(`ipsets/${encodeURIComponent(open)}/entries`, { cidr: newEntry, nomatch }); setNewEntry(""); setNomatch(false); }} disabled={!newEntry}>Add</Button>
             </div>
           </Card>
-        ) : <Card className="p-6 text-center text-ink-3 text-[14px]">Pick or create an IP set.</Card>}
+        ) : <Card className="p-6 text-center text-ink-3 text-sm">Pick or create an IP set.</Card>}
       </div>
     </div>
   );
@@ -411,22 +411,22 @@ function SecurityGroups() {
     setTick((n) => n + 1);
   };
   return (
-    <div className="grid md:grid-cols-[260px_1fr] gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
       <div>
-        <p className="text-[13px] text-ink-3 mb-2">Reusable sets of rules. Add one to any firewall with a single "security group" rule.</p>
+        <p className="text-compact text-ink-3 mb-2">Reusable sets of rules. Add one to any firewall with a single "security group" rule.</p>
         <Card className="divide-y divide-line">
           {groups?.map((g) => (
             <button key={g.group} onClick={() => setOpen(g.group)} className={cn("w-full text-left px-4 py-2.5 flex items-center gap-2", open === g.group ? "bg-accent-soft" : "hover:bg-surface-2/60")}>
               <Layers className="h-4 w-4 text-ink-3" />
-              <span className="flex-1 min-w-0"><span className="block font-mono text-[13px]">{g.group}</span>{g.comment && <span className="block text-[12px] text-ink-3 truncate">{g.comment}</span>}</span>
+              <span className="flex-1 min-w-0"><span className="block font-mono text-compact">{g.group}</span>{g.comment && <span className="block text-xs text-ink-3 truncate">{g.comment}</span>}</span>
               <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); if (open === g.group) setOpen(null); void act(`groups/${encodeURIComponent(g.group)}/delete`); }} aria-label={`Delete ${g.group}`} className="text-ink-3 hover:text-critical"><Trash2 className="h-3.5 w-3.5" /></span>
             </button>
           ))}
           <div className="p-2 space-y-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="New group" className="h-9 font-mono" /><Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="What it's for" className="h-9" /><Button size="sm" className="w-full" onClick={() => { void act("groups", { group: name, comment }); setOpen(name); setName(""); setComment(""); }} disabled={!name}>Create group</Button></div>
         </Card>
-        {error && <p role="alert" className="text-[13px] text-critical mt-2">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical mt-2">{error}</p>}
       </div>
-      {open ? <RulesTable key={open} scope={`group-${open}`} title={open} /> : <Card className="p-6 text-center text-ink-3 text-[14px]">Pick or create a group.</Card>}
+      {open ? <RulesTable key={open} scope={`group-${open}`} title={open} /> : <Card className="p-6 text-center text-ink-3 text-sm">Pick or create a group.</Card>}
     </div>
   );
 }
@@ -446,8 +446,8 @@ function FirewallLog({ scope }: { scope: string }) {
   }, [scope, engine.backend, tick]);
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-[13px] text-ink-3"><ScrollText className="h-4 w-4" />Newest at the bottom · refreshes every 5 seconds · only traffic from rules or policies with logging on appears</div>
-      <pre className="rounded-lg bg-black/40 border border-line p-3 text-[12px] font-mono text-ink-2 max-h-[420px] overflow-auto whitespace-pre-wrap break-all">{lines === null ? "…" : lines.length ? lines.join("\n") : "Nothing logged yet."}</pre>
+      <div className="flex items-center gap-2 mb-2 text-compact text-ink-3"><ScrollText className="h-4 w-4" />Newest at the bottom · refreshes every 5 seconds · only traffic from rules or policies with logging on appears</div>
+      <pre className="rounded-lg bg-code border border-line p-3 text-xs font-mono text-ink-2 max-h-[420px] overflow-auto whitespace-pre-wrap break-all">{lines === null ? "…" : lines.length ? lines.join("\n") : "Nothing logged yet."}</pre>
     </Card>
   );
 }
@@ -481,9 +481,9 @@ export function FirewallPage() {
     <PageFrame width="6xl">
       <PageHeader title="Firewall" subtitle="Who can reach this device and its machines. Machines also have their own firewall on their page." actions={enabled === null ? null : enabled ? <Status kind="good" label="On" /> : <Status kind="off" label="Off for the whole device" />} />
       <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
-        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-[14px] whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
+        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
       </div>
-      {enabled === false && tab === "rules" && <p className="text-[13px] text-warning mb-3">The firewall is off for the whole device, so none of these rules apply yet. Turn it on in Options.</p>}
+      {enabled === false && tab === "rules" && <p className="text-compact text-warning mb-3">The firewall is off for the whole device, so none of these rules apply yet. Turn it on in Options.</p>}
       {(tab === "rules" || tab === "options") && (
         <div className="mb-4"><Segmented value={where} onChange={setWhere} options={[{ value: "datacenter", label: "Whole device" }, { value: "host", label: "This host" }]} /></div>
       )}

@@ -15,22 +15,36 @@ export interface Preset {
   tokens: Tokens;
 }
 
+/*
+ * Every preset carries the full semantic and domain set (the warm preset is the base each one spreads), so switching
+ * presets never leaves a value from the previous one behind. These are the only colour literals outside index.css;
+ * see apps/console/DESIGN.md, "Token tiers".
+ */
 const warm: Tokens = {
   "--bg": "#171612", "--surface": "#1f1d19", "--surface-2": "#27251f", "--surface-3": "#312e27",
-  "--ink": "#f4ecdc", "--ink-2": "#bdb4a2", "--ink-3": "#8a8272",
+  "--ink": "#f4ecdc", "--ink-2": "#bdb4a2", "--ink-3": "#958c7b",
   "--line": "rgb(244 236 220 / 0.08)", "--line-strong": "rgb(244 236 220 / 0.16)",
   "--primary": "#ece3cf", "--primary-ink": "#1b1a16",
   "--accent": "#e8b25c", "--accent-soft": "rgb(232 178 92 / 0.14)",
+  "--scrim": "rgb(8 7 5 / 0.6)", "--code": "#12110e", "--screen": "#000000", "--on-status": "#ffffff", "--shadow-color": "rgb(0 0 0 / 0.5)", "--rim": "rgb(255 255 255 / 0.07)",
+  // Status hues, tuned for 3:1 or better against the dark surfaces.
+  "--good": "#34c759", "--live": "#6aa5ff", "--warning": "#fab219", "--serious": "#ec835a", "--critical": "#f0585d",
   "--glow-1": "rgb(232 178 92 / 0.22)", "--glow-2": "rgb(214 104 84 / 0.14)", "--glow-3": "rgb(104 120 214 / 0.12)",
-  "--pin-1": "#f2c16b", "--pin-2": "#e9776a", "--pin-3": "#8e7cf0",
+  "--pin-1": "#f2c16b", "--pin-2": "#e9776a", "--pin-3": "#8e7cf0", "--pin-highlight": "rgb(255 255 255 / 0.7)",
   "--series-1": "#3987e5", "--series-2": "#d95926",
+};
+
+/** Light schemes share their status hues, darkened to clear 3:1 on near-white surfaces, and softer shadows. */
+const lightBase: Tokens = {
+  "--scrim": "rgb(40 32 20 / 0.32)", "--code": "#f3efe7", "--shadow-color": "rgb(60 45 20 / 0.16)", "--rim": "rgb(255 255 255 / 0.6)",
+  "--good": "#1f8a3e", "--live": "#2563eb", "--warning": "#a86200", "--serious": "#c2521f", "--critical": "#d1242f",
 };
 
 export const PRESETS: Preset[] = [
   { id: "warm", name: "Paperclip Warm", scheme: "dark", tokens: warm },
   {
     id: "graphite", name: "Graphite", scheme: "dark",
-    tokens: { ...warm, "--bg": "#141414", "--surface": "#1b1b1b", "--surface-2": "#232323", "--surface-3": "#2d2d2d", "--ink": "#f5f5f5", "--ink-2": "#b4b4b4", "--ink-3": "#808080", "--line": "rgb(255 255 255 / 0.08)", "--line-strong": "rgb(255 255 255 / 0.15)", "--primary": "#ededed", "--primary-ink": "#141414", "--accent": "#9db4ff", "--accent-soft": "rgb(157 180 255 / 0.14)", "--glow-1": "rgb(157 180 255 / 0.16)", "--glow-2": "rgb(255 255 255 / 0.05)", "--glow-3": "rgb(157 180 255 / 0.08)" },
+    tokens: { ...warm, "--bg": "#141414", "--surface": "#1b1b1b", "--surface-2": "#232323", "--surface-3": "#2d2d2d", "--ink": "#f5f5f5", "--ink-2": "#b4b4b4", "--ink-3": "#8c8c8c", "--line": "rgb(255 255 255 / 0.08)", "--line-strong": "rgb(255 255 255 / 0.15)", "--primary": "#ededed", "--primary-ink": "#141414", "--accent": "#9db4ff", "--accent-soft": "rgb(157 180 255 / 0.14)", "--glow-1": "rgb(157 180 255 / 0.16)", "--glow-2": "rgb(255 255 255 / 0.05)", "--glow-3": "rgb(157 180 255 / 0.08)" },
   },
   {
     id: "midnight", name: "Midnight", scheme: "dark",
@@ -38,7 +52,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "daylight", name: "Daylight", scheme: "light",
-    tokens: { ...warm, "--bg": "#f7f4ee", "--surface": "#fffdf9", "--surface-2": "#f1ece2", "--surface-3": "#e6dfd1", "--ink": "#1d1b17", "--ink-2": "#5d564a", "--ink-3": "#857d6e", "--line": "rgb(29 27 23 / 0.08)", "--line-strong": "rgb(29 27 23 / 0.16)", "--primary": "#1d1b17", "--primary-ink": "#fffdf9", "--accent": "#b7741a", "--accent-soft": "rgb(183 116 26 / 0.12)", "--series-1": "#2a78d6", "--series-2": "#eb6834", "--glow-1": "rgb(232 178 92 / 0.28)", "--glow-2": "rgb(233 119 106 / 0.14)", "--glow-3": "rgb(142 124 240 / 0.12)" },
+    tokens: { ...warm, ...lightBase, "--bg": "#f7f4ee", "--surface": "#fffdf9", "--surface-2": "#f1ece2", "--surface-3": "#e6dfd1", "--ink": "#1d1b17", "--ink-2": "#5d564a", "--ink-3": "#756d5f", "--line": "rgb(29 27 23 / 0.09)", "--line-strong": "rgb(29 27 23 / 0.17)", "--primary": "#1d1b17", "--primary-ink": "#fffdf9", "--accent": "#a8680f", "--accent-soft": "rgb(183 116 26 / 0.12)", "--series-1": "#2a78d6", "--series-2": "#eb6834", "--glow-1": "rgb(232 178 92 / 0.28)", "--glow-2": "rgb(233 119 106 / 0.14)", "--glow-3": "rgb(142 124 240 / 0.12)" },
   },
 ];
 

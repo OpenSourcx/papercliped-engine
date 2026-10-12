@@ -2,9 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError, type LiveUser, type Realm } from "../data/api.ts";
 import { cn } from "../lib/storage.ts";
-import { PinOrb } from "../pin/PinIsland.tsx";
+import { PinOrb } from "../pin/PinOrb.tsx";
+import { controlClass } from "../ui/primitives.tsx";
 
-const inputCls = "h-12 w-full rounded-xl bg-surface-2/80 border border-line px-4 text-[15px] placeholder:text-ink-3 outline-none focus:border-line-strong focus:ring-2 focus:ring-accent/25";
+const inputCls = cn(controlClass, "h-12 px-4 text-body rounded-xl");
 
 /**
  * Sign in with your Proxmox account. The password goes to this device's host service, which checks it with Proxmox's
@@ -72,56 +73,56 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
       <div className="absolute inset-0 hero-glow opacity-60 pointer-events-none" aria-hidden />
       <main className="relative w-full max-w-[400px] pt-[14vh] pb-16 fade-in">
         <div className="flex justify-center mb-8"><PinOrb size={56} /></div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-center">{challenge ? "Two-step sign-in" : "Sign in to ePaperclip"}</h1>
-        <p className="text-center text-ink-2 mt-3 text-[15px]">
+        <h1 className="text-display font-semibold tracking-tight text-center">{challenge ? "Two-step sign-in" : "Sign in to ePaperclip"}</h1>
+        <p className="text-center text-ink-2 mt-3 text-body">
           {challenge ? (recovery ? "Enter one of your recovery keys." : "Enter the code from your authenticator app.") : "Use your Proxmox account. It's the same login, users and permissions."}
         </p>
 
         {!challenge ? (
           <form onSubmit={submit} className="mt-10 space-y-4">
             <label className="block">
-              <span className="block text-[14px] font-medium mb-2">Username</span>
+              <span className="block text-sm font-medium mb-2">Username</span>
               <input autoFocus autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="root" className={inputCls} />
             </label>
             <label className="block">
-              <span className="block text-[14px] font-medium mb-2">Password</span>
+              <span className="block text-sm font-medium mb-2">Password</span>
               <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
             </label>
             {realms.length > 1 && (
               <label className="block">
-                <span className="block text-[14px] font-medium mb-2">Realm</span>
+                <span className="block text-sm font-medium mb-2">Realm</span>
                 <select value={realm} onChange={(e) => setRealm(e.target.value)} className={cn(inputCls, "appearance-none")}>
                   {realms.map((r) => <option key={r.realm} value={r.realm}>{r.comment ? `${r.comment} (${r.realm})` : r.realm}</option>)}
                 </select>
               </label>
             )}
             <FormError text={error} />
-            <button type="submit" disabled={busy || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-[15px] inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition active:scale-[0.98]">
+            <button type="submit" disabled={busy || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
             </button>
           </form>
         ) : (
           <form onSubmit={submitCode} className="mt-10 space-y-4">
             <label className="block">
-              <span className="block text-[14px] font-medium mb-2">{recovery ? "Recovery key" : "Code"}</span>
-              <input key={String(recovery)} autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} placeholder={recovery ? "" : "123456"} className={cn(inputCls, !recovery && "tracking-[0.3em] tabular-nums")} />
+              <span className="block text-sm font-medium mb-2">{recovery ? "Recovery key" : "Code"}</span>
+              <input key={String(recovery)} autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} placeholder={recovery ? "" : "123456"} className={cn(inputCls, !recovery && "tracking-code tabular-nums")} />
             </label>
             <FormError text={error} />
-            <button type="submit" disabled={busy || !code.trim()} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-[15px] inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition active:scale-[0.98]">
+            <button type="submit" disabled={busy || !code.trim()} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Verify <ShieldCheck className="h-4 w-4" /></>}
             </button>
-            <div className="flex justify-between text-[14px]">
+            <div className="flex justify-between text-sm">
               <button type="button" onClick={() => { setRecovery((r) => !r); setCode(""); setError(null); }} className="text-ink-3 hover:text-ink-2 inline-flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5" />{recovery ? "Use an authenticator code" : "Use a recovery key"}</button>
               <button type="button" onClick={() => { setChallenge(null); setCode(""); setError(null); }} className="text-ink-3 hover:text-ink-2">Start over</button>
             </div>
           </form>
         )}
-        <p className="text-[12px] text-ink-3 text-center mt-10">The stock Proxmox interface stays available on port 8006 as an emergency console.</p>
+        <p className="text-xs text-ink-3 text-center mt-10">The stock Proxmox interface stays available on port 8006 as an emergency console.</p>
       </main>
     </div>
   );
 }
 
 function FormError({ text }: { text: string | null }) {
-  return <p role="alert" className="text-[14px] text-critical min-h-5">{text}</p>;
+  return <p role="alert" className="text-sm text-critical min-h-5">{text}</p>;
 }
