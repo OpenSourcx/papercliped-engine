@@ -138,14 +138,17 @@ export function useCreateSecret(companyId: string) {
 
 // ---- Agent settings
 
+export const useInstructionsFile = (companyId: Id, agentId: string, path: string | null) => useCompanyQuery(path ? companyId : null, [...qk.instructions(k(companyId), agentId), "file", path ?? ""], () => engine.agentConfig.file(agentId, path!), { poll: false });
+export const useInstructionsHistory = (companyId: Id, agentId: string, path: string | null) => useCompanyQuery(path ? companyId : null, [...qk.instructions(k(companyId), agentId), "history", path ?? ""], () => engine.agentConfig.history(agentId, path!), { poll: false });
 export const useInstructions = (companyId: Id, agentId: string) => useCompanyQuery(companyId, qk.instructions(k(companyId), agentId), () => engine.agentConfig.bundle(agentId), { poll: false });
 export function useAgentSettingsWrites(companyId: string, agentId: string) {
   const keys = [qk.agent(companyId, agentId), qk.agents(companyId), qk.anyInstructions(companyId), qk.dashboard(companyId)];
   return {
     update: useWrite((body: Record<string, unknown>) => engine.agents.update(agentId, body as never), keys),
     permissions: useWrite((b: AgentPermissionsBody) => engine.agentConfig.permissions(agentId, b), keys),
-    saveFile: useWrite(({ path, content }: { path: string; content: string }) => engine.agentConfig.saveFile(agentId, path, content), keys),
-    restore: useWrite((revisionId: string) => engine.agentConfig.restore(agentId, revisionId), keys),
+    saveFile: useWrite(({ path, content, base }: { path: string; content: string; base: string | null }) => engine.agentConfig.saveFile(agentId, path, content, base), keys),
+    setMode: useWrite((mode: "managed" | "external") => engine.agentConfig.setMode(agentId, mode), keys),
+    restore: useWrite(({ path, revisionId }: { path: string; revisionId: string }) => engine.agentConfig.restore(agentId, path, revisionId), keys),
   };
 }
 

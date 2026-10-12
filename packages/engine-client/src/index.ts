@@ -85,7 +85,7 @@ export interface AdapterModel { id: string; label: string }
 /** Request bodies, as Paperclip's validators (createCompanySchema, createAgentSchema, createIssueSchema, ...) accept them. */
 export interface CreateCompanyBody { name: string; description?: string | null; budgetMonthlyCents?: number }
 export interface CreateAgentBody { name: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; adapterType: string; adapterConfig?: Record<string, unknown>; budgetMonthlyCents?: number }
-export interface UpdateAgentBody { name?: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; budgetMonthlyCents?: number }
+export interface UpdateAgentBody { adapterType?: string; adapterConfig?: Record<string, unknown>; runtimeConfig?: Record<string, unknown>; name?: string; role?: AgentRole; title?: string | null; reportsTo?: string | null; capabilities?: string | null; budgetMonthlyCents?: number }
 export interface CreateIssueBody { title: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; parentId?: string | null }
 export interface UpdateIssueBody { title?: string; description?: string | null; status?: IssueStatus; priority?: IssuePriority; assigneeAgentId?: string | null; assigneeUserId?: string | null; projectId?: string | null; goalId?: string | null; comment?: string }
 export interface CreateGoalBody { title: string; description?: string | null; level?: GoalLevel; status?: GoalStatus; parentId?: string | null; ownerAgentId?: string | null }
@@ -99,8 +99,8 @@ export interface DecisionVerb { id: string; label: string; description?: string 
 export interface IssueInteraction { id: string; kind: string; status: string; title?: string | null; summary?: string | null; payload?: Record<string, unknown>; result?: Record<string, unknown> | null; createdAt: string }
 export interface InstanceExperimental { enableAgentChat?: boolean; enableConferenceRoomChat?: boolean; [k: string]: unknown }
 export interface InstructionsBundle { agentId: string; mode: string | null; rootPath: string | null; managedRootPath: string | null; entryFile: string; editable: boolean; warnings: string[]; files: { path: string; size: number; language?: string; markdown?: boolean; isEntryFile?: boolean }[] }
-export interface InstructionsFile { path: string; size: number; content: string; language?: string; markdown?: boolean; editable?: boolean }
-export interface InstructionsRevision { id: string; createdAt: string; summary?: string | null; [k: string]: unknown }
+export interface InstructionsFile { path: string; size: number; content: string; contentHash?: string; revision?: { id: string } | null; language?: string; markdown?: boolean; editable?: boolean }
+export interface InstructionsRevision { id: string; createdAt: string; source?: string; byteLength?: number; actorUserId?: string | null; actorAgentId?: string | null; [k: string]: unknown }
 export interface RunLogChunk { content: string; nextOffset?: number; [k: string]: unknown }
 export interface RunEvent { id: number; seq: number; eventType: string; stream: string | null; level: string | null; message: string | null; payload: unknown; createdAt: string }
 export interface AgentPermissionsBody { canCreateAgents?: boolean; canCreateSkills?: boolean }
@@ -423,10 +423,12 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       permissions: (id: string, body: AgentPermissionsBody) => call<Agent>("PATCH", P.agentPermissions, { id }, body),
       bundle: (id: string) => call<InstructionsBundle>("GET", P.instructionsBundle, { id }),
       file: (id: string, path: string) => call<InstructionsFile>("GET", P.instructionsFile, { id }, undefined, { path }),
-      saveFile: (id: string, path: string, content: string) => call<unknown>("PUT", P.instructionsFile, { id }, { path, content }),
-      history: (id: string) => call<InstructionsRevision[]>("GET", P.instructionsHistory, { id }),
+      /** baseRevisionId is the revision you read (null for a file that doesn't exist yet); the engine refuses a save over a newer one. */
+      saveFile: (id: string, path: string, content: string, baseRevisionId: string | null) => call<unknown>("PUT", P.instructionsFile, { id }, { path, content, baseRevisionId }),
+      setMode: (id: string, mode: "managed" | "external") => call<InstructionsBundle>("PATCH", P.instructionsBundle, { id }, { mode }),
+      history: (id: string, path?: string) => call<{ revisions: InstructionsRevision[]; nextCursor: string | null }>("GET", P.instructionsHistory, { id }, undefined, { path }),
       revision: (id: string, revisionId: string) => call<Record<string, unknown>>("GET", P.instructionsRevision, { id, revisionId }),
-      restore: (id: string, revisionId: string) => call<unknown>("POST", P.instructionsRestore, { id }, { revisionId }),
+      restore: (id: string, path: string, revisionId: string) => call<unknown>("POST", P.instructionsRestore, { id }, { path, revisionId }),
     },
     runs: {
       get: (runId: string) => call<HeartbeatRun>("GET", P.run, { runId }),
