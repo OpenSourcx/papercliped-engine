@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import type { AgentPermissionsBody, BudgetPolicyBody, CreateSecretBody, RoutineBody, RoutineTriggerBody } from "@papercliped-engine/engine-client";
 import { engine, useCompanyQuery, useEngineReady } from "./queries.ts";
 import { qk } from "./keys.ts";
@@ -170,4 +170,13 @@ export function useSearch(companyId: Id, q: string) {
   const ready = useEngineReady();
   const needle = q.trim();
   return useQuery({ queryKey: qk.search(k(companyId), needle), queryFn: () => engine.search(companyId!, { q: needle, limit: 8 }), enabled: ready && !!companyId && needle.length >= 2, staleTime: 15_000, retry: false });
+}
+
+/** The inbox count of several organizations at once (for the rail): what needs the person, from the engine's sidebar badges. */
+export function useInboxCounts(companyIds: string[]): Map<string, number> {
+  const ready = useEngineReady();
+  const results = useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.badges(id), queryFn: () => engine.inbox.badges(id), enabled: ready, refetchInterval: 60_000, retry: false })) });
+  const out = new Map<string, number>();
+  results.forEach((r, i) => { const b = r.data; if (b) out.set(companyIds[i], b.inbox + b.approvals + b.failedRuns + b.joinRequests); });
+  return out;
 }
