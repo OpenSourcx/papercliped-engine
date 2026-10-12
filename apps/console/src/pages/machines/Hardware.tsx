@@ -6,7 +6,7 @@ import type { Guest } from "../../data/types.ts";
 import { formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Input, SectionTitle, Toggle, selectClass } from "../../ui/primitives.tsx";
-import { volName } from "../storage/content.ts";
+import { DisksCard } from "./HardwareDisks.tsx";
 
 const select = selectClass;
 const MEMORY = [512, 1024, 2048, 4096, 8192, 12288, 16384, 24576, 32768, 65536];
@@ -107,29 +107,7 @@ export function Hardware({ g }: { g: Guest }) {
         </dl>
       </Card>
 
-      <Card className="p-5">
-        <SectionTitle>Disks</SectionTitle>
-        <div className="divide-y divide-line">
-          {hw.disks.map((d) => (
-            <div key={d.key} className="flex items-center gap-3 py-3">
-              <HardDrive className="h-4 w-4 text-ink-3 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm"><span className="font-mono">{d.key}</span>{d.mount && <span className="text-ink-3"> · mounted at {d.mount}</span>}</div>
-                <div className="text-xs text-ink-3 truncate font-mono" title={d.volume}>{d.storage ?? ""} · {volName(d.volume)}</div>
-              </div>
-              <span className="text-sm tabular-nums">{d.sizeGb !== null ? `${d.sizeGb} GB` : "—"}</span>
-              <Button size="sm" variant="ghost" onClick={() => setGrow({ key: d.key, size: d.sizeGb })}>Grow</Button>
-            </div>
-          ))}
-          {hw.cdrom !== undefined && hw.type === "qemu" && (
-            <div className="flex items-center gap-3 py-3">
-              <Disc3 className="h-4 w-4 text-ink-3" />
-              <div className="flex-1 min-w-0 text-sm">CD drive <span className="text-ink-3 font-mono text-xs">{hw.cdrom ? volName(hw.cdrom) : "empty"}</span></div>
-            </div>
-          )}
-        </div>
-        <p className="text-xs text-ink-3 mt-2">Disks can grow but not shrink. The filesystem inside {hw.type === "lxc" ? "grows with it" : "may need extending from inside the VM"}.</p>
-      </Card>
+      <DisksCard g={g} kind={hw.type} running={running} onGrow={(key, size) => setGrow({ key, size })} version={tick} onChanged={() => setTick((n) => n + 1)} />
 
       <Card className="p-5">
         <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setNic("new")}><Plus className="h-3.5 w-3.5" />Add</Button>}>Network devices</SectionTitle>
