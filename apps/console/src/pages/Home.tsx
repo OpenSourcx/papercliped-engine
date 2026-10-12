@@ -72,7 +72,7 @@ export function Home() {
             {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
           </h1>
           <p className="text-ink-3 mt-4 text-body fade-in">
-            {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {data.orgs.length === 0 ? `${data.guests.filter((g) => g.status === "running").length} machines running` : working ? `${working} agents working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
+            {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
           </p>
           <div className="mt-9 text-left">
             <PinComposer />
