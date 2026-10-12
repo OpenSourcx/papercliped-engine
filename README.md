@@ -20,6 +20,8 @@ Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](do
 | `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island and page-aware quick actions, org dashboards, machines, drives, automations, Integrated Access Control, connectors, appearance | Live host, machines, drives and graphs through the host service; organizations and agents still on demo data |
 | `deploy/`, `engine/` | Installer, systemd units for the host service and the engine, the engine's pinned lockfile, and the installer's tests (`deploy/test/run.sh`); packaged as a release download, a `.deb` with a signed APT repository, and the `epaperclip` npm package | Ready to try; not yet run on a real Proxmox host |
 
+Agents run in unprivileged Proxmox containers, never on the host: after installing, a Proxmox administrator sets this up from Settings, Agent containers (a guided setup, [docs/ENGINE.md](docs/ENGINE.md#agent-containers)). Until then the engine refuses to run agents.
+
 Not built yet: the ePaperclip fork (organizations, agents and tasks on the console are demo data until then), the model-backed Pin runtime, live consoles, the installer ISO. See the roadmap.
 
 ## Develop

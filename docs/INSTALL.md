@@ -65,11 +65,17 @@ curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/<bran
 
 When it finishes it prints the address. Open it and sign in with your Proxmox username and password, using the realm you use for Proxmox itself. The engine's first start sets up its database (a few hundred migrations), which takes up to a few minutes. The installer waits for it and shows progress.
 
+## After installing: set up agent containers
+
+Agents never run on the host. Until this is done the engine refuses to run any agent (a run fails with "managed sandbox only"), and the console says so. Sign in as a Proxmox administrator (a user with `Sys.Modify` on `/`, such as `root@pam`), open **Settings, Agent containers**, check the storage and bridge it suggests, and press **Set up agent containers**. It takes several minutes (it builds a Debian template container with Node.js and the agent tools) and carries on if you close the page. Every Proxmox step is made through the Proxmox API as you, so Proxmox's own permissions decide.
+
+It needs: the `ssh` client on the host (Proxmox hosts have it), internet access from the host and from the bridge's DHCP network (to download the Debian template, Node.js and the agent tools), a bridge with DHCP, and a storage for container disks and one for templates. What it creates, and how to remove it, is in [docs/ENGINE.md](ENGINE.md#agent-containers); doing the same by hand is in [docs/PROXMOX-SANDBOX.md](PROXMOX-SANDBOX.md).
+
 ## What goes where
 
 | Path | What |
 | --- | --- |
-| `/opt/epaperclip/` | the programs: `node/` (private Node.js), `epaperclip.mjs` (host service), `console/`, `engine/` (Paperclip and its packages, about 1.4 GB), `VERSION` |
+| `/opt/epaperclip/` | the programs: `node/` (private Node.js), `epaperclip.mjs` (host service), `console/`, `engine/` (Paperclip and its packages, about 1.4 GB), `plugins/proxmox-sandbox/` (the agent container provider: built code, the template scripts and its production packages, about 45 MB, installed from its own lockfile like the engine's and readable by the engine's user), `VERSION` |
 | `/opt/epaperclip.prev/` | the previous version, kept for `--rollback` |
 | `/etc/systemd/system/epaperclip.service` | the host service: port 443, user `epaperclip` |
 | `/etc/systemd/system/epaperclip-engine.service` | the engine: `127.0.0.1:3100` only, user `epaperclip-engine` |

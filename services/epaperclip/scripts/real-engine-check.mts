@@ -1,5 +1,5 @@
 // Runs the agent containers setup against a REAL engine (started separately) with a fake Proxmox and a fake ssh.
-//   EPC_REAL_ENGINE=http://127.0.0.1:3411 EPC_REAL_PLUGIN=/path/to/built/plugin node --experimental-strip-types scripts/real-engine-check.mts
+//   EPC_REAL_ADAPTER=<a local CLI adapter id the engine supports> EPC_REAL_ENGINE=http://127.0.0.1:3411 EPC_REAL_PLUGIN=/path/to/built/plugin node --experimental-strip-types scripts/real-engine-check.mts
 // It proves the plugin install and environment requests are accepted by the engine's own validation, and that with the
 // managed-sandbox-only policy on, a run that would land on the host fails closed. Not part of the test suite.
 import { mkdtempSync } from "node:fs";
@@ -47,7 +47,7 @@ const co = (await call("POST", "/engine/api/companies", { name: "Northwind" })).
 show("company", { id: co.id, name: co.name });
 const rg = await call("PUT", `/api/resource-groups/${co.id}`, { name: "Northwind", cores: 4, memoryMb: 8192, diskGb: 64, maxGuests: 4 });
 show("resource group", rg.status);
-const agent = await call("POST", `/engine/api/companies/${co.id}/agents`, { name: "Runner", role: "engineer", adapterType: "claude_local", adapterConfig: {} });
+const agent = await call("POST", `/engine/api/companies/${co.id}/agents`, { name: "Runner", role: "engineer", adapterType: process.env.EPC_REAL_ADAPTER!, adapterConfig: {} });
 show("agent created", { status: agent.status, id: agent.json?.id, defaultEnvironmentId: agent.json?.defaultEnvironmentId, error: agent.json?.error });
 
 // 1. Containers not set up, but the policy is on: a run must fail closed, not run on the host.
