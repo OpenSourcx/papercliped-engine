@@ -16,7 +16,7 @@ function LogView({ lines, search, follow, loading, error, empty }: { lines: stri
     return q ? lines.filter((l) => l.toLowerCase().includes(q)) : lines;
   }, [lines, search]);
   useEffect(() => {
-    if (follow) box.current?.scrollTo({ top: box.current.scrollHeight });
+    if (follow && box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [shown.length, follow]);
   if (error) return <Notice tone="critical" title="Couldn't read the log">{errorText(error)}</Notice>;
   return (

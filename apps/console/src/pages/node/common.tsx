@@ -134,7 +134,7 @@ export function TaskModal({ upid, title, onClose, onDone }: { upid: string; titl
       clearTimeout(timer);
     };
   }, [upid]);
-  useEffect(() => box.current?.scrollTo({ top: box.current.scrollHeight }), [lines.length]);
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [lines.length]);
 
   const stop = async () => {
     setStopping(true);

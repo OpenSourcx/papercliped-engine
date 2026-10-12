@@ -1,6 +1,7 @@
 import { CheckCircle2, Download, RefreshCw } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { usePin } from "../pin/PinContext.tsx";
+import { LiveUpdatesSummary } from "./node/UpdatesPage.tsx";
 import { Button, Card, PageHeader, Status, PageFrame } from "../ui/primitives.tsx";
 
 export function Updates() {
@@ -11,7 +12,7 @@ export function Updates() {
     <PageFrame width="3xl">
       <PageHeader title="Updates" subtitle="Pin follows Proxmox and Paperclip releases and tells you when something new lands. Updates are applied only when you approve, after snapshots." actions={<Button onClick={() => pin.send("Are there any updates?")}><RefreshCw className="h-4 w-4" />Ask Pin</Button>} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Card className="p-5"><div className="text-xs text-ink-3">Proxmox VE</div><div className="text-xl font-semibold mt-1">{host.version}</div>{live ? <p className="text-compact text-ink-3 mt-1">Update status isn't checked here yet. Proxmox's own Updates screen is the source for now.</p> : updates.length ? <Status kind="warning" label="Update available" /> : <Status kind="good" label="Up to date" />}</Card>
+        {live ? <LiveUpdatesSummary /> : <Card className="p-5"><div className="text-xs text-ink-3">Proxmox VE</div><div className="text-xl font-semibold mt-1">{host.version}</div>{updates.length ? <Status kind="warning" label="Update available" /> : <Status kind="good" label="Up to date" />}</Card>}
         <Card className="p-5"><div className="text-xs text-ink-3">ePaperclip</div>{live ? <p className="text-compact text-ink-3 mt-2">Update checks start with the first release. Until then, reinstall from the repository to upgrade (the installer can roll back).</p> : <><div className="text-xl font-semibold mt-1">0.1.0</div><Status kind="good" label="Up to date" /></>}</Card>
       </div>
       <div className="space-y-3">
