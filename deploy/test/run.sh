@@ -284,6 +284,11 @@ s_npm() {
   new_host npm; make_release 1.0.0 2026.1005.0
   local N="$H/npm"; mkdir -p "$N/bin" "$N/payload"; cp "$REPO/npm/epaperclip/bin/epaperclip.js" "$N/bin/"; cp -r "$R" "$N/payload/epaperclip"
   epc() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" node "$N/bin/epaperclip.js" "$@" >"$H/out" 2>&1; RC=$?; }
+  if [ "$(/usr/bin/id -u)" -ne 0 ]; then
+    # The command checks for root itself (the id stand-in doesn't reach Node.js): all that can be tested is the refusal.
+    epc status; check "refuses to run when not root" eval '[ "$RC" -ne 0 ] && has "run as root"'
+    echo "  skip the rest (run as root, as CI does)"; return 0
+  fi
   epc install
   check "epaperclip install (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ] && host_health && engine_health'
   epc status
