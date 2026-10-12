@@ -97,6 +97,8 @@ function LiveOrgRoute() {
     );
   }
   if (!orgs.data) return <PageFrame width="3xl"><Loading label="Loading organizations" /></PageFrame>;
+  // A list being refreshed may not have a just-created organization yet: wait for it before giving up on the address.
+  if (!org && orgs.isFetching) return <PageFrame width="3xl"><Loading label="Loading organizations" /></PageFrame>;
   if (!org) return <Navigate to={`/${device}/home`} replace />;
   const page = loc.pathname.split("/")[3];
   if (page && LIVE_HIDDEN.has(page)) return <Navigate to={`/${device}/${org.slug}`} replace />;

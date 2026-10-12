@@ -136,11 +136,8 @@ export function useCreateOrg() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createOrganization,
-    onSuccess: (r) => {
-      void qc.invalidateQueries({ queryKey: qk.orgs });
-      void qc.invalidateQueries({ queryKey: qk.me });
-      void qc.invalidateQueries({ queryKey: qk.resourceGroups });
-    },
+    // Resolves only once the lists include the new organization, so opening it right away finds it.
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: qk.orgs }), qc.invalidateQueries({ queryKey: qk.me }), qc.invalidateQueries({ queryKey: qk.resourceGroups })]),
   });
 }
 
