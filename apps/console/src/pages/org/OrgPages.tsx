@@ -10,7 +10,9 @@ import { Modal } from "../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind } from "../../ui/primitives.tsx";
 import { LiveAgents } from "./live/LiveAgents.tsx";
 import { LiveTasks } from "./live/LiveTasks.tsx";
-import { LiveActivity, LiveCosts, LiveDecisions, LiveGoals, LiveOrgSettings, LiveProjects } from "./live/LiveWork.tsx";
+import { LiveRoutines } from "./live/LiveRoutines.tsx";
+import { LiveDecisions, LiveInbox } from "./live/LiveInbox.tsx";
+import { LiveActivity, LiveCosts, LiveGoals, LiveOrgSettings, LiveProjects } from "./live/LiveWork.tsx";
 
 const ago = (iso: string | null) => {
   if (!iso) return "never";
@@ -30,7 +32,7 @@ function OrgGate({ children }: { children: (org: Org) => ReactNode }) {
   return <>{children(org)}</>;
 }
 
-export function Inbox() {
+function DemoInbox() {
   const { readInbox } = useEngine();
   return (
     <OrgGate>
@@ -156,7 +158,7 @@ function DemoGoals() {
   );
 }
 
-export function Routines() {
+function DemoRoutines() {
   const { toggleRoutine } = useEngine();
   return (
     <OrgGate>
@@ -360,6 +362,8 @@ export function ComingFromPaperclip({ title, body }: { title: string; body: stri
 const pick = (live: ReactNode, demo: ReactNode) => function Page() {
   return <>{useEngine().live ? live : demo}</>;
 };
+export const Routines = pick(<LiveRoutines />, <DemoRoutines />);
+export const Inbox = pick(<LiveInbox />, <DemoInbox />);
 export const Tasks = pick(<LiveTasks />, <DemoTasks />);
 export const Projects = pick(<LiveProjects />, <DemoProjects />);
 export const Goals = pick(<LiveGoals />, <DemoGoals />);

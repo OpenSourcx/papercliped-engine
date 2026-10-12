@@ -23,6 +23,7 @@ import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
 import { LiveTaskDetail } from "./pages/org/live/LiveTasks.tsx";
 import { LiveMembers } from "./pages/org/live/LiveWork.tsx";
+import { LiveRoutineDetail } from "./pages/org/live/LiveRoutines.tsx";
 
 /** Pages only the engine has (a task's thread, an agent's runs, the member list). The demo goes back to the list instead. */
 function LiveOnly({ children, fallback }: { children: React.ReactNode; fallback: string }) {
@@ -87,6 +88,7 @@ export function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="goals" element={<Goals />} />
             <Route path="routines" element={<Routines />} />
+            <Route path="routines/:routineId" element={<LiveOnly fallback="..">{<LiveRoutineDetail />}</LiveOnly>} />
             <Route path="machines" element={<Machines />} />
             <Route path="machines/:vmid" element={<MachinePage />} />
             <Route path="agents" element={<Agents />} />

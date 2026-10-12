@@ -111,55 +111,6 @@ export function LiveProjects() {
   );
 }
 
-function payloadTitle(type: string, payload: Record<string, unknown>): string {
-  const name = typeof payload.name === "string" ? payload.name : null;
-  const title = typeof payload.title === "string" ? payload.title : null;
-  if (type === "hire_agent" && name) return `Hire ${name}${typeof payload.role === "string" ? ` (${payload.role})` : ""}`;
-  return title ?? name ?? APPROVAL_TYPE_LABEL[type] ?? type.replace(/_/g, " ");
-}
-
-export function LiveDecisions() {
-  const { companyId, org } = useLiveOrg();
-  const approvals = useApprovals(companyId);
-  const names = useNames(companyId);
-  const decide = useDecide(companyId);
-  const [view, setView] = useState<"pending" | "all">("pending");
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const list = (approvals.data ?? []).filter((a) => (view === "pending" ? a.status === "pending" || a.status === "revision_requested" : true));
-  return (
-    <PageFrame width="4xl">
-      <PageHeader title="Decisions" subtitle="Hires, budget changes and actions your agents asked you to approve." />
-      <div className="mb-4"><Segmented value={view} onChange={setView} options={[{ value: "pending", label: "Waiting" }, { value: "all", label: "All" }]} /></div>
-      <div className="space-y-3">
-        {approvals.isPending && <Card><Loading /></Card>}
-        {approvals.error && <Card><LoadError error={approvals.error} retry={() => void approvals.refetch()} /></Card>}
-        {approvals.data && list.length === 0 && <Card><EmptyState icon={<Check className="h-5 w-5" />} title="Nothing to decide" body="Approval requests from agents show up here." /></Card>}
-        {list.map((a) => {
-          const who = a.requestedByAgentId ? names.agent(a.requestedByAgentId) : names.user(a.requestedByUserId);
-          const busy = decide.isPending && decide.variables?.id === a.id;
-          return (
-            <Card key={a.id} className="p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <Avatar name={who} hue={org.hue + 40} size={32} />
-                <div className="flex-1 min-w-[200px]"><div className="text-sm font-medium">{payloadTitle(a.type, a.payload ?? {})}</div><div className="text-xs text-ink-3">{who} · {APPROVAL_TYPE_LABEL[a.type] ?? a.type} · {ago(a.createdAt)}</div></div>
-                {a.status === "approved" ? <Status kind="good" label="Approved" /> : a.status === "rejected" ? <Status kind="critical" label="Rejected" /> : a.status === "cancelled" ? <Status kind="off" label="Cancelled" /> : null}
-              </div>
-              {(a.status === "pending" || a.status === "revision_requested") ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Input aria-label={`Note for ${payloadTitle(a.type, a.payload ?? {})}`} value={notes[a.id] ?? ""} onChange={(e) => setNotes({ ...notes, [a.id]: e.target.value })} placeholder="Add a note (optional)" className="h-8 text-compact flex-1 min-w-[180px]" />
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate({ id: a.id, approve: false, note: notes[a.id]?.trim() || undefined })}><X className="h-3.5 w-3.5" />Reject</Button>
-                  <Button size="sm" variant="primary" disabled={busy} onClick={() => decide.mutate({ id: a.id, approve: true, note: notes[a.id]?.trim() || undefined })}><Check className="h-3.5 w-3.5" />Approve</Button>
-                </div>
-              ) : a.decisionNote ? <p className="text-compact text-ink-2 mt-2">“{a.decisionNote}”</p> : null}
-              {decide.isError && decide.variables?.id === a.id && <ActionError error={decide.error} />}
-            </Card>
-          );
-        })}
-      </div>
-    </PageFrame>
-  );
-}
-
 export function LiveCosts() {
   const { companyId } = useLiveOrg();
   const costs = useCosts(companyId);
