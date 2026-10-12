@@ -72,15 +72,15 @@ export function MachinePage() {
       { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true, group: "ask" },
     ],
   } : null);
-  if (!ready) return <div className="p-10 text-ink-3 text-[14px]" aria-busy="true">Loading machine…</div>;
+  if (!ready) return <div className="p-10 text-ink-3 text-sm" aria-busy="true">Loading machine…</div>;
   if (!g && live)
     return (
       <PageFrame width="3xl">
         <Card className="p-8 text-center mt-6">
           <Loader2 className="h-5 w-5 animate-spin mx-auto text-ink-3" />
           <p className="font-medium mt-3">Waiting for machine #{vmid}</p>
-          <p className="text-[13px] text-ink-3 mt-1">A new machine shows up as soon as Proxmox lists it. If it never does, your account may not be able to see it.</p>
-          <Link to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} className="inline-block mt-4 text-[13px] text-ink-2 hover:text-ink">Back to machines</Link>
+          <p className="text-compact text-ink-3 mt-1">A new machine shows up as soon as Proxmox lists it. If it never does, your account may not be able to see it.</p>
+          <Link to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} className="inline-block mt-4 text-compact text-ink-2 hover:text-ink">Back to machines</Link>
         </Card>
       </PageFrame>
     );
@@ -93,8 +93,8 @@ export function MachinePage() {
         <div className="flex items-start gap-3 min-w-0">
           <span className="h-12 w-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-2 shrink-0">{g.type === "qemu" ? <Monitor className="h-5 w-5" /> : <Box className="h-5 w-5" />}</span>
           <div className="min-w-0">
-            <div className="text-[13px] text-ink-3 mb-0.5">{org ? <Link to={`/${device}/${org.slug}/machines`} className="hover:text-ink">{org.name} · machines</Link> : <Link to={`/${device}/machines`} className="hover:text-ink">{device} · machines</Link>}</div>
-            <h1 className="text-[26px] font-semibold tracking-tight leading-tight flex items-center gap-2 flex-wrap">{g.name}<span className="text-ink-3 text-[18px] font-normal tabular-nums">#{g.vmid}</span></h1>
+            <div className="text-compact text-ink-3 mb-0.5">{org ? <Link to={`/${device}/${org.slug}/machines`} className="hover:text-ink">{org.name} · machines</Link> : <Link to={`/${device}/machines`} className="hover:text-ink">{device} · machines</Link>}</div>
+            <h1 className="text-heading font-semibold tracking-tight leading-tight flex items-center gap-2 flex-wrap">{g.name}<span className="text-ink-3 text-lg font-normal tabular-nums">#{g.vmid}</span></h1>
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               {g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
               {g.template && <Chip tone="accent">Template</Chip>}
@@ -104,12 +104,12 @@ export function MachinePage() {
             </div>
           </div>
         </div>
-        <div className="text-[12px] text-ink-3 hidden sm:block self-center">Actions are in Pin: hover the island</div>
+        <div className="text-xs text-ink-3 hidden sm:block self-center">Actions are in Pin: hover the island</div>
       </div>
 
       <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto" role="tablist">
         {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-[14px] inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-sm inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
             {t.icon}{t.label}
           </button>
         ))}
@@ -127,8 +127,8 @@ export function MachinePage() {
           </Card>
           <Card className="p-5">
             <SectionTitle>Details</SectionTitle>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[14px]">
-              <dt className="text-ink-3">Address</dt><dd className="font-mono text-[13px]">{g.ip ?? "—"}</dd>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt className="text-ink-3">Address</dt><dd className="font-mono text-compact">{g.ip ?? "—"}</dd>
               <dt className="text-ink-3">Node</dt><dd>{device}</dd>
               <dt className="text-ink-3">Owner</dt><dd>{org?.name ?? "Device"}</dd>
               <dt className="text-ink-3">Snapshots</dt><dd>{g.snapshots?.length ?? 0}</dd>
@@ -150,21 +150,21 @@ export function MachinePage() {
             )}
             {g.type === "qemu" && view === "screen" ? (
               live ? (
-                <Suspense fallback={<Card className="p-8 text-center text-ink-3 text-[14px]">Loading the viewer…</Card>}><Screen vmid={g.vmid} name={g.name} /></Suspense>
+                <Suspense fallback={<Card className="p-8 text-center text-ink-3 text-sm">Loading the viewer…</Card>}><Screen vmid={g.vmid} name={g.name} /></Suspense>
               ) : (
-                <Card className="p-10 text-center"><Monitor className="h-6 w-6 mx-auto text-ink-3" /><p className="text-ink-2 mt-3">{g.name}'s screen appears here on a device.</p><p className="text-[13px] text-ink-3 mt-1">The demo has no real VM to show. The serial console works as a demo.</p></Card>
+                <Card className="p-10 text-center"><Monitor className="h-6 w-6 mx-auto text-ink-3" /><p className="text-ink-2 mt-3">{g.name}'s screen appears here on a device.</p><p className="text-compact text-ink-3 mt-1">The demo has no real VM to show. The serial console works as a demo.</p></Card>
               )
             ) : (
               <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
             )}
             {live && g.type === "qemu" && view === "serial" && (
-              <p className="text-[12px] text-ink-3 mt-2">The serial console needs a serial port on the VM (<span className="font-mono">serial0: socket</span>, then a restart).</p>
+              <p className="text-xs text-ink-3 mt-2">The serial console needs a serial port on the VM (<span className="font-mono">serial0: socket</span>, then a restart).</p>
             )}
             </>
           ) : (
             <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} title={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
           )}
-          <p className="text-[12px] text-ink-3 mt-2">{live ? "Opened through Proxmox as your account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox."}</p>
+          <p className="text-xs text-ink-3 mt-2">{live ? "Opened through Proxmox as your account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox."}</p>
         </div>
       )}
 
@@ -186,15 +186,15 @@ function MachineBackups({ vmid, name }: { vmid: number; name: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[13px] text-ink-3">Backups of {name} on every storage that holds backups.</p>
+        <p className="text-compact text-ink-3">Backups of {name} on every storage that holds backups.</p>
         <Button size="sm" variant="primary" onClick={backUp}><Archive className="h-3.5 w-3.5" />Back up now</Button>
       </div>
-      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+      {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
       <Card className="overflow-x-auto">
         {files === null ? (
-          <div className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
+          <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
         ) : files.length === 0 ? (
-          <div className="p-8 text-center"><p className="text-ink-2">No backups of {name} yet.</p><p className="text-[13px] text-ink-3 mt-1">Back it up now, or add it to a schedule in Backups.</p></div>
+          <div className="p-8 text-center"><p className="text-ink-2">No backups of {name} yet.</p><p className="text-compact text-ink-3 mt-1">Back it up now, or add it to a schedule in Backups.</p></div>
         ) : (
           <BackupTable files={files} showMachine={false} />
         )}

@@ -36,7 +36,7 @@ export function Machines() {
                 <Link to={`${base}/${g.vmid}`} className="flex items-start gap-3">
                   <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{g.type === "qemu" ? <Monitor className="h-4 w-4" /> : <Box className="h-4 w-4" />}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2"><span className="font-medium truncate">{g.name}</span><span className="text-[12px] text-ink-3 tabular-nums">#{g.vmid}</span></div>
+                    <div className="flex items-center gap-2"><span className="font-medium truncate">{g.name}</span><span className="text-xs text-ink-3 tabular-nums">#{g.vmid}</span></div>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
                       {g.template ? <Chip tone="accent">Template</Chip> : g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
                       {!org && owner && <Chip tone="accent">{owner.name}</Chip>}

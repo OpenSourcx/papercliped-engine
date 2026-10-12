@@ -36,7 +36,7 @@ function OrgCard({ org, device }: { org: Org; device: string }) {
           <BarMeter label="CPU" pct={cpuPct} value={`${org.usage.cpuCores.toFixed(1)} / ${rg.cores} cores`} />
           <BarMeter label="Memory" pct={memPct} value={`${(org.usage.memoryMb / 1024).toFixed(1)} / ${(rg.memoryMb / 1024).toFixed(0)} GiB`} />
         </div>
-        <div className="mt-3 text-[12px] text-ink-3 truncate">{working[0]?.task ? `Now: ${working[0].task}` : `${org.usage.guests} of ${rg.maxGuests} containers in use`}</div>
+        <div className="mt-3 text-xs text-ink-3 truncate">{working[0]?.task ? `Now: ${working[0].task}` : `${org.usage.guests} of ${rg.maxGuests} containers in use`}</div>
       </Card>
     </Link>
   );
@@ -57,10 +57,10 @@ export function Home() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 hero-glow pointer-events-none" aria-hidden />
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-28 sm:pt-36 pb-16 sm:pb-20 text-center">
-          <h1 className="text-[34px] sm:text-[48px] font-medium tracking-tight leading-[1.1] fade-in">
+          <h1 className="text-hero sm:text-hero-lg font-medium tracking-tight fade-in">
             {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
           </h1>
-          <p className="text-ink-3 mt-4 text-[15px] fade-in">
+          <p className="text-ink-3 mt-4 text-body fade-in">
             {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {data.orgs.length === 0 ? `${data.guests.filter((g) => g.status === "running").length} machines running` : working ? `${working} agents working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
           </p>
           <div className="mt-9 text-left">
@@ -68,7 +68,7 @@ export function Home() {
           </div>
           <div className="flex flex-wrap justify-center gap-2 mt-4">
             {[...["How is my server?"], ...(data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me"].map((s) => (
-              <button key={s} onClick={() => pin.send(s)} className="text-[13px] px-3.5 h-8 rounded-full border border-line bg-surface/60 hover:bg-surface-2 text-ink-2 transition">
+              <button key={s} onClick={() => pin.send(s)} className="text-compact px-3.5 h-8 rounded-full border border-line bg-surface/60 hover:bg-surface-2 text-ink-2 transition">
                 {s}
               </button>
             ))}
@@ -78,7 +78,7 @@ export function Home() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-10">
         <section>
-          <SectionTitle action={<Link to={`/${device}/machines`} className="text-[13px] text-ink-3 hover:text-ink">View machines</Link>}>This device</SectionTitle>
+          <SectionTitle action={<Link to={`/${device}/machines`} className="text-compact text-ink-3 hover:text-ink">View machines</Link>}>This device</SectionTitle>
           <div className="grid lg:grid-cols-[1fr_280px] gap-4">
             <Card className="p-4 sm:p-6 flex flex-col">
               <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-6 items-center justify-items-center">
@@ -86,7 +86,7 @@ export function Home() {
                 <ArcMeter label="Memory" pct={(host.memUsed / host.memTotal) * 100} caption={`${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}`} />
                 <ArcMeter label="Root disk" pct={host.diskTotal ? (host.diskUsed / host.diskTotal) * 100 : 0} caption={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
               </div>
-              <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-ink-3">
+              <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-compact text-ink-3">
                 <span>{host.cpuModel}</span>
                 <span>Proxmox VE {host.version}</span>
                 <span>{host.ip}</span>
@@ -103,8 +103,8 @@ export function Home() {
                   <Card interactive className="p-4 flex items-center gap-3">
                     <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{s.icon}</span>
                     <div>
-                      <div className="text-[20px] font-semibold tabular-nums leading-tight">{s.value}</div>
-                      <div className="text-[12px] text-ink-3">{s.label}</div>
+                      <div className="text-xl font-semibold tabular-nums leading-tight">{s.value}</div>
+                      <div className="text-xs text-ink-3">{s.label}</div>
                     </div>
                   </Card>
                 </Link>
@@ -114,7 +114,7 @@ export function Home() {
         </section>
 
         <section>
-          <SectionTitle action={<Link to={`/${device}/storage`} className="text-[13px] text-ink-3 hover:text-ink">View storage</Link>}>Drives</SectionTitle>
+          <SectionTitle action={<Link to={`/${device}/storage`} className="text-compact text-ink-3 hover:text-ink">View storage</Link>}>Drives</SectionTitle>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {[
               ...(host.diskTotal ? [{ id: "/", name: "Root file system", sub: "System disk", used: host.diskUsed, total: host.diskTotal, root: true, active: true }] : []),
@@ -125,8 +125,8 @@ export function Home() {
                   <div className="flex items-center gap-3 mb-3">
                     <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{s.root ? <HardDrive className="h-4 w-4" /> : <Database className="h-4 w-4" />}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-[14px] truncate">{s.name}</div>
-                      <div className="text-[12px] text-ink-3 truncate">{s.sub}</div>
+                      <div className="font-medium text-sm truncate">{s.name}</div>
+                      <div className="text-xs text-ink-3 truncate">{s.sub}</div>
                     </div>
                     {!s.active && <Status kind="off" label="Unavailable" />}
                   </div>
@@ -138,14 +138,14 @@ export function Home() {
         </section>
 
         <section>
-          <SectionTitle action={<Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
+          <SectionTitle action={<Link to={modalHref("new-org")} className="text-compact text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.orgs.map((o) => <OrgCard key={o.slug} org={o} device={device} />)}
             <Link to={modalHref("new-org")} className="block">
               <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
                 <Plus className="h-5 w-5" />
-                <span className="text-[14px]">New organization</span>
-                <span className="text-[12px]">or ask Pin to create one</span>
+                <span className="text-sm">New organization</span>
+                <span className="text-xs">or ask Pin to create one</span>
               </div>
             </Link>
           </div>

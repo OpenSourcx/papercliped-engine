@@ -44,7 +44,7 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
       disabled={a.disabled}
       title={a.title ?? a.label}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border text-[13px] font-medium whitespace-nowrap transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
+        "inline-flex items-center gap-1.5 rounded-full border text-compact font-medium whitespace-nowrap transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
         compact ? "h-8 px-3" : "h-9 px-3.5",
         a.danger ? "border-critical/35 text-critical hover:bg-critical/10" : "border-line-strong bg-surface/70 hover:bg-surface-3 text-ink",
       )}
@@ -60,7 +60,7 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
       onClick={() => run(a)}
       disabled={a.disabled}
       title={a.title}
-      className={cn("flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-left text-[13px] transition disabled:opacity-40 disabled:cursor-not-allowed min-w-0", a.danger ? "text-critical hover:bg-critical/10" : "text-ink hover:bg-surface-3")}
+      className={cn("flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-left text-compact transition disabled:opacity-40 disabled:cursor-not-allowed min-w-0", a.danger ? "text-critical hover:bg-critical/10" : "text-ink hover:bg-surface-3")}
     >
       <span className={cn("shrink-0", !a.danger && "text-ink-3")}>{a.icon}</span>
       <span className="truncate">{a.label}</span>
@@ -72,7 +72,7 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
       <div className="flex flex-wrap items-center gap-1.5 min-w-0">
         {main.map((i) => chip(actions.items[i]))}
         {extra.length > 0 && (
-          <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={cn("ml-auto inline-flex items-center gap-1 rounded-full text-[13px] font-medium whitespace-nowrap text-ink-2 hover:text-ink hover:bg-surface-3 shrink-0", compact ? "h-8 px-2.5" : "h-9 px-3")}>
+          <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={cn("ml-auto inline-flex items-center gap-1 rounded-full text-compact font-medium whitespace-nowrap text-ink-2 hover:text-ink hover:bg-surface-3 shrink-0", compact ? "h-8 px-2.5" : "h-9 px-3")}>
             More <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", more && "rotate-180")} />
           </button>
         )}
@@ -84,7 +84,7 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
             if (!list.length) return null;
             return (
               <div key={g.id} className="min-w-0">
-                <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">{g.label}</div>
+                <div className="px-2.5 pb-1 text-micro font-semibold uppercase tracking-label text-ink-3">{g.label}</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-1">{list.map(row)}</div>
               </div>
             );

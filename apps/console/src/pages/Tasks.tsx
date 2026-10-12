@@ -16,7 +16,7 @@ const duration = (t: TaskEntry) => {
 export function TaskTable({ tasks }: { tasks: TaskEntry[] }) {
   const nav = useNavigate();
   return (
-  <table className="w-full text-[13px] min-w-[720px]">
+  <table className="w-full text-compact min-w-[720px]">
     <thead>
       <tr className="border-b border-line text-ink-3 text-left">
         <th className="font-normal px-4 h-10">Started</th>
@@ -65,10 +65,10 @@ export function TasksPage() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Tasks" subtitle="What this device has been doing: downloads, uploads, starts, backups. Open one for its log." actions={<Button onClick={() => setTick((n) => n + 1)}><RefreshCw className="h-4 w-4" />Refresh</Button>} />
-      {error && <p role="alert" className="text-[13px] text-critical mb-3">{error}</p>}
+      {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
       <Card className="overflow-x-auto">
         {tasks === null && !error ? (
-          <div className="p-8 text-center text-ink-3 text-[14px]"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading the task log…</div>
+          <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading the task log…</div>
         ) : !tasks?.length ? (
           <EmptyState icon={<ListChecks className="h-5 w-5" />} title="No tasks yet" body="Downloads, uploads and machine actions show up here as Proxmox runs them." />
         ) : (
@@ -114,11 +114,11 @@ export function TaskLogModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal size="lg" icon={<ListChecks className="h-5 w-5" />} title={title} subtitle={detail ? (detail.status === "running" ? "Running…" : detail.exitstatus === "OK" ? "Finished" : `Ended: ${detail.exitstatus ?? "unknown"}`) : "Loading…"} onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
       {error ? (
-        <p role="alert" className="text-[13px] text-critical">{error}</p>
+        <p role="alert" className="text-compact text-critical">{error}</p>
       ) : (
-        <pre ref={box} className="rounded-lg bg-black/40 border border-line p-3 text-[12px] leading-relaxed font-mono text-ink-2 max-h-[50vh] overflow-auto whitespace-pre-wrap break-all">{detail ? detail.log.join("\n") || "(no output)" : "…"}</pre>
+        <pre ref={box} className="rounded-lg bg-code border border-line p-3 text-xs leading-relaxed font-mono text-ink-2 max-h-[50vh] overflow-auto whitespace-pre-wrap break-all">{detail ? detail.log.join("\n") || "(no output)" : "…"}</pre>
       )}
-      <p className="text-[11px] text-ink-3 font-mono mt-2 break-all">{upid}</p>
+      <p className="text-micro text-ink-3 font-mono mt-2 break-all">{upid}</p>
     </Modal>
   );
 }

@@ -23,9 +23,9 @@ export function Automations() {
             <Card key={r.id} className="p-4 flex items-start gap-4">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0"><Workflow className="h-4 w-4" /></span>
               <div className="flex-1 min-w-0">
-                <p className="text-[15px]">{describeRule(r)}</p>
+                <p className="text-body">{describeRule(r)}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="font-mono text-[11px] text-ink-3">{r.when.metric} {r.when.op} {String(r.when.value)} · {r.then.action} · cooldown {r.cooldownSeconds}s</span>
+                  <span className="font-mono text-micro text-ink-3">{r.when.metric} {r.when.op} {String(r.when.value)} · {r.then.action} · cooldown {r.cooldownSeconds}s</span>
                   {r.createdBy === "pin" && <Chip tone="accent"><Sparkles className="h-3 w-3" />By Pin</Chip>}
                 </div>
               </div>
@@ -35,7 +35,7 @@ export function Automations() {
           ))}
         </div>
       )}
-      <p className="text-[12px] text-ink-3 mt-4">Automations can notify, shut down, stop, start or snapshot guests. They can never delete anything, and protected guests only ever get a notification.</p>
+      <p className="text-xs text-ink-3 mt-4">Automations can notify, shut down, stop, start or snapshot guests. They can never delete anything, and protected guests only ever get a notification.</p>
     </PageFrame>
   );
 }

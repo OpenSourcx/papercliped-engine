@@ -15,7 +15,7 @@ export function HostShell() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Host shell" subtitle={`A root shell on ${setup?.deviceName ?? "pve"} itself.`} />
-      <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-3.5 mb-4 text-[13px]">
+      <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-3.5 mb-4 text-compact">
         <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-px" />
         <p className="text-ink-2">{live ? "A shell on the host, opened by Proxmox for your account (it needs Sys.Console). " : "Only owners can open the host shell. "}It is never available to agents or connected apps. Changes here bypass ePaperclip's checks; prefer machine consoles and Pin for everyday work.</p>
       </div>
@@ -34,25 +34,25 @@ export function StoragePage() {
           <Card className="p-5">
             <div className="flex items-center gap-3">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><HardDrive className="h-4 w-4" /></span>
-              <div className="flex-1 min-w-0"><div className="font-medium">Root file system</div><div className="text-[12px] text-ink-3 font-mono truncate">/ on {setup?.deviceName ?? "pve"}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium">Root file system</div><div className="text-xs text-ink-3 font-mono truncate">/ on {setup?.deviceName ?? "pve"}</div></div>
               <Status kind="good" label="Mounted" />
             </div>
             <BarMeter className="mt-4" label="Used" pct={(host.diskUsed / host.diskTotal) * 100} value={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
-            <p className="text-[12px] text-ink-3 mt-3">The host's own system disk. Machines usually live on the storages below.</p>
+            <p className="text-xs text-ink-3 mt-3">The host's own system disk. Machines usually live on the storages below.</p>
           </Card>
         )}
-        {data.host.storage.length === 0 && <p className="text-[14px] text-ink-3">Your Proxmox account can't see any storage on this device.</p>}
+        {data.host.storage.length === 0 && <p className="text-sm text-ink-3">Your Proxmox account can't see any storage on this device.</p>}
         {data.host.storage.map((s) => (
           <Link key={s.id} to={`/${setup?.deviceName ?? "pve"}/storage/${s.id}`} className="block">
           <Card interactive className="p-5">
             <div className="flex items-center gap-3">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2"><Database className="h-4 w-4" /></span>
-              <div className="flex-1 min-w-0"><div className="font-medium">{s.id}</div><div className="text-[12px] text-ink-3 font-mono truncate">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium">{s.id}</div><div className="text-xs text-ink-3 font-mono truncate">{s.type}{s.path ? ` · ${s.path}` : ""}{s.shared ? " · shared" : ""}</div></div>
               {s.active === false ? <Status kind="off" label="Unavailable" /> : <Status kind="good" label="Active" />}
             </div>
             <BarMeter className="mt-4" label="Used" pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
             <div className="flex flex-wrap gap-1.5 mt-3">{s.content.map((c) => <Chip key={c}>{c}</Chip>)}</div>
-            {s.type === "dir" && <p className="text-[12px] text-ink-3 mt-3">Directory storage copies whole disks when cloning. ZFS or LVM-thin make container sessions start in seconds.</p>}
+            {s.type === "dir" && <p className="text-xs text-ink-3 mt-3">Directory storage copies whole disks when cloning. ZFS or LVM-thin make container sessions start in seconds.</p>}
           </Card>
           </Link>
         ))}
@@ -82,7 +82,7 @@ export function Summary() {
       <Card className="p-5 mb-5">
         <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
           {facts.map(([k, v]) => (
-            <div key={k} className="min-w-0"><dt className="text-[12px] text-ink-3">{k}</dt><dd className="text-[14px] truncate tabular-nums" title={v}>{v}</dd></div>
+            <div key={k} className="min-w-0"><dt className="text-xs text-ink-3">{k}</dt><dd className="text-sm truncate tabular-nums" title={v}>{v}</dd></div>
           ))}
         </dl>
       </Card>

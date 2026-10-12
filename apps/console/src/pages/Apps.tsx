@@ -38,12 +38,12 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
     <Modal title={session.app} subtitle={`${session.client} · approved by ${owner?.name ?? "unknown"}`} icon={<Avatar name={session.app} hue={session.app === "Claude" ? 30 : session.app === "ChatGPT" ? 160 : 260} size={40} />} onClose={onClose}>
       <div className="space-y-6">
           <div>
-            <div className="text-[13px] font-medium mb-2">Access level</div>
+            <div className="text-compact font-medium mb-2">Access level</div>
             <Segmented value={session.level} onChange={(level) => updateSession(session.id, { level })} options={[{ value: "read", label: "Read only" }, { value: "control", label: "Full control" }]} />
-            <p className="text-[12px] text-ink-3 mt-2">Never more than {owner?.name ?? "its owner"} can do in Access control, whatever is set here.</p>
+            <p className="text-xs text-ink-3 mt-2">Never more than {owner?.name ?? "its owner"} can do in Access control, whatever is set here.</p>
           </div>
           <div>
-            <div className="text-[13px] font-medium mb-2">Organizations</div>
+            <div className="text-compact font-medium mb-2">Organizations</div>
             <div className="space-y-2">
               {reachable.map((o) => {
                 const on = session.orgs === null || session.orgs.includes(o.slug);
@@ -51,23 +51,23 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
                   <button key={o.slug} onClick={() => updateSession(session.id, { orgs: toggle(session.orgs, reachable.map((x) => x.slug), o.slug) })} className="w-full flex items-center gap-3 text-left" role="checkbox" aria-checked={on}>
                     <span className={cn("h-5 w-5 rounded-md border flex items-center justify-center", on ? "bg-accent border-accent text-primary-ink" : "border-line-strong")}>{on && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
                     <Avatar name={o.name} hue={o.hue} size={22} />
-                    <span className="text-[14px]">{o.name}</span>
+                    <span className="text-sm">{o.name}</span>
                   </button>
                 );
               })}
             </div>
           </div>
           <div>
-            <div className="text-[13px] font-medium mb-2">Agents</div>
-            {agents.length === 0 ? <p className="text-[13px] text-ink-3">No agents in the selected organizations.</p> : (
+            <div className="text-compact font-medium mb-2">Agents</div>
+            {agents.length === 0 ? <p className="text-compact text-ink-3">No agents in the selected organizations.</p> : (
               <div className="space-y-2">
                 {agents.map((a) => {
                   const on = session.agents === null || session.agents.includes(a.id);
                   return (
                     <button key={a.id} onClick={() => updateSession(session.id, { agents: toggle(session.agents, agents.map((x) => x.id), a.id) })} className="w-full flex items-center gap-3 text-left" role="checkbox" aria-checked={on}>
                       <span className={cn("h-5 w-5 rounded-md border flex items-center justify-center", on ? "bg-accent border-accent text-primary-ink" : "border-line-strong")}>{on && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
-                      <span className="text-[14px] flex-1">{a.name} <span className="text-ink-3">· {a.role}</span></span>
-                      <span className="text-[12px] text-ink-3">{a.org}</span>
+                      <span className="text-sm flex-1">{a.name} <span className="text-ink-3">· {a.role}</span></span>
+                      <span className="text-xs text-ink-3">{a.org}</span>
                     </button>
                   );
                 })}
@@ -107,24 +107,24 @@ export function Apps() {
           <SectionTitle>Connect an app</SectionTitle>
           <div className="flex items-center gap-2 rounded-xl bg-surface-2 border border-line pl-4 pr-1.5 h-12">
             <Plug className="h-4 w-4 text-ink-3 shrink-0" />
-            <code className="flex-1 min-w-0 truncate text-[14px]">{url}</code>
+            <code className="flex-1 min-w-0 truncate text-sm">{url}</code>
             <Button size="sm" onClick={copy}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</Button>
           </div>
           <div className="flex flex-wrap gap-1.5 mt-4">
             {Object.keys(HOW).map((k) => (
-              <button key={k} onClick={() => setHow(k)} className={cn("h-7 px-3 rounded-full text-[13px] border", how === k ? "bg-surface-3 border-line-strong text-ink" : "border-line text-ink-3 hover:text-ink-2")}>{k}</button>
+              <button key={k} onClick={() => setHow(k)} className={cn("h-7 px-3 rounded-full text-compact border", how === k ? "bg-surface-3 border-line-strong text-ink" : "border-line text-ink-3 hover:text-ink-2")}>{k}</button>
             ))}
           </div>
-          <ol className="mt-3 space-y-1.5 text-[14px] text-ink-2 list-decimal pl-5">
+          <ol className="mt-3 space-y-1.5 text-sm text-ink-2 list-decimal pl-5">
             {HOW[how].map((step) => <li key={step}>{step.replace("<address>", url)}</li>)}
           </ol>
-          <p className="text-[12px] text-ink-3 mt-3">Apps on the web, like claude.ai, need to reach this device from the internet. Turn on remote access (Tailscale or a tunnel) in Connectors first.</p>
+          <p className="text-xs text-ink-3 mt-3">Apps on the web, like claude.ai, need to reach this device from the internet. Turn on remote access (Tailscale or a tunnel) in Connectors first.</p>
         </Card>
         <Card className="p-5">
           <SectionTitle>What apps can do</SectionTitle>
           <Segmented value={data.apps.mode} onChange={setAppMode} options={[{ value: "api", label: "API only" }, { value: "full", label: "Full" }, { value: "agent", label: "Agent only" }]} />
-          <p className="text-[14px] text-ink-2 mt-3">{MODE_TEXT[data.apps.mode]}</p>
-          <div className="mt-4 pt-4 border-t border-line text-[13px] text-ink-3 space-y-1.5">
+          <p className="text-sm text-ink-2 mt-3">{MODE_TEXT[data.apps.mode]}</p>
+          <div className="mt-4 pt-4 border-t border-line text-compact text-ink-3 space-y-1.5">
             <p><span className="text-ink-2">Read only</span> sessions can only look. <span className="text-ink-2">Full control</span> sessions can act, within this setting.</p>
             <p className="flex gap-1.5"><ShieldAlert className="h-4 w-4 shrink-0 mt-px" />Every session belongs to a user in Access control and can never do more than that user.</p>
           </div>
@@ -147,14 +147,14 @@ export function Apps() {
                       <Avatar name={s.app} hue={s.app === "Claude" ? 30 : s.app === "ChatGPT" ? 160 : 260} size={36} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2"><span className="font-semibold">{s.app}</span><Chip tone={s.level === "control" ? "accent" : "neutral"}>{LEVEL[s.level]}</Chip></div>
-                        <div className="text-[12px] text-ink-3 truncate">{s.client} · {owner?.name ?? "unknown user"}</div>
+                        <div className="text-xs text-ink-3 truncate">{s.client} · {owner?.name ?? "unknown user"}</div>
                       </div>
                     </div>
-                    <div className="mt-3 space-y-1 text-[13px] text-ink-2">
+                    <div className="mt-3 space-y-1 text-compact text-ink-2">
                       <div className="truncate">{orgNames}</div>
                       <div>{s.agents === null ? "All agents" : `${s.agents.length} selected agent${s.agents.length === 1 ? "" : "s"}`}</div>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-line flex justify-between text-[12px] text-ink-3 tabular-nums"><span>Used {ago(s.lastUsedAt)}</span><span>{s.calls24h} calls today</span></div>
+                    <div className="mt-3 pt-3 border-t border-line flex justify-between text-xs text-ink-3 tabular-nums"><span>Used {ago(s.lastUsedAt)}</span><span>{s.calls24h} calls today</span></div>
                   </Card>
                 </button>
               );
@@ -169,16 +169,16 @@ export function Apps() {
           {data.apps.activity.map((a) => {
             const s = data.apps.sessions.find((x) => x.id === a.sessionId);
             return (
-              <div key={a.id} className="flex items-center gap-3 px-5 py-3 text-[14px]">
+              <div key={a.id} className="flex items-center gap-3 px-5 py-3 text-sm">
                 <span className="w-24 shrink-0 text-ink-2">{s?.app ?? "Disconnected"}</span>
-                <code className="flex-1 truncate text-[13px] text-ink-2">{a.tool}</code>
+                <code className="flex-1 truncate text-compact text-ink-2">{a.tool}</code>
                 {a.outcome === "ok" ? <Status kind="good" label="Done" /> : a.outcome === "blocked" ? <Status kind="warning" label="Blocked" /> : <Status kind="critical" label="Error" />}
-                <span className="w-20 text-right text-[12px] text-ink-3 tabular-nums">{ago(a.at)}</span>
+                <span className="w-20 text-right text-xs text-ink-3 tabular-nums">{ago(a.at)}</span>
               </div>
             );
           })}
         </Card>
-        <p className="text-[12px] text-ink-3 mt-2">Activity lists which tool ran and how it ended, never the arguments or results.</p>
+        <p className="text-xs text-ink-3 mt-2">Activity lists which tool ran and how it ended, never the arguments or results.</p>
       </section>
       {session && <SessionPanel session={session} onClose={() => setOpen(null)} />}
     </PageFrame>

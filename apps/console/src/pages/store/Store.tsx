@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Check, Download, ExternalLink, FileUp, Loader2, Package, Puzzle, Search, Store as StoreIcon, Trash2 } from "lucide-react";
@@ -6,12 +7,12 @@ import { ApiError } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, selectClass } from "../../ui/primitives.tsx";
 import { storagesWith } from "../storage/content.ts";
 import { CATEGORIES, filterItems, statusLabel, tileHue, type Category, type StoreItem } from "./catalog.ts";
 import { useStoreItems } from "./useStore.ts";
 
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 
 /** An item's logo from the icons the console ships with, or a coloured monogram when there isn't one. */
 function Tile({ id, name, size = 44 }: { id: string; name: string; size?: number }) {
@@ -25,7 +26,7 @@ function Tile({ id, name, size = 44 }: { id: string; name: string; size?: number
   }
   const h = tileHue(name);
   return (
-    <span className="grid place-items-center rounded-xl font-semibold shrink-0 text-white" style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${h} 62% 46%), hsl(${(h + 40) % 360} 62% 36%))`, fontSize: size * 0.42 }} aria-hidden>
+    <span className="identity-gradient grid place-items-center rounded-xl font-semibold shrink-0" style={{ width: size, height: size, fontSize: size * 0.42, "--hue": h } as CSSProperties} aria-hidden>
       {name.replace(/[^A-Za-z0-9]/g, "").slice(0, 1).toUpperCase()}
     </span>
   );
@@ -56,9 +57,9 @@ export function Store() {
           <Card interactive className="p-4 flex gap-3 h-full">
             <Tile id={it.id} name={it.name} />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2"><span className="font-medium truncate">{it.name}</span>{it.badge && <span className="text-[11px] text-ink-3 shrink-0">{it.badge}</span>}</div>
-              <div className="text-[12px] text-ink-3 truncate">{it.vendor}{it.latestVersion ? ` · ${it.latestVersion}` : ""}</div>
-              <p className="text-[13px] text-ink-2 mt-1.5 line-clamp-2">{it.summary}</p>
+              <div className="flex items-center gap-2"><span className="font-medium truncate">{it.name}</span>{it.badge && <span className="text-micro text-ink-3 shrink-0">{it.badge}</span>}</div>
+              <div className="text-xs text-ink-3 truncate">{it.vendor}{it.latestVersion ? ` · ${it.latestVersion}` : ""}</div>
+              <p className="text-compact text-ink-2 mt-1.5 line-clamp-2">{it.summary}</p>
               <div className="mt-2 min-h-5"><StatusChip it={it} /></div>
             </div>
           </Card>
@@ -77,14 +78,14 @@ export function Store() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the Store" className="pl-9" aria-label="Search the Store" />
         </div>
       </div>
-      {problems.length > 0 && <p className="text-[13px] text-warning mb-4">{problems.join(" ")} What's installed may be out of date.</p>}
+      {problems.length > 0 && <p className="text-compact text-warning mb-4">{problems.join(" ")} What's installed may be out of date.</p>}
       {cat === "home" && !q && updates.length > 0 && (
-        <section className="mb-6"><h2 className="text-[14px] font-medium mb-2">Updates</h2>{grid(updates)}</section>
+        <section className="mb-6"><h2 className="text-sm font-medium mb-2">Updates</h2>{grid(updates)}</section>
       )}
       {cat === "home" && !q ? (
         CATEGORIES.map((c) => {
           const list = items.filter((i) => i.category === c.id);
-          return list.length ? <section key={c.id} className="mb-7"><h2 className="text-[14px] font-medium">{c.label}</h2><p className="text-[12px] text-ink-3 mb-2.5">{c.blurb}</p>{grid(list.slice(0, 6))}{list.length > 6 && <button className="text-[13px] text-ink-2 hover:text-ink mt-2" onClick={() => setCat(c.id)}>See all {list.length}</button>}</section> : null;
+          return list.length ? <section key={c.id} className="mb-7"><h2 className="text-sm font-medium">{c.label}</h2><p className="text-xs text-ink-3 mb-2.5">{c.blurb}</p>{grid(list.slice(0, 6))}{list.length > 6 && <button className="text-compact text-ink-2 hover:text-ink mt-2" onClick={() => setCat(c.id)}>See all {list.length}</button>}</section> : null;
         })
       ) : shown.length ? grid(shown) : loading ? (
         <div className="py-16 grid place-items-center text-ink-3"><Loader2 className="h-5 w-5 animate-spin" /></div>
@@ -170,28 +171,28 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex gap-3 items-start"><Tile id={it.id} name={it.name} size={56} /><div><p className="text-[14px] text-ink-2">{it.summary}</p><div className="mt-2 flex flex-wrap gap-2 items-center"><StatusChip it={it} />{it.badge && <Chip>{it.badge}</Chip>}</div></div></div>
-        {it.status === "update" && <p className="text-[13px] text-ink-2">You have {it.haveVersion ?? "an older version"}. {it.latestVersion} is the newest the vendor lists. Your older copy stays until you remove it.</p>}
-        {installed && it.volid && <p className="text-[13px] text-ink-3">On this device as <span className="font-mono text-ink-2">{it.volid}</span>.</p>}
-        {it.kind === "iso" && l && <p className="text-[13px] text-ink-3">Downloads <span className="font-mono text-ink-2">{l.filename}</span> and checks its {l.algorithm.toUpperCase()} checksum against {it.vendor}'s own list.</p>}
-        {it.kind === "iso" && !l && installable && <p className="text-[13px] text-ink-3">The newest version is looked up from {it.vendor}'s download list when you install.</p>}
-        {it.lib?.kind === "fixed" && <p className="text-[13px] text-warning">{it.lib.note}</p>}
-        {it.lib?.kind === "manual" && <p className="text-[13px] text-ink-3">{it.lib.note}</p>}
-        {it.kind === "template" && it.template?.infopage && <p className="text-[13px] text-ink-3">A container system from Proxmox's template list.</p>}
-        {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-[13px] text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
-        {plugin && plugin.kind === "connector" && <p className="text-[13px] text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
-        {plugin && plugin.kind !== "connector" && <p className="text-[13px] text-ink-3">{plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Your choice is saved now.</p>}
+        <div className="flex gap-3 items-start"><Tile id={it.id} name={it.name} size={56} /><div><p className="text-sm text-ink-2">{it.summary}</p><div className="mt-2 flex flex-wrap gap-2 items-center"><StatusChip it={it} />{it.badge && <Chip>{it.badge}</Chip>}</div></div></div>
+        {it.status === "update" && <p className="text-compact text-ink-2">You have {it.haveVersion ?? "an older version"}. {it.latestVersion} is the newest the vendor lists. Your older copy stays until you remove it.</p>}
+        {installed && it.volid && <p className="text-compact text-ink-3">On this device as <span className="font-mono text-ink-2">{it.volid}</span>.</p>}
+        {it.kind === "iso" && l && <p className="text-compact text-ink-3">Downloads <span className="font-mono text-ink-2">{l.filename}</span> and checks its {l.algorithm.toUpperCase()} checksum against {it.vendor}'s own list.</p>}
+        {it.kind === "iso" && !l && installable && <p className="text-compact text-ink-3">The newest version is looked up from {it.vendor}'s download list when you install.</p>}
+        {it.lib?.kind === "fixed" && <p className="text-compact text-warning">{it.lib.note}</p>}
+        {it.lib?.kind === "manual" && <p className="text-compact text-ink-3">{it.lib.note}</p>}
+        {it.kind === "template" && it.template?.infopage && <p className="text-compact text-ink-3">A container system from Proxmox's template list.</p>}
+        {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-compact text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
+        {plugin && plugin.kind === "connector" && <p className="text-compact text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
+        {plugin && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Your choice is saved now.</p>}
         {needsStorage && installable && (
           storages.length ? (
-            <label className="block"><span className="block text-[13px] text-ink-2 mb-2">Install to</span>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">Install to</span>
               <select value={storage} onChange={(e) => setPick(e.target.value)} className={cn(select)} disabled={started}>
                 {storages.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}
               </select>
             </label>
-          ) : <p className="text-[13px] text-warning">No storage on this device is set up for {kindOfStorage === "iso" ? "ISO images" : "container templates"}.</p>
+          ) : <p className="text-compact text-warning">No storage on this device is set up for {kindOfStorage === "iso" ? "ISO images" : "container templates"}.</p>
         )}
-        {started && <p className="text-[13px] text-good">Download started. It shows in Tasks, and Pin tells you when it's done.</p>}
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {started && <p className="text-compact text-good">Download started. It shows in Tasks, and Pin tells you when it's done.</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );

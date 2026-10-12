@@ -5,7 +5,7 @@ import { ApiError, type MachineOptions } from "../../data/api.ts";
 import { orgRoom, roomError } from "../../data/quota.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
-import { Button, Input, Segmented } from "../../ui/primitives.tsx";
+import { Button, Input, Segmented, selectClass } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 
 type Kind = "lxc" | "qemu";
@@ -30,7 +30,7 @@ const OS_TYPES = [
 ] as const;
 
 const NAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+const select = selectClass;
 
 /**
  * Spin up a machine in a few clicks: a container from a template, or a virtual machine booting an ISO. Owned by the
@@ -124,7 +124,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={
         <>
-          <span className="mr-auto text-[12px] text-ink-3 tabular-nums hidden sm:block">{spec.cores} core{spec.cores === 1 ? "" : "s"} · {formatBytes(spec.memoryMb * 1024 ** 2)} · {spec.diskGb} GB{kind === "lxc" ? (tpl ? ` · ${tpl.name}` : "") : isoItem ? ` · ${isoItem.name}` : ""}</span>
+          <span className="mr-auto text-xs text-ink-3 tabular-nums hidden sm:block">{spec.cores} core{spec.cores === 1 ? "" : "s"} · {formatBytes(spec.memoryMb * 1024 ** 2)} · {spec.diskGb} GB{kind === "lxc" ? (tpl ? ` · ${tpl.name}` : "") : isoItem ? ` · ${isoItem.name}` : ""}</span>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={create} disabled={!canCreate}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Create and start</Button>
         </>
@@ -134,48 +134,48 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
         <Segmented value={kind} onChange={(k) => { setKind(k); setSize("small"); }} options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Name</span>
+            <span className="block text-compact text-ink-2 mb-2">Name</span>
             <Input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true); }} onKeyDown={(e) => e.key === "Enter" && create()} autoFocus spellCheck={false} />
-            <span className="block text-[12px] mt-1.5 min-h-4 text-critical">{nameError}</span>
+            <span className="block text-xs mt-1.5 min-h-4 text-critical">{nameError}</span>
           </label>
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Owner</span>
+            <span className="block text-compact text-ink-2 mb-2">Owner</span>
             <select value={owner ?? ""} onChange={(e) => setOwner(e.target.value || null)} className={select}>
               <option value="">{device} (the device)</option>
               {engine.data.orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
             </select>
-            <span className="block text-[12px] mt-1.5 min-h-4 text-ink-3">
+            <span className="block text-xs mt-1.5 min-h-4 text-ink-3">
               {room && `${room.guests} machine${room.guests === 1 ? "" : "s"}, ${Math.max(0, room.cores)} cores and ${formatBytes(Math.max(0, room.memoryMb) * 1024 ** 2)} left in its resource group`}
             </span>
           </label>
         </div>
 
         <fieldset>
-          <legend className="text-[13px] text-ink-2 mb-2">Size</legend>
+          <legend className="text-compact text-ink-2 mb-2">Size</legend>
           <div className="grid grid-cols-3 gap-2">
             {SIZES[kind].map((s) => {
               const tooBig = room ? roomError(room, s) !== null : false;
               return (
                 <button key={s.id} type="button" onClick={() => setSize(s.id)} aria-pressed={size === s.id} className={cn("text-left rounded-xl border p-3 transition", size === s.id ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong", tooBig && "opacity-60")}>
-                  <span className="block font-medium text-[14px]">{s.label}</span>
-                  <span className="block text-[12px] text-ink-2 tabular-nums mt-0.5">{s.cores} core{s.cores === 1 ? "" : "s"} · {s.memoryMb / 1024} GiB · {s.diskGb} GB</span>
-                  <span className="hidden sm:block text-[12px] text-ink-3 mt-1">{s.hint}</span>
+                  <span className="block font-medium text-sm">{s.label}</span>
+                  <span className="block text-xs text-ink-2 tabular-nums mt-0.5">{s.cores} core{s.cores === 1 ? "" : "s"} · {s.memoryMb / 1024} GiB · {s.diskGb} GB</span>
+                  <span className="hidden sm:block text-xs text-ink-3 mt-1">{s.hint}</span>
                 </button>
               );
             })}
           </div>
-          {fitError && <p className="text-[12px] text-critical mt-2">{fitError}</p>}
+          {fitError && <p className="text-xs text-critical mt-2">{fitError}</p>}
         </fieldset>
 
         {loadError ? (
-          <p className="text-[13px] text-critical">{loadError}</p>
+          <p className="text-compact text-critical">{loadError}</p>
         ) : !options ? (
-          <p className="text-[13px] text-ink-3 inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading from {device}…</p>
+          <p className="text-compact text-ink-3 inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading from {device}…</p>
         ) : kind === "lxc" ? (
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">System</span>
+            <span className="block text-compact text-ink-2 mb-2">System</span>
             {noTemplates ? (
-              <p className="text-[13px] text-ink-2">No container templates on {device} yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Get one from the template catalog</Link> in Storage.</p>
+              <p className="text-compact text-ink-2">No container templates on {device} yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Get one from the template catalog</Link> in Storage.</p>
             ) : (
               <select value={template} onChange={(e) => setTemplate(e.target.value)} className={select}>
                 {options.templates.map((t) => <option key={t.volid} value={t.volid}>{t.name}</option>)}
@@ -185,52 +185,52 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="grid sm:grid-cols-[1fr_200px] gap-4">
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Boot from</span>
+              <span className="block text-compact text-ink-2 mb-2">Boot from</span>
               <select value={iso} onChange={(e) => setIso(e.target.value)} className={select}>
                 {options.isos.map((t) => <option key={t.volid} value={t.volid}>{t.name}{t.size ? ` · ${formatBytes(t.size)}` : ""}</option>)}
                 <option value="">No media (network boot)</option>
               </select>
-              {options.isos.length === 0 && <span className="block text-[12px] mt-1.5 text-ink-3">No ISO images yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Upload one or download it from a URL</Link> in Storage.</span>}
+              {options.isos.length === 0 && <span className="block text-xs mt-1.5 text-ink-3">No ISO images yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Upload one or download it from a URL</Link> in Storage.</span>}
             </label>
             <label className="block">
-              <span className="block text-[13px] text-ink-2 mb-2">Operating system</span>
+              <span className="block text-compact text-ink-2 mb-2">Operating system</span>
               <select value={ostype} onChange={(e) => setOstype(e.target.value as typeof ostype)} className={select}>
                 {OS_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </label>
-            {ostype === "win11" && <p className="sm:col-span-2 text-[12px] text-ink-3 -mt-2">Windows 11 gets UEFI, Secure Boot keys and a TPM 2.0, with SATA and e1000e so the installer sees the disk and network without extra drivers.</p>}
+            {ostype === "win11" && <p className="sm:col-span-2 text-xs text-ink-3 -mt-2">Windows 11 gets UEFI, Secure Boot keys and a TPM 2.0, with SATA and e1000e so the installer sees the disk and network without extra drivers.</p>}
           </div>
         )}
 
         <div>
-          <button type="button" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced} className="text-[13px] text-ink-2 hover:text-ink inline-flex items-center gap-1">
+          <button type="button" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced} className="text-compact text-ink-2 hover:text-ink inline-flex items-center gap-1">
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-180")} />{kind === "lxc" ? "Sign-in and storage" : "Storage"}
           </button>
           {advanced && (
             <div className="grid sm:grid-cols-2 gap-4 mt-3 fade-in">
               {kind === "lxc" && (
                 <label className="block">
-                  <span className="block text-[13px] text-ink-2 mb-2">Root password <span className="text-ink-3">(optional)</span></span>
+                  <span className="block text-compact text-ink-2 mb-2">Root password <span className="text-ink-3">(optional)</span></span>
                   <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  <span className="block text-[12px] mt-1.5 min-h-4 text-critical">{password && password.length < 8 ? "At least 8 characters." : ""}</span>
+                  <span className="block text-xs mt-1.5 min-h-4 text-critical">{password && password.length < 8 ? "At least 8 characters." : ""}</span>
                 </label>
               )}
               <label className="block">
-                <span className="block text-[13px] text-ink-2 mb-2">Disk storage</span>
+                <span className="block text-compact text-ink-2 mb-2">Disk storage</span>
                 <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>
                   {disks.map((s) => <option key={s.storage} value={s.storage}>{s.storage}{s.avail !== null ? ` · ${formatBytes(s.avail)} free` : ""}</option>)}
                 </select>
               </label>
               {kind === "lxc" && (
                 <label className="block sm:col-span-2">
-                  <span className="block text-[13px] text-ink-2 mb-2">SSH public key <span className="text-ink-3">(optional)</span></span>
+                  <span className="block text-compact text-ink-2 mb-2">SSH public key <span className="text-ink-3">(optional)</span></span>
                   <Input value={sshKey} onChange={(e) => setSshKey(e.target.value)} placeholder="ssh-ed25519 AAAA…" spellCheck={false} />
                 </label>
               )}
             </div>
           )}
         </div>
-        {error && <p role="alert" className="text-[13px] text-critical">{error}</p>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );

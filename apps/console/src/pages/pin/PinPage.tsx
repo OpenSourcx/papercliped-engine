@@ -65,8 +65,8 @@ export function PinPage() {
         <div className="relative flex flex-wrap items-center gap-5 p-6">
           <PinOrb size={64} thinking={pin.thinking} />
           <div className="flex-1 min-w-[220px]">
-            <h1 className="text-[28px] font-semibold tracking-tight leading-tight">Pin</h1>
-            <p className="text-[14px] text-ink-2 mt-1">
+            <h1 className="text-display font-semibold tracking-tight leading-tight">Pin</h1>
+            <p className="text-sm text-ink-2 mt-1">
               {mode === "agent" ? "Agent mode: acts on its own and tells you after." : "Assistant mode: asks before it changes anything."} Watching {device} · {activeRules} automation{activeRules === 1 ? "" : "s"} on{last ? ` · last ${LOG_LABEL[last.kind].toLowerCase()} ${ago(last.at)}` : ""}
             </p>
           </div>
@@ -76,7 +76,7 @@ export function PinPage() {
 
       <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
         {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-[14px] whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>
         ))}
       </div>
 
@@ -85,7 +85,7 @@ export function PinPage() {
           <div className="space-y-5">
             <Card className="p-5">
               <h2 className="font-medium mb-1">What Pin may do</h2>
-              <p className="text-[13px] text-ink-3 mb-4">Switch off anything you'd rather handle yourself. Pin never deletes machines, backups or data, whatever is on here.</p>
+              <p className="text-compact text-ink-3 mb-4">Switch off anything you'd rather handle yourself. Pin never deletes machines, backups or data, whatever is on here.</p>
               <div className="divide-y divide-line">
                 {([
                   ["system", <Boxes key="s" className="h-4 w-4" />, "Manage this device", "Start, stop and snapshot machines, run backups, watch resources."],
@@ -95,14 +95,14 @@ export function PinPage() {
                 ] as const).map(([k, icon, title, body]) => (
                   <div key={k} className="flex items-center gap-3 py-3">
                     <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0">{icon}</span>
-                    <div className="flex-1 min-w-0"><div className="text-[14px] font-medium">{title}</div><div className="text-[12px] text-ink-3">{body}</div></div>
+                    <div className="flex-1 min-w-0"><div className="text-sm font-medium">{title}</div><div className="text-xs text-ink-3">{body}</div></div>
                     <Toggle checked={access[k]} onChange={(v) => engine.setPinAccess({ [k]: v })} label={title} />
                   </div>
                 ))}
               </div>
             </Card>
             <Card className="p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Recent activity</h2><button onClick={() => setTab("activity")} className="text-[13px] text-ink-3 hover:text-ink">All activity</button></div>
+              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Recent activity</h2><button onClick={() => setTab("activity")} className="text-compact text-ink-3 hover:text-ink">All activity</button></div>
               <ActivityList entries={engine.pin.log.slice(0, 5)} />
             </Card>
           </div>
@@ -111,30 +111,30 @@ export function PinPage() {
               <h2 className="font-medium mb-3">Pin's files</h2>
               {([["soul", "SOUL.md", "Who Pin is and how it behaves"], ["memory", "MEMORY.md", "What it has learned about you"]] as const).map(([k, file, body]) => (
                 <button key={k} onClick={() => setTab("memory")} className="w-full text-left rounded-lg border border-line p-3 mb-2 last:mb-0 hover:border-line-strong transition">
-                  <div className="flex items-center gap-2 font-mono text-[13px]"><FileText className="h-4 w-4 text-ink-3" />{file}</div>
-                  <div className="text-[12px] text-ink-3 mt-1">{body}{engine.pin.editedAt[k] ? ` · edited ${ago(engine.pin.editedAt[k]!)}` : ""}</div>
+                  <div className="flex items-center gap-2 font-mono text-compact"><FileText className="h-4 w-4 text-ink-3" />{file}</div>
+                  <div className="text-xs text-ink-3 mt-1">{body}{engine.pin.editedAt[k] ? ` · edited ${ago(engine.pin.editedAt[k]!)}` : ""}</div>
                 </button>
               ))}
             </Card>
             <Card className="p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Connectors</h2><Link to="?settings=connectors" className="text-[13px] text-ink-3 hover:text-ink">Manage</Link></div>
+              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Connectors</h2><Link to="?settings=connectors" className="text-compact text-ink-3 hover:text-ink">Manage</Link></div>
               {engine.data.connectors.length === 0 ? (
-                <p className="text-[13px] text-ink-3">No connectors yet.</p>
+                <p className="text-compact text-ink-3">No connectors yet.</p>
               ) : (
                 <div className="space-y-2">
                   {engine.data.connectors.map((c) => (
                     <div key={c.id} className="flex items-center gap-3">
-                      <span className="flex-1 text-[13px] truncate">{c.name}{c.status !== "connected" && <span className="text-ink-3"> · needs setup</span>}</span>
+                      <span className="flex-1 text-compact truncate">{c.name}{c.status !== "connected" && <span className="text-ink-3"> · needs setup</span>}</span>
                       <Toggle checked={c.access.pin} disabled={!access.connectors} onChange={(v) => engine.setConnectorAccess(c.id, "pin", v)} label={`Let Pin use ${c.name}`} />
                     </div>
                   ))}
-                  {!access.connectors && <p className="text-[12px] text-ink-3">Turn on "Use connectors" to share them with Pin.</p>}
+                  {!access.connectors && <p className="text-xs text-ink-3">Turn on "Use connectors" to share them with Pin.</p>}
                 </div>
               )}
             </Card>
             <Card className="p-5">
-              <div className="flex items-center justify-between mb-2"><h2 className="font-medium">Automations</h2><button onClick={() => setTab("automations")} className="text-[13px] text-ink-3 hover:text-ink">Open</button></div>
-              <p className="text-[13px] text-ink-2">{activeRules} on, {engine.data.rules.length - activeRules} off.</p>
+              <div className="flex items-center justify-between mb-2"><h2 className="font-medium">Automations</h2><button onClick={() => setTab("automations")} className="text-compact text-ink-3 hover:text-ink">Open</button></div>
+              <p className="text-compact text-ink-2">{activeRules} on, {engine.data.rules.length - activeRules} off.</p>
               <Button size="sm" className="mt-3" onClick={() => { setTab("chat"); pin.send("If a container uses more than 50% of its memory, shut it down", { inPlace: true }); }}><Zap className="h-3.5 w-3.5" />New with Pin</Button>
             </Card>
           </div>
@@ -146,27 +146,27 @@ export function PinPage() {
       {tab === "automations" && (
         <div className="space-y-3 fade-in">
           <div className="flex items-center justify-between">
-            <p className="text-[13px] text-ink-3">Rules Pin runs for you. {mode === "assistant" ? "In Assistant mode, a firing rule asks you first." : "In Agent mode, a firing rule acts and tells you after."}</p>
+            <p className="text-compact text-ink-3">Rules Pin runs for you. {mode === "assistant" ? "In Assistant mode, a firing rule asks you first." : "In Agent mode, a firing rule acts and tells you after."}</p>
             <Button size="sm" variant="primary" onClick={() => { setTab("chat"); pin.send("If a container uses more than 50% of its memory, shut it down", { inPlace: true }); }}><Sparkles className="h-3.5 w-3.5" />New with Pin</Button>
           </div>
-          {engine.data.rules.length === 0 && <Card className="p-8 text-center text-ink-3 text-[14px]">No automations yet. Tell Pin what you want in plain words.</Card>}
+          {engine.data.rules.length === 0 && <Card className="p-8 text-center text-ink-3 text-sm">No automations yet. Tell Pin what you want in plain words.</Card>}
           {engine.data.rules.map((r) => (
             <Card key={r.id} className="p-4 flex items-start gap-4">
               <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0"><Workflow className="h-4 w-4" /></span>
               <div className="flex-1 min-w-0">
-                <p className="text-[14px]">{describeRule(r)}</p>
-                <div className="font-mono text-[11px] text-ink-3 mt-1">{r.when.metric} {r.when.op} {String(r.when.value)} · {r.then.action}</div>
+                <p className="text-sm">{describeRule(r)}</p>
+                <div className="font-mono text-micro text-ink-3 mt-1">{r.when.metric} {r.when.op} {String(r.when.value)} · {r.then.action}</div>
               </div>
               {r.createdBy === "pin" && <Chip tone="accent">By Pin</Chip>}
               <Toggle checked={r.enabled} onChange={() => engine.toggleRule(r.id)} label={`Enable ${r.name}`} />
             </Card>
           ))}
-          <p className="text-[12px] text-ink-3">Also on the <Link to={`/${device}/automations`} className="text-accent hover:underline">Automations</Link> page.</p>
+          <p className="text-xs text-ink-3">Also on the <Link to={`/${device}/automations`} className="text-accent hover:underline">Automations</Link> page.</p>
         </div>
       )}
       {tab === "activity" && (
         <Card className="p-5 fade-in">
-          <p className="text-[13px] text-ink-3 mb-4">Everything Pin did, proposed or learned, and every change you made to how it works. Newest first.</p>
+          <p className="text-compact text-ink-3 mb-4">Everything Pin did, proposed or learned, and every change you made to how it works. Newest first.</p>
           <ActivityList entries={engine.pin.log} />
         </Card>
       )}
@@ -176,15 +176,15 @@ export function PinPage() {
 }
 
 function ActivityList({ entries }: { entries: PinLogEntry[] }) {
-  if (!entries.length) return <p className="text-[13px] text-ink-3">Nothing yet.</p>;
+  if (!entries.length) return <p className="text-compact text-ink-3">Nothing yet.</p>;
   return (
     <ol className="space-y-3">
       {entries.map((e) => (
         <li key={e.id} className="flex gap-3">
           <span className="h-6 w-6 rounded-full bg-surface-2 flex items-center justify-center shrink-0 mt-0.5" title={LOG_LABEL[e.kind]}>{LOG_ICON[e.kind]}</span>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px]">{e.text}</p>
-            <p className="text-[12px] text-ink-3">{LOG_LABEL[e.kind]} · {ago(e.at)}</p>
+            <p className="text-sm">{e.text}</p>
+            <p className="text-xs text-ink-3">{LOG_LABEL[e.kind]} · {ago(e.at)}</p>
           </div>
         </li>
       ))}
@@ -214,10 +214,10 @@ function PinChat() {
         {pin.messages.length === 0 && (
           <div className="text-center pt-12">
             <Bot className="h-6 w-6 mx-auto text-ink-3" />
-            <p className="text-[14px] text-ink-2 mt-3">Ask about the device, an organization, or tell Pin what to automate.</p>
+            <p className="text-sm text-ink-2 mt-3">Ask about the device, an organization, or tell Pin what to automate.</p>
             <div className="flex flex-wrap justify-center gap-2 mt-4">
               {["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])].map((s) => (
-                <button key={s} onClick={() => pin.send(s, { inPlace: true })} className="text-[12px] px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2">{s}</button>
+                <button key={s} onClick={() => pin.send(s, { inPlace: true })} className="text-xs px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2">{s}</button>
               ))}
             </div>
           </div>
@@ -225,17 +225,17 @@ function PinChat() {
         {pin.messages.map((m) => (
           <div key={m.id} className={cn("fade-in flex", m.from === "you" ? "justify-end" : "justify-start gap-2.5")}>
             {m.from === "pin" && <span className="mt-0.5"><PinOrb size={22} /></span>}
-            <div className={cn("max-w-[78%] text-[14px] leading-relaxed", m.from === "you" ? "bg-surface-3 rounded-2xl rounded-br-md px-3.5 py-2" : "")}>
+            <div className={cn("max-w-[78%] text-sm leading-relaxed", m.from === "you" ? "bg-surface-3 rounded-2xl rounded-br-md px-3.5 py-2" : "")}>
               {m.text}
               {m.card && <PinCardView card={m.card} done={m.done} onDone={() => pin.markDone(m.id)} />}
             </div>
           </div>
         ))}
-        {pin.thinking && <div className="text-[14px] shimmer-text">Pin is thinking…</div>}
+        {pin.thinking && <div className="text-sm shimmer-text">Pin is thinking…</div>}
       </div>
       <form onSubmit={submit} className="p-3 border-t border-line">
         <div className="flex items-center gap-2 rounded-full bg-surface-2 border border-line pl-4 pr-1.5 h-11 focus-within:border-line-strong">
-          <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Pin" aria-label="Message Pin" className="flex-1 bg-transparent outline-none text-[14px] placeholder:text-ink-3 min-w-0" />
+          <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Pin" aria-label="Message Pin" className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-3 min-w-0" />
           <button type="submit" disabled={!draft.trim()} className="h-8 w-8 rounded-full bg-primary text-primary-ink flex items-center justify-center disabled:opacity-30" aria-label="Send"><ArrowUp className="h-4 w-4" /></button>
         </div>
       </form>
@@ -258,23 +258,23 @@ function PinFiles() {
       <div className="space-y-2">
         {([["soul", "SOUL.md", "Who Pin is: its character, its rules, what it cares about."], ["memory", "MEMORY.md", "What Pin knows about you and this device. It reads this before every conversation."]] as const).map(([k, f, body]) => (
           <button key={k} onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) setWhich(k); }} aria-pressed={which === k} className={cn("w-full text-left rounded-xl border p-3.5 transition", which === k ? "border-accent/50 bg-accent-soft" : "border-line hover:border-line-strong")}>
-            <div className="font-mono text-[13px] flex items-center gap-2"><FileText className="h-4 w-4 text-ink-3" />{f}</div>
-            <p className="text-[12px] text-ink-3 mt-1">{body}</p>
+            <div className="font-mono text-compact flex items-center gap-2"><FileText className="h-4 w-4 text-ink-3" />{f}</div>
+            <p className="text-xs text-ink-3 mt-1">{body}</p>
           </button>
         ))}
-        <p className="text-[12px] text-ink-3 px-1">These live on the device, not in an AI provider's account. Keep secrets in the Vault, not here.</p>
+        <p className="text-xs text-ink-3 px-1">These live on the device, not in an AI provider's account. Keep secrets in the Vault, not here.</p>
       </div>
       <Card className="flex flex-col min-h-[460px]">
         <div className="flex items-center gap-2 px-4 h-11 border-b border-line">
-          <span className="font-mono text-[13px] flex-1">{file}{dirty && <span className="text-warning"> · unsaved</span>}</span>
+          <span className="font-mono text-compact flex-1">{file}{dirty && <span className="text-warning"> · unsaved</span>}</span>
           <Button size="sm" variant="ghost" onClick={() => setPreview((p) => !p)}><Eye className="h-3.5 w-3.5" />{preview ? "Edit" : "Preview"}</Button>
           <Button size="sm" variant="ghost" onClick={() => setText(which === "soul" ? DEFAULT_SOUL : DEFAULT_MEMORY)} title="Back to the starting text"><RotateCcw className="h-3.5 w-3.5" />Reset</Button>
           <Button size="sm" variant="primary" disabled={!dirty} onClick={() => engine.savePinFile(which, text)}><Save className="h-3.5 w-3.5" />Save</Button>
         </div>
         {preview ? (
-          <div className="flex-1 p-5 overflow-y-auto text-[14px] leading-relaxed"><MarkdownPreview text={text} /></div>
+          <div className="flex-1 p-5 overflow-y-auto text-sm leading-relaxed"><MarkdownPreview text={text} /></div>
         ) : (
-          <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label={file} className="flex-1 w-full resize-none bg-transparent p-5 font-mono text-[13px] leading-relaxed outline-none" />
+          <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label={file} className="flex-1 w-full resize-none bg-transparent p-5 font-mono text-compact leading-relaxed outline-none" />
         )}
       </Card>
     </div>
@@ -295,7 +295,7 @@ function MarkdownPreview({ text }: { text: string }) {
     const b = l.match(/^\s*[-*]\s?(.*)$/);
     if (b) return void bullets.push(b[1]);
     flush(i);
-    if (h) out.push(h[1].length === 1 ? <h2 key={i} className="text-[20px] font-semibold mt-1 mb-3">{h[2]}</h2> : <h3 key={i} className="text-[15px] font-semibold mt-4 mb-1">{h[2]}</h3>);
+    if (h) out.push(h[1].length === 1 ? <h2 key={i} className="text-xl font-semibold mt-1 mb-3">{h[2]}</h2> : <h3 key={i} className="text-body font-semibold mt-4 mb-1">{h[2]}</h3>);
     else if (l.trim()) out.push(<p key={i} className="my-2 text-ink-2">{l}</p>);
   });
   flush(lines.length);
@@ -323,9 +323,9 @@ function PinSkills({ onAsk, onGo }: { onAsk: (q: string) => void; onGo: (to: str
         <Card key={s.name} className={cn("p-4", !s.on && "opacity-60")}>
           <div className="flex items-center gap-3">
             <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{s.icon}</span>
-            <div className="flex-1 min-w-0"><div className="font-medium text-[14px]">{s.name}</div><div className="text-[12px] text-ink-3">{s.on ? "On" : `Off · needs "${s.needs}"`}</div></div>
+            <div className="flex-1 min-w-0"><div className="font-medium text-sm">{s.name}</div><div className="text-xs text-ink-3">{s.on ? "On" : `Off · needs "${s.needs}"`}</div></div>
           </div>
-          <p className="text-[13px] text-ink-2 mt-3">{s.body}</p>
+          <p className="text-compact text-ink-2 mt-3">{s.body}</p>
           <div className="flex gap-2 mt-3">
             <Button size="sm" variant="ghost" disabled={!s.on} onClick={() => onAsk(s.ask)}><Sparkles className="h-3.5 w-3.5" />Try it</Button>
             {s.to && <Button size="sm" variant="ghost" onClick={() => onGo(s.to)}>Open</Button>}

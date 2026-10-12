@@ -85,7 +85,7 @@ export function PinIsland() {
 
   return (
     <div
-      className="fixed top-3 left-1/2 -translate-x-1/2 z-[58]"
+      className="fixed top-3 left-1/2 -translate-x-1/2 z-(--z-island)"
       ref={ref}
       onMouseEnter={() => {
         clearTimeout(leave.current);
@@ -103,8 +103,8 @@ export function PinIsland() {
             <button onClick={() => pin.setState("open")} className="flex items-center gap-2 shrink-0 h-9" aria-label="Open Pin">
               <PinOrb size={30} thinking={pin.thinking} />
               <span className="hidden sm:block text-left leading-tight">
-                <span className="block text-[11px] text-ink-3">Quick actions</span>
-                <span className="block text-[13px] font-medium max-w-[120px] truncate">{pin.actions.context}</span>
+                <span className="block text-micro text-ink-3">Quick actions</span>
+                <span className="block text-compact font-medium max-w-[120px] truncate">{pin.actions.context}</span>
               </span>
             </button>
             <QuickActionBar onDone={() => pin.setState("rest")} />
@@ -119,15 +119,15 @@ export function PinIsland() {
             <PinOrb size={pin.state === "peek" ? 40 : 26} thinking={pin.thinking} />
             {pin.state === "peek" && pin.peek ? (
               <span className="min-w-0 flex-1 fade-in">
-                <span className="block text-[13px] font-medium truncate">{pin.peek.title}</span>
-                {pin.peek.body && <span className="block text-[12px] text-ink-3 truncate">{pin.peek.body}</span>}
+                <span className="block text-compact font-medium truncate">{pin.peek.title}</span>
+                {pin.peek.body && <span className="block text-xs text-ink-3 truncate">{pin.peek.body}</span>}
               </span>
             ) : (
               <>
-                <span className="flex-1 min-w-0 text-[13px] font-medium truncate">
+                <span className="flex-1 min-w-0 text-compact font-medium truncate">
                   {pin.thinking ? <span className="shimmer-text">Thinking…</span> : <>Pin <span className="text-ink-3 font-normal">· {mode === "agent" ? "Agent" : "Assistant"}</span></>}
                 </span>
-                {unread > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-primary-ink text-[11px] font-semibold flex items-center justify-center tabular-nums">{unread}</span>}
+                {unread > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-primary-ink text-micro font-semibold flex items-center justify-center tabular-nums">{unread}</span>}
               </>
             )}
           </button>
@@ -138,8 +138,8 @@ export function PinIsland() {
             <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-3 border-b border-line">
               <PinOrb size={28} thinking={pin.thinking} />
               <div className="flex-1 min-w-0">
-                <div className="text-[15px] font-semibold leading-tight">Pin</div>
-                <div className="text-[12px] text-ink-3">{mode === "agent" ? "Acts on its own, tells you after" : "Asks before it acts"}</div>
+                <div className="text-body font-semibold leading-tight">Pin</div>
+                <div className="text-xs text-ink-3">{mode === "agent" ? "Acts on its own, tells you after" : "Asks before it acts"}</div>
               </div>
               <Segmented size="sm" value={mode} onChange={(m) => engine.setPinMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
               <Link to={`/${engine.setup?.deviceName ?? "pve"}/pin`} onClick={() => pin.setState("rest")} className="h-7 w-7 rounded-full hover:bg-surface-3 flex items-center justify-center text-ink-3" aria-label="Open Pin's page" title="Open Pin's page">
@@ -151,13 +151,13 @@ export function PinIsland() {
             </div>
             {pin.actions && pin.actions.items.length > 0 && (
               <div className="px-4 pt-3 pb-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1.5">{pin.actions.context}</div>
+                <div className="text-micro font-semibold uppercase tracking-label text-ink-3 mb-1.5">{pin.actions.context}</div>
                 <QuickActionBar compact />
               </div>
             )}
             <div className="flex gap-1 px-3 pt-2">
               {(["chat", "notices"] as const).map((t) => (
-                <button key={t} onClick={() => { pin.setTab(t); if (t === "notices") engine.markRead(); }} className={cn("px-3 h-7 rounded-full text-[13px] inline-flex items-center gap-1.5", pin.tab === t ? "bg-surface-3 text-ink" : "text-ink-3 hover:text-ink-2")}>
+                <button key={t} onClick={() => { pin.setTab(t); if (t === "notices") engine.markRead(); }} className={cn("px-3 h-7 rounded-full text-compact inline-flex items-center gap-1.5", pin.tab === t ? "bg-surface-3 text-ink" : "text-ink-3 hover:text-ink-2")}>
                   {t === "chat" ? <Sparkles className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
                   {t === "chat" ? "Chat" : "Notifications"}
                   {t === "notices" && unread > 0 && <span className="text-accent tabular-nums">{unread}</span>}
@@ -171,27 +171,27 @@ export function PinIsland() {
                   {pin.messages.length === 0 && (
                     <div className="text-center pt-10 px-4">
                       <Bot className="h-6 w-6 mx-auto text-ink-3" />
-                      <p className="text-[14px] text-ink-2 mt-3">Ask me about your device, your organizations, or tell me what to automate.</p>
+                      <p className="text-sm text-ink-2 mt-3">Ask me about your device, your organizations, or tell me what to automate.</p>
                       <div className="flex flex-wrap justify-center gap-2 mt-4">
                         {["How is my server?", "If a container uses more than 50% of its memory, shut it down", "Create a company called Lumen"].map((s) => (
-                          <button key={s} onClick={() => pin.send(s)} className="text-[12px] px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2 text-left">{s}</button>
+                          <button key={s} onClick={() => pin.send(s)} className="text-xs px-3 py-1.5 rounded-full border border-line bg-surface-2 hover:bg-surface-3 text-ink-2 text-left">{s}</button>
                         ))}
                       </div>
                     </div>
                   )}
                   {pin.messages.map((m) => (
                     <div key={m.id} className={cn("fade-in flex", m.from === "you" ? "justify-end" : "justify-start")}>
-                      <div className={cn("max-w-[88%] text-[14px] leading-relaxed", m.from === "you" ? "bg-surface-3 rounded-2xl rounded-br-md px-3.5 py-2" : "")}>
+                      <div className={cn("max-w-[88%] text-sm leading-relaxed", m.from === "you" ? "bg-surface-3 rounded-2xl rounded-br-md px-3.5 py-2" : "")}>
                         {m.text}
                         {m.card && <PinCardView card={m.card} done={m.done} onDone={() => pin.markDone(m.id)} />}
                       </div>
                     </div>
                   ))}
-                  {pin.thinking && <div className="text-[14px] shimmer-text">Pin is thinking…</div>}
+                  {pin.thinking && <div className="text-sm shimmer-text">Pin is thinking…</div>}
                 </div>
                 <form onSubmit={submit} className="p-3 pt-1">
                   <div className="flex items-center gap-2 rounded-full bg-surface/80 border border-line pl-4 pr-1.5 h-11 focus-within:border-line-strong">
-                    <input ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask Pin" aria-label="Message Pin" className="flex-1 bg-transparent outline-none focus-visible:outline-none text-[14px] placeholder:text-ink-3 min-w-0" />
+                    <input ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask Pin" aria-label="Message Pin" className="flex-1 bg-transparent outline-none focus-visible:outline-none text-sm placeholder:text-ink-3 min-w-0" />
                     <button type="submit" disabled={!draft.trim()} className="h-8 w-8 rounded-full bg-primary text-primary-ink flex items-center justify-center disabled:opacity-30" aria-label="Send">
                       <ArrowUp className="h-4 w-4" />
                     </button>
@@ -204,10 +204,10 @@ export function PinIsland() {
                 {engine.data.notices.map((n) => (
                   <div key={n.id} className="rounded-xl border border-line bg-surface/70 p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="text-[14px] font-medium">{n.title}</div>
-                      <div className="text-[11px] text-ink-3 shrink-0 tabular-nums">{timeAgo(n.at)}</div>
+                      <div className="text-sm font-medium">{n.title}</div>
+                      <div className="text-micro text-ink-3 shrink-0 tabular-nums">{timeAgo(n.at)}</div>
                     </div>
-                    <p className="text-[13px] text-ink-2 mt-1">{n.body}</p>
+                    <p className="text-compact text-ink-2 mt-1">{n.body}</p>
                   </div>
                 ))}
               </div>

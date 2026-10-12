@@ -19,7 +19,7 @@ export function Settings() {
             <span className="h-10 w-10 rounded-lg bg-surface-2 flex items-center justify-center"><ShieldCheck className="h-5 w-5 text-ink-2" /></span>
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{session.user.username}</div>
-              <div className="text-[13px] text-ink-3">Signed in with Proxmox. What you can see and change here is what this Proxmox user is allowed to.</div>
+              <div className="text-compact text-ink-3">Signed in with Proxmox. What you can see and change here is what this Proxmox user is allowed to.</div>
             </div>
             <Button onClick={() => void signOut()}><LogOut className="h-4 w-4" />Sign out</Button>
           </div>
@@ -31,22 +31,22 @@ export function Settings() {
           <span className="h-10 w-10 rounded-lg bg-surface-2 flex items-center justify-center"><Server className="h-5 w-5 text-ink-2" /></span>
           <div>
             <div className="font-medium">{setup?.deviceName}</div>
-            <div className="text-[13px] text-ink-3">{host.cpuModel} · {host.cpus} CPUs · {formatBytes(host.memTotal)} · up {formatUptime(host.uptimeSec)}</div>
+            <div className="text-compact text-ink-3">{host.cpuModel} · {host.cpus} CPUs · {formatBytes(host.memTotal)} · up {formatUptime(host.uptimeSec)}</div>
           </div>
         </div>
-        <p className="text-[12px] text-ink-3 mt-3">The device name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;.</p>
+        <p className="text-xs text-ink-3 mt-3">The device name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;.</p>
       </Card>
       <Card className="p-5">
-        <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-[13px] text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
+        <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-compact text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-[14px] text-ink-2">Mode</div>
+          <div className="text-sm text-ink-2">Mode</div>
           <Segmented value={setup?.pinMode ?? "assistant"} onChange={setPinMode} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
         </div>
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
           {[[<FileText key="s" className="h-4 w-4" />, "SOUL.md", "Who Pin is and how it behaves"], [<BookOpen key="m" className="h-4 w-4" />, "MEMORY.md", "What Pin has learned about you and this device"]].map(([icon, file, body]) => (
             <div key={String(file)} className="rounded-lg border border-line p-3">
-              <div className="flex items-center gap-2 font-mono text-[13px]">{icon}{file}</div>
-              <div className="text-[12px] text-ink-3 mt-1">{body}</div>
+              <div className="flex items-center gap-2 font-mono text-compact">{icon}{file}</div>
+              <div className="text-xs text-ink-3 mt-1">{body}</div>
             </div>
           ))}
         </div>
@@ -56,7 +56,7 @@ export function Settings() {
       </Card>
       <Card className="p-5">
         <SectionTitle>Demo</SectionTitle>
-        <p className="text-[14px] text-ink-2">{live ? "The host and its machines are live. Organizations, agents, tasks and rules are still demo data in this browser until ePaperclip's backend lands. Starting over clears that and runs onboarding again." : "The console is running on demo data in this browser. Starting over clears it and runs onboarding again."}</p>
+        <p className="text-sm text-ink-2">{live ? "The host and its machines are live. Organizations, agents, tasks and rules are still demo data in this browser until ePaperclip's backend lands. Starting over clears that and runs onboarding again." : "The console is running on demo data in this browser. Starting over clears it and runs onboarding again."}</p>
         <Button variant="danger" className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>Start over</Button>
       </Card>
     </PageFrame>

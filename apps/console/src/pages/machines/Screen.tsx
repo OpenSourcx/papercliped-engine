@@ -63,14 +63,14 @@ export default function Screen({ vmid, name }: { vmid: number; name: string }) {
   }, [scale]);
 
   return (
-    <div className={cn("flex flex-col rounded-xl border border-line overflow-hidden bg-black", full && "fixed inset-3 z-[65] shadow-2xl")}>
+    <div className={cn("flex flex-col rounded-xl border border-line overflow-hidden bg-screen", full && "fixed inset-3 z-(--z-fullscreen) shadow-modal")}>
       <div className="flex items-center gap-2 px-3 h-10 border-b border-line bg-surface">
-        <span className="text-[13px] font-medium truncate">{name}</span>
+        <span className="text-compact font-medium truncate">{name}</span>
         {state === "connected" ? <Chip tone="accent">Live</Chip> : state === "connecting" ? <Chip>Connecting</Chip> : <Chip tone="warning">Disconnected</Chip>}
         <span className="flex-1" />
-        <button onClick={() => rfbRef.current?.sendCtrlAltDel()} disabled={state !== "connected"} className="h-7 px-2 rounded-md hover:bg-surface-2 text-[12px] text-ink-2 inline-flex items-center gap-1.5 disabled:opacity-40"><Keyboard className="h-3.5 w-3.5" />Ctrl+Alt+Del</button>
-        <button onClick={() => setScale((v) => !v)} aria-pressed={scale} className="h-7 px-2 rounded-md hover:bg-surface-2 text-[12px] text-ink-2 inline-flex items-center gap-1.5"><Expand className="h-3.5 w-3.5" />{scale ? "Fit" : "Actual size"}</button>
-        <button onClick={() => setSession((n) => n + 1)} className="h-7 px-2 rounded-md hover:bg-surface-2 text-[12px] text-ink-2 inline-flex items-center gap-1.5"><RotateCcw className="h-3.5 w-3.5" />Reconnect</button>
+        <button onClick={() => rfbRef.current?.sendCtrlAltDel()} disabled={state !== "connected"} className="h-7 px-2 rounded-md hover:bg-surface-2 text-xs text-ink-2 inline-flex items-center gap-1.5 disabled:opacity-40"><Keyboard className="h-3.5 w-3.5" />Ctrl+Alt+Del</button>
+        <button onClick={() => setScale((v) => !v)} aria-pressed={scale} className="h-7 px-2 rounded-md hover:bg-surface-2 text-xs text-ink-2 inline-flex items-center gap-1.5"><Expand className="h-3.5 w-3.5" />{scale ? "Fit" : "Actual size"}</button>
+        <button onClick={() => setSession((n) => n + 1)} className="h-7 px-2 rounded-md hover:bg-surface-2 text-xs text-ink-2 inline-flex items-center gap-1.5"><RotateCcw className="h-3.5 w-3.5" />Reconnect</button>
         <button onClick={() => setFull((f) => !f)} className="h-7 w-7 rounded-md hover:bg-surface-2 flex items-center justify-center text-ink-2" aria-label={full ? "Exit full screen" : "Full screen"}>{full ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
       </div>
       <div className={cn("relative", full ? "flex-1" : "h-[min(600px,calc(100dvh-300px))]")}>
@@ -78,7 +78,7 @@ export default function Screen({ vmid, name }: { vmid: number; name: string }) {
         {state !== "connected" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6 pointer-events-none">
             {state === "connecting" ? <Loader2 className="h-5 w-5 animate-spin text-ink-3" /> : null}
-            <p className="text-[14px] text-ink-2">{state === "connecting" ? `Opening ${name}'s screen…` : message ?? "Session ended."}</p>
+            <p className="text-sm text-ink-2">{state === "connecting" ? `Opening ${name}'s screen…` : message ?? "Session ended."}</p>
           </div>
         )}
       </div>

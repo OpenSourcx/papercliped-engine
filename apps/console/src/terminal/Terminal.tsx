@@ -7,9 +7,9 @@ import { cn } from "../lib/storage.ts";
 import { Chip } from "../ui/primitives.tsx";
 import type { TerminalTransport } from "./transport.ts";
 
-function cssVar(name: string, fallback: string) {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
+/** Reads a design token (index.css or the active theme) so the terminal follows the theme. */
+function cssVar(name: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 /** An interactive terminal (xterm.js) bound to a transport. Fills its container and refits on resize. */
@@ -29,10 +29,10 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
       cursorBlink: true,
       scrollback: 5000,
       theme: {
-        background: cssVar("--bg", "#171612"),
-        foreground: cssVar("--ink", "#f4ecdc"),
-        cursor: cssVar("--accent", "#e8b25c"),
-        selectionBackground: "rgba(232,178,92,0.25)",
+        background: cssVar("--bg"),
+        foreground: cssVar("--ink"),
+        cursor: cssVar("--accent"),
+        selectionBackground: cssVar("--accent-soft"),
       },
     });
     const fit = new FitAddon();
@@ -68,13 +68,13 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
   }, [session]);
 
   return (
-    <div className={cn("flex flex-col rounded-xl border border-line overflow-hidden bg-bg", full && "fixed inset-3 z-[65] shadow-2xl", className)}>
+    <div className={cn("flex flex-col rounded-xl border border-line overflow-hidden bg-bg", full && "fixed inset-3 z-(--z-fullscreen) shadow-modal", className)}>
       <div className="flex items-center gap-2 px-3 h-10 border-b border-line bg-surface">
         <span className="flex gap-1.5" aria-hidden><span className="h-2.5 w-2.5 rounded-full bg-critical/70" /><span className="h-2.5 w-2.5 rounded-full bg-warning/70" /><span className="h-2.5 w-2.5 rounded-full bg-good/70" /></span>
-        <span className="text-[13px] font-medium ml-1 truncate">{title}</span>
+        <span className="text-compact font-medium ml-1 truncate">{title}</span>
         {live ? <Chip tone="accent">Live</Chip> : <Chip tone="warning">Demo shell</Chip>}
         <span className="flex-1" />
-        <button onClick={() => setSession((s) => s + 1)} className="h-7 px-2 rounded-md hover:bg-surface-2 text-[12px] text-ink-2 inline-flex items-center gap-1.5" aria-label="New session"><RotateCcw className="h-3.5 w-3.5" />{ended ? "Reconnect" : "Restart"}</button>
+        <button onClick={() => setSession((s) => s + 1)} className="h-7 px-2 rounded-md hover:bg-surface-2 text-xs text-ink-2 inline-flex items-center gap-1.5" aria-label="New session"><RotateCcw className="h-3.5 w-3.5" />{ended ? "Reconnect" : "Restart"}</button>
         <button onClick={() => setFull((f) => !f)} className="h-7 w-7 rounded-md hover:bg-surface-2 flex items-center justify-center text-ink-2" aria-label={full ? "Exit full screen" : "Full screen"}>{full ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
       </div>
       <div ref={host} className="flex-1 min-h-[320px] p-2" onClick={() => host.current?.querySelector("textarea")?.focus()} />
