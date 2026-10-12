@@ -25,7 +25,7 @@ const initialValues = (fields: RealmField[], cfg: Record<string, unknown> | null
 
 /** One field of the form, drawn from its schema entry. */
 function FieldInput({ f, value, error, onChange, editing }: { f: RealmField; value: string | boolean; error?: string; onChange: (v: string | boolean) => void; editing: boolean }) {
-  const hint = f.secret && editing ? `${f.help ?? ""} Leave empty to keep what Proxmox has.`.trim() : f.help;
+  const hint = f.createOnly && editing ? "Can only be set when the realm is created." : f.secret && editing ? `${f.help ?? ""} Leave empty to keep what Proxmox has.`.trim() : f.help;
   if (f.kind === "boolean") {
     return (
       <div className="flex items-start gap-3 sm:col-span-2">
@@ -39,7 +39,7 @@ function FieldInput({ f, value, error, onChange, editing }: { f: RealmField; val
       {f.kind === "enum" ? (
         <Select id={`realm-${f.name}`} value={String(value)} onChange={(e) => onChange(e.target.value)}>{!f.required && <option value="">Default{f.default ? ` (${f.default})` : ""}</option>}{f.options!.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
       ) : (
-        <Input id={`realm-${f.name}`} type={f.secret ? "password" : f.kind === "integer" ? "number" : "text"} value={String(value)} onChange={(e) => onChange(e.target.value)} autoComplete={f.secret ? "new-password" : "off"} spellCheck={false} placeholder={f.default !== undefined && !f.secret ? String(f.default) : undefined} />
+        <Input id={`realm-${f.name}`} type={f.secret ? "password" : f.kind === "integer" ? "number" : "text"} value={String(value)} onChange={(e) => onChange(e.target.value)} autoComplete={f.secret ? "new-password" : "off"} spellCheck={false} disabled={editing && f.createOnly} placeholder={f.default !== undefined && !f.secret ? String(f.default) : undefined} />
       )}
     </Field>
   );

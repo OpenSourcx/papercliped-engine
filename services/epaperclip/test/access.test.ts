@@ -287,6 +287,9 @@ describe("realms", () => {
     expect((await get("/api/access/realms")).realms.find((x: any) => x.realm === "corp").tfa).toBe("type=oath");
     expect((await h.call("PUT", "/api/access/realms/pve", { cookie: sam }, { tfa: "type=oath", default: true })).status).toBe(200);
     expect((await h.call("PUT", "/api/access/realms/corp", { cookie: sam }, { clear: ["server1"] })).status).toBe(400);
+    // Proxmox only accepts the OpenID user name claim when the realm is created.
+    await h.call("POST", "/api/access/realms", { cookie: sam }, { realm: "sso", type: "openid", "issuer-url": "https://id.example.com", "client-id": "epc" });
+    expect((await h.call("PUT", "/api/access/realms/sso", { cookie: sam }, { "username-claim": "email" })).status).toBe(400);
   });
 
   it("deletes custom realms only", async () => {

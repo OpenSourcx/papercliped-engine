@@ -87,6 +87,7 @@ export interface RealmField {
   secret?: boolean;
   group: "connection" | "login" | "sync" | "general";
   pattern?: string;
+  createOnly?: boolean;
 }
 export interface Realm {
   realm: string;

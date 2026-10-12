@@ -24,6 +24,8 @@ export interface RealmField {
   secret?: boolean;
   group: "connection" | "login" | "sync" | "general";
   pattern?: string;
+  /** Proxmox only accepts it when the realm is created. */
+  createOnly?: boolean;
 }
 
 const f = (x: RealmField): RealmField => x;
@@ -76,7 +78,7 @@ const SCHEMAS: Record<RealmType, RealmField[]> = {
     f({ name: "issuer-url", label: "Issuer URL", kind: "string", required: true, max: 256, group: "connection", pattern: "^https://\\S+$" }),
     f({ name: "client-id", label: "Client ID", kind: "string", required: true, max: 256, group: "connection" }),
     f({ name: "client-key", label: "Client secret", kind: "secret", secret: true, max: 256, group: "connection", help: "Write-only. Leave empty to keep the current one." }),
-    f({ name: "username-claim", label: "User name claim", kind: "string", group: "login", help: "Which claim becomes the Proxmox user name, for example username, subject or email." }),
+    f({ name: "username-claim", label: "User name claim", kind: "string", group: "login", createOnly: true, help: "Which claim becomes the Proxmox user name, for example username, subject or email." }),
     f({ name: "autocreate", label: "Create users on first sign-in", kind: "boolean", default: false, group: "login" }),
     f({ name: "scopes", label: "Scopes", kind: "string", default: "email profile", group: "login" }),
     f({ name: "prompt", label: "Prompt", kind: "string", group: "login" }),
@@ -113,6 +115,7 @@ export function validateRealm(type: string, body: Record<string, unknown>, creat
       if (creating && fld.required) bad(`${fld.label} is required`);
       continue;
     }
+    if (!creating && fld.createOnly) bad(`${fld.label} can only be set when the realm is created`);
     switch (fld.kind) {
       case "boolean":
         if (typeof v !== "boolean") bad(`${fld.label} must be on or off`);
