@@ -204,7 +204,7 @@ function PinChat() {
   const engine = useEngine();
   const samples = ["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])];
   return (
-    <Card className="flex flex-col h-[min(680px,calc(100dvh-280px))] min-h-96 overflow-hidden fade-in">
+    <Card className="flex flex-col h-[min(680px,calc(100dvh-340px))] min-h-96 overflow-hidden fade-in">
       <PinThread
         inPlace
         autoFocus

@@ -122,6 +122,12 @@ export function PinIsland() {
       window.removeEventListener("mousedown", onDown);
     };
   }, [open, pin]);
+  // Opening moves focus to the composer (after the shape has mostly settled, so the caret doesn't jump around).
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => shell.current?.querySelector<HTMLTextAreaElement>('.island-layer[data-phase="in"] textarea')?.focus({ preventScroll: true }), 180);
+    return () => clearTimeout(t);
+  }, [open, pin.tab]);
   useEffect(() => {
     if (wasOpen.current && !open && wrap.current?.contains(document.activeElement ?? null) === false && document.activeElement === document.body) pillRef.current?.focus({ preventScroll: true });
     wasOpen.current = open;
@@ -273,7 +279,6 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
       {pin.tab === "chat" ? (
         <PinThread
           className="flex-1"
-          autoFocus
           footer={hasActions && pin.messages.length > 0 ? <div className="px-3 pt-2"><QuickActionBar compact scroll /></div> : null}
           empty={
             <div className="pt-4">

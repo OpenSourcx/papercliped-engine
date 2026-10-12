@@ -132,7 +132,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
     >
       <div className="space-y-5">
         <Segmented value={kind} onChange={(k) => { setKind(k); setSize("small"); }} options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Name</span>
             <Input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true); }} onKeyDown={(e) => e.key === "Enter" && create()} autoFocus spellCheck={false} />
