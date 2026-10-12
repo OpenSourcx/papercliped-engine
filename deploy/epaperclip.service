@@ -28,6 +28,10 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 # It serves files, talks to Proxmox and the engine on loopback, keeps sessions in memory and writes only its state
 # directory: lock everything else down.
+# Agent containers: the guided setup runs the host's `ssh` client to provision the template container over the
+# Proxmox bridge. That needs nothing relaxed below: ssh is an ordinary unprivileged program (/usr/bin/ssh, from
+# openssh-client, which Proxmox hosts have), AF_INET is allowed, there is no network filter, and it keeps its key and
+# known_hosts in a 0700 directory under the private /tmp (PrivateTmp). The setup checks that ssh runs and says so if not.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

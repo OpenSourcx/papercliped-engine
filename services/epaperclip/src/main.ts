@@ -26,6 +26,7 @@ import { StateStore } from "./state.ts";
  *   EPC_ENGINE_URL         where the engine listens                     (default http://127.0.0.1:3100)
  *   EPC_ENGINE_PUBLIC_URL  the engine's PAPERCLIP_PUBLIC_URL, sent as Origin (default EPC_ENGINE_URL)
  *   EPC_ENGINE_DIR         where the engine is installed, for its version  (default /opt/epaperclip/engine)
+ *   EPC_PLUGIN_DIR         the built Proxmox sandbox provider (default /opt/epaperclip/plugins/proxmox-sandbox)
  */
 
 const env = process.env;
@@ -58,6 +59,8 @@ const handle = createApp({
   secureCookies: !devHttp,
   maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
   consolePort: port,
+  // The built Proxmox sandbox provider the installer puts beside the engine (agent containers).
+  containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
