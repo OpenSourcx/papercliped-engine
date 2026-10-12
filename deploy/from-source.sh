@@ -46,6 +46,9 @@ corepack enable --install-directory "$work/bin" || die "couldn't set up pnpm"
 export PATH="$work/bin:$PATH"
 pnpm install --frozen-lockfile >/dev/null
 pnpm build >/dev/null
+# The Proxmox sandbox provider is a standalone package (outside the pnpm workspace) with its own lockfile.
+npm --prefix plugins/proxmox-sandbox ci --no-audit --no-fund --ignore-scripts >/dev/null
+npm --prefix plugins/proxmox-sandbox run build >/dev/null
 git describe --tags --always > VERSION 2>/dev/null || echo "$REF" > VERSION
 echo "$REF-$(git rev-parse --short HEAD)" > VERSION
 bash deploy/install.sh "$@"
