@@ -13,7 +13,9 @@ Each phase ends with something that runs on a real Proxmox host.
 
 ## Phase 2: ePaperclip
 
-- [ ] Fork `paperclipai/paperclip` into this repository with history, so upstream changes can be merged
+- [x] Engine decision: run the published, pinned `paperclipai` package unmodified (no fork to carry), behind the host service with managed per-user accounts; see `docs/ENGINE.md`
+- [ ] Install the engine as a locked-down loopback service (private Node, lockfile, secrets generated at install)
+- [ ] Host service: vault, managed engine accounts, `/engine/api` and events WebSocket proxy
 - [ ] Container-session engine: a Paperclip sandbox provider that leases containers from the broker in the company's resource group
 - [ ] Resource groups in the company model: creating a company creates its pool, range, tag and limits through the broker; "let Pin decide" sizing
 - [ ] Connector access per connector: Pin and/or chosen companies
