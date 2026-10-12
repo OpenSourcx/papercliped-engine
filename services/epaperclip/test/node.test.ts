@@ -519,7 +519,7 @@ describe("mappings, tags and the cluster", () => {
     const b2 = `http://127.0.0.1:${(s2.address() as AddressInfo).port}`;
     const login = await fetch(b2 + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "sam", password: "right", realm: "pve" }) });
     const cookie = login.headers.get("set-cookie")!.split(";")[0];
-    const r = await (await fetch(b2 + "/api/node/cluster", { headers: { Cookie: cookie } })).json();
+    const r = (await (await fetch(b2 + "/api/node/cluster", { headers: { Cookie: cookie } })).json()) as any;
     expect(r).toMatchObject({ clustered: false, name: null, quorate: true });
     expect(r.nodes).toHaveLength(1);
     s2.closeAllConnections();

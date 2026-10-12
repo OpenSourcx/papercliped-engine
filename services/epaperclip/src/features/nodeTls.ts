@@ -11,7 +11,7 @@ import { basename, dirname, join } from "node:path";
  */
 
 export interface SecureServer {
-  setSecureContext(options: { cert: string; key: string; minVersion?: string }): void;
+  setSecureContext(options: { cert: string; key: string; minVersion?: "TLSv1.2" }): void;
 }
 
 export interface TlsStatus {
