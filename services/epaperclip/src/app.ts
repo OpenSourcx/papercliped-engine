@@ -499,7 +499,7 @@ export function createApp(d: AppDeps) {
         // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
         const warnings = existing ? [] : await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
         // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
-        warnings.push(...(await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId)).catch((e: Error) => [e.message])));
+        warnings.push(...(await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message])));
         return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
@@ -530,7 +530,7 @@ export function createApp(d: AppDeps) {
       const over = parseSetup(await readJson(req));
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can set up agent containers");
-        return containers.startSetup(() => clientFor(s), s.username, over);
+        return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
@@ -1628,7 +1628,7 @@ export function createApp(d: AppDeps) {
       inspect: engineGuard,
       // New agents default to their organization's container environment right away.
       after: (m, p, status) => {
-        if (status >= 200 && status < 300 && m === "POST" && /^\/api\/companies\/[^/]+\/agent(s|-hires)(\/|\?|$)/i.test(p)) void containers.reconcile().catch(() => {});
+        if (status >= 200 && status < 300 && m === "POST" && /^\/api\/companies(\/[^/]+\/agent(s|-hires))?(\/|\?|$)/i.test(p)) void containers.reconcile((am, ap, ab) => needEngine().userJson(s, am, ap, ab)).catch(() => {});
       },
     });
   };

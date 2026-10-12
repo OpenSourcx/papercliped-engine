@@ -123,6 +123,9 @@ interface EngineEnv {
 
 class StepError extends Error {}
 
+/** A call to the engine as a person who can manage the organization (the signed-in administrator). */
+export type EngineActor = (method: string, path: string, body?: unknown) => Promise<unknown>;
+
 const STORAGE_RE = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
 const BRIDGE_RE = /^[A-Za-z][A-Za-z0-9._-]{0,14}$/;
 const POOL_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/;
@@ -202,6 +205,7 @@ export class AgentContainers {
   private readonly jobs = new Map<string, JobView>();
   private scrub = new Set<string>();
   private reconciling: Promise<void> | null = null;
+  private actor: EngineActor | null = null;
 
   constructor(d: ContainersDeps) {
     this.d = d;
@@ -269,7 +273,11 @@ export class AgentContainers {
   private async eng<T>(method: string, path: string, body?: unknown): Promise<T> {
     const g = this.d.gateway;
     if (!g) throw new StepError("The engine isn't set up on this host.");
-    const r = await g.serviceJson<T>(method, path, body);
+    const r = await g.serviceJson<T>(method, path, body).catch((e) => {
+      // Say which engine call was refused (the path never carries a secret).
+      if (e instanceof HttpError) throw new HttpError(e.status, e.code, `${e.message} (${method} ${path.split("?")[0]})`);
+      throw e;
+    });
     if (r === null) throw new StepError("The engine's instance admin isn't ePaperclip's service account (another account claimed the engine first), so ePaperclip can't install the provider or create environments. Do it in the engine as that admin, following docs/PROXMOX-SANDBOX.md, or reset the engine's data.");
     return r;
   }
@@ -465,11 +473,12 @@ export class AgentContainers {
   }
 
   /** Starts a setup job (or returns the one already running). Checks that need no Proxmox call happen first. */
-  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>): Promise<{ jobId: string; alreadyRunning: boolean }> {
+  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
     if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
     await this.assertEngineReady();
     const job = this.newJob("setup", who, JOB_STEPS);
     this.job = job;
+    this.actor = actor;
     void this.runSetup(job, getPve, over).catch((e) => this.fail(job, e));
     return { jobId: job.id, alreadyRunning: false };
   }
@@ -497,6 +506,7 @@ export class AgentContainers {
 
   private finish(job: JobView) {
     this.scrub = new Set();
+    this.actor = null;
     this.save({ lastJob: { ...job, log: job.log.slice(-200) } });
   }
 
@@ -842,6 +852,7 @@ export class AgentContainers {
     const bare = token.slice(token.indexOf("=") + 1);
     this.addSecret(bare, token, key);
     const cid = encodeURIComponent(companyId);
+    await this.ensureMember(companyId);
     // Secrets: created once per organization and rotated when the value changes. Environments reference them by id.
     const secrets = { ...(st.secrets ?? {}) };
     let sec = secrets[companyId];
@@ -892,12 +903,25 @@ export class AgentContainers {
     }
     return warnings;
   }
+  /**
+   * The engine lets an instance admin read and manage an organization's secrets and agents only through a membership in
+   * it. So the service account joins each organization (an invitation, accepted as itself) the first time it needs to.
+   */
+  private async ensureMember(companyId: string) {
+    const me = await this.eng<{ companyIds?: string[]; memberships?: { companyId: string; status: string }[] }>("GET", "/api/cli-auth/me");
+    if ((me.companyIds ?? []).includes(companyId) || (me.memberships ?? []).some((m) => m.companyId === companyId && m.status === "active")) return;
+    if (!this.actor) throw new StepError("The service account isn't a member of this organization yet, and adding it needs an organization owner or a Proxmox administrator signed in. Open Agent containers in the console and press Set up again.");
+    const invite = (await this.actor("POST", `/api/companies/${encodeURIComponent(companyId)}/invites`, { allowedJoinTypes: "human", humanRole: "admin" })) as { token?: string };
+    if (!invite?.token) throw new StepError("The engine didn't return an invitation for the service account");
+    await this.eng("POST", `/api/invites/${encodeURIComponent(invite.token)}/accept`, { requestType: "human" });
+  }
+
   private log2(job: JobView | undefined, text: string) {
     if (job) this.log(job, "info", text);
   }
 
   /** Engine-side reconciliation for every organization (new ones, new agents, resized groups). Needs no Proxmox session. */
-  async reconcile(): Promise<string[]> {
+  async reconcile(actor: EngineActor | null = null): Promise<string[]> {
     if (!this.d.gateway || this.stored().lastState !== "ready" || this.job?.status === "running") return [];
     if (this.reconciling) {
       await this.reconciling;
@@ -905,13 +929,21 @@ export class AgentContainers {
     }
     const out: string[] = [];
     this.reconciling = (async () => {
+      this.actor = actor;
       try {
         const p = this.params();
-        for (const c of await this.companies()) out.push(...(await this.ensureOrg(c.id, c.name, p)));
+        for (const c of await this.companies()) {
+          try {
+            out.push(...(await this.ensureOrg(c.id, c.name, p)));
+          } catch (e) {
+            out.push(`${c.name}: ${errText(e)}`);
+          }
+        }
       } catch (e) {
         out.push(errText(e));
       } finally {
         this.scrub = new Set();
+        this.actor = null;
       }
     })().finally(() => (this.reconciling = null));
     await this.reconciling;
@@ -919,7 +951,7 @@ export class AgentContainers {
   }
 
   /** A resource group was created or resized: give the pool its rights (as the person who made it) and update the environment. */
-  async onResourceGroup(pve: ProxmoxClient, companyId: string): Promise<string[]> {
+  async onResourceGroup(pve: ProxmoxClient, companyId: string, actor: EngineActor | null = null): Promise<string[]> {
     if (this.stored().lastState !== "ready" && !this.stored().templateVmid) return [];
     const warnings: string[] = [];
     const pool = this.pools()[companyId]?.pool;
@@ -930,6 +962,7 @@ export class AgentContainers {
         warnings.push(`Agent containers can't use the pool ${pool} until a Proxmox administrator re-runs the agent containers setup (${errText(e)}).`);
       }
     }
+    this.actor = actor;
     try {
       const c = (await this.companies()).find((x) => x.id === companyId);
       if (c) warnings.push(...(await this.ensureOrg(companyId, c.name, this.params())));
@@ -937,6 +970,7 @@ export class AgentContainers {
       warnings.push(`The agent containers environment wasn't updated: ${errText(e)}`);
     } finally {
       this.scrub = new Set();
+      this.actor = null;
     }
     return warnings;
   }
