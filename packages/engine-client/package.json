@@ -1,0 +1,22 @@
+{
+  "name": "@papercliped-engine/engine-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed client for the Paperclip engine's HTTP API as served by the host service at /engine/api. Types come from @paperclipai/shared at the pinned engine version; spec/openapi.json is that version's API, and a test checks every path used here exists in it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@types/node": "^22.10.0"
+  },
+  "dependencies": {
+    "@paperclipai/shared": "2026.1005.0"
+  }
+}

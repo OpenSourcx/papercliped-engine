@@ -64,3 +64,30 @@ Paperclip ships an MCP server, an OAuth-scoped public MCP endpoint, and a "board
 4. The `proxmox` sandbox provider, with an agent template.
 5. Pin on the engine's MCP and API.
 6. IAC: Proxmox users and permissions become engine memberships and roles.
+
+## Contracts between the parts
+
+These are fixed so the installer, host service, console, Pin and the sandbox provider can be built in parallel.
+
+**Install layout**
+- Private Node.js (pinned, verified): `/opt/epaperclip/node/bin/node`, used by both services.
+- Host service and console: `/opt/epaperclip/epaperclip.mjs`, `/opt/epaperclip/console/`.
+- Engine: `/opt/epaperclip/engine/` holds `package.json` and `package-lock.json` from this repo's `engine/` folder, installed with `npm ci` (integrity-checked). Entry point: `/opt/epaperclip/engine/node_modules/@paperclipai/server/dist/index.js`.
+- Engine data: `/var/lib/epaperclip-engine` (`PAPERCLIP_HOME`), owned by system user `epaperclip-engine`.
+- Engine settings: `/etc/epaperclip/engine.env`, mode 0600, generated once at install with fresh secrets (`BETTER_AUTH_SECRET`, `PAPERCLIP_AGENT_JWT_SECRET`) plus `PAPERCLIP_DEPLOYMENT_MODE=authenticated`, `PAPERCLIP_DEPLOYMENT_EXPOSURE=private`, `HOST=127.0.0.1`, `PORT=3100`, `PAPERCLIP_PUBLIC_URL=http://127.0.0.1:3100`, `PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost`, `PAPERCLIP_API_URL=http://127.0.0.1:3100`, `PAPERCLIP_MIGRATION_AUTO_APPLY=true`, `SERVE_UI=false`.
+- Units: `epaperclip.service` (host service, port 443) and `epaperclip-engine.service` (engine, loopback 3100).
+- Host service state: `/var/lib/epaperclip` (systemd `StateDirectory=epaperclip`, `EPC_STATE_DIR`), holding `vault.key` (0600, 32 random bytes) and `state.json` (settings, with every secret encrypted by the vault).
+- The host service finds the engine at `EPC_ENGINE_URL` (default `http://127.0.0.1:3100`).
+
+**Host service HTTP (browser-facing, all need the Proxmox session; writes need `X-EPC-Request: 1`)**
+- `/engine/api/*` forwards to the engine's `/api/*` as the signed-in person's managed engine account. The WebSocket `/engine/api/companies/:id/events/ws` is forwarded the same way. Cookies from the browser are never forwarded; the engine session lives in the host service.
+- `GET /api/engine/status`: `{ installed, reachable, ready, version, bootstrap: "pending" | "ready", error? }`.
+- `GET /api/connectors`: providers and integrations with `{ id, kind, configured, last4?, testedAt?, ok? }`. Never returns a secret.
+- `PUT /api/connectors/:id/credential` `{ apiKey }`, `POST /api/connectors/:id/test`, `DELETE /api/connectors/:id/credential`.
+- `GET /api/pin/settings`, `PUT /api/pin/settings`: `{ provider, model, mode: "assistant" | "agent", connectors: string[] }`.
+- `GET /api/pin/models?provider=`: models the configured key can use, read from the provider.
+- `POST /api/pin/chat`: `{ messages, context: { page, device, org? } }`, answers as a server-sent event stream: `delta` (text), `tool` (a proposed or completed action), `done`, `error`.
+
+**Console**
+- Talks to the engine only through `@papercliped-engine/engine-client` (base `/engine`).
+- Demo mode keeps its in-browser data; live mode uses the engine and Proxmox only, never demo data.

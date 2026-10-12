@@ -93,6 +93,22 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.33.0)
 
+  packages/engine-client:
+    dependencies:
+      '@paperclipai/shared':
+        specifier: 2026.1005.0
+        version: 2026.1005.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.33.0)
+
   packages/marketplace:
     devDependencies:
       '@types/node':
@@ -404,6 +420,10 @@ packages:
 
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
+
+  '@paperclipai/shared@2026.1005.0':
+    resolution: {integrity: sha512-BHeRJ6L2QcZFYT4NoAmVi7LJwwj/XKxmLqZ9+cFsu6kjzPJvPo8ZsluSDGKhI7tETUCUQirsSTPhUdqzLDaDYg==}
+    engines: {node: '>=24.11.0'}
 
   '@rolldown/binding-android-arm-eabi@1.2.13':
     resolution: {integrity: sha512-Vu/NICrgdRvUOeaJZIyB2FP63s6fO/4ud5l8dXmxDx9yDyn+mN0y+gsvsVviSli+T361Aqo0h46EuMoobrwawA==}
@@ -1334,6 +1354,9 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
+  three@0.185.1:
+    resolution: {integrity: sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==}
+
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
 
@@ -1552,6 +1575,9 @@ packages:
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
 snapshots:
 
   '@asamuzakjp/css-color@3.2.0':
@@ -1695,6 +1721,11 @@ snapshots:
   '@novnc/novnc@1.7.0': {}
 
   '@oxc-project/types@0.153.0': {}
+
+  '@paperclipai/shared@2026.1005.0':
+    dependencies:
+      three: 0.185.1
+      zod: 4.6.6
 
   '@rolldown/binding-android-arm-eabi@1.2.13':
     optional: true
@@ -2490,6 +2521,8 @@ snapshots:
 
   tapable@2.3.3: {}
 
+  three@0.185.1: {}
+
   tinybench@2.9.0: {}
 
   tinyexec@0.3.2: {}
@@ -2642,3 +2675,5 @@ snapshots:
   xml-name-validator@5.0.0: {}
 
   xmlchars@2.2.0: {}
+
+  zod@4.6.6: {}
