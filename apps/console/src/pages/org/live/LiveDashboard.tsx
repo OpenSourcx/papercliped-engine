@@ -31,7 +31,7 @@ function ResourceGroupCard() {
   const { org, companyId } = useLiveOrg();
   const engine = useEngine();
   const rg = useResourceGroup(companyId);
-  const set = useSetResourceGroup(companyId);
+  const set = useSetResourceGroup(companyId, org.name);
   const [suggested] = useState(() => suggestSize(engine.host, engine.data));
   const g = org.resourceGroup;
   return (
@@ -41,7 +41,7 @@ function ResourceGroupCard() {
         <Loading />
       ) : rg.error ? (
         <LoadError error={rg.error} retry={() => void rg.refetch()} />
-      ) : !rg.data ? (
+      ) : !rg.group ? (
         <div>
           <p className="text-[14px] text-ink-2">{org.name} has no resource group yet, so its agents have nowhere on this device to run containers.</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">

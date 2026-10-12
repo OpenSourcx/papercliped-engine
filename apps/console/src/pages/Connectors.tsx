@@ -58,7 +58,7 @@ export function Connectors() {
 }
 
 const KNOWN: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", github: "GitHub", slack: "Slack", gmail: "Gmail", google: "Google", gemini: "Gemini", openrouter: "OpenRouter", mistral: "Mistral", groq: "Groq", xai: "xAI" };
-const nameOf = (c: ConnectorState) => c.name || KNOWN[c.id] || c.id.replace(/[-_]/g, " ").replace(/^./, (x) => x.toUpperCase());
+const nameOf = (c: ConnectorState) => c.label || KNOWN[c.id] || c.id.replace(/[-_]/g, " ").replace(/^./, (x) => x.toUpperCase());
 const KIND_ICON = (kind: string) => ICON[kind as Connector["kind"]] ?? <Cable className="h-4 w-4" />;
 
 /** A 403 from the host service means only an administrator may change connectors; say so in its words. */
@@ -67,7 +67,7 @@ function actionErrorText(e: unknown): string {
   return errorText(e);
 }
 
-function ConnectorRow({ c }: { c: ConnectorState }) {
+function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean }) {
   const act = useConnectorAction();
   const [editing, setEditing] = useState(false);
   const [key, setKey] = useState("");
@@ -81,8 +81,8 @@ function ConnectorRow({ c }: { c: ConnectorState }) {
   const test = () =>
     act.mutate({ id: c.id, kind: "test" }, {
       onSuccess: (r) => {
-        const t = r as { ok?: boolean; message?: string; error?: string } | null;
-        setResult({ ok: t?.ok !== false, text: t?.message ?? t?.error ?? (t?.ok === false ? "The provider refused the key." : "The key works.") });
+        const t = r as ConnectorState | null;
+        setResult({ ok: t?.ok !== false, text: t?.ok === false ? t.error ?? "The provider refused the key." : "The key works." });
       },
       onError: (e) => setResult({ ok: false, text: actionErrorText(e) }),
     });
@@ -93,15 +93,15 @@ function ConnectorRow({ c }: { c: ConnectorState }) {
         <div className="flex-1 min-w-[160px]">
           <div className="font-medium">{name}</div>
           <div className="text-[12px] text-ink-3">
-            {c.configured ? <>Key ending in <span className="font-mono">{c.last4 ?? "••••"}</span>{c.testedAt ? ` · tested ${ago(c.testedAt)}${c.ok === false ? ", failed" : ""}` : ""}</> : "No key yet"}
+            {c.configured ? <>Key ending in <span className="font-mono">{c.last4 ?? "••••"}</span>{c.updatedBy ? ` · set by ${c.updatedBy}` : ""}{c.testedAt ? ` · tested ${ago(c.testedAt)}${c.ok === false ? ", failed" : ""}` : ""}</> : "No key yet"}
           </div>
         </div>
         {c.configured ? (c.ok === false ? <Status kind="warning" label="Needs attention" /> : <Status kind="good" label="Connected" />) : <Status kind="off" label="Not set up" />}
-        <div className="flex gap-2">
+        {canManage && <div className="flex gap-2">
           <Button size="sm" onClick={() => { setEditing(!editing); setResult(null); act.reset(); }} disabled={busy}>{c.configured ? "Replace key" : "Set key"}</Button>
           {c.configured && <Button size="sm" variant="ghost" onClick={test} disabled={busy}>Test</Button>}
           {c.configured && <Button size="sm" variant="ghost" onClick={() => act.mutate({ id: c.id, kind: "remove" }, { onSuccess: () => setResult(null) })} disabled={busy}>Remove</Button>}
-        </div>
+        </div>}
       </div>
       {editing && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -110,6 +110,7 @@ function ConnectorRow({ c }: { c: ConnectorState }) {
         </div>
       )}
       {editing && <p className="text-[12px] text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are.</p>}
+      {!result && c.configured && c.ok === false && c.error && <p className="text-[13px] text-critical mt-2">{c.error}</p>}
       {result && <p className={`text-[13px] mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
       {act.isError && act.variables?.kind !== "test" && <p className="text-[13px] text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}
     </div>
@@ -125,9 +126,10 @@ function LiveConnectors() {
       <Card className="divide-y divide-line">
         {list.isPending && <p className="px-5 py-6 text-[14px] text-ink-3" aria-busy="true">Loading connectors…</p>}
         {list.error && <p className="px-5 py-4 text-[14px] text-ink-2" role="alert">{errorText(list.error)}</p>}
-        {list.data?.length === 0 && <EmptyState icon={<Cable className="h-5 w-5" />} title="No connectors" body="The host service doesn't offer any connectors yet." />}
-        {(list.data ?? []).map((c) => <ConnectorRow key={c.id} c={c} />)}
+        {list.data?.connectors.length === 0 && <EmptyState icon={<Cable className="h-5 w-5" />} title="No connectors" body="The host service doesn't offer any connectors yet." />}
+        {(list.data?.connectors ?? []).map((c) => <ConnectorRow key={c.id} c={c} canManage={list.data?.canManage === true} />)}
       </Card>
+      {list.data && !list.data.canManage && <p className="text-[12px] text-ink-3 mt-3">Only Proxmox administrators can add, test or remove keys. You can see which connectors are set up.</p>}
     </PageFrame>
   );
 }

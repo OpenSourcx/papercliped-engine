@@ -4,7 +4,7 @@ import { AlertTriangle, Database, FileText, Sparkles } from "lucide-react";
 import { EngineError } from "@papercliped-engine/engine-client";
 import { orgNameError, useEngine } from "../data/store.tsx";
 import { orgSlug } from "../data/engine/map.ts";
-import { errorText, useCreateOrg, useEngineStatus, type CreateOrgResult } from "../data/engine/queries.ts";
+import { errorText, useCanCreateOrgs, useCreateOrg, useEngineStatus, type CreateOrgResult } from "../data/engine/queries.ts";
 import { EngineUnavailable, Loading, textareaClass } from "./org/live/common.tsx";
 import { formatBytes, slugify } from "../lib/storage.ts";
 import { suggestSize } from "../pin/brain.ts";
@@ -33,6 +33,7 @@ export function NewOrgModal({ onClose }: { onClose: () => void }) {
   const live = engine.live;
   const gate = useEngineStatus();
   const createLive = useCreateOrg();
+  const canCreate = useCanCreateOrgs();
   const [description, setDescription] = useState("");
   const [created, setCreated] = useState<CreateOrgResult | null>(null);
   // Live, the engine picks the address (from the task prefix it assigns), so only the name itself is checked here.
@@ -72,6 +73,16 @@ export function NewOrgModal({ onClose }: { onClose: () => void }) {
             <p className="text-ink-3">The host service said: {created.resourceGroupError}</p>
             <p>You can create the resource group from the organization's dashboard.</p>
           </div>
+        </div>
+      </Modal>
+    );
+  }
+  if (live && gate.state === "ready" && canCreate === false) {
+    return (
+      <Modal size="md" title="Create an organization" onClose={onClose} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
+        <div className="text-[14px] text-ink-2 space-y-2">
+          <p>Organizations on this device are created by a Proxmox administrator, who can then invite you.</p>
+          <p className="text-ink-3">Ask someone with administrator rights on {device} to create one and add you. It shows up here as soon as they do.</p>
         </div>
       </Modal>
     );

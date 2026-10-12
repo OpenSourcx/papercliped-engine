@@ -12,8 +12,9 @@ import type { Plugin, ProxyOptions } from "vite";
  * - /engine/api/* goes to the engine's /api/* as a throwaway engine account this plugin signs up, the way the host
  *   service forwards as the signed-in person's managed account. Browser cookies are never forwarded.
  * - /api/me answers as a pretend Proxmox user, so the console starts in live mode. /api/host answers with an empty host.
- * - /api/engine/status, /api/connectors and /api/resource-groups/:id are small in-memory stand-ins for the contract in
- *   docs/ENGINE.md. EPC_DEV_RG_FAIL=1 makes resource groups fail; EPC_DEV_CONNECTORS_ADMIN=0 makes connector writes 403.
+ * - /api/engine/status, /api/connectors and /api/resource-groups are small in-memory stand-ins shaped like the host
+ *   service's (services/epaperclip). EPC_DEV_RG_FAIL=1 makes resource groups fail; EPC_DEV_CONNECTORS_ADMIN=0 makes
+ *   connector writes 403. To test against the real host service instead, run it and point the console at it.
  *
  * The engine account's credentials stay in node_modules/.cache (never committed). EPC_DEV_ENGINE_COOKIE uses an existing
  * engine session instead, for example one with admin rights, since only instance admins may create organizations.
@@ -70,9 +71,10 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 export function devEngine(): Plugin | null {
   const engine = process.env.EPC_DEV_ENGINE?.replace(/\/$/, "");
   if (!engine) return null;
-  const connectors = new Map<string, { id: string; kind: string; configured: boolean; last4?: string; testedAt?: string; ok?: boolean }>(
-    [["anthropic", "model"], ["openai", "model"], ["github", "code"], ["slack", "chat"]].map(([id, kind]) => [id, { id, kind, configured: false }]),
+  const connectors = new Map<string, { id: string; kind: string; label: string; configured: boolean; last4?: string; updatedAt?: string; updatedBy?: string; testedAt?: string; ok?: boolean; error?: string }>(
+    [["anthropic", "Anthropic"], ["openai", "OpenAI"], ["gemini", "Google Gemini"], ["openrouter", "OpenRouter"]].map(([id, label]) => [id, { id, kind: "model", label, configured: false }]),
   );
+  const admin = process.env.EPC_DEV_CONNECTORS_ADMIN !== "0";
   const groups = new Map<string, Record<string, unknown>>();
   let cookie = "";
 
@@ -106,6 +108,8 @@ export function devEngine(): Plugin | null {
         const method = req.method ?? "GET";
         // Like the host service: writes need the request header, so a plain form post can't drive the engine.
         if (path.startsWith("/engine/api/") && method !== "GET" && req.headers["x-epc-request"] !== "1") return send(res, 403, { error: "Missing request header", code: "csrf" });
+        // Like the host service: the engine's own sign-in and setup routes are never reachable from a browser.
+        if (/^\/engine\/api\/(auth|bootstrap)(\/|$)/.test(path) || (path.startsWith("/engine/api/cli-auth") && !(method === "GET" && path === "/engine/api/cli-auth/me"))) return send(res, 403, { error: "Not available through the console", code: "forbidden" });
         if (!path.startsWith("/api/")) return next();
         if (path === "/api/me") return send(res, 200, { user: { username: "developer@pve", name: "Developer", realm: "pve", node: "pve" } });
         if (path === "/api/host") return send(res, 200, { node: "pve", version: "dev", status: null, resources: [], storage: [] });
@@ -113,43 +117,43 @@ export function devEngine(): Plugin | null {
           try {
             const h = (await (await fetch(`${engine}/api/health`)).json()) as { status?: string; bootstrapStatus?: string; commit?: string };
             const ready = h.status === "ok" && h.bootstrapStatus === "ready";
-            return send(res, 200, { installed: true, reachable: true, ready, version: h.commit ?? null, bootstrap: h.bootstrapStatus === "ready" ? "ready" : "pending" });
+            return send(res, 200, { installed: true, reachable: true, ready, version: h.commit ?? null, bootstrap: h.bootstrapStatus === "ready" ? "ready" : "pending", serviceAccount: "ours" });
           } catch (e) {
-            return send(res, 200, { installed: true, reachable: false, ready: false, version: null, bootstrap: "pending", error: String(e) });
+            return send(res, 200, { installed: true, reachable: false, ready: false, version: null, bootstrap: "pending", serviceAccount: "error", error: String(e) });
           }
         }
-        if (path === "/api/connectors" && method === "GET") return send(res, 200, [...connectors.values()]);
+        if (path === "/api/connectors" && method === "GET") return send(res, 200, { connectors: [...connectors.values()], canManage: admin });
         const conn = path.match(/^\/api\/connectors\/([^/]+)\/(credential|test)$/);
         if (conn) {
           const c = connectors.get(decodeURIComponent(conn[1]));
           if (!c) return send(res, 404, { error: "Unknown connector", code: "not_found" });
-          if (process.env.EPC_DEV_CONNECTORS_ADMIN === "0") return send(res, 403, { error: "Only administrators can change connectors", code: "forbidden" });
+          if (!admin) return send(res, 403, { error: "Only Proxmox administrators (Sys.Modify on /) can change connectors", code: "forbidden" });
           if (conn[2] === "credential" && method === "PUT") {
             const key = String((await readBody(req)).apiKey ?? "");
             if (key.length < 8) return send(res, 400, { error: "That doesn't look like a key", code: "invalid" });
-            Object.assign(c, { configured: true, last4: key.slice(-4), testedAt: undefined, ok: undefined });
-            return send(res, 200, c);
+            Object.assign(c, { configured: true, last4: key.slice(-4), updatedAt: new Date().toISOString(), updatedBy: "developer@pve", testedAt: undefined, ok: undefined, error: undefined });
+            return send(res, 200, { connector: c });
           }
           if (conn[2] === "credential" && method === "DELETE") {
             Object.assign(c, { configured: false, last4: undefined, testedAt: undefined, ok: undefined });
             return send(res, 200, { ok: true });
           }
           if (conn[2] === "test" && method === "POST") {
-            Object.assign(c, { testedAt: new Date().toISOString(), ok: c.configured });
-            return send(res, 200, c.configured ? { ok: true, message: "The key works." } : { ok: false, error: "No key set." });
+            if (!c.configured) return send(res, 404, { error: `${c.label} has no API key yet`, code: "not_configured" });
+            Object.assign(c, { testedAt: new Date().toISOString(), ok: true });
+            return send(res, 200, { connector: c });
           }
         }
+        if (path === "/api/resource-groups" && method === "GET") return send(res, 200, { groups: [...groups.values()] });
         const rg = path.match(/^\/api\/resource-groups\/([^/]+)$/);
-        if (rg) {
-          const id = decodeURIComponent(rg[1]);
-          if (method === "GET") return groups.has(id) ? send(res, 200, groups.get(id)) : send(res, 404, { error: "No resource group", code: "not_found" });
-          if (method === "PUT") {
-            if (process.env.EPC_DEV_RG_FAIL === "1") return send(res, 502, { error: "Proxmox refused to create the pool (dev failure)", code: "proxmox" });
-            const b = await readBody(req);
-            const g = { pool: `epc-${id.slice(0, 8)}`, cores: Number(b.cores), memoryMb: Number(b.memoryMb), diskGb: Number(b.diskGb), maxGuests: Number(b.maxGuests) };
-            groups.set(id, g);
-            return send(res, 200, g);
-          }
+        if (rg && method === "PUT") {
+          const companyId = decodeURIComponent(rg[1]);
+          if (process.env.EPC_DEV_RG_FAIL === "1") return send(res, 502, { error: "Proxmox refused to create the pool (dev failure)", code: "proxmox" });
+          const b = await readBody(req);
+          const name = String(b.name ?? "org");
+          const g = { companyId, name, pool: `epc-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24)}`, cores: Number(b.cores), memoryMb: Number(b.memoryMb), diskGb: Number(b.diskGb), maxGuests: Number(b.maxGuests), updatedAt: new Date().toISOString(), updatedBy: "developer@pve" };
+          groups.set(companyId, g);
+          return send(res, 200, { group: g });
         }
         return send(res, 404, { error: "Not part of the engine dev setup", code: "dev_unavailable" });
       });

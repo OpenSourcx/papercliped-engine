@@ -64,9 +64,16 @@ export function useAgentsOf(companyIds: string[]) {
   return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agents(id), queryFn: () => engine.agents.list(id), enabled: ready, refetchInterval: 30_000 })) });
 }
 
-export function useResourceGroupsOf(companyIds: string[]) {
+/** Every resource group the person can see (one list from the host service); an organization without an entry has none yet. */
+export function useResourceGroups() {
   const ready = useEngineReady();
-  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.resourceGroup(id), queryFn: () => host.resourceGroups.get(id), enabled: ready, retry: false, staleTime: 60_000 })) });
+  return useQuery({ queryKey: qk.resourceGroups, queryFn: host.resourceGroups.list, enabled: ready, retry: 1, staleTime: 30_000 });
+}
+
+/** One organization's resource group: the group, null when it has none, undefined while unknown. */
+export function useResourceGroup(companyId: string | null | undefined) {
+  const q = useResourceGroups();
+  return { ...q, group: q.data ? q.data.find((g) => g.companyId === companyId) ?? null : undefined };
 }
 
 function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean } = {}) {
@@ -93,7 +100,6 @@ export const useCosts = (companyId: string | null | undefined) =>
   });
 export const useActivity = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.activity(companyId ?? ""), (id) => engine.activity(id, 50));
 export const useMembers = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.members(companyId ?? ""), (id) => engine.companies.members(id), { poll: false });
-export const useResourceGroup = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.resourceGroup(companyId ?? ""), (id) => host.resourceGroups.get(id), { poll: false });
 
 export function useAdapters() {
   const ready = useEngineReady();
@@ -119,7 +125,7 @@ export async function createOrganization(input: { name: string; description?: st
   const company = await engine.companies.create({ name: input.name.trim(), description: input.description || null });
   let resourceGroupError: string | null = null;
   try {
-    await host.resourceGroups.put(company.id, input.size);
+    await host.resourceGroups.put(company.id, { name: company.name, ...input.size });
   } catch (e) {
     resourceGroupError = errorText(e);
   }
@@ -133,14 +139,20 @@ export function useCreateOrg() {
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: qk.orgs });
       void qc.invalidateQueries({ queryKey: qk.me });
-      void qc.invalidateQueries({ queryKey: qk.resourceGroup(r.companyId) });
+      void qc.invalidateQueries({ queryKey: qk.resourceGroups });
     },
   });
 }
 
-export function useSetResourceGroup(companyId: string) {
+export function useSetResourceGroup(companyId: string, name: string) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (size: ResourceGroupSize) => host.resourceGroups.put(companyId, size), onSettled: () => qc.invalidateQueries({ queryKey: qk.resourceGroup(companyId) }) });
+  return useMutation({ mutationFn: (size: ResourceGroupSize) => host.resourceGroups.put(companyId, { name, ...size }), onSettled: () => qc.invalidateQueries({ queryKey: qk.resourceGroups }) });
+}
+
+/** Only engine instance admins can create organizations; on ePaperclip those are the Proxmox node administrators. Undefined while unknown. */
+export function useCanCreateOrgs(): boolean | undefined {
+  const me = useMe();
+  return me.data ? me.data.isInstanceAdmin === true : undefined;
 }
 
 export function useCreateIssue(companyId: string) {

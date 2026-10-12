@@ -8,7 +8,7 @@ import { usePin } from "../pin/PinContext.tsx";
 import { modalHref, settingsHref } from "../modals/useModals.ts";
 import { ArcMeter, BarMeter } from "../ui/meters.tsx";
 import { Avatar, Card, SectionTitle, Status } from "../ui/primitives.tsx";
-import { errorText, useEngineStatus, useOrgs } from "../data/engine/queries.ts";
+import { errorText, useCanCreateOrgs, useEngineStatus, useOrgs } from "../data/engine/queries.ts";
 import { EngineUnavailable, Loading } from "./org/live/common.tsx";
 
 function greeting(): string {
@@ -51,7 +51,7 @@ function OrgCard({ org, device }: { org: Org; device: string }) {
 }
 
 export function Home() {
-  const { setup, host, data } = useEngine();
+  const { setup, host, data, live } = useEngine();
   const pin = usePin();
   const device = setup?.deviceName ?? "pve";
   const name = (setup?.ownerName || "there").split(" ")[0];
@@ -59,6 +59,9 @@ export function Home() {
   const running = machines.filter((g) => g.status === "running").length;
   const working = data.orgs.flatMap((o) => o.agents).filter((a) => a.status === "working").length;
   const activeRules = data.rules.filter((r) => r.enabled).length;
+  // Live, only engine instance admins (Proxmox node administrators) can create organizations; the demo always can.
+  const liveCanCreate = useCanCreateOrgs();
+  const canCreate = live ? liveCanCreate : true;
 
   return (
     <div>
@@ -146,17 +149,24 @@ export function Home() {
         </section>
 
         <section>
-          <SectionTitle action={<Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
+          <SectionTitle action={canCreate && <Link to={modalHref("new-org")} className="text-[13px] text-ink-3 hover:text-ink inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" />New organization</Link>}>Organizations</SectionTitle>
           <LiveOrgsState />
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.orgs.map((o) => <OrgCard key={o.slug} org={o} device={device} />)}
-            <Link to={modalHref("new-org")} className="block">
-              <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
-                <Plus className="h-5 w-5" />
-                <span className="text-[14px]">New organization</span>
-                <span className="text-[12px]">or ask Pin to create one</span>
+            {canCreate ? (
+              <Link to={modalHref("new-org")} className="block">
+                <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink hover:border-accent/40 transition">
+                  <Plus className="h-5 w-5" />
+                  <span className="text-[14px]">New organization</span>
+                  <span className="text-[12px]">or ask Pin to create one</span>
+                </div>
+              </Link>
+            ) : canCreate === false && (
+              <div className="h-full min-h-[168px] rounded-xl border border-dashed border-line-strong flex flex-col items-center justify-center gap-2 text-ink-3 text-center px-6">
+                <span className="text-[14px] text-ink-2">{data.orgs.length ? "Need another organization?" : "No organizations yet"}</span>
+                <span className="text-[12px]">A Proxmox administrator creates organizations and invites people to them. Ask one to add you.</span>
               </div>
-            </Link>
+            )}
           </div>
         </section>
       </div>

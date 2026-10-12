@@ -251,7 +251,7 @@ export function LiveMembers() {
 export function LiveOrgSettings() {
   const { companyId, org } = useLiveOrg();
   const rg = useResourceGroup(companyId);
-  const g = rg.data;
+  const g = rg.group;
   return (
     <PageFrame width="3xl">
       <PageHeader title="Organization settings" />

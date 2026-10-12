@@ -48,8 +48,8 @@ const baseRoutes = (): Record<string, Handler> => ({
   "GET /engine/api/companies": () => [200, [company("c1", "Acme Works", "ACME"), company("c2", "Pin Labs", "PIN")]],
   "GET /engine/api/companies/c1/agents": () => [200, [agent("a1", "c1", "Forge", "running"), agent("a2", "c1", "Old", "terminated")]],
   "GET /engine/api/companies/c2/agents": () => [200, []],
-  "GET /api/resource-groups/c1": () => [200, { pool: "epc-acme", cores: 4, memoryMb: 8192, diskGb: 40, maxGuests: 3 }],
-  "GET /api/resource-groups/c2": () => [404, { error: "No resource group", code: "not_found" }],
+  // The host service lists the groups of the person's organizations; Pin Labs has none yet.
+  "GET /api/resource-groups": () => [200, { groups: [{ companyId: "c1", name: "Acme Works", pool: "epc-acme-works", cores: 4, memoryMb: 8192, diskGb: 40, maxGuests: 3 }] }],
 });
 
 class FakeSocket {
@@ -113,12 +113,12 @@ describe("live organizations", () => {
 describe("creating an organization", () => {
   it("creates it in the engine, then sets up its resource group", async () => {
     routes["POST /engine/api/companies"] = (b) => [201, { ...company("c9", (b as { name: string }).name, "NEW") }];
-    routes["PUT /api/resource-groups/c9"] = (b) => [200, { pool: "epc-new", ...(b as object) }];
+    routes["PUT /api/resource-groups/c9"] = (b) => [200, { group: { companyId: "c9", pool: "epc-new-co", ...(b as object) } }];
     const r = await createOrganization({ name: "  New Co ", description: "", size: { cores: 2, memoryMb: 2048, diskGb: 20, maxGuests: 2 } });
     expect(r).toEqual({ companyId: "c9", slugSource: { id: "c9", issuePrefix: "NEW" }, resourceGroupError: null });
     expect(calls.find((c) => c.method === "POST")).toMatchObject({ path: "/engine/api/companies", body: { name: "New Co", description: null } });
     const put = calls.find((c) => c.method === "PUT")!;
-    expect(put).toMatchObject({ path: "/api/resource-groups/c9", body: { cores: 2, memoryMb: 2048, diskGb: 20, maxGuests: 2 } });
+    expect(put).toMatchObject({ path: "/api/resource-groups/c9", body: { name: "New Co", cores: 2, memoryMb: 2048, diskGb: 20, maxGuests: 2 } });
     expect(put.headers["X-EPC-Request"]).toBe("1");
   });
 
@@ -263,5 +263,18 @@ describe("a live organization's pages", () => {
       </EngineProvider>,
     );
     expect(await screen.findByText("The engine isn't installed")).toBeTruthy();
+  });
+});
+
+describe("who can create organizations", () => {
+  it("is decided by the engine: only instance admins (Proxmox node administrators)", async () => {
+    const { useCanCreateOrgs } = await import("../src/data/engine/queries.ts");
+    const { Wrapper } = wrapper();
+    const { result } = renderHook(() => useCanCreateOrgs(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current).toBe(false));
+    routes["GET /engine/api/cli-auth/me"] = () => [200, { userId: "u1", isInstanceAdmin: true, companyIds: [], memberships: [], source: "session" }];
+    const second = wrapper();
+    const admin = renderHook(() => useCanCreateOrgs(), { wrapper: second.Wrapper });
+    await waitFor(() => expect(admin.result.current).toBe(true));
   });
 });
