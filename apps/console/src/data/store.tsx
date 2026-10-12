@@ -1,4 +1,4 @@
-import { DEFAULT_PLUGINS, pluginById } from "./storePlugins.ts";
+import { DEFAULT_PLUGINS, pluginById, type PluginEntry } from "./storePlugins.ts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Rule } from "@papercliped-engine/automations";
 import { useSession } from "../auth/session.tsx";
@@ -60,8 +60,8 @@ interface Engine {
   updateUser: (id: string, patch: Partial<User>) => void;
   setConnectorAccess: (id: string, who: "pin" | string, on: boolean) => void;
   /** Adds a Store plugin: a connector joins the Connectors list (needing setup), adapters and skills are switched on. */
-  installPlugin: (id: string) => void;
-  uninstallPlugin: (id: string) => void;
+  installPlugin: (id: string, entry?: PluginEntry) => void;
+  uninstallPlugin: (id: string, entry?: PluginEntry) => void;
   guestPower: (vmid: number, action: "start" | "shutdown" | "stop" | "reboot" | "reset") => { ok: boolean; error?: string };
   /** Deletes a machine. The name must be typed to confirm; Proxmox refuses running and protected machines. */
   destroyMachine: (vmid: number, confirm: string) => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -347,8 +347,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       notify: (n) => setData((d) => ({ ...d, notices: [{ ...n, id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), read: false }, ...d.notices].slice(0, 50) })),
       markRead: (id) => setData((d) => ({ ...d, notices: d.notices.map((n) => (!id || n.id === id ? { ...n, read: true } : n)) })),
       updateUser: (id, patch) => setData((d) => ({ ...d, users: d.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) })),
-      installPlugin: (id) => {
-        const p = pluginById(id);
+      installPlugin: (id, entry) => {
+        const p = entry ?? pluginById(id);
         if (!p) return;
         setData((d) => {
           if (p.kind === "connector") return d.connectors.some((c) => c.id === id) ? d : { ...d, connectors: [...d.connectors, { id, name: p.name, kind: p.connectorKind ?? "model", status: "needs_setup", access: { pin: false, orgs: [] } }] };
@@ -356,8 +356,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           return have.includes(id) ? d : { ...d, plugins: [...have, id] };
         });
       },
-      uninstallPlugin: (id) => {
-        const p = pluginById(id);
+      uninstallPlugin: (id, entry) => {
+        const p = entry ?? pluginById(id);
         if (!p) return;
         setData((d) => (p.kind === "connector" ? { ...d, connectors: d.connectors.filter((c) => c.id !== id) } : { ...d, plugins: (d.plugins ?? DEFAULT_PLUGINS).filter((x) => x !== id) }));
       },

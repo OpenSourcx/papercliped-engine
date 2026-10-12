@@ -282,6 +282,15 @@ export interface SdnState {
   pending: number;
 }
 
+/** The Store's signed catalog as the host service reports it. Empty and not enabled until a signing key is pinned. */
+export interface MarketplaceAnswer {
+  enabled: boolean;
+  entries: import("@papercliped-engine/marketplace/types").Entry[];
+  sequence?: number | null;
+  /** Why the catalog couldn't be used, when it couldn't. */
+  problem?: { code: string; message: string } | null;
+}
+
 /** The newest installer the Store found in a vendor's own checksum list. */
 export type LibraryLatest = import("@papercliped-engine/os-library").Latest;
 
@@ -398,6 +407,7 @@ export const api = {
   catalog: () => request<{ templates: CatalogTemplate[] }>("GET", "/api/templates/catalog").then((r) => r.templates),
   downloadTemplate: (storage: string, template: string) => request<{ task: string }>("POST", "/api/templates/download", { storage, template }),
   downloadUrl: (storage: string, d: UrlDownload) => request<{ task: string }>("POST", `/api/storage/${enc(storage)}/download-url`, d),
+  marketplace: () => request<MarketplaceAnswer>("GET", "/api/marketplace"),
   libraryLatest: (id: string) => request<LibraryLatest>("GET", `/api/library/${enc(id)}/latest`),
   upload: uploadFile,
   tasks: (limit = 50, vmid?: number) => request<{ tasks: TaskEntry[] }>("GET", `/api/tasks?limit=${limit}${vmid !== undefined ? `&vmid=${vmid}` : ""}`).then((r) => r.tasks),

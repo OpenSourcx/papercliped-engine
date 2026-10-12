@@ -14,6 +14,7 @@
   "dependencies": {
     "@papercliped-engine/proxmox-client": "workspace:*",
     "ws": "8.18.3",
+    "@papercliped-engine/marketplace": "workspace:*",
     "@papercliped-engine/os-library": "workspace:*"
   },
   "devDependencies": {

@@ -157,7 +157,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          {plugin && (it.status === "installed" ? <Button variant="danger" onClick={() => engine.uninstallPlugin(plugin.id)}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" onClick={() => engine.installPlugin(plugin.id)}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
+          {plugin && (it.status === "installed" ? <Button variant="danger" onClick={() => engine.uninstallPlugin(plugin.id, plugin)}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" onClick={() => engine.installPlugin(plugin.id, plugin)}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
           {it.kind === "manual" && it.lib?.kind === "manual" && (
             <>
               <Button onClick={() => nav("?modal=upload&content=iso", { replace: true })}><FileUp className="h-4 w-4" />Upload ISO</Button>
@@ -178,6 +178,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {it.lib?.kind === "fixed" && <p className="text-[13px] text-warning">{it.lib.note}</p>}
         {it.lib?.kind === "manual" && <p className="text-[13px] text-ink-3">{it.lib.note}</p>}
         {it.kind === "template" && it.template?.infopage && <p className="text-[13px] text-ink-3">A container system from Proxmox's template list.</p>}
+        {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-[13px] text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
         {plugin && plugin.kind === "connector" && <p className="text-[13px] text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
         {plugin && plugin.kind !== "connector" && <p className="text-[13px] text-ink-3">{plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Your choice is saved now.</p>}
         {needsStorage && installable && (

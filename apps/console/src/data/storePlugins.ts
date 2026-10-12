@@ -1,3 +1,4 @@
+import type { Entry as MarketEntry } from "@papercliped-engine/marketplace/types";
 import type { Connector } from "./types.ts";
 
 /**
@@ -15,6 +16,9 @@ export interface PluginEntry {
   kind: PluginKind;
   summary: string;
   connectorKind?: Connector["kind"];
+  /** Set for entries from the signed marketplace catalog. */
+  version?: string;
+  permissions?: string[];
 }
 
 export const PLUGINS: PluginEntry[] = [
@@ -52,5 +56,8 @@ export const PLUGINS: PluginEntry[] = [
 
 /** Installed by default in a fresh console: what the demo organizations already use. */
 export const DEFAULT_PLUGINS = ["claude_local", "codex_local"];
+
+/** A marketplace catalog entry as a Store plugin. */
+export const fromMarket = (e: MarketEntry): PluginEntry => ({ id: e.id, name: e.name, vendor: e.vendor, summary: e.summary, kind: e.kind, connectorKind: e.connectorKind, version: e.version, permissions: e.permissions });
 
 export const pluginById = (id: string) => PLUGINS.find((p) => p.id === id);

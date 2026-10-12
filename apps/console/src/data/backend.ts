@@ -1,4 +1,4 @@
-import { api, ApiError, type SdnState, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload, type LibraryLatest } from "./api.ts";
+import { api, ApiError, type SdnState, type GuestHardware, type HardwareChange, type IfaceSpec, type NetIface, type NicSpec, type SnapshotInfo, type BackupJob, type BackupJobSpec, type BackupRun, type RestoreSpec, type CatalogTemplate, type ContentKind, type MachineOptions, type StorageItem, type TaskDetail, type TaskEntry, type UrlDownload, type LibraryLatest, type MarketplaceAnswer } from "./api.ts";
 import type { Guest, HostStorage } from "./types.ts";
 import { demoNetworkConfig } from "./demoNet.ts";
 
@@ -14,6 +14,8 @@ export interface Backend {
   downloadUrl: (storage: string, d: UrlDownload) => Promise<{ task: string }>;
   /** The newest installer a vendor lists for a Library system, with the vendor's checksum. */
   libraryLatest: (id: string) => Promise<LibraryLatest>;
+  /** The signed catalog of connectors, adapters and skills beyond what ships with ePaperclip. */
+  marketplace: () => Promise<MarketplaceAnswer>;
   upload: (storage: string, content: "iso" | "vztmpl", file: File, onProgress: (f: number) => void, signal?: AbortSignal) => Promise<{ task: string }>;
   tasks: (limit?: number, vmid?: number) => Promise<TaskEntry[]>;
   destroyMachine: (vmid: number, confirm: string) => Promise<{ task: string | null }>;
@@ -58,6 +60,7 @@ export const liveBackend: Backend = {
   downloadTemplate: api.downloadTemplate,
   downloadUrl: api.downloadUrl,
   libraryLatest: api.libraryLatest,
+  marketplace: api.marketplace,
   upload: api.upload,
   tasks: api.tasks,
   destroyMachine: api.destroyMachine,
@@ -302,6 +305,7 @@ export function demoBackend(storages: () => HostStorage[], guests: () => Guest[]
       if (exists(storage, volid)) throw new ApiError(400, "proxmox_rejected", "filename: refusing to override existing file");
       return { task: startTask("download", d.filename, 4, [`downloading ${d.url} to /var/lib/vz/template/${d.content}/${d.filename}`, ...(d.checksum ? [`validating checksum (${d.algorithm})...OK`] : []), "download of file finished"], () => listFor(storage).push(item(volid, d.content, 900 * 1024 ** 2, 0))) };
     },
+    marketplace: async () => ({ enabled: false, entries: [] }),
     libraryLatest: async (id) => {
       const hit = DEMO_LATEST[id];
       if (!hit) throw new ApiError(404, "not_found", "That one has no automatic download");

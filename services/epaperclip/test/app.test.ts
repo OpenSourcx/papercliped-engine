@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Transport } from "@papercliped-engine/proxmox-client";
 import { backupOf, checksum, createApp, parseBackupJob, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
+import { generateSigningKey, signIndex, trustedKey } from "@papercliped-engine/marketplace";
 import { SessionStore } from "../src/sessions.ts";
 
 /** A fake Proxmox: users, optional TFA, tickets, and permissions per ticket. */
@@ -151,6 +152,12 @@ let clock: number;
 let staticDir: string;
 let fakeConsole: WebSocketServer;
 let vendorHits: string[];
+const signer = generateSigningKey();
+/** What the fake catalog address answers: the index text and its signature file, or null for "unreachable". */
+let market: { body: string; sig: string } | null;
+const INTEGRITY = `sha512-${"A".repeat(86)}==`;
+const catalog = (sequence: number, expires = "2026-12-01T00:00:00Z") => JSON.stringify({ schema: 1, sequence, generatedAt: "2026-10-01T00:00:00Z", expires, entries: [{ id: "slack", kind: "connector", connectorKind: "chat", name: "Slack", vendor: "Slack", summary: "Post updates.", version: "1.0.0", source: { type: "npm", name: "@epc/slack", version: "1.0.0", integrity: INTEGRITY }, permissions: ["net.slack.com"] }] });
+const publish = (body: string, key = signer) => { market = { body, sig: signIndex(Buffer.from(body), key.privateKeyPem, key.publicKeyPem) }; };
 let consoleSeen: { url: string; cookie: string | undefined; frames: string[] }[];
 
 beforeEach(async () => {
@@ -190,9 +197,15 @@ beforeEach(async () => {
   const consolePort = (fakeConsole.address() as AddressInfo).port;
   const now = () => clock;
   vendorHits = [];
+  market = null;
   const handle = createApp({
+    marketplace: { url: "https://catalog.example/index.json", keys: [trustedKey(signer.publicKeyPem)] },
     fetchText: async (url) => {
       vendorHits.push(url);
+      if (url.startsWith("https://catalog.example/")) {
+        if (!market) throw new Error("timed out");
+        return url.endsWith(".sig") ? market.sig : market.body;
+      }
       if (url.includes("debian")) return `${"a".repeat(64)}  debian-13.7.0-amd64-netinst.iso\n${"b".repeat(64)}  debian-edu-13.7.0-amd64-netinst.iso\n`;
       if (url.includes("alpinelinux")) throw new Error("timed out");
       return "no installers in here";
@@ -630,6 +643,53 @@ describe("the store's verified installers", () => {
 
   it("needs a session", async () => {
     expect((await fetch(base + "/api/library/debian/latest")).status).toBe(401);
+  });
+});
+
+describe("the store's signed catalog", () => {
+  const get = async (c: string) => (await (await fetch(base + "/api/marketplace", { headers: { Cookie: c } })).json()) as { enabled: boolean; entries: { id: string }[]; sequence: number | null; problem: { code: string } | null };
+
+  it("shows a catalog signed by a pinned key, and caches it for an hour", async () => {
+    publish(catalog(3));
+    const c = await signIn();
+    expect(await get(c)).toMatchObject({ enabled: true, sequence: 3, problem: null, entries: [{ id: "slack" }] });
+    await get(c);
+    expect(vendorHits.filter((u) => u.startsWith("https://catalog.example/"))).toHaveLength(2); // the index and its signature, once
+  });
+
+  it("never shows a catalog signed by another key, or one changed after signing", async () => {
+    const c = await signIn();
+    publish(catalog(3), generateSigningKey());
+    expect(await get(c)).toMatchObject({ entries: [], problem: { code: "unknown_key" } });
+    clock += 3601_000;
+    publish(catalog(4));
+    market = { ...market!, body: catalog(5) };
+    expect(await get(c)).toMatchObject({ entries: [], problem: { code: "bad_signature" } });
+  });
+
+  it("refuses an expired catalog and a rollback to an older one", async () => {
+    const c = await signIn();
+    publish(catalog(7));
+    expect((await get(c)).sequence).toBe(7);
+    clock += 3601_000;
+    publish(catalog(6));
+    expect(await get(c)).toMatchObject({ entries: [], problem: { code: "rollback" } });
+    clock += 3601_000;
+    publish(catalog(9, "1970-01-01T00:00:00Z"));
+    expect((await get(c)).problem?.code).toBe("expired");
+  });
+
+  it("keeps the last good catalog when the address can't be reached, and says so", async () => {
+    const c = await signIn();
+    publish(catalog(2));
+    await get(c);
+    clock += 3601_000;
+    market = null;
+    expect(await get(c)).toMatchObject({ entries: [{ id: "slack" }], problem: { code: "unreachable" } });
+  });
+
+  it("needs a session", async () => {
+    expect((await fetch(base + "/api/marketplace")).status).toBe(401);
   });
 });
 

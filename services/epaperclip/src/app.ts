@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { LIBRARY, isoEntries, pickLatest, type Latest } from "@papercliped-engine/os-library";
+import { DEFAULT_INDEX_URL, MarketplaceError, verifyIndex, type Index, type TrustedKey } from "@papercliped-engine/marketplace";
 import { fetchVendorText, type FetchText } from "./vendorFetch.ts";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
@@ -25,6 +26,8 @@ export interface AppDeps {
   pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport; streamTransport?: StreamTransport };
   /** How to read a vendor's checksum file; tests inject a fake. */
   fetchText?: FetchText;
+  /** The Store's signed catalog: where it is published and which keys it may be signed by. No keys means no catalog. */
+  marketplace?: { url?: string; keys: TrustedKey[] };
   /** The port this console is served on, kept reachable when the firewall is turned on. */
   consolePort?: number;
   /** How to reach Proxmox's console websockets; tests inject a fake. */
@@ -1214,6 +1217,28 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, latest);
     }
 
+    if (method === "GET" && path === "/api/marketplace") {
+      requireSession(req);
+      const keys = d.marketplace?.keys ?? [];
+      if (!keys.length) return sendJson(res, 200, { enabled: false, entries: [] });
+      if (now() - marketCache.at >= 3600_000 || (!marketCache.index && !marketCache.problem)) {
+        const url = d.marketplace?.url ?? DEFAULT_INDEX_URL;
+        marketCache.at = now();
+        try {
+          const [body, sig] = await Promise.all([fetchText(url), fetchText(`${url}.sig`)]);
+          const index = verifyIndex(Buffer.from(body, "utf8"), sig, { keys, now: now(), lastSequence: marketSequence < 0 ? undefined : marketSequence });
+          marketSequence = Math.max(marketSequence, index.sequence);
+          marketCache.index = index;
+          marketCache.problem = null;
+        } catch (e) {
+          marketCache.problem = e instanceof MarketplaceError ? { code: e.code, message: e.message } : { code: "unreachable", message: `Couldn't read the catalog (${(e as Error).message}).` };
+          // A catalog that failed its checks is never shown; one that merely couldn't be fetched keeps the last good copy.
+          if (e instanceof MarketplaceError) marketCache.index = null;
+        }
+      }
+      return sendJson(res, 200, { enabled: true, entries: marketCache.index?.entries ?? [], sequence: marketCache.index?.sequence ?? null, problem: marketCache.problem });
+    }
+
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);
     if (method === "POST" && power) {
       requireSameSite(req);
@@ -1266,6 +1291,12 @@ export function createApp(d: AppDeps) {
   // The Library's "what's the newest installer" answers, kept for six hours so the page is quick and vendors aren't hammered.
   const latestCache = new Map<string, { at: number; latest: Latest }>();
   const fetchText = d.fetchText ?? fetchVendorText;
+
+  // The Store's signed catalog, kept for an hour. Only a copy signed by a pinned key is ever shown, and the sequence
+  // number never goes back within this run. When it can't be read or checked, the answer says why and the Store carries on
+  // with what ships with ePaperclip.
+  const marketCache: { at: number; index: Index | null; problem: { code: string; message: string } | null } = { at: 0, index: null, problem: null };
+  let marketSequence = -1;
 
   // One-time VNC sessions: created by POST /api/guests/:vmid/vnc for one signed-in session, used once within 30 seconds.
   const vncSessions = new Map<string, { session: string; node: string; vmid: number; port: string; ticket: string; expires: number }>();

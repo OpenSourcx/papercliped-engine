@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { isoEntries, type Latest } from "@papercliped-engine/os-library";
 import type { CatalogTemplate } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
-import { DEFAULT_PLUGINS } from "../../data/storePlugins.ts";
+import { DEFAULT_PLUGINS, fromMarket, type PluginEntry } from "../../data/storePlugins.ts";
 import { storagesWith } from "../storage/content.ts";
 import { buildStoreItems, type FilesByStorage, type StoreItem } from "./catalog.ts";
 
@@ -19,6 +19,8 @@ export function useStoreItems() {
   const [isoFiles, setIsoFiles] = useState<FilesByStorage>({});
   const [tplFiles, setTplFiles] = useState<FilesByStorage>({});
   const [latest, setLatest] = useState<Record<string, Latest | undefined>>({});
+  const [market, setMarket] = useState<PluginEntry[]>([]);
+  const [catalogProblem, setCatalogProblem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [problems, setProblems] = useState<string[]>([]);
 
@@ -51,7 +53,13 @@ export function useStoreItems() {
     return () => { gone = true; };
   }, [backend]);
 
+  useEffect(() => {
+    let gone = false;
+    backend.marketplace().then((m) => { if (gone) return; setMarket(m.entries.map(fromMarket)); setCatalogProblem(m.problem?.message ?? null); }, () => {});
+    return () => { gone = true; };
+  }, [backend]);
+
   const installedPlugins = useMemo(() => new Set([...(data.plugins ?? DEFAULT_PLUGINS), ...data.connectors.map((c) => c.id)]), [data.plugins, data.connectors]);
-  const items: StoreItem[] = useMemo(() => buildStoreItems({ catalog, isoFiles, tplFiles, latest, installedPlugins }), [catalog, isoFiles, tplFiles, latest, installedPlugins]);
-  return { items, loading, problems, latest };
+  const items: StoreItem[] = useMemo(() => buildStoreItems({ catalog, isoFiles, tplFiles, latest, installedPlugins, market }), [catalog, isoFiles, tplFiles, latest, installedPlugins, market]);
+  return { items, loading, problems: catalogProblem ? [...problems, catalogProblem] : problems, latest };
 }

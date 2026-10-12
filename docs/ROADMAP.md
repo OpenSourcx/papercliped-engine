@@ -60,7 +60,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
 - [x] Store: one place for operating systems (newest installers resolved from each vendor's own checksum list and downloaded verified), ready-made container apps, driver disks and plugins; installed/update status, install to a chosen storage, "Create machine" from an installed item. Plugin installs (connectors, agent adapters, Pin skills) are saved on this device; their runtime arrives with the ePaperclip fork
 - [x] Store plugins mirror Paperclip's built-in adapter types (enable/disable) with bundled, licensed logos and monogram fallbacks
-- [ ] Store: signed marketplace index (first-party catalog), fetched only by the host service, entries pinned by integrity hash, key rotation documented
+- [x] Store: signed marketplace index (Ed25519, expiry, no rollback, strict entry formats, npm entries pinned by integrity hash), fetched only by the host service; publish and key scripts in `scripts/`, rotation documented in `marketplace/README.md`
+- [ ] Marketplace: generate and pin the first-party signing key, create the public catalog repository, CI publish job; install npm entries through Paperclip's adapter and plugin APIs once the runtime exists
 - [ ] Store: remove an installed ISO or template from the Store, and update plugins from a published index
 - [x] Storage content: browse ISO images, CT templates, backups and disks per storage; delete with confirmation
 - [x] Proxmox's template catalog (system and TurnKey) with one-click download; ISO and template upload with progress; download from URL with checksum

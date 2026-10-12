@@ -44,6 +44,8 @@ export interface BuildInput {
   tplFiles: FilesByStorage;
   latest: Record<string, Latest | undefined>;
   installedPlugins: Set<string>;
+  /** Entries from the signed marketplace catalog. Ones that ship with ePaperclip are ignored. */
+  market?: PluginEntry[];
 }
 
 const where = (files: FilesByStorage, name: string) => Object.entries(files).find(([, list]) => list.includes(name))?.[0] ?? null;
@@ -78,8 +80,9 @@ export function buildStoreItems(i: BuildInput): StoreItem[] {
     const turnkey = t.section === "turnkeylinux";
     items.push({ id: `ct:${t.template}`, category: turnkey ? "app" : "os", name: t.headline ?? t.template, vendor: turnkey ? "TurnKey Linux" : (t.os ?? "Proxmox").replace(/^./, (c) => c.toUpperCase()), summary: t.description ?? (turnkey ? "A ready-to-run appliance in a container." : "A ready-made container system."), kind: "template", badge: "Container", template: t, status: s ? "installed" : "available", latestVersion: t.version, haveVersion: s ? t.version : null, volid: s ? `${s}:vztmpl/${t.template}` : null });
   }
-  for (const p of PLUGINS) {
-    items.push({ id: p.id, category: "plugin", name: p.name, vendor: p.vendor, summary: p.summary, kind: p.kind, badge: p.kind === "connector" ? "Connector" : p.kind === "adapter" ? "Adapter" : "Skill", plugin: p, status: i.installedPlugins.has(p.id) ? "installed" : "available", latestVersion: null, haveVersion: null, volid: null });
+  const known = new Set(PLUGINS.map((p) => p.id));
+  for (const p of [...PLUGINS, ...(i.market ?? []).filter((m) => !known.has(m.id))]) {
+    items.push({ id: p.id, category: "plugin", name: p.name, vendor: p.vendor, summary: p.summary, kind: p.kind, badge: p.kind === "connector" ? "Connector" : p.kind === "adapter" ? "Adapter" : "Skill", plugin: p, status: i.installedPlugins.has(p.id) ? "installed" : "available", latestVersion: p.version ?? null, haveVersion: null, volid: null });
   }
   return items;
 }

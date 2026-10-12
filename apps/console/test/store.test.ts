@@ -43,6 +43,16 @@ describe("the Store's catalog", () => {
   });
 });
 
+describe("catalog entries from the marketplace", () => {
+  const entry = { id: "matrix", name: "Matrix", vendor: "Matrix.org", summary: "Chat.", kind: "connector" as const, connectorKind: "chat" as const, version: "1.1.0", permissions: ["net.matrix.org"] };
+  it("show up as plugins with their version, but never replace what ships with ePaperclip", () => {
+    const items = buildStoreItems({ ...base, market: [entry, { ...entry, id: "github", name: "Fake GitHub" }] });
+    expect(items.find((i) => i.id === "matrix")).toMatchObject({ category: "plugin", status: "available", latestVersion: "1.1.0" });
+    expect(items.find((i) => i.id === "github")?.name).toBe("GitHub");
+    expect(items.filter((i) => i.id === "github")).toHaveLength(1);
+  });
+});
+
 describe("the demo's installer lookup", () => {
   it("answers for automatic systems and refuses the rest", async () => {
     const b = demoBackend(() => []);

@@ -13,6 +13,7 @@
   "dependencies": {
     "@novnc/novnc": "1.7.0",
     "@papercliped-engine/automations": "workspace:*",
+    "@papercliped-engine/marketplace": "workspace:*",
     "@papercliped-engine/os-library": "workspace:*",
     "@papercliped-engine/proxmox-client": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",

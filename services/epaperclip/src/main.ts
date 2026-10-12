@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer as createHttps } from "node:https";
 import { hostname } from "node:os";
+import { TRUSTED_KEYS, trustedKey } from "@papercliped-engine/marketplace";
 import { createApp } from "./app.ts";
 import { SessionStore } from "./sessions.ts";
 
@@ -17,6 +18,8 @@ import { SessionStore } from "./sessions.ts";
  *   EPC_TLS_KEY    its private key                   (default /etc/pve/local/pve-ssl.key)
  *   EPC_STATIC     the built console                 (default /opt/epaperclip/console)
  *   EPC_MAX_UPLOAD_GB  largest ISO or template upload    (default 64)
+ *   EPC_MARKETPLACE_URL  where the Store's signed catalog is published (default the first-party catalog)
+ *   EPC_MARKETPLACE_KEY  PEM public key to also trust for the catalog (for your own catalog or a fork)
  *   EPC_DEV_HTTP   set to 1 to serve plain HTTP for local development only
  */
 
@@ -45,6 +48,7 @@ const handle = createApp({
   secureCookies: !devHttp,
   maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
   consolePort: port,
+  marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
 const server = devHttp
