@@ -4,6 +4,7 @@
 #   bash deploy/test/run.sh                  every scenario
 #   bash deploy/test/run.sh fresh uninstall  only the named ones (see the list at the bottom)
 #   EPC_TEST_KEEP=1 bash deploy/test/run.sh  keep the simulated hosts afterwards, for a look
+#   bash deploy/test/run.sh deb              the built .deb (release/epaperclip_*_all.deb): skipped when there is none
 #   EPC_TEST_REAL_ENGINE=1 bash deploy/test/run.sh real-engine
 #                                            as root, with internet: downloads the pinned Node.js, installs the real
 #                                            engine from engine/ and runs it as nobody (about 3 minutes)
@@ -260,6 +261,24 @@ s_uninstall() {
   check "--purge removes data, settings and users too" eval '[ "$RC" -eq 0 ] && [ ! -e "$H/prefix" ] && [ ! -e "$H/engine-home" ] && [ ! -e "$H/host-state" ] && [ ! -e "$H/etc" ] && [ ! -e "$H/default/epaperclip" ] && [ ! -s "$H/stub/users" ]'
 }
 
+s_deb() {
+  # The built Debian package (release/epaperclip_*_all.deb, from scripts/build-deb.sh), unpacked: its maintainer scripts
+  # parse, its files match their checksums, and its payload installs with the real host service.
+  local deb; deb="$(ls -t "$REPO"/release/epaperclip_*_all.deb 2>/dev/null | head -n1)"
+  [ -n "$deb" ] || { echo "  skip (no release/epaperclip_*_all.deb; run scripts/package-release.mjs and scripts/build-deb.sh)"; return 0; }
+  command -v dpkg-deb >/dev/null || { echo "  skip (dpkg-deb not found)"; return 0; }
+  new_host deb; local D="$H/deb"; dpkg-deb -R "$deb" "$D"
+  check "maintainer scripts and the epaperclip command parse" eval 'for f in "$D"/DEBIAN/postinst "$D"/DEBIAN/prerm "$D"/DEBIAN/postrm "$D"/usr/sbin/epaperclip; do sh -n "$f" || exit 1; done'
+  check "files match DEBIAN/md5sums" eval '(cd "$D" && md5sum -c --quiet DEBIAN/md5sums)'
+  check "control: package, architecture, Proxmox dependency" eval 'grep -qx "Package: epaperclip" "$D/DEBIAN/control" && grep -qx "Architecture: all" "$D/DEBIAN/control" && grep -q "^Depends: pve-manager (>= 8.0)" "$D/DEBIAN/control"'
+  check "postinst runs the bundled installer; purge alone deletes data" eval 'grep -q "bash /usr/share/epaperclip/deploy/install.sh$" "$D/DEBIAN/postinst" && grep -q -- "--uninstall" "$D/DEBIAN/prerm" && ! grep -q "/var/lib" "$D/DEBIAN/prerm" && grep -q "rm -rf /var/lib/epaperclip-engine" "$D/DEBIAN/postrm"'
+  R="$D/usr/share/epaperclip"; cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
+  install
+  check "payload installs with the real host service (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = "$(cat "$R/VERSION")" ] && host_health && engine_health'
+  check "real host service gets its state directory (vault key written)" [ -f "$H/host-state/vault.key" ]
+  rm -f "$R/fake-engine.mjs"
+}
+
 s_real_engine() {
   [ "${EPC_TEST_REAL_ENGINE:-}" = 1 ] || { echo "  skip (set EPC_TEST_REAL_ENGINE=1, as root, with internet)"; return 0; }
   [ "$(id -u)" -eq 0 ] || { bad "needs root"; return 0; }
@@ -274,7 +293,7 @@ s_real_engine() {
   check "installed paperclipai matches the lockfile" eval '[ "$(node -p "require(\"$H/prefix/engine/node_modules/paperclipai/package.json\").version")" = "$(node -p "require(\"$REPO/engine/package-lock.json\").packages[\"node_modules/paperclipai\"].version")" ]'
 }
 
-ALL=(fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall real_engine)
+ALL=(fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"
