@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import { TRUSTED_KEYS, trustedKey } from "@papercliped-engine/marketplace";
 import { createApp } from "./app.ts";
 import { SessionStore } from "./sessions.ts";
+import { StateStore } from "./state.ts";
 
 /**
  * Starts the ePaperclip host service. On a Proxmox host it listens on 443 with the node's own certificate
@@ -21,6 +22,10 @@ import { SessionStore } from "./sessions.ts";
  *   EPC_MARKETPLACE_URL  where the Store's signed catalog is published (default the first-party catalog)
  *   EPC_MARKETPLACE_KEY  PEM public key to also trust for the catalog (for your own catalog or a fork)
  *   EPC_DEV_HTTP   set to 1 to serve plain HTTP for local development only
+ *   EPC_STATE_DIR  the service's state and vault (vault.key, state.json)   (default /var/lib/epaperclip)
+ *   EPC_ENGINE_URL         where the engine listens                     (default http://127.0.0.1:3100)
+ *   EPC_ENGINE_PUBLIC_URL  the engine's PAPERCLIP_PUBLIC_URL, sent as Origin (default EPC_ENGINE_URL)
+ *   EPC_ENGINE_DIR         where the engine is installed, for its version  (default /opt/epaperclip/engine)
  */
 
 const env = process.env;
@@ -41,7 +46,12 @@ try {
 }
 
 const sessions = new SessionStore();
+// The state directory must be usable: it holds the only copy of the managed engine passwords, so a fallback would strand them.
+const state = new StateStore(env.EPC_STATE_DIR || "/var/lib/epaperclip");
+const engineUrl = env.EPC_ENGINE_URL || "http://127.0.0.1:3100";
 const handle = createApp({
+  state,
+  engine: { url: engineUrl, publicUrl: env.EPC_ENGINE_PUBLIC_URL || engineUrl, installDir: env.EPC_ENGINE_DIR || undefined },
   pve: { baseUrl: env.EPC_PVE_URL ?? "https://127.0.0.1:8006", node: env.EPC_PVE_NODE ?? hostname().split(".")[0], caPem },
   sessions,
   staticDir: env.EPC_STATIC ?? "/opt/epaperclip/console",
@@ -64,4 +74,10 @@ const sweep = setInterval(() => sessions.sweep(), 60_000);
 sweep.unref();
 
 server.listen(port, host, () => console.log(`epaperclip: listening on ${devHttp ? "http" : "https"}://${listen}`));
-for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => server.close(() => process.exit(0)));
+// Settle the engine's service account in the background, retrying while the engine starts.
+void handle.engine?.start();
+for (const sig of ["SIGINT", "SIGTERM"] as const)
+  process.on(sig, () => {
+    handle.engine?.stop();
+    server.close(() => process.exit(0));
+  });

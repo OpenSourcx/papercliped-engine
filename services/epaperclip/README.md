@@ -21,6 +21,10 @@ The installer puts the service in `/opt/epaperclip`, creates an `epaperclip` sys
 | `EPC_STATIC` | `/opt/epaperclip/console` |
 | `EPC_MAX_UPLOAD_GB` | `64` |
 | `EPC_DEV_HTTP` | unset; `1` serves plain HTTP for local development only |
+| `EPC_STATE_DIR` | `/var/lib/epaperclip` (state and vault; must be writable, the service won't start without it) |
+| `EPC_ENGINE_URL` | `http://127.0.0.1:3100` |
+| `EPC_ENGINE_PUBLIC_URL` | `EPC_ENGINE_URL` (the engine's `PAPERCLIP_PUBLIC_URL`, sent as `Origin` so its mutation guard accepts the request) |
+| `EPC_ENGINE_DIR` | `/opt/epaperclip/engine` (read for the engine's version) |
 
 If you replaced the node certificate (for example with ACME), point `EPC_TLS_CERT`/`EPC_TLS_KEY` at `/etc/pve/local/pveproxy-ssl.pem`/`.key`.
 
@@ -54,6 +58,26 @@ All under `/api`. Changes need `Content-Type: application/json`, `X-EPC-Request:
 | `GET/POST /network/dns`, `GET/POST /network/hosts` | DNS servers and search domain; the hosts file, checked against its digest |
 | `GET /sdn`, `POST /sdn/{zones,vnets,apply}` and `/sdn/vnets/:id/subnets` | SDN zones, VNets and subnets, staged until applied |
 | `GET /network`, `POST /network`, `POST /network/:iface`, `.../delete`, `POST /network/apply`, `POST /network/revert` | Host interfaces, staged changes and their diff |
+
+### Engine, connectors and Pin
+
+| Route | Does |
+| --- | --- |
+| `GET /engine/status` (that is, `/api/engine/status`) | `{ installed, reachable, ready, version, bootstrap: "pending" \| "ready", serviceAccount: "ours" \| "other" \| "pending" \| "error", error? }` |
+| `/engine/api/*` (at the root, not under `/api`) | The engine's `/api/*`, as the signed-in person's managed engine account. Changes need `X-EPC-Request` and a same-site `Origin`. Bodies stream both ways (capped by `EPC_MAX_UPLOAD_GB`). Only `content-type`, `accept`, `accept-language`, `range`, `if-none-match`, `user-agent`, `x-paperclip-tab-visible` and `x-paperclip-route` go to the engine; browser cookies, `Authorization` and `x-paperclip-cloud-*` never do, and `Set-Cookie` never comes back. `/engine/api/auth/*`, `/engine/api/bootstrap/*` and `/engine/api/cli-auth/*` (except `GET cli-auth/me`) are refused. `503 engine_unavailable` when the engine doesn't answer |
+| WebSocket `/engine/api/companies/:id/events/ws` | An organization's live events, relayed as the person (the query string is dropped) |
+| `GET /resource-groups`, `PUT /resource-groups/:companyId`, `DELETE /resource-groups/:companyId` | An organization's Proxmox pool (`epc-<slug>`, created as the signed-in user) and limits `{ name, cores, memoryMb, diskGb, maxGuests }`. Changes need an owner or admin of the organization; delete removes the pool only if it is empty |
+| `GET /connectors` | `{ connectors: [{ id, kind, label, configured, last4?, updatedAt?, updatedBy?, testedAt?, ok?, error? }], canManage }`. Never a key |
+| `PUT /connectors/:id/credential` `{ apiKey }`, `DELETE /connectors/:id/credential`, `POST /connectors/:id/test` | Model provider keys (`anthropic`, `openai`, `gemini`, `openrouter`), for Proxmox users with `Sys.Modify` on `/` |
+| `GET /pin/settings`, `PUT /pin/settings` | `{ provider, model, mode: "assistant" \| "agent", connectors }`, per person |
+| `GET /pin/models?provider=` | `{ provider, models: [{ id, label }] }`, read from the provider with the stored key |
+| `POST /pin/chat` `{ messages, context: { page, device, org? } }` | A server-sent event stream: `delta` `{ text }`, `tool` `{ id, name, args, status: "done" \| "error" \| "proposed" }`, `done`, `error` `{ code, message }`. Read-only tools run as the person; changes come back as `proposed` for the console to carry out after confirmation |
+
+### Engine accounts and state
+
+The engine (Paperclip) listens on loopback. On first start the service creates `system@epaperclip.invalid` and claims the engine's first-admin slot; if someone else already claimed it, `/api/engine/status` says so. Each Proxmox user gets a managed engine account, created at their first sign-in: the email is the user id lower-cased with `@` as `.`, anything outside `[a-z0-9._-]` as `-`, cut to 40 characters, then `-` and the first 8 hex digits of the SHA-256 of the exact user id, at `epaperclip.invalid` (`sam@pve` becomes `sam.pve-<8 hex>@epaperclip.invalid`). Passwords are random and live only in the vault.
+
+`EPC_STATE_DIR` holds `vault.key` (0600, 32 random bytes) and `state.json` (0600, written atomically). Every secret in `state.json` (engine passwords, connector keys) is sealed with AES-256-GCM under its own IV, with its name bound in and the key id recorded for a later rotation.
 
 ## Develop
 
