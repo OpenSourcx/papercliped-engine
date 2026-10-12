@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0 };
+  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>() };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -78,9 +78,27 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       if (st.bootstrap === "ready") return json(res, 409, { error: "Someone else has already claimed this instance" });
       st.bootstrap = "ready";
       st.admin = uid;
+      st.admins.add(uid!);
       return json(res, 200, { claimed: true, userId: uid });
     }
-    if (p === "/api/cli-auth/me") return json(res, 200, { user: { id: uid }, userId: uid, isInstanceAdmin: st.admin === uid, companyIds: memberships(uid).map((m) => m.companyId), memberships: memberships(uid), source: "session" });
+    const promote = p.match(/^\/api\/admin\/users\/([^/]+)\/(promote|demote)-instance-admin$/);
+    if (promote && req.method === "POST") {
+      if (!uid) return json(res, 401, { error: "Board authentication required" });
+      if (!st.admins.has(uid)) return json(res, 403, { error: "Instance admin required" });
+      if (promote[2] === "promote") st.admins.add(decodeURIComponent(promote[1]));
+      else st.admins.delete(decodeURIComponent(promote[1]));
+      return json(res, 200, { ok: true });
+    }
+    if (p === "/api/cli-auth/me") return json(res, 200, { user: { id: uid }, userId: uid, isInstanceAdmin: st.admins.has(uid!), companyIds: memberships(uid).map((m) => m.companyId), memberships: memberships(uid), source: "session" });
+    if (p === "/api/companies" && req.method === "POST") {
+      // Like the real engine: only instance admins create organizations; the creator owns it.
+      if (!uid) return json(res, 401, { error: "Board authentication required" });
+      if (!st.admins.has(uid)) return json(res, 403, { error: "Instance admin required" });
+      const body = b() as { name?: string };
+      const id = `co_${companies.size + 1}`;
+      companies.set(id, { name: body.name ?? "Org", members: new Map([[uid, "owner"]]) });
+      return json(res, 201, { id, name: body.name, status: "active" });
+    }
     if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: "active" })));
     const co = p.match(/^\/api\/companies\/([\w-]+)(\/(agents|issues|approvals))?$/);
     if (co) {

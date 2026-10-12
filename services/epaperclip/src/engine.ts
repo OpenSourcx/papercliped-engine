@@ -168,6 +168,7 @@ export class EngineGateway {
   private serviceFlight: Promise<ServiceState> | null = null;
   private stopped = false;
   private readonly logins = new Map<string, EngineLogin>();
+  private serviceLogin: EngineLogin | null = null;
   private readonly loginFlights = new Map<string, Promise<EngineLogin>>();
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, autoPong: false });
 
@@ -398,6 +399,42 @@ export class EngineGateway {
       this.state.setSetting("engine.accounts", accounts);
     }
     return login;
+  }
+
+  /** The service account's own engine session, when it holds the instance admin claim. */
+  private async serviceSession(fresh = false): Promise<EngineLogin | null> {
+    if ((await this.ensureServiceAccount()).state !== "ours") return null;
+    if (this.serviceLogin && !fresh) return this.serviceLogin;
+    const password = this.state.getSecret("engine.service.password");
+    if (!password) return null;
+    const r = await this.auth("sign-in", SERVICE_EMAIL, password);
+    return (this.serviceLogin = r.login ?? null);
+  }
+
+  /**
+   * Proxmox decides who administers the engine: administrators of this node (Sys.Modify on "/") are the engine's
+   * instance admins, so they can create organizations; everyone else works in the organizations they're invited to.
+   * Called on each sign-in, so taking the right away in Proxmox takes it away here too.
+   */
+  async syncAdmin(s: Session, nodeAdmin: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
+    const login = await this.loginFor(s);
+    const accounts = this.state.getSetting<Record<string, { userId: string | null }>>("engine.accounts") ?? {};
+    const userId = login.userId ?? accounts[s.username]?.userId ?? null;
+    if (!userId) return "unavailable";
+    const admins = this.state.getSetting<Record<string, boolean>>("engine.admins") ?? {};
+    if (Boolean(admins[s.username]) === nodeAdmin) return "unchanged";
+    let svc = await this.serviceSession();
+    if (!svc) return "unavailable";
+    const path = `/api/admin/users/${encodeURIComponent(userId)}/${nodeAdmin ? "promote" : "demote"}-instance-admin`;
+    let r = await this.send("POST", path, { cookie: svc.cookie, json: {}, timeoutMs: 15_000 });
+    if (r.status === 401) {
+      svc = await this.serviceSession(true);
+      if (!svc) return "unavailable";
+      r = await this.send("POST", path, { cookie: svc.cookie, json: {}, timeoutMs: 15_000 });
+    }
+    if (r.status < 200 || r.status >= 300) throw new HttpError(502, "engine_error", `The engine refused to ${nodeAdmin ? "make" : "remove"} ${s.username} ${nodeAdmin ? "an" : "as"} administrator (${r.status}).`);
+    this.state.setSetting("engine.admins", { ...admins, [s.username]: nodeAdmin });
+    return nodeAdmin ? "promoted" : "demoted";
   }
 
   /** Engine answers can refresh the session cookie; keep the refreshed one here, never pass it on. */

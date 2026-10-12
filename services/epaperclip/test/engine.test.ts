@@ -118,6 +118,7 @@ describe("engine accounts", () => {
     const email = managedEmail("sam@pve");
     await until(() => eng.users.has(email));
     expect(eng.users.get(email)!.name).toBe("sam");
+    await until(() => eng.st.admins.size >= 2); // the service account claimed the engine and made sam (a node admin) an admin
     const before = { ups: eng.st.signUps, ins: eng.st.signIns };
     const c2 = await signIn();
     const me = await (await fetch(base + "/engine/api/cli-auth/me", { headers: { Cookie: c2 } })).json() as any;
@@ -126,14 +127,28 @@ describe("engine accounts", () => {
     expect(eng.st.signIns).toBe(before.ins);
   });
 
+  it("makes Proxmox node administrators engine admins, so they can create organizations, and nobody else", async () => {
+    const sam = await signIn("sam");
+    await until(() => eng.st.admins.size >= 2);
+    expect((await send("POST", "/engine/api/companies", { name: "Northwind" }, { Cookie: sam })).status).toBe(201);
+    const lee = await signIn("lee");
+    await until(() => eng.users.has(managedEmail("lee@pve")));
+    const r = await send("POST", "/engine/api/companies", { name: "Nope" }, { Cookie: lee });
+    expect(r.status).toBe(403);
+    expect(eng.st.admins.has(eng.userId(managedEmail("sam@pve"))!)).toBe(true);
+    expect(eng.st.admins.has(eng.userId(managedEmail("lee@pve"))!)).toBe(false);
+  });
+
   it("signs in again when the engine session expires, waiting out the engine's rate limit", async () => {
     const c = await signIn();
     await until(() => eng.users.has(managedEmail("sam@pve")));
+    await until(() => eng.st.admins.size >= 2); // the service account claimed the engine and made sam (a node admin) an admin
+    const signInsBefore = eng.st.signIns;
     eng.expireSessions();
     eng.st.limitSignIns = 2;
     const r = await fetch(base + "/engine/api/cli-auth/me", { headers: { Cookie: c } });
     expect(r.status).toBe(200);
-    expect(eng.st.signIns).toBe(3);
+    expect(eng.st.signIns - signInsBefore).toBe(3);
     // And a small write is replayed after renewing, so the person never sees the expiry.
     eng.expireSessions();
     const w = await send("POST", "/engine/api/echo", { x: 1 }, { Cookie: c });
@@ -201,10 +216,12 @@ describe("the /engine/api proxy", () => {
 
   it("refuses paths that climb out, encoded slashes, the account and bootstrap areas, and odd methods", async () => {
     const c = await signIn();
+    await until(() => eng.st.admins.size >= 2); // the service account claimed the engine and made sam (a node admin) an admin
+    const from = eng.seen.length;
     for (const p of ["/engine/api/../api/health", "/engine/api/%2e%2e/x", "/engine/api/a%2Fb", "/engine/api/a%5cb", "/engine/api//x", "/engine/api/x%00"]) expect((await raw("GET", p, { Cookie: c })).status, p).toBe(400);
     for (const p of ["/engine/api/auth/sign-out", "/engine/api/AUTH/get-session", "/engine/api/%61uth/x", "/engine/api/bootstrap/claim", "/engine/api/cli-auth/challenges", "/engine/x", "/engine"]) expect((await raw("POST", p, { Cookie: c, "X-EPC-Request": "1" })).status, p).toBe(404);
     expect((await raw("OPTIONS", "/engine/api/companies", { Cookie: c, "X-EPC-Request": "1" })).status).toBe(405);
-    expect(eng.seen.some((x) => x.url.includes("auth/sign-out") || x.url.includes("bootstrap/claim") || x.url.includes(".."))).toBe(false);
+    expect(eng.seen.slice(from).some((x) => x.url.includes("auth/sign-out") || x.url.includes("bootstrap/claim") || x.url.includes(".."))).toBe(false);
   });
 
   it("makes active content from the engine download instead of render", async () => {

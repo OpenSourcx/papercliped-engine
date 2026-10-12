@@ -371,7 +371,11 @@ export function createApp(d: AppDeps) {
     const s = d.sessions.create(username, ticket, csrf);
     sendJson(res, 200, { user: { username } }, { "Set-Cookie": cookie(s.id, 12 * 3600) });
     // Open (or create) the person's engine account in the background; sign-in to the console never waits on the engine.
-    gateway?.loginFor(s).catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
+    // Proxmox node administrators administer the engine too (they can create organizations); checked on every sign-in.
+    gateway
+      ?.loginFor(s)
+      .then(async () => gateway!.syncAdmin(s, await isNodeAdmin(await clientFor(s))))
+      .catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
   };
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
