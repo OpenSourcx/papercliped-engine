@@ -12,6 +12,7 @@ import { BackupsPage } from "./pages/backups/Backups.tsx";
 import { PinPage } from "./pages/pin/PinPage.tsx";
 import { NetworkPage } from "./pages/network/Network.tsx";
 import { FirewallPage } from "./pages/firewall/Firewall.tsx";
+import { FEATURES } from "./features/registry.ts";
 import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
@@ -72,6 +73,7 @@ export function App() {
           <Route path="firewall" element={<FirewallPage />} />
           <Route path="backups" element={<BackupsPage />} />
           <Route path="automations" element={<Automations />} />
+          {FEATURES.flatMap((f) => f.routes.map((r) => <Route key={`${f.id}:${r.path}`} path={r.path} element={r.element} />))}
           {/* Older addresses open the matching modal over Home. */}
           {["updates", "access", "connectors", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id}`} replace />} />)}
           <Route path="settings" element={<Navigate to="../home?settings=general" replace />} />

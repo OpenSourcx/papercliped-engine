@@ -10,6 +10,7 @@ import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
+import { FEATURES } from "./features/index.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
@@ -1481,6 +1482,25 @@ export function createApp(d: AppDeps) {
         return pve.guestPower(g.node ?? d.pve.node, g.type as GuestType, vmid, action as PowerAction);
       });
       return sendJson(res, 202, { task: upid });
+    }
+
+    // Areas built as features (src/features/*): each answers its own routes or passes.
+    if (FEATURES.length) {
+      const ctx = {
+        req, res, url, method, path,
+        node: d.pve.node,
+        state,
+        gateway,
+        session: () => requireSession(req),
+        asUser: <T,>(fn: (pve: ProxmoxClient, s: Session) => Promise<T>) => asUser(req, res, fn),
+        sameSite: () => requireSameSite(req),
+        isNodeAdmin,
+        readJson: (max?: number) => readJson(req, max),
+        json: (status: number, body: unknown, headers?: Record<string, string | string[]>) => sendJson(res, status, body, headers),
+        now,
+        HttpError,
+      };
+      for (const f of FEATURES) if (await f.handle(ctx)) return;
     }
 
     throw new HttpError(404, "not_found", "Not found");

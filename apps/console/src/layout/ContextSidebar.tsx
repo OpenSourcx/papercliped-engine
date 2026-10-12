@@ -1,3 +1,4 @@
+import { FEATURES, type FeatureNav } from "../features/registry.ts";
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Shield, Sparkles, SquareTerminal, Store, Target, Users, Vote, Workflow } from "lucide-react";
@@ -49,7 +50,7 @@ function MachineIcon({ g }: { g: Guest }) {
 }
 
 function DeviceSidebar() {
-  const { setup, data, host } = useEngine();
+  const { setup, data, host, live } = useEngine();
   const d = setup?.deviceName ?? "pve";
   return (
     <>
@@ -77,10 +78,29 @@ function DeviceSidebar() {
           <Item to={`/${d}/firewall`} icon={<Shield className="h-4 w-4" />}>Firewall</Item>
           <Item to={`/${d}/backups`} icon={<Archive className="h-4 w-4" />}>Backups</Item>
           <Item to={`/${d}/tasks`} icon={<ListChecks className="h-4 w-4" />}>Tasks</Item>
+          <FeatureItems section="Host" d={d} />
         </Section>
+        {featureNav("Datacenter", live).length > 0 && (
+          <Section id="sec-datacenter" label="Datacenter">
+            <FeatureItems section="Datacenter" d={d} />
+          </Section>
+        )}
+        {featureNav("Access", live).length > 0 && (
+          <Section id="sec-access" label="Access">
+            <FeatureItems section="Access" d={d} />
+          </Section>
+        )}
       </div>
     </>
   );
+}
+
+const featureNav = (section: FeatureNav["section"], live: boolean) => FEATURES.flatMap((f) => f.nav).filter((n) => n.section === section && (live || !n.liveOnly)).sort((a, b) => (a.order ?? 50) - (b.order ?? 50));
+
+/** Sidebar entries that features register (see features/registry.ts). */
+function FeatureItems({ section, d }: { section: FeatureNav["section"]; d: string }) {
+  const { live } = useEngine();
+  return <>{featureNav(section, live).map((n) => <Item key={n.to} to={`/${d}/${n.to}`} icon={<n.icon className="h-4 w-4" />}>{n.label}</Item>)}</>;
 }
 
 function OrgSidebar({ org }: { org: Org }) {
