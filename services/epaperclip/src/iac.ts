@@ -1,5 +1,6 @@
 import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { EngineGateway } from "./engine.ts";
+import { revokeAllForUser } from "./features/access-tokens.ts";
 import { HttpError } from "./http.ts";
 import type { Session, SessionStore } from "./sessions.ts";
 import type { StateStore } from "./state.ts";
@@ -85,6 +86,8 @@ export interface UserSpec {
   firstname?: string;
   lastname?: string;
   comment?: string;
+  /** Yubico OTP key ids (Proxmox's legacy `keys` field). */
+  keys?: string;
   groups?: string[];
   enable?: boolean;
   expire?: number;
@@ -146,6 +149,8 @@ export function validateSpec(spec: Record<string, unknown>, creating: boolean): 
   out.firstname = str("firstname", 64);
   out.lastname = str("lastname", 64);
   out.comment = str("comment", 256);
+  out.keys = str("keys", 4096);
+  if (out.keys && !/^[0-9a-zA-Z!=]+$/.test(out.keys)) throw new HttpError(400, "bad_request", "Yubico key ids use letters, digits, ! and =");
   if (spec.groups !== undefined) {
     if (!Array.isArray(spec.groups) || spec.groups.length > 32 || !spec.groups.every((g) => typeof g === "string" && GROUPID.test(g))) throw new HttpError(400, "bad_request", "Invalid groups");
     out.groups = spec.groups as string[];
@@ -362,9 +367,17 @@ export class Iac {
   async createUser(pve: ProxmoxClient, caller: Session, callerIsNodeAdmin: boolean, spec: UserSpec) {
     const userid = spec.userid!;
     const warnings: string[] = [];
+    // Only the pve realm keeps passwords in Proxmox; LDAP, AD, OpenID and PAM users sign in with their directory or OS account.
+    const realm = userid.slice(userid.lastIndexOf("@") + 1);
+    const realms = await pve.call<{ realm: string; type: string }[]>("GET", "/access/domains").catch(() => [] as { realm: string; type: string }[]);
+    const realmType = realms.find((r) => r.realm === realm)?.type;
+    const keepPassword = realmType === undefined || realmType === "pve";
+    if (spec.password && !keepPassword) warnings.push(`The ${realmType} realm manages passwords itself, so the password wasn't sent to Proxmox.`);
+    if (realmType === "pam") warnings.push("This is a PAM user: Proxmox only stores its permissions. The operating system account (and its password) must exist on the host.");
     await pve.call("POST", "/access/users", {
       userid,
-      password: spec.password,
+      password: keepPassword ? spec.password : undefined,
+      keys: spec.keys || undefined,
       email: spec.email || undefined,
       firstname: spec.firstname || undefined,
       lastname: spec.lastname || undefined,
@@ -394,6 +407,7 @@ export class Iac {
     if (spec.firstname !== undefined) fields.firstname = spec.firstname;
     if (spec.lastname !== undefined) fields.lastname = spec.lastname;
     if (spec.comment !== undefined) fields.comment = spec.comment;
+    if (spec.keys !== undefined) fields.keys = spec.keys;
     if (spec.groups !== undefined) fields.groups = spec.groups.join(",");
     if (spec.enable !== undefined) fields.enable = spec.enable ? 1 : 0;
     if (spec.expire !== undefined) fields.expire = spec.expire;
@@ -436,6 +450,7 @@ export class Iac {
     const orgs = this.gateway ? await this.overviewRoles(caller, userid).catch(() => []) : [];
     await pve.call("DELETE", `/access/users/${encodeURIComponent(userid)}`); // Proxmox removes their ACLs with them.
     this.sessions.destroyUser(userid);
+    if (revokeAllForUser(this.state, userid)) warnings.push("Their ePaperclip API tokens were revoked.");
     if (this.gateway) {
       for (const o of orgs) await this.engineRemove(caller, o.companyId, userid).catch((e: Error) => warnings.push(`Organization ${o.companyId}: ${e.message}`));
       await this.gateway.syncAdminUser(userid, false).catch(() => {});

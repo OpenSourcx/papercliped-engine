@@ -4,6 +4,7 @@ import type { EngineGateway } from "../engine.ts";
 import type { HttpError } from "../http.ts";
 import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
+import { access } from "./access.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -40,4 +41,6 @@ export interface FeatureCtx {
 
 export type FeatureHandler = (ctx: FeatureCtx) => Promise<boolean>;
 
-export const FEATURES: { name: string; handle: FeatureHandler }[] = [];
+export const FEATURES: { name: string; handle: FeatureHandler }[] = [
+  { name: "access", handle: access },
+];
