@@ -10,6 +10,7 @@ import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
+import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
 import { StateStore } from "./state.ts";
@@ -347,6 +348,7 @@ export function createApp(d: AppDeps) {
 
   const state = d.state ?? new StateStore(null);
   const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
+  const iac = new Iac({ gateway, state, sessions: d.sessions });
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
   const pin = new Pin({ state, connectors, fetch: outbound, now });
@@ -488,7 +490,9 @@ export function createApp(d: AppDeps) {
         });
         const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username };
         state.setSetting("resourceGroups", { ...all, [companyId]: group });
-        return sendJson(res, 200, { group: { companyId, ...group } });
+        // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
+        const warnings = existing ? [] : await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
       const poolRemoved = await asUser(req, res, async (pve) => {
@@ -502,6 +506,51 @@ export function createApp(d: AppDeps) {
       delete rest[companyId];
       state.setSetting("resourceGroups", rest);
       return sendJson(res, 200, { ok: true, pool: existing.pool, poolRemoved });
+    }
+
+    // ---- Integrated Access Control: people and permissions are Proxmox users and ACLs; the engine follows.
+    if (method === "GET" && path === "/api/iac") {
+      return sendJson(res, 200, await asUser(req, res, async (pve, s) => iac.overview(pve, s, await isNodeAdmin(pve))));
+    }
+    if (method === "POST" && path === "/api/iac/users") {
+      requireSameSite(req);
+      const spec = validateSpec(await readJson(req), true);
+      return sendJson(res, 200, await asUser(req, res, async (pve, s) => iac.createUser(pve, s, await isNodeAdmin(pve), spec)));
+    }
+    const iacUser = path.match(/^\/api\/iac\/users\/([^/]{3,100})(\/password)?$/);
+    if (iacUser) {
+      requireSameSite(req);
+      const userid = decodeURIComponent(iacUser[1]);
+      if (iacUser[2] && method === "PUT") {
+        const b = await readJson(req);
+        await asUser(req, res, (pve) => iac.setPassword(pve, userid, b.password as string, b.confirmationPassword as string));
+        return sendJson(res, 200, { ok: true });
+      }
+      if (!iacUser[2] && method === "PUT") {
+        const spec = validateSpec(await readJson(req), false);
+        return sendJson(res, 200, await asUser(req, res, async (pve, s) => iac.updateUser(pve, s, await isNodeAdmin(pve), userid, spec)));
+      }
+      if (!iacUser[2] && method === "DELETE") return sendJson(res, 200, await asUser(req, res, (pve, s) => iac.deleteUser(pve, s, userid)));
+    }
+    const iacMember = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/members\/([^/]{3,100})$/);
+    if (iacMember && (method === "PUT" || method === "DELETE")) {
+      requireSameSite(req);
+      const role = method === "PUT" ? ((await readJson(req)).role as OrgRole) : null;
+      const userid = decodeURIComponent(iacMember[2]);
+      await asUser(req, res, async (pve, s) => iac.setOrgRole(pve, s, await isNodeAdmin(pve), iacMember[1], userid, role));
+      return sendJson(res, 200, { ok: true });
+    }
+    if (method === "POST" && path === "/api/iac/groups") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      await asUser(req, res, (pve) => iac.createGroup(pve, String(b.groupid ?? ""), typeof b.comment === "string" ? b.comment : undefined));
+      return sendJson(res, 200, { ok: true });
+    }
+    const iacGroup = path.match(/^\/api\/iac\/groups\/([A-Za-z0-9._-]{1,64})$/);
+    if (iacGroup && method === "DELETE") {
+      requireSameSite(req);
+      await asUser(req, res, (pve) => iac.deleteGroup(pve, iacGroup[1]));
+      return sendJson(res, 200, { ok: true });
     }
 
     if (method === "GET" && path === "/api/connectors") {

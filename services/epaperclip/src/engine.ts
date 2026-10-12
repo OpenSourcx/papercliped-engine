@@ -417,12 +417,16 @@ export class EngineGateway {
    * Called on each sign-in, so taking the right away in Proxmox takes it away here too.
    */
   async syncAdmin(s: Session, nodeAdmin: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
-    const login = await this.loginFor(s);
-    const accounts = this.state.getSetting<Record<string, { userId: string | null }>>("engine.accounts") ?? {};
-    const userId = login.userId ?? accounts[s.username]?.userId ?? null;
+    await this.loginFor(s);
+    return this.syncAdminUser(s.username, nodeAdmin);
+  }
+
+  /** The same, for any Proxmox user (access control calls it when an administrator changes someone's device role). */
+  async syncAdminUser(username: string, nodeAdmin: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
+    const userId = await this.accountId(username).catch(() => null);
     if (!userId) return "unavailable";
     const admins = this.state.getSetting<Record<string, boolean>>("engine.admins") ?? {};
-    if (Boolean(admins[s.username]) === nodeAdmin) return "unchanged";
+    if (Boolean(admins[username]) === nodeAdmin) return "unchanged";
     let svc = await this.serviceSession();
     if (!svc) return "unavailable";
     const path = `/api/admin/users/${encodeURIComponent(userId)}/${nodeAdmin ? "promote" : "demote"}-instance-admin`;
@@ -432,8 +436,8 @@ export class EngineGateway {
       if (!svc) return "unavailable";
       r = await this.send("POST", path, { cookie: svc.cookie, json: {}, timeoutMs: 15_000 });
     }
-    if (r.status < 200 || r.status >= 300) throw new HttpError(502, "engine_error", `The engine refused to ${nodeAdmin ? "make" : "remove"} ${s.username} ${nodeAdmin ? "an" : "as"} administrator (${r.status}).`);
-    this.state.setSetting("engine.admins", { ...admins, [s.username]: nodeAdmin });
+    if (r.status < 200 || r.status >= 300) throw new HttpError(502, "engine_error", `The engine refused to ${nodeAdmin ? "make" : "remove"} ${username} ${nodeAdmin ? "an" : "as"} administrator (${r.status}).`);
+    this.state.setSetting("engine.admins", { ...admins, [username]: nodeAdmin });
     return nodeAdmin ? "promoted" : "demoted";
   }
 
@@ -469,6 +473,72 @@ export class EngineGateway {
     if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
     if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
     throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+  }
+
+  /** Turns an engine answer into data or a clear HttpError. */
+  private static settle<T>(r: { status: number; data: unknown }): T {
+    if (r.status >= 200 && r.status < 300) return r.data as T;
+    const msg = (r.data as { error?: string } | null)?.error;
+    if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
+    if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
+    if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
+    throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+  }
+
+  /**
+   * A JSON call as another person's managed engine account (creating it if needed), without their browser session.
+   * Used by access control to accept an invitation on someone's behalf after Proxmox has granted them the access.
+   */
+  async accountJson<T>(username: string, method: string, path: string, body?: unknown): Promise<T> {
+    try {
+      let login = this.logins.get(username) ?? (await this.signInOnce(username));
+      let r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: 20_000 });
+      if (r.status === 401) {
+        if (this.logins.get(username) === login) this.logins.delete(username);
+        login = await this.signInOnce(username);
+        r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: 20_000 });
+      }
+      this.absorb(login, r.headers["set-cookie"]);
+      return EngineGateway.settle<T>({ status: r.status, data: json(r.text) });
+    } catch (e) {
+      throw e instanceof EngineDown ? engineUnavailable() : e;
+    }
+  }
+
+  /** The engine user id behind a Proxmox user's managed account, creating the account if needed. */
+  async accountId(username: string): Promise<string | null> {
+    const known = this.state.getSetting<Record<string, { userId: string | null }>>("engine.accounts")?.[username]?.userId;
+    if (known) return known;
+    const login = this.logins.get(username) ?? (await this.signInOnce(username));
+    return login.userId;
+  }
+
+  /** Proxmox user names by engine user id, for the managed accounts this host made. */
+  accountsByEngineId(): Map<string, string> {
+    const accounts = this.state.getSetting<Record<string, { userId: string | null }>>("engine.accounts") ?? {};
+    return new Map(Object.entries(accounts).flatMap(([u, a]) => (a.userId ? [[a.userId, u] as [string, string]] : [])));
+  }
+
+  /** Whether the service account holds the engine's instance admin claim (and can act across organizations). */
+  async serviceReady(): Promise<boolean> {
+    return (await this.serviceSession().catch(() => null)) !== null;
+  }
+
+  /** A JSON call as the service account (the engine's instance admin). Null when this host doesn't hold the claim. */
+  async serviceJson<T>(method: string, path: string, body?: unknown): Promise<T | null> {
+    try {
+      let svc = await this.serviceSession();
+      if (!svc) return null;
+      let r = await this.send(method, path, { cookie: svc.cookie, json: body, timeoutMs: 20_000 });
+      if (r.status === 401) {
+        svc = await this.serviceSession(true);
+        if (!svc) return null;
+        r = await this.send(method, path, { cookie: svc.cookie, json: body, timeoutMs: 20_000 });
+      }
+      return EngineGateway.settle<T>({ status: r.status, data: json(r.text) });
+    } catch (e) {
+      throw e instanceof EngineDown ? engineUnavailable() : e;
+    }
   }
 
   me(s: Session): Promise<BoardAccess> {

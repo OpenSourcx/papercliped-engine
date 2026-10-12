@@ -91,3 +91,27 @@ These are fixed so the installer, host service, console, Pin and the sandbox pro
 **Console**
 - Talks to the engine only through `@papercliped-engine/engine-client` (base `/engine`).
 - Demo mode keeps its in-browser data; live mode uses the engine and Proxmox only, never demo data.
+
+## Integrated Access Control (IAC)
+
+ePaperclip has no user database. People are Proxmox users and what they may do is Proxmox ACLs. Every change made in ePaperclip is made in Proxmox first, as the signed-in administrator, so Proxmox's own permission checks decide whether they may make it. The engine is then brought in line. Doing it in ePaperclip is doing it in Proxmox.
+
+| Action in ePaperclip | In Proxmox | In the engine |
+| --- | --- | --- |
+| Create a user | `POST /access/users`, groups, enabled/expiry | managed account made on first sign-in |
+| Set a device role | ACLs for the role (below) | device admins are engine instance admins (so they can create organizations) |
+| Give an organization role | roles on the organization's pool `/pool/epc-<name>` | membership with that role (invitation accepted on their behalf) |
+| Change an organization role | pool roles swapped | role changed |
+| Remove access / disable / expire | pool roles removed, user disabled | membership archived, open sessions ended |
+| Delete a user | user and all their ACLs deleted | removed from every organization, engine admin removed, sessions ended |
+| New organization resource group | pool created | its members get their roles on the new pool |
+
+**Device roles** use Proxmox's built-in roles only: `admin` = `Administrator` on `/`; `operator` = `PVEAuditor` on `/`, `PVEVMAdmin` on `/vms`, `PVEDatastoreUser` on `/storage`; `viewer` = `PVEAuditor` on `/`; `none`. A user whose ACLs don't match one of these exactly is shown as `custom` and left alone.
+
+**Organization roles** map to pool roles: `owner`/`admin` = `PVEVMAdmin` + `PVEPoolAdmin`; `operator` = `PVEVMUser`; `viewer` = `PVEAuditor`. Because the roles are on the pool, access to an organization's machines in Proxmox follows access to the organization in the engine.
+
+**Who may do what:** Proxmox decides. Creating, changing and deleting users needs the Proxmox privileges for it (`User.Modify`, `Permissions.Modify`); without them Proxmox refuses and nothing changes. Changing who is in an organization needs a Proxmox administrator or that organization's owner/admin. Nobody can delete their own account or remove their own administrator role.
+
+**Drift:** if someone is removed in Proxmox's own UI, the next time an administrator opens the access page their engine memberships and admin status are removed to match.
+
+Routes (Proxmox session required; changes need `X-EPC-Request: 1`): `GET /api/iac`, `POST /api/iac/users`, `PUT|DELETE /api/iac/users/:userid`, `PUT /api/iac/users/:userid/password`, `PUT|DELETE /api/iac/orgs/:companyId/members/:userid`, `POST /api/iac/groups`, `DELETE /api/iac/groups/:groupid`.

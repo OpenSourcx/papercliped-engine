@@ -91,6 +91,13 @@ export class SessionStore {
     if (id) this.sessions.delete(id);
   }
 
+  /** Ends every session of one Proxmox user (their access was removed or disabled). Returns how many ended. */
+  destroyUser(username: string): number {
+    let n = 0;
+    for (const [id, s] of this.sessions) if (s.username === username) (this.sessions.delete(id), n++);
+    return n;
+  }
+
   startTfa(username: string, challenge: string): PendingTfa {
     const p: PendingTfa = { id: newId(), username, challenge, expiresAt: this.now() + TFA_MS, attempts: 0 };
     this.pending.set(p.id, p);
