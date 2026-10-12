@@ -37,7 +37,8 @@ export COREPACK_HOME="$work/corepack" COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 cd "$work/src"
 echo "epaperclip: building (a few minutes the first time)"
-corepack enable --install-directory "$work/bin" 2>/dev/null || npm install -g pnpm@10 >/dev/null
+mkdir -p "$work/bin"
+corepack enable --install-directory "$work/bin" || die "couldn't set up pnpm"
 export PATH="$work/bin:$PATH"
 pnpm install --frozen-lockfile >/dev/null
 pnpm build >/dev/null
