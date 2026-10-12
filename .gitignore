@@ -5,3 +5,4 @@ audit.jsonl
 .env
 *.pem
 release/
+.claude/worktrees/
