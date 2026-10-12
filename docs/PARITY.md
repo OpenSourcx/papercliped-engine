@@ -12,10 +12,10 @@ Check it: `node scripts/parity.mjs` prints counts and exits non-zero while any P
 
 | | done | partial | missing | total | done % |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **All rows** | 94 | 33 | 203 | 330 | 28% |
-| P0 | 70 | 17 | 33 | 120 | 58% |
-| P1 | 13 | 12 | 98 | 123 | 11% |
-| P2 | 0 | 2 | 69 | 71 | 0% |
+| **All rows** | 126 | 35 | 169 | 330 | 38% |
+| P0 | 89 | 16 | 15 | 120 | 74% |
+| P1 | 23 | 14 | 86 | 123 | 19% |
+| P2 | 3 | 3 | 65 | 71 | 4% |
 | Beyond Proxmox | 11 | 2 | 3 | 16 | 69% |
 
 By workstream (Proxmox rows only):
@@ -23,10 +23,10 @@ By workstream (Proxmox rows only):
 | Workstream | Owns | done | partial | missing | P0 not done |
 | --- | --- | ---: | ---: | ---: | ---: |
 | W-NODE | node and datacenter operations | 22 | 6 | 47 | 9 |
-| W-DISK | disks, storage definitions, VM/CT disk management | 21 | 4 | 44 | 18 |
-| W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 34 | 12 | 55 | 16 |
+| W-DISK | disks, storage definitions, VM/CT disk management | 50 | 6 | 13 | 1 |
+| W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 36 | 12 | 53 | 14 |
 | W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 7 | 7 | 20 | 7 |
-| W-CLUSTER | cluster, HA, replication, Ceph, migration | 0 | 2 | 34 | 0 |
+| W-CLUSTER | cluster, HA, replication, Ceph, migration | 1 | 2 | 33 | 0 |
 | W-ENGINE | organizations, agents, Pin, engine screens | 10 | 2 | 3 | 0 |
 
 ### P0 gaps by workstream
@@ -45,31 +45,12 @@ Every P0 row that is not done, in the order a person setting up a new host would
 - `ND-053` Reboot node (missing) - Power
 - `ND-054` Shut down node (missing) - Power
 
-**W-DISK** (18)
+**W-DISK** (1)
 
-- `ND-030` List disks with type, size, model, serial, usage, wearout (missing) - Disks
-- `ND-032` Initialize disk with GPT (missing) - Disks
-- `ND-033` Wipe disk (missing) - Disks
-- `DC-030` Add Directory storage (missing) - Storage
-- `ND-034` Disks > Directory: create (filesystem, add storage) and delete (missing) - Disks
-- `DC-042` Edit storage (content types, nodes, enable, shared, pruning, thin provision) (missing) - Storage
-- `DC-033` Add ZFS storage (missing) - Storage
-- `ND-035` Disks > ZFS: create pool (RAID level, compression, ashift), details, delete (missing) - Disks
-- `DC-034` Add NFS storage (missing) - Storage
-- `DC-035` Add SMB/CIFS storage (missing) - Storage
-- `DC-036` Add Proxmox Backup Server storage (missing) - Storage
-- `DC-043` Remove storage definition (missing) - Storage
-- `GU-029` Hard disk: add (bus, storage, size, format, cache, discard, SSD, iothread, async IO, backup flag, limits) (missing) - Hardware: VM
-- `GU-032` Hard disk: move to another storage (missing) - Hardware: VM
-- `GU-053` Root disk: move volume to another storage (missing) - Hardware: Container
-- `GU-033` Hard disk: detach and remove unused disk (missing) - Hardware: VM
-- `GU-054` Mount points: add, edit, resize, remove, move (partial) - Hardware: Container
 - `WZ-012` Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks (partial) - Create VM
 
-**W-MACHINE** (16)
+**W-MACHINE** (14)
 
-- `GU-035` CD/DVD drive: add (missing) - Hardware: VM
-- `GU-036` CD/DVD drive: change or eject ISO (missing) - Hardware: VM
 - `GU-005` Guest IP addresses and hostname (missing) - Summary
 - `GU-057` DNS: nameserver and search domain (missing) - Hardware: Container
 - `GU-058` Features: nesting, keyctl, fuse, mknod, mount types (missing) - Hardware: Container
@@ -95,7 +76,7 @@ Every P0 row that is not done, in the order a person setting up a new host would
 - `DC-082` Add user, group or token permission on a path (partial) - Permissions: Path permissions (ACL)
 - `DC-083` Remove permission (partial) - Permissions: Path permissions (ACL)
 
-Total P0 gaps: 50 of 120 P0 rows.
+Total P0 gaps: 31 of 120 P0 rows.
 
 ### First-hour path
 
@@ -137,22 +118,22 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-026 | Options | Cluster resource scheduling and HA settings | PUT /cluster/options (crs, ha) | missing | P2 | W-CLUSTER |  |  |
 | DC-027 | Options | Login consent banner | PUT /cluster/options (consent-text) | missing | P2 | W-ACCESS |  |  |
 | DC-028 | Options | Custom CPU models | GET/POST /cluster/qemu/custom-cpu-models; GET /cluster/qemu/cpu-flags | missing | P2 | W-MACHINE |  |  |
-| DC-029 | Storage | List storage definitions | GET /storage | done | P0 | W-DISK | StoragePage in DevicePages.tsx; GET /api/host storage (node-visible only, not the definitions) |  |
-| DC-030 | Storage | Add Directory storage | POST /storage (type=dir) | missing | P0 | W-DISK |  | 12 |
-| DC-031 | Storage | Add LVM storage | POST /storage (type=lvm) | missing | P1 | W-DISK |  |  |
-| DC-032 | Storage | Add LVM-Thin storage | POST /storage (type=lvmthin) | missing | P1 | W-DISK |  |  |
-| DC-033 | Storage | Add ZFS storage | POST /storage (type=zfspool) | missing | P0 | W-DISK |  | 14 |
-| DC-034 | Storage | Add NFS storage | POST /storage (type=nfs); GET /nodes/{node}/scan/nfs | missing | P0 | W-DISK |  | 15 |
-| DC-035 | Storage | Add SMB/CIFS storage | POST /storage (type=cifs); GET /nodes/{node}/scan/cifs | missing | P0 | W-DISK |  | 16 |
-| DC-036 | Storage | Add Proxmox Backup Server storage | POST /storage (type=pbs); GET /nodes/{node}/scan/pbs | missing | P0 | W-DISK |  | 17 |
-| DC-037 | Storage | Add BTRFS storage | POST /storage (type=btrfs) | missing | P2 | W-DISK |  |  |
-| DC-038 | Storage | Add iSCSI storage | POST /storage (type=iscsi); GET /nodes/{node}/scan/iscsi | missing | P1 | W-DISK |  |  |
-| DC-039 | Storage | Add CephFS and RBD storage | POST /storage (type=cephfs, rbd) | missing | P1 | W-CLUSTER |  |  |
-| DC-040 | Storage | Add GlusterFS, ZFS over iSCSI storage | POST /storage (type=glusterfs, zfs) | missing | P2 | W-DISK |  |  |
-| DC-041 | Storage | Add ESXi import source | POST /storage (type=esxi) | missing | P2 | W-DISK |  |  |
-| DC-042 | Storage | Edit storage (content types, nodes, enable, shared, pruning, thin provision) | PUT /storage/{storage} | missing | P0 | W-DISK |  | 13 |
-| DC-043 | Storage | Remove storage definition | DELETE /storage/{storage} | missing | P0 | W-DISK |  | 18 |
-| DC-044 | Storage | Backup retention (prune-backups) per storage | PUT /storage/{storage}; GET/DELETE /nodes/{node}/storage/{storage}/prunebackups | missing | P1 | W-DISK |  |  |
+| DC-029 | Storage | List storage definitions | GET /storage | done | P0 | W-DISK | GET /api/storage-config; StorageAdmin.tsx |  |
+| DC-030 | Storage | Add Directory storage | POST /storage (type=dir) | done | P0 | W-DISK | POST /api/storage-config (storage-schema.ts dir) |  |
+| DC-031 | Storage | Add LVM storage | POST /storage (type=lvm) | done | P1 | W-DISK | POST /api/storage-config (lvm) |  |
+| DC-032 | Storage | Add LVM-Thin storage | POST /storage (type=lvmthin) | done | P1 | W-DISK | POST /api/storage-config (lvmthin) |  |
+| DC-033 | Storage | Add ZFS storage | POST /storage (type=zfspool) | done | P0 | W-DISK | POST /api/storage-config (zfspool) |  |
+| DC-034 | Storage | Add NFS storage | POST /storage (type=nfs); GET /nodes/{node}/scan/nfs | done | P0 | W-DISK | POST /api/storage-config; GET /api/storage-config/scan/nfs |  |
+| DC-035 | Storage | Add SMB/CIFS storage | POST /storage (type=cifs); GET /nodes/{node}/scan/cifs | done | P0 | W-DISK | POST /api/storage-config; scan/cifs |  |
+| DC-036 | Storage | Add Proxmox Backup Server storage | POST /storage (type=pbs); GET /nodes/{node}/scan/pbs | done | P0 | W-DISK | POST /api/storage-config; scan/pbs |  |
+| DC-037 | Storage | Add BTRFS storage | POST /storage (type=btrfs) | done | P2 | W-DISK | storage-schema.ts btrfs |  |
+| DC-038 | Storage | Add iSCSI storage | POST /storage (type=iscsi); GET /nodes/{node}/scan/iscsi | done | P1 | W-DISK | storage-schema.ts iscsi; scan/iscsi |  |
+| DC-039 | Storage | Add CephFS and RBD storage | POST /storage (type=cephfs, rbd) | done | P1 | W-CLUSTER | storage-schema.ts cephfs, rbd |  |
+| DC-040 | Storage | Add GlusterFS, ZFS over iSCSI storage | POST /storage (type=glusterfs, zfs) | partial | P2 | W-DISK | storage-schema.ts zfs; no GlusterFS |  |
+| DC-041 | Storage | Add ESXi import source | POST /storage (type=esxi) | done | P2 | W-DISK | storage-schema.ts esxi |  |
+| DC-042 | Storage | Edit storage (content types, nodes, enable, shared, pruning, thin provision) | PUT /storage/{storage} | done | P0 | W-DISK | POST /api/storage-config/:id; StorageAdmin.tsx |  |
+| DC-043 | Storage | Remove storage definition | DELETE /storage/{storage} | done | P0 | W-DISK | POST /api/storage-config/:id/delete (usage check) |  |
+| DC-044 | Storage | Backup retention (prune-backups) per storage | PUT /storage/{storage}; GET/DELETE /nodes/{node}/storage/{storage}/prunebackups | partial | P1 | W-DISK | prune-backups read and edited in storage Edit; no prune-now |  |
 | DC-045 | Backup | List backup jobs | GET /cluster/backup | done | P0 | W-DISK | GET /api/backups/jobs; Backups.tsx |  |
 | DC-046 | Backup | Create backup job (schedule, storage, selection, mode, compression) | POST /cluster/backup | done | P0 | W-DISK | POST /api/backups/jobs; Backups.tsx |  |
 | DC-047 | Backup | Edit and enable/disable backup job | PUT /cluster/backup/{id} | done | P0 | W-DISK | POST /api/backups/jobs/:id |  |
@@ -269,16 +250,16 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-027 | System: Repositories | List repositories and status | GET /nodes/{node}/apt/repositories | missing | P0 | W-NODE |  | 1 |
 | ND-028 | System: Repositories | Enable/disable repository; add no-subscription, test, Ceph repos | POST/PUT /nodes/{node}/apt/repositories | missing | P0 | W-NODE |  | 1 |
 | ND-029 | System: Subscription | View status; enter or remove key; check | GET/PUT/POST/DELETE /nodes/{node}/subscription | missing | P1 | W-NODE |  |  |
-| ND-030 | Disks | List disks with type, size, model, serial, usage, wearout | GET /nodes/{node}/disks/list | missing | P0 | W-DISK |  | 10 |
-| ND-031 | Disks | SMART values and health | GET /nodes/{node}/disks/smart | missing | P1 | W-DISK |  | 11 |
-| ND-032 | Disks | Initialize disk with GPT | POST /nodes/{node}/disks/initgpt | missing | P0 | W-DISK |  | 11 |
-| ND-033 | Disks | Wipe disk | PUT /nodes/{node}/disks/wipedisk | missing | P0 | W-DISK |  | 11 |
-| ND-034 | Disks | Disks > Directory: create (filesystem, add storage) and delete | GET/POST /nodes/{node}/disks/directory; DELETE .../{name} | missing | P0 | W-DISK |  | 12 |
-| ND-035 | Disks | Disks > ZFS: create pool (RAID level, compression, ashift), details, delete | GET/POST /nodes/{node}/disks/zfs; GET/DELETE .../{name} | missing | P0 | W-DISK |  | 14 |
-| ND-036 | Disks | Disks > LVM: create and delete volume group | GET/POST /nodes/{node}/disks/lvm; DELETE .../{name} | missing | P1 | W-DISK |  |  |
-| ND-037 | Disks | Disks > LVM-Thin: create and delete thin pool | GET/POST /nodes/{node}/disks/lvmthin; DELETE .../{name} | missing | P1 | W-DISK |  |  |
+| ND-030 | Disks | List disks with type, size, model, serial, usage, wearout | GET /nodes/{node}/disks/list | done | P0 | W-DISK | features/disks.ts /api/disks/list; pages/disks/DisksPage.tsx |  |
+| ND-031 | Disks | SMART values and health | GET /nodes/{node}/disks/smart | done | P1 | W-DISK | features/disks.ts /api/disks/smart |  |
+| ND-032 | Disks | Initialize disk with GPT | POST /nodes/{node}/disks/initgpt | done | P0 | W-DISK | POST /api/disks/initgpt |  |
+| ND-033 | Disks | Wipe disk | PUT /nodes/{node}/disks/wipedisk | done | P0 | W-DISK | POST /api/disks/wipe |  |
+| ND-034 | Disks | Disks > Directory: create (filesystem, add storage) and delete | GET/POST /nodes/{node}/disks/directory; DELETE .../{name} | done | P0 | W-DISK | POST /api/disks/directory, .../delete |  |
+| ND-035 | Disks | Disks > ZFS: create pool (RAID level, compression, ashift), details, delete | GET/POST /nodes/{node}/disks/zfs; GET/DELETE .../{name} | done | P0 | W-DISK | POST /api/disks/zfs, GET /api/disks/zfs/:name, .../delete |  |
+| ND-036 | Disks | Disks > LVM: create and delete volume group | GET/POST /nodes/{node}/disks/lvm; DELETE .../{name} | done | P1 | W-DISK | POST /api/disks/lvm, .../delete |  |
+| ND-037 | Disks | Disks > LVM-Thin: create and delete thin pool | GET/POST /nodes/{node}/disks/lvmthin; DELETE .../{name} | done | P1 | W-DISK | POST /api/disks/lvmthin, .../delete |  |
 | ND-038 | Disks | ZFS scrub, replace device, pool health | GET /nodes/{node}/disks/zfs/{name} | missing | P2 | W-DISK |  |  |
-| ND-039 | Disks | Storage scans for the add-storage dialog | GET /nodes/{node}/scan/{nfs,cifs,iscsi,lvm,lvmthin,zfs,pbs} | missing | P1 | W-DISK |  |  |
+| ND-039 | Disks | Storage scans for the add-storage dialog | GET /nodes/{node}/scan/{nfs,cifs,iscsi,lvm,lvmthin,zfs,pbs} | done | P1 | W-DISK | GET /api/storage-config/scan/* |  |
 | ND-040 | Ceph | Install Ceph and initial configuration wizard | POST /nodes/{node}/ceph/init; GET /nodes/{node}/ceph/releases | missing | P1 | W-CLUSTER |  |  |
 | ND-041 | Ceph | Status, health, monitors, managers, metadata servers | GET /nodes/{node}/ceph/status; mon, mgr, mds endpoints | missing | P1 | W-CLUSTER |  |  |
 | ND-042 | Ceph | OSDs: create, destroy, in/out, scrub | GET/POST /nodes/{node}/ceph/osd; DELETE .../{osdid}; POST .../in, out, scrub | missing | P1 | W-CLUSTER |  |  |
@@ -334,14 +315,14 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-026 | Hardware: VM | Machine type (i440fx, q35), version, vIOMMU | PUT qemu/{vmid}/config (machine) | missing | P1 | W-MACHINE |  |  |
 | GU-027 | Hardware: VM | SCSI controller type | PUT qemu/{vmid}/config (scsihw) | missing | P1 | W-MACHINE |  |  |
 | GU-028 | Hardware: VM | Hard disk: list with storage, size, format | GET qemu/{vmid}/config (scsiN, sataN, ideN, virtioN) | done | P0 | W-DISK | Hardware.tsx via normalizeConfig |  |
-| GU-029 | Hardware: VM | Hard disk: add (bus, storage, size, format, cache, discard, SSD, iothread, async IO, backup flag, limits) | PUT qemu/{vmid}/config (scsiN, ...) | missing | P0 | W-DISK |  | 20 |
-| GU-030 | Hardware: VM | Hard disk: edit options | PUT qemu/{vmid}/config | missing | P1 | W-DISK |  |  |
+| GU-029 | Hardware: VM | Hard disk: add (bus, storage, size, format, cache, discard, SSD, iothread, async IO, backup flag, limits) | PUT qemu/{vmid}/config (scsiN, ...) | done | P0 | W-DISK | POST /api/guests/:id/disks/add; disksGuest.ts, HardwareDiskModals.tsx |  |
+| GU-030 | Hardware: VM | Hard disk: edit options | PUT qemu/{vmid}/config | done | P1 | W-DISK | POST /api/guests/:id/disks/:key/edit |  |
 | GU-031 | Hardware: VM | Hard disk: resize (grow) | PUT qemu/{vmid}/resize | done | P0 | W-DISK | POST /api/guests/:id/resize |  |
-| GU-032 | Hardware: VM | Hard disk: move to another storage | POST qemu/{vmid}/move_disk | missing | P0 | W-DISK |  | 22 |
-| GU-033 | Hardware: VM | Hard disk: detach and remove unused disk | PUT qemu/{vmid}/unlink; PUT config (delete) | missing | P0 | W-DISK |  | 23 |
-| GU-034 | Hardware: VM | Hard disk: reassign owner | POST qemu/{vmid}/move_disk (target-vmid) | missing | P2 | W-DISK |  |  |
-| GU-035 | Hardware: VM | CD/DVD drive: add | PUT qemu/{vmid}/config (ideN, media=cdrom) | missing | P0 | W-MACHINE |  | 21 |
-| GU-036 | Hardware: VM | CD/DVD drive: change or eject ISO | PUT qemu/{vmid}/config (ide2) | missing | P0 | W-MACHINE |  | 21 |
+| GU-032 | Hardware: VM | Hard disk: move to another storage | POST qemu/{vmid}/move_disk | done | P0 | W-DISK | POST /api/guests/:id/disks/:key/move |  |
+| GU-033 | Hardware: VM | Hard disk: detach and remove unused disk | PUT qemu/{vmid}/unlink; PUT config (delete) | done | P0 | W-DISK | POST .../detach, reattach, destroy |  |
+| GU-034 | Hardware: VM | Hard disk: reassign owner | POST qemu/{vmid}/move_disk (target-vmid) | done | P2 | W-DISK | POST .../reassign |  |
+| GU-035 | Hardware: VM | CD/DVD drive: add | PUT qemu/{vmid}/config (ideN, media=cdrom) | done | P0 | W-MACHINE | POST /api/guests/:id/disks/cdrom |  |
+| GU-036 | Hardware: VM | CD/DVD drive: change or eject ISO | PUT qemu/{vmid}/config (ide2) | done | P0 | W-MACHINE | POST /api/guests/:id/disks/cdrom |  |
 | GU-037 | Hardware: VM | Network device: list | GET qemu/{vmid}/config (netN) | done | P0 | W-MACHINE | Hardware.tsx |  |
 | GU-038 | Hardware: VM | Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) | PUT qemu/{vmid}/config (netN) | partial | P0 | W-MACHINE | POST /api/guests/:id/nets covers bridge, VLAN, MAC, firewall, rate; model/MTU/multiqueue/disconnect unverified |  |
 | GU-039 | Hardware: VM | Network device: remove | PUT qemu/{vmid}/config (delete=netN) | done | P0 | W-MACHINE | POST /api/guests/:id/nets/:key/delete |  |
@@ -358,9 +339,9 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-050 | Hardware: Container | CPU cores | PUT lxc/{vmid}/config (cores) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
 | GU-051 | Hardware: Container | CPU limit and units | PUT lxc/{vmid}/config (cpulimit, cpuunits) | missing | P2 | W-MACHINE |  |  |
 | GU-052 | Hardware: Container | Root disk: resize | PUT lxc/{vmid}/resize | done | P0 | W-DISK | POST /api/guests/:id/resize |  |
-| GU-053 | Hardware: Container | Root disk: move volume to another storage | POST lxc/{vmid}/move_volume | missing | P0 | W-DISK |  | 22 |
-| GU-054 | Hardware: Container | Mount points: add, edit, resize, remove, move | PUT lxc/{vmid}/config (mpN); resize; move_volume | partial | P0 | W-DISK | resize works on mpN; add, edit, remove do not | 24 |
-| GU-055 | Hardware: Container | Bind mounts of host directories | PUT lxc/{vmid}/config (mpN, bind) | missing | P1 | W-DISK |  |  |
+| GU-053 | Hardware: Container | Root disk: move volume to another storage | POST lxc/{vmid}/move_volume | done | P0 | W-DISK | POST /api/guests/:id/disks/rootfs/move |  |
+| GU-054 | Hardware: Container | Mount points: add, edit, resize, remove, move | PUT lxc/{vmid}/config (mpN); resize; move_volume | done | P0 | W-DISK | POST /api/guests/:id/disks/mount; .../mpN/edit, move, detach |  |
+| GU-055 | Hardware: Container | Bind mounts of host directories | PUT lxc/{vmid}/config (mpN, bind) | done | P1 | W-DISK | disksCheck.ts bindPath; disks/mount |  |
 | GU-056 | Hardware: Container | Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) | PUT lxc/{vmid}/config (netN) | partial | P0 | W-MACHINE | POST /api/guests/:id/nets |  |
 | GU-057 | Hardware: Container | DNS: nameserver and search domain | PUT lxc/{vmid}/config (nameserver, searchdomain) | missing | P0 | W-MACHINE |  | 32 |
 | GU-058 | Hardware: Container | Features: nesting, keyctl, fuse, mknod, mount types | PUT lxc/{vmid}/config (features) | missing | P0 | W-MACHINE |  | 33 |
@@ -414,7 +395,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ST-005 | Content | Download from URL with checksum | POST /nodes/{node}/storage/{storage}/download-url | done | P0 | W-DISK | POST /api/storage/:id/download-url |  |
 | ST-006 | Content | Template catalog download | POST /nodes/{node}/aplinfo | done | P0 | W-DISK | GET /api/templates/catalog; POST /api/templates/download |  |
 | ST-007 | Content | Delete volume | DELETE /nodes/{node}/storage/{storage}/content/{volume} | done | P0 | W-DISK | POST /api/storage/:id/delete |  |
-| ST-008 | Content | Upload snippets (hookscripts, cloud-init files) | POST .../upload (content=snippets) | missing | P1 | W-DISK |  |  |
+| ST-008 | Content | Upload snippets (hookscripts, cloud-init files) | POST .../upload (content=snippets) | partial | P1 | W-DISK | snippets listed in content; upload route accepts iso and vztmpl only |  |
 | ST-009 | Content | Import disk image into a VM; import OVA/qcow2/raw | POST /nodes/{node}/qemu (import-from); GET .../import-metadata | missing | P1 | W-DISK |  |  |
 | ST-010 | Content | Allocate a new disk image volume directly | POST /nodes/{node}/storage/{storage}/content | missing | P2 | W-DISK |  |  |
 | ST-011 | Content | Copy or move a volume between storages | POST .../content/{volume} | missing | P2 | W-DISK |  |  |
@@ -442,7 +423,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | WZ-009 | Create VM | General: name, VMID, pool, start at boot, start order, tags | POST /nodes/{node}/qemu | partial | P0 | W-MACHINE | POST /api/vms: name, pool; VMID auto; start flag | 38 |
 | WZ-010 | Create VM | OS: ISO from storage, physical drive, no media; guest OS type and version | POST /nodes/{node}/qemu (ide2, ostype) | partial | P0 | W-MACHINE | ISO choice; types limited to Linux, Windows 11, Other |  |
 | WZ-011 | Create VM | System: graphic card, machine, BIOS, SCSI controller, EFI, TPM, guest agent | POST /nodes/{node}/qemu (vga, machine, bios, scsihw, efidisk0, tpmstate0, agent) | partial | P0 | W-MACHINE | chosen by OS type defaults, no user choice | 39 |
-| WZ-012 | Create VM | Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks | POST /nodes/{node}/qemu (scsi0...) | partial | P0 | W-DISK | one disk, size and storage only | 25 |
+| WZ-012 | Create VM | Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks | POST /nodes/{node}/qemu (scsi0...) | partial | P0 | W-DISK | POST /api/vms still takes one disk of storage and size; the machine page can add more after creation | 25 |
 | WZ-013 | Create VM | CPU: sockets, cores, type, vCPUs, limit, NUMA | POST /nodes/{node}/qemu (sockets, cores, cpu) | partial | P0 | W-MACHINE | cores only; CPU type fixed x86-64-v2-AES | 40 |
 | WZ-014 | Create VM | Memory: fixed or ballooning | POST /nodes/{node}/qemu (memory, balloon) | partial | P0 | W-MACHINE | fixed only |  |
 | WZ-015 | Create VM | Network: bridge, VLAN, model, MAC, firewall, disconnect | POST /nodes/{node}/qemu (net0) | missing | P0 | W-MACHINE | net0 always vmbr0 with VirtIO or e1000e | 37 |
