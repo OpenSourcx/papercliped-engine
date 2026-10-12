@@ -111,9 +111,10 @@ export function useOrgSettingsWrites(companyId: string) {
   const qc = useQueryClient();
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: qk.orgs }), qc.invalidateQueries({ queryKey: qk.detail(companyId) }), qc.invalidateQueries({ queryKey: qk.dashboard(companyId) })]);
   return {
-    update: useMutation({ mutationFn: (body: { name?: string; description?: string | null; budgetMonthlyCents?: number }) => engine.companies.update(companyId, body), onSuccess: refresh }),
+    update: useMutation({ mutationFn: (body: { name?: string; description?: string | null; budgetMonthlyCents?: number; requireBoardApprovalForNewAgents?: boolean }) => engine.companies.update(companyId, body), onSuccess: refresh }),
+    budget: useMutation({ mutationFn: (cents: number) => engine.settings.budget(companyId, cents), onSuccess: async () => { await refresh(); await Promise.all([qc.invalidateQueries({ queryKey: qk.costs(companyId) }), qc.invalidateQueries({ queryKey: qk.budgets(companyId) })]); } }),
     archive: useMutation({ mutationFn: () => engine.settings.archive(companyId), onSuccess: refresh }),
-    unarchive: useMutation({ mutationFn: () => engine.companies.update(companyId, { status: "active" } as never), onSuccess: refresh }),
+    unarchive: useMutation({ mutationFn: () => engine.companies.update(companyId, { status: "active" }), onSuccess: refresh }),
   };
 }
 export const useBudgets = (companyId: Id) => useCompanyQuery(companyId, qk.budgets(k(companyId)), (id) => engine.budgets.overview(id));

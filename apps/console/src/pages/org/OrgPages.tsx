@@ -12,7 +12,9 @@ import { LiveAgents } from "./live/LiveAgents.tsx";
 import { LiveTasks } from "./live/LiveTasks.tsx";
 import { LiveRoutines } from "./live/LiveRoutines.tsx";
 import { LiveDecisions, LiveInbox } from "./live/LiveInbox.tsx";
-import { LiveActivity, LiveCosts, LiveGoals, LiveOrgSettings, LiveProjects } from "./live/LiveWork.tsx";
+import { LiveOrgSettings } from "./live/LiveSettings.tsx";
+import { LiveCosts } from "./live/LiveCosts.tsx";
+import { LiveActivity, LiveGoals, LiveProjects } from "./live/LiveWork.tsx";
 
 const ago = (iso: string | null) => {
   if (!iso) return "never";

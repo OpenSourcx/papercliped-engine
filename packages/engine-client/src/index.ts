@@ -285,7 +285,7 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       list: () => call<Company[]>("GET", P.companies),
       get: (companyId: string) => call<Company>("GET", P.company, { companyId }),
       create: (body: CreateCompanyBody) => call<Company>("POST", P.companies, {}, body),
-      update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">>) => call<Company>("PATCH", P.company, { companyId }, body),
+      update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">> & { status?: "active" | "paused" | "archived"; requireBoardApprovalForNewAgents?: boolean }) => call<Company>("PATCH", P.company, { companyId }, body),
       archive: (companyId: string) => call<unknown>("DELETE", P.company, { companyId }),
       dashboard: (companyId: string) => call<DashboardSummary>("GET", P.dashboard, { companyId }),
       members: (companyId: string) => call<MembersAnswer>("GET", P.members, { companyId }),
@@ -393,7 +393,7 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       get: (id: string) => call<ExecutionWorkspace>("GET", P.executionWorkspace, { id }),
     },
     settings: {
-      branding: (companyId: string, body: { brandColor?: string | null }) => call<Company>("PATCH", P.branding, { companyId }, body),
+      branding: (companyId: string, body: { name?: string; description?: string | null }) => call<Company>("PATCH", P.branding, { companyId }, body),
       archive: (companyId: string) => call<Company>("POST", P.archive, { companyId }, {}),
       budget: (companyId: string, budgetMonthlyCents: number) => call<Company>("PATCH", P.budgets, { companyId }, { budgetMonthlyCents }),
       secrets: (companyId: string) => call<CompanySecret[]>("GET", P.secrets, { companyId }),

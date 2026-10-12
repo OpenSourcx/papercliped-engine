@@ -111,39 +111,6 @@ export function LiveProjects() {
   );
 }
 
-export function LiveCosts() {
-  const { companyId } = useLiveOrg();
-  const costs = useCosts(companyId);
-  const s = costs.data?.summary;
-  const rows = [...(costs.data?.byAgent ?? [])].sort((a, b) => b.costCents - a.costCents);
-  const max = Math.max(1, ...rows.map((r) => r.costCents));
-  return (
-    <PageFrame width="4xl">
-      <PageHeader title="Costs" subtitle="AI spend this month, by agent." />
-      {costs.isPending && <Card><Loading /></Card>}
-      {costs.error && <Card><LoadError error={costs.error} retry={() => void costs.refetch()} /></Card>}
-      {s && (
-        <Card className="p-5 mb-4">
-          <div className="flex items-baseline gap-2"><CircleDollarSign className="h-5 w-5 text-ink-3 self-center" /><span className="text-display font-semibold tabular-nums">{dollars(s.spendCents)}</span><span className="text-ink-3">{s.budgetCents ? `of ${dollars(s.budgetCents)} budgeted` : "spent, no budget set"}</span></div>
-          {s.budgetCents ? <BarMeter className="mt-3" label="Month to date" pct={s.utilizationPercent} value={`${Math.round(s.utilizationPercent)}%`} /> : null}
-        </Card>
-      )}
-      {costs.data && (
-        <Card className="divide-y divide-line">
-          {rows.length === 0 && <EmptyState icon={<CircleDollarSign className="h-5 w-5" />} title="No spend yet" body="Costs show up here once agents start running." />}
-          {rows.map((r) => (
-            <div key={r.agentId} className="flex items-center gap-3 px-5 py-3">
-              <Avatar name={r.agentName ?? "Agent"} hue={210} size={28} />
-              <span className="w-32 text-sm truncate">{r.agentName ?? "Removed agent"}</span>
-              <BarMeter className="flex-1" label={`${(r.inputTokens + r.outputTokens).toLocaleString()} tokens · ${r.apiRunCount + r.subscriptionRunCount} runs`} pct={(r.costCents / max) * 100} value={dollars(r.costCents)} />
-            </div>
-          ))}
-        </Card>
-      )}
-    </PageFrame>
-  );
-}
-
 export function LiveActivity() {
   const { companyId, org } = useLiveOrg();
   const activity = useActivity(companyId);
@@ -199,23 +166,3 @@ export function LiveMembers() {
   );
 }
 
-export function LiveOrgSettings() {
-  const { companyId, org } = useLiveOrg();
-  const rg = useResourceGroup(companyId);
-  const g = rg.group;
-  return (
-    <PageFrame width="3xl">
-      <PageHeader title="Organization settings" />
-      <Card className="p-5 space-y-4">
-        <div className="flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={44} /><div><div className="font-medium">{org.name}</div><div className="text-xs text-ink-3 font-mono">/{org.slug} · tasks are {org.engine?.prefix}-1, {org.engine?.prefix}-2…</div></div></div>
-        {org.engine?.description && <p className="text-sm text-ink-2">{org.engine.description}</p>}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-ink-3">Resources</dt>
-          <dd>{rg.isPending ? "…" : rg.error ? <span className="text-ink-3">Unknown</span> : g ? `${g.cores} cores · ${formatBytes(g.memoryMb * 1024 ** 2)} memory · ${g.diskGb} GB disk · up to ${g.maxGuests} containers (pool ${g.pool})` : <span className="text-ink-3">No resource group yet</span>}</dd>
-          <dt className="text-ink-3">Monthly budget</dt><dd>{org.engine?.budgetMonthlyCents ? dollars(org.engine.budgetMonthlyCents) : "None"}</dd>
-          <dt className="text-ink-3">Status</dt><dd className="capitalize">{org.engine?.status}</dd>
-        </dl>
-      </Card>
-    </PageFrame>
-  );
-}
