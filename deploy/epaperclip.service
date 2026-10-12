@@ -12,7 +12,7 @@ Group=epaperclip
 # Read access to the node certificate, its key and the cluster CA in /etc/pve, the same way pveproxy reads them.
 SupplementaryGroups=www-data
 EnvironmentFile=-/etc/default/epaperclip
-ExecStart=/usr/bin/node /opt/epaperclip/epaperclip.mjs
+ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/epaperclip.mjs
 Restart=on-failure
 RestartSec=3
 

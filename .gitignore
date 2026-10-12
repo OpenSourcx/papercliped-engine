@@ -4,3 +4,4 @@ dist/
 audit.jsonl
 .env
 *.pem
+release/
