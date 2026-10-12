@@ -17,7 +17,7 @@ import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
-import { Activity, Agents, Artifacts, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
+import { Activity, Agents, Artifacts, Chat, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
 import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
@@ -100,7 +100,7 @@ export function App() {
             <Route path="activity" element={<Activity />} />
             <Route path="connectors" element={<OrgConnectors />} />
             <Route path="settings" element={<OrgSettings />} />
-            <Route path="chat" element={<ComingFromPaperclip title="Chat" body="Talk with your agents in threads, with their runs and tool calls inline." />} />
+            <Route path="chat" element={<Chat />} />
             <Route path="artifacts" element={<Artifacts />} />
             <Route path="workspaces" element={<Workspaces />} />
             <Route path="workspaces/:workspaceId" element={<LiveOnly fallback="..">{<LiveWorkspaceDetail />}</LiveOnly>} />

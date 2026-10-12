@@ -369,6 +369,8 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       list: (companyId: string) => call<Issue[]>("GET", P.chats, { companyId }),
       get: (companyId: string, agentRef: string) => call<Issue | null>("GET", ENGINE_PATHS_UNDOCUMENTED.chatWith, { companyId, agentRef }),
       open: (companyId: string, agentRef: string) => call<Issue>("POST", ENGINE_PATHS_UNDOCUMENTED.chatWith, { companyId, agentRef }, {}),
+      /** A chat message is a comment on the conversation's task; the engine wants a UUID per message so a retry can't post it twice. */
+      send: (issueId: string, body: string, clientRequestId: string = crypto.randomUUID()) => call<IssueComment>("POST", P.issueComments, { id: issueId }, { body, clientRequestId }),
     },
     skills: {
       list: (companyId: string) => call<CompanySkillListItem[]>("GET", P.skills, { companyId }),
