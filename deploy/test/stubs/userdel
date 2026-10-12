@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test stand-in: forgets a user recorded by the useradd stand-in.
+echo "userdel $*" >>"${STUB_STATE:?}/calls"
+u="${*: -1}"
+grep -qx "$u" "$STUB_STATE/users" 2>/dev/null || exit 6
+grep -vx "$u" "$STUB_STATE/users" >"$STUB_STATE/users.new" || true
+mv "$STUB_STATE/users.new" "$STUB_STATE/users"

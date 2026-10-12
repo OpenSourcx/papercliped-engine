@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test stand-in for `ss -Hltn "sport = :PORT"`: a port is in use when it's listed in STUB_SS_BUSY (space separated).
+port="$(echo "${*: -1}" | sed -n 's/.*:\([0-9][0-9]*\).*/\1/p')"
+for p in ${STUB_SS_BUSY:-}; do [ "$p" = "$port" ] && echo "LISTEN 0 511 127.0.0.1:$port 0.0.0.0:*"; done
+exit 0

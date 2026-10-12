@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Test stand-in for systemctl: runs the unit files the installer wrote, as plain background processes.
+# ExecStart, WorkingDirectory, EnvironmentFile and Environment are read from the unit, with the real paths mapped to the
+# test host's (EPC_PREFIX and friends), then STUB_STATE/env.<unit> is applied on top (test ports). INVOCATION_ID is set,
+# as systemd does. pveproxy is "active" unless STUB_PVEPROXY_DOWN=1.
+set -u
+S="${STUB_STATE:?}"; mkdir -p "$S"
+echo "systemctl $*" >>"$S/calls"
+
+map() {
+  sed -e "s#/opt/epaperclip#${EPC_PREFIX}#g" -e "s#/etc/epaperclip#${EPC_ETC_DIR}#g" -e "s#/etc/default/epaperclip#${EPC_DEFAULTS}#g" \
+      -e "s#/var/lib/epaperclip-engine#${EPC_ENGINE_HOME}#g" -e "s#/var/lib/epaperclip\\b#${EPC_HOST_STATE_DIR}#g"
+}
+unit_file() { echo "$EPC_UNIT_DIR/${1%.service}.service"; }
+pid_of() { cat "$S/${1%.service}.pid" 2>/dev/null; }
+is_active() {
+  local u="${1%.service}" p
+  [ "$u" = pveproxy ] && { [ "${STUB_PVEPROXY_DOWN:-}" = 1 ] && return 3; return 0; }
+  p="$(pid_of "$u")"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+start() {
+  local u="${1%.service}" f exec dir user line
+  f="$(unit_file "$u")"; [ -f "$f" ] || { echo "Failed to start $u.service: Unit $u.service not found." >&2; return 5; }
+  is_active "$u" && return 0
+  exec="$(sed -n 's/^ExecStart=//p' "$f" | map)"; dir="$(sed -n 's/^WorkingDirectory=//p' "$f" | map)"; user="$(sed -n 's/^User=//p' "$f")"
+  [ -x "${exec%% *}" ] || [ -L "${exec%% *}" ] || { echo "$u.service: ExecStart binary ${exec%% *} missing (status=203/EXEC)" >>"$S/$u.log"; return 1; }
+  (
+    set -a
+    while IFS= read -r line; do [ -f "${line#-}" ] && . "${line#-}"; done < <(sed -n 's/^EnvironmentFile=//p' "$f" | map)
+    while IFS= read -r line; do eval "export $line"; done < <(sed -n 's/^Environment=//p' "$f" | map)
+    [ -f "$S/env.$u" ] && . "$S/env.$u"
+    export INVOCATION_ID="stub-$u-$$"
+    set +a
+    [ -n "$dir" ] && cd "$dir"
+    as=(); if [ "$(/usr/bin/id -u)" -eq 0 ] && [ "${STUB_RUN_AS_NOBODY:-}" = 1 ] && [ -n "$user" ]; then as=(/usr/bin/setpriv --reuid=65534 --regid=65534 --clear-groups); fi
+    # shellcheck disable=SC2086
+    exec setsid ${as[@]+"${as[@]}"} $exec >>"$S/$u.log" 2>&1
+  ) &
+  echo $! >"$S/$u.pid"
+  echo "[stub] started $u as pid $! at $(date +%T.%N)" >>"$S/$u.log"
+  return 0
+}
+stop() {
+  local u="${1%.service}" p i
+  p="$(pid_of "$u")"; rm -f "$S/$u.pid"
+  [ -n "$p" ] || return 0
+  echo "[stub] stopping $u (pid $p) at $(date +%T.%N)" >>"$S/$u.log"
+  kill -TERM -- "-$p" 2>/dev/null || kill -TERM "$p" 2>/dev/null
+  for i in $(seq 1 50); do kill -0 "$p" 2>/dev/null || return 0; sleep 0.1; done
+  kill -KILL -- "-$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null
+  return 0
+}
+
+cmd="${1:-}"; shift || true
+now=0; quiet=0; units=()
+for a in "$@"; do case "$a" in --now) now=1 ;; -q|--quiet) quiet=1 ;; -*) ;; *) units+=("$a") ;; esac; done
+rc=0
+case "$cmd" in
+  is-active) for u in "${units[@]}"; do if is_active "$u"; then [ "$quiet" = 1 ] || echo active; else [ "$quiet" = 1 ] || echo inactive; rc=3; fi; done ;;
+  start) for u in "${units[@]}"; do start "$u" || rc=$?; done ;;
+  stop) for u in "${units[@]}"; do stop "$u"; done ;;
+  restart) for u in "${units[@]}"; do stop "$u"; start "$u" || rc=$?; done ;;
+  enable) for u in "${units[@]}"; do [ -f "$(unit_file "$u")" ] || { rc=1; continue; }; touch "$S/enabled.${u%.service}"; [ "$now" = 1 ] && { start "$u" || rc=$?; }; done ;;
+  disable) for u in "${units[@]}"; do rm -f "$S/enabled.${u%.service}"; [ "$now" = 1 ] && stop "$u"; done ;;
+  is-enabled) for u in "${units[@]}"; do [ -f "$S/enabled.${u%.service}" ] || rc=1; done ;;
+  daemon-reload) ;;
+  *) ;;
+esac
+exit "$rc"
