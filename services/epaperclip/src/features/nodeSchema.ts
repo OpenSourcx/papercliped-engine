@@ -272,11 +272,15 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
     "lower": {
      "description": "Lower, inclusive boundary for free next-id API range.",
      "type": "integer",
+     "min": 100,
+     "max": 999999999,
      "default": 100
     },
     "upper": {
      "description": "Upper, exclusive boundary for free next-id API range.",
      "type": "integer",
+     "min": 100,
+     "max": 1000000000,
      "default": 1000000
     }
    }

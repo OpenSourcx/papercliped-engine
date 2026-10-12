@@ -47,8 +47,11 @@ function field(name, p) {
   }
   f.type = p.type === "number" ? "number" : p.type;
   if (p.enum) f.enum = p.enum;
-  if (p.minimum !== undefined) f.min = Number(p.minimum);
-  if (p.maximum !== undefined) f.max = Number(p.maximum);
+  // Top-level parameters say minimum/maximum; the fields inside property strings say min/max.
+  const lo = p.minimum ?? p.min;
+  const hi = p.maximum ?? p.max;
+  if (lo !== undefined) f.min = Number(lo);
+  if (hi !== undefined) f.max = Number(hi);
   if (p.maxLength !== undefined) f.maxLength = p.maxLength;
   if (p.default !== undefined) f.default = p.default;
   if (typeof p.format === "string") f.format = p.format;
