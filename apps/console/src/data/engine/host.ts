@@ -97,3 +97,60 @@ export const host = {
     put: (companyId: string, spec: ResourceGroupSize & { name: string }) => call<{ group: ResourceGroupState }>("PUT", `/api/resource-groups/${enc(companyId)}`, spec).then((r) => r.group),
   },
 };
+
+/** Integrated Access Control: people and permissions are Proxmox users and ACLs; the host service keeps the engine in step. */
+export type DeviceRole = "admin" | "operator" | "viewer" | "none";
+export type OrgRole = "owner" | "admin" | "operator" | "viewer";
+
+export interface IacUser {
+  userid: string;
+  realm: string;
+  realmType: string | null;
+  name: string;
+  email: string | null;
+  enabled: boolean;
+  expire: number | null;
+  groups: string[];
+  comment: string | null;
+  deviceRole: DeviceRole | "custom";
+  orgs: { companyId: string; role: string }[];
+  hasEngineAccount: boolean;
+}
+
+export interface IacOverview {
+  users: IacUser[];
+  orgs: { companyId: string; name: string; pool: string | null }[];
+  realms: { realm: string; type: string; comment?: string; default?: number }[];
+  groups: { groupid: string; comment?: string }[];
+  canManageUsers: boolean;
+  warnings: string[];
+}
+
+export interface IacUserSpec {
+  userid?: string;
+  password?: string;
+  email?: string;
+  firstname?: string;
+  lastname?: string;
+  comment?: string;
+  groups?: string[];
+  enable?: boolean;
+  expire?: number;
+  deviceRole?: DeviceRole;
+  orgs?: { companyId: string; role: OrgRole }[];
+}
+
+export interface IacResult {
+  userid: string;
+  warnings: string[];
+}
+
+export const iac = {
+  get: () => call<IacOverview>("GET", "/api/iac"),
+  createUser: (spec: IacUserSpec) => call<IacResult>("POST", "/api/iac/users", spec),
+  updateUser: (userid: string, spec: IacUserSpec) => call<IacResult>("PUT", `/api/iac/users/${enc(userid)}`, spec),
+  deleteUser: (userid: string) => call<IacResult>("DELETE", `/api/iac/users/${enc(userid)}`),
+  setPassword: (userid: string, password: string, confirmationPassword: string) => call<{ ok: true }>("PUT", `/api/iac/users/${enc(userid)}/password`, { password, confirmationPassword }),
+  setOrgRole: (companyId: string, userid: string, role: OrgRole) => call<{ ok: true }>("PUT", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`, { role }),
+  removeFromOrg: (companyId: string, userid: string) => call<{ ok: true }>("DELETE", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`),
+};
