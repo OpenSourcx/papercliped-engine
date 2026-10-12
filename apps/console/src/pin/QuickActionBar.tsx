@@ -15,7 +15,7 @@ const GROUPS = [
  * Pin's quick actions for the current page. The row holds at most three, preferring things to do; everything else is
  * one tap away in the More panel, grouped so it reads at a glance. Risky actions are confirmed first.
  */
-export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?: () => void }) {
+export function QuickActionBar({ compact, scroll, onDone }: { compact?: boolean; scroll?: boolean; onDone?: () => void }) {
   const pin = usePin();
   const [more, setMore] = useState(false);
   const actions = pin.actions;
@@ -44,9 +44,9 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
       disabled={a.disabled}
       title={a.title ?? a.label}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border text-compact font-medium whitespace-nowrap transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
+        "transition-control inline-flex items-center gap-1.5 rounded-full border text-compact font-medium whitespace-nowrap active:scale-97 disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
         compact ? "h-8 px-3" : "h-9 px-3.5",
-        a.danger ? "border-critical/35 text-critical hover:bg-critical/10" : "border-line-strong bg-surface/70 hover:bg-surface-3 text-ink",
+        a.danger ? "border-critical/30 text-critical hover:bg-critical/10" : "border-line bg-surface-2/60 hover:bg-surface-3 hover:border-line-strong text-ink",
       )}
     >
       <span className={cn("shrink-0", !a.danger && "text-ink-2")}>{a.icon}</span>
@@ -60,7 +60,7 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
       onClick={() => run(a)}
       disabled={a.disabled}
       title={a.title}
-      className={cn("flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-left text-compact transition disabled:opacity-40 disabled:cursor-not-allowed min-w-0", a.danger ? "text-critical hover:bg-critical/10" : "text-ink hover:bg-surface-3")}
+      className={cn("transition-control flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-left text-compact disabled:opacity-40 disabled:cursor-not-allowed min-w-0", a.danger ? "text-critical hover:bg-critical/10" : "text-ink hover:bg-surface-3")}
     >
       <span className={cn("shrink-0", !a.danger && "text-ink-3")}>{a.icon}</span>
       <span className="truncate">{a.label}</span>
@@ -69,11 +69,11 @@ export function QuickActionBar({ compact, onDone }: { compact?: boolean; onDone?
 
   return (
     <div className="min-w-0 flex-1">
-      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+      <div className={cn("flex items-center gap-1.5 min-w-0", scroll ? "overflow-x-auto [scrollbar-width:none] -mx-1 px-1" : "flex-wrap")}>
         {main.map((i) => chip(actions.items[i]))}
         {extra.length > 0 && (
-          <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={cn("ml-auto inline-flex items-center gap-1 rounded-full text-compact font-medium whitespace-nowrap text-ink-2 hover:text-ink hover:bg-surface-3 shrink-0", compact ? "h-8 px-2.5" : "h-9 px-3")}>
-            More <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", more && "rotate-180")} />
+          <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={cn("transition-control ml-auto inline-flex items-center gap-1 rounded-full text-compact font-medium whitespace-nowrap text-ink-2 hover:text-ink hover:bg-surface-3 shrink-0", compact ? "h-8 px-2.5" : "h-9 px-3")}>
+            More <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-(--duration-base) ease-spring", more && "rotate-180")} />
           </button>
         )}
       </div>

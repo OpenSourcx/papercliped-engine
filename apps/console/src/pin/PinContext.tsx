@@ -57,6 +57,8 @@ interface PinCtx {
   settings: PinSettings | null;
   setSettings: (s: PinSettings) => void;
   settingsSource: PinSettingsSource;
+  /** Switches Assistant/Agent everywhere: the console at once, and the host service's saved settings when live. */
+  setMode: (m: "assistant" | "agent") => void;
 }
 
 const Ctx = createContext<PinCtx | null>(null);
@@ -253,6 +255,14 @@ export function PinProvider({ children }: { children: ReactNode }) {
       markDone: (id) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, done: true } : x))),
       resolveTool: (id, p) => setMessages((m) => m.map((x) => (x.id === id && x.tool ? { ...x, tool: { ...x.tool, ...p } } : x))),
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
+      setMode: (m) => {
+        engineRef.current.setPinMode(m);
+        if (settings && settings.mode !== m) {
+          const next = { ...settings, mode: m };
+          setSettings(next);
+          if (engineRef.current.live) settingsSource.save(next).catch(() => setSettings(settings));
+        }
+      },
     }),
     [state, messages, thinking, streaming, stop, peek, send, tab, actions, register, findLatest, confirm, settings, settingsSource],
   );

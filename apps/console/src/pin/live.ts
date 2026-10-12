@@ -31,6 +31,8 @@ export interface ConnectorInfo {
   last4?: string;
   testedAt?: string;
   ok?: boolean;
+  /** The last test's failure, in words. */
+  error?: string;
 }
 
 export interface ModelInfo {
@@ -78,11 +80,12 @@ export function normalizeConnector(raw: Record<string, unknown>): ConnectorInfo 
   return {
     id,
     kind: String(raw.kind ?? "integration"),
-    name: typeof raw.name === "string" && raw.name ? raw.name : id.charAt(0).toUpperCase() + id.slice(1),
+    name: typeof raw.label === "string" && raw.label ? raw.label : typeof raw.name === "string" && raw.name ? raw.name : id.charAt(0).toUpperCase() + id.slice(1),
     configured: Boolean(raw.configured),
     ...(typeof raw.last4 === "string" ? { last4: raw.last4 } : {}),
     ...(typeof raw.testedAt === "string" ? { testedAt: raw.testedAt } : {}),
     ...(typeof raw.ok === "boolean" ? { ok: raw.ok } : {}),
+    ...(typeof raw.error === "string" && raw.error ? { error: raw.error } : {}),
   };
 }
 
@@ -101,8 +104,8 @@ export function pinApi(f: Fetch = (...a) => fetch(...a)) {
     settings: async () => normalizeSettings(await call<{ settings?: PinSettings } & PinSettings>(f, "GET", "/api/pin/settings").then((r) => r.settings ?? r)),
     saveSettings: async (s: PinSettings) => normalizeSettings(await call<{ settings?: PinSettings } & PinSettings>(f, "PUT", "/api/pin/settings", s).then((r) => (r.settings ?? (r.provider !== undefined ? r : s)))),
     models: async (provider: string) =>
-      pickArray<string | { id?: string; name?: string }>(await call<unknown>(f, "GET", `/api/pin/models?provider=${encodeURIComponent(provider)}`), "models")
-        .map((m) => (typeof m === "string" ? { id: m, name: m } : { id: String(m.id ?? m.name ?? ""), name: String(m.name ?? m.id ?? "") }))
+      pickArray<string | { id?: string; name?: string; label?: string }>(await call<unknown>(f, "GET", `/api/pin/models?provider=${encodeURIComponent(provider)}`), "models")
+        .map((m) => (typeof m === "string" ? { id: m, name: m } : { id: String(m.id ?? m.name ?? ""), name: String(m.label ?? m.name ?? m.id ?? "") }))
         .filter((m) => m.id),
   };
 }
@@ -138,7 +141,8 @@ export function fixFor(code: string | undefined, message: string): PinChatError[
   const t = `${code ?? ""} ${message}`.toLowerCase();
   if (/no_provider|provider_missing|no provider|model provider|not configured|missing.*key/.test(t)) return { label: "Add a model provider in Connectors", to: "?settings=connectors" };
   if (/no_model|model_missing|choose a model|no model/.test(t)) return { label: "Choose a model in Pin's settings", to: "pin?tab=settings" };
-  if (/invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the key in Connectors", to: "?settings=connectors" };
+  if (/provider_auth|invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the provider's key in Connectors", to: "?settings=connectors" };
+  if (/provider_rejected/.test(t)) return { label: "Choose another model in Pin's settings", to: "pin?tab=settings" };
   return undefined;
 }
 
