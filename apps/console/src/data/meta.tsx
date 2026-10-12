@@ -5,7 +5,7 @@ export const TASK_LABEL: Record<TaskStatus, string> = { todo: "To do", in_progre
 export const TASK_ICON: Record<TaskStatus, React.ReactNode> = {
   todo: <Circle className="h-4 w-4 text-ink-3" />,
   in_progress: <CircleDot className="h-4 w-4 text-accent" />,
-  in_review: <CircleDashed className="h-4 w-4 text-[#9474f0]" />,
+  in_review: <CircleDashed className="h-4 w-4 text-review" />,
   done: <CircleCheck className="h-4 w-4 text-good" />,
   blocked: <OctagonAlert className="h-4 w-4 text-critical" />,
 };

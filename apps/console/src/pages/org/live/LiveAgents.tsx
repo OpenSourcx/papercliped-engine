@@ -35,8 +35,8 @@ export function LiveAgents() {
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
-                <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-[12px] text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
-                <div className="text-[13px] text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
+                <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
+                <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
                 {a.budgetMonthlyCents ? <BarMeter className="mt-3" label="Budget this month" pct={(a.spentMonthlyCents / a.budgetMonthlyCents) * 100} value={`${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}`} /> : null}
               </Card>
             </Link>
@@ -104,7 +104,7 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Runs with">
-            {adapters.isPending ? <p className="text-[13px] text-ink-3 h-10 flex items-center">Loading…</p> : adapters.error ? <LoadError error={adapters.error} retry={() => void adapters.refetch()} /> : (
+            {adapters.isPending ? <p className="text-compact text-ink-3 h-10 flex items-center">Loading…</p> : adapters.error ? <LoadError error={adapters.error} retry={() => void adapters.refetch()} /> : (
               <select value={adapter} onChange={(e) => setAdapter(e.target.value)} className={selectClass}>
                 {usable.map((a) => <option key={a.type} value={a.type}>{a.label || a.type}</option>)}
               </select>
@@ -118,7 +118,7 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
               </select>
             </Field>
           )}
-          {adapter === "process" && <Field label="Command" hint="(optional)"><Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="The program the agent runs" className="font-mono text-[13px]" /></Field>}
+          {adapter === "process" && <Field label="Command" hint="(optional)"><Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="The program the agent runs" className="font-mono text-compact" /></Field>}
           {adapter === "http" && <Field label="Address" hint="(optional)"><Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></Field>}
         </div>
         <Field label="Capabilities" hint="(optional)"><textarea rows={3} value={capabilities} onChange={(e) => setCapabilities(e.target.value)} className={textareaClass} placeholder="What this agent is good at, so others know when to hand it work" /></Field>
@@ -143,14 +143,14 @@ export function LiveAgentDetail() {
   const [kind, label] = a ? agentStatusOf(a.status) : ["idle" as const, ""];
   return (
     <PageFrame width="4xl">
-      <Link to={`${b}/agents`} className="inline-flex items-center gap-1.5 text-[13px] text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Agents</Link>
+      <Link to={`${b}/agents`} className="inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Agents</Link>
       {agent.isPending && <Card><Loading label="Loading agent" /></Card>}
       {agent.error && <Card><LoadError error={agent.error} retry={() => void agent.refetch()} /></Card>}
       {a && (
         <>
           <PageHeader
             title={<span className="inline-flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} />{a.name}</span>}
-            subtitle={<><Status kind={kind} label={label} /><span className="text-ink-3 text-[14px] ml-3">{names.role(a)}</span></>}
+            subtitle={<><Status kind={kind} label={label} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
             actions={
               <>
                 {a.status === "paused" ? (
@@ -163,26 +163,26 @@ export function LiveAgentDetail() {
             }
           />
           <ActionError error={act.error} />
-          {act.isSuccess && act.variables?.action === "wakeup" && <p className="text-[13px] text-ink-3 mb-3">Asked {a.name} to run now.</p>}
+          {act.isSuccess && act.variables?.action === "wakeup" && <p className="text-compact text-ink-3 mb-3">Asked {a.name} to run now.</p>}
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-5">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-[14px]">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
                 <dt className="text-ink-3">Runs with</dt><dd>{a.adapterType}{typeof a.adapterConfig?.model === "string" ? ` · ${a.adapterConfig.model}` : ""}</dd>
                 <dt className="text-ink-3">Reports to</dt><dd>{a.reportsTo ? names.agent(a.reportsTo) : "You"}</dd>
                 <dt className="text-ink-3">Last ran</dt><dd>{ago(a.lastHeartbeatAt)}</dd>
                 <dt className="text-ink-3">Spend</dt><dd>{a.budgetMonthlyCents ? `${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)} this month` : `${dollars(a.spentMonthlyCents)} this month, no budget set`}</dd>
                 {a.errorReason && <><dt className="text-ink-3">Error</dt><dd className="text-critical">{a.errorReason}</dd></>}
               </dl>
-              {a.capabilities && <p className="text-[13px] text-ink-2 mt-4 whitespace-pre-wrap">{a.capabilities}</p>}
+              {a.capabilities && <p className="text-compact text-ink-2 mt-4 whitespace-pre-wrap">{a.capabilities}</p>}
             </Card>
             <Card>
-              <div className="px-5 pt-4 pb-2 text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-3">Recent runs</div>
+              <div className="px-5 pt-4 pb-2 text-compact font-semibold uppercase tracking-label text-ink-3">Recent runs</div>
               {runs.isPending && <Loading />}
               {runs.error && <LoadError error={runs.error} retry={() => void runs.refetch()} />}
               <div className="divide-y divide-line">
-                {runs.data?.length === 0 && <p className="px-5 pb-4 text-[14px] text-ink-3">No runs yet.</p>}
+                {runs.data?.length === 0 && <p className="px-5 pb-4 text-sm text-ink-3">No runs yet.</p>}
                 {(runs.data ?? []).map((r) => (
-                  <div key={r.id} className="px-5 py-2.5 flex items-center gap-3 text-[13px]">
+                  <div key={r.id} className="px-5 py-2.5 flex items-center gap-3 text-compact">
                     <span className="flex-1">{RUN_STATUS[r.status] ?? r.status}<span className="text-ink-3"> · {String(r.invocationSource).replace(/_/g, " ")}</span></span>
                     <span className="text-ink-3">{ago(r.startedAt ?? r.createdAt)}</span>
                   </div>

@@ -40,36 +40,36 @@ export function QuickCreateModal({ kind, onClose }: { kind: QuickKind; onClose: 
     navigate(`/${device}/${org.slug}/${c.page}`);
   };
 
-  const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
+  const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm outline-none focus:border-line-strong";
   return (
     <Modal title={c.title} subtitle={`In ${org.name}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={!text.trim() || (kind === "new-routine" && !agent)}>{c.cta}</Button></>}>
       <div className="space-y-4">
         <label className="block">
-          <span className="block text-[13px] text-ink-2 mb-2">{c.field}</span>
+          <span className="block text-compact text-ink-2 mb-2">{c.field}</span>
           <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder={c.placeholder} />
         </label>
         {kind === "new-goal" && (
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Due <span className="text-ink-3">(optional)</span></span>
+            <span className="block text-compact text-ink-2 mb-2">Due <span className="text-ink-3">(optional)</span></span>
             <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </label>
         )}
         {kind === "new-routine" && (
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">Runs</span>
+            <span className="block text-compact text-ink-2 mb-2">Runs</span>
             <select value={schedule} onChange={(e) => setSchedule(e.target.value)} className={select}>{SCHEDULES.map((s) => <option key={s}>{s}</option>)}</select>
           </label>
         )}
         {kind !== "new-goal" && (
           <label className="block">
-            <span className="block text-[13px] text-ink-2 mb-2">{kind === "new-project" ? "Lead" : "Agent"}</span>
+            <span className="block text-compact text-ink-2 mb-2">{kind === "new-project" ? "Lead" : "Agent"}</span>
             {org.agents.length ? (
               <select value={agent} onChange={(e) => setAgent(e.target.value)} className={select}>
                 {kind === "new-project" && <option value="">No lead yet</option>}
                 {org.agents.map((a) => <option key={a.id} value={a.name}>{a.name} · {a.role}</option>)}
               </select>
             ) : (
-              <p className="text-[13px] text-ink-3">No agents in {org.name} yet.</p>
+              <p className="text-compact text-ink-3">No agents in {org.name} yet.</p>
             )}
           </label>
         )}
@@ -90,7 +90,7 @@ function LiveQuickCreate({ kind, org, companyId, onClose }: { kind: QuickKind; o
   if (kind === "new-routine") {
     return (
       <Modal title={c.title} subtitle={`In ${org.name}`} onClose={onClose} footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
-        <p className="text-[14px] text-ink-2">Routines can't be created from the console yet.</p>
+        <p className="text-sm text-ink-2">Routines can't be created from the console yet.</p>
       </Modal>
     );
   }
@@ -104,10 +104,10 @@ function LiveQuickCreate({ kind, org, companyId, onClose }: { kind: QuickKind; o
   return (
     <Modal title={c.title} subtitle={`In ${org.name}`} onClose={onClose} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={!text.trim() || m.isPending}>{c.cta}</Button></>}>
       <label className="block">
-        <span className="block text-[13px] text-ink-2 mb-2">{c.field}</span>
+        <span className="block text-compact text-ink-2 mb-2">{c.field}</span>
         <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder={c.placeholder} />
       </label>
-      {m.error && <p className="text-[13px] text-critical mt-2" role="alert">{errorText(m.error)}</p>}
+      {m.error && <p className="text-compact text-critical mt-2" role="alert">{errorText(m.error)}</p>}
     </Modal>
   );
 }

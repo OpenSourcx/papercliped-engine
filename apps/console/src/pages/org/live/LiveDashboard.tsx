@@ -18,8 +18,8 @@ function Stat({ icon, value, label, to }: { icon: React.ReactNode; value: string
       <Card interactive className="p-4 flex items-center gap-3">
         <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{icon}</span>
         <div>
-          <div className="text-[20px] font-semibold tabular-nums leading-tight">{value}</div>
-          <div className="text-[12px] text-ink-3">{label}</div>
+          <div className="text-xl font-semibold tabular-nums leading-tight">{value}</div>
+          <div className="text-xs text-ink-3">{label}</div>
         </div>
       </Card>
     </Link>
@@ -43,7 +43,7 @@ function ResourceGroupCard() {
         <LoadError error={rg.error} retry={() => void rg.refetch()} />
       ) : !rg.group ? (
         <div>
-          <p className="text-[14px] text-ink-2">{org.name} has no resource group yet, so its agents have nowhere on this device to run containers.</p>
+          <p className="text-sm text-ink-2">{org.name} has no resource group yet, so its agents have nowhere on this device to run containers.</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button onClick={() => set.mutate(suggested)} disabled={set.isPending}>Create one ({suggested.cores} cores, {formatBytes(suggested.memoryMb * 1024 ** 2)}, {suggested.diskGb} GB)</Button>
           </div>
@@ -57,7 +57,7 @@ function ResourceGroupCard() {
             <BarMeter label="Disk" pct={g.diskGb ? (org.usage.diskGb / g.diskGb) * 100 : 0} value={`${org.usage.diskGb.toFixed(0)} of ${g.diskGb} GB`} />
             <BarMeter label="Containers" pct={g.maxGuests ? (org.usage.guests / g.maxGuests) * 100 : 0} value={`${org.usage.guests} of ${g.maxGuests}`} />
           </div>
-          <p className="text-[12px] text-ink-3 mt-4">Agents in {org.name} can only use what's inside this group (Proxmox pool <span className="font-mono">{g.pool}</span>).</p>
+          <p className="text-xs text-ink-3 mt-4">Agents in {org.name} can only use what's inside this group (Proxmox pool <span className="font-mono">{g.pool}</span>).</p>
         </>
       )}
     </Card>
@@ -84,7 +84,7 @@ export function LiveDashboard() {
       <PageHeader
         eyebrow={<Link to={`/${device}/home`} className="hover:text-ink">{device}</Link>}
         title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
-        subtitle={<>{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-[13px] ml-3 font-mono">{org.engine?.prefix}</span></>}
+        subtitle={<>{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-compact ml-3 font-mono">{org.engine?.prefix}</span></>}
       />
 
       {dash.error && <Card className="mb-4"><LoadError error={dash.error} retry={() => void dash.refetch()} /></Card>}
@@ -98,14 +98,14 @@ export function LiveDashboard() {
       <div className="grid lg:grid-cols-3 gap-4">
         <ResourceGroupCard />
         <Card className="p-5">
-          <SectionTitle action={<Link to={`${b}/activity`} className="text-[13px] text-ink-3 hover:text-ink">All</Link>}>Recent activity</SectionTitle>
+          <SectionTitle action={<Link to={`${b}/activity`} className="text-compact text-ink-3 hover:text-ink">All</Link>}>Recent activity</SectionTitle>
           {activity.isPending ? <Loading /> : activity.error ? <LoadError error={activity.error} retry={() => void activity.refetch()} /> : (
             <div className="space-y-2.5">
-              {(activity.data ?? []).length === 0 && <p className="text-[14px] text-ink-3">Nothing has happened yet.</p>}
+              {(activity.data ?? []).length === 0 && <p className="text-sm text-ink-3">Nothing has happened yet.</p>}
               {(activity.data ?? []).slice(0, 6).map((a) => (
-                <div key={a.id} className="text-[13px]">
+                <div key={a.id} className="text-compact">
                   <span className="font-medium">{names.actor(a)}</span> <span className="text-ink-2">{describeActivity(a)}</span>
-                  <div className="text-[12px] text-ink-3">{ago(a.createdAt)}</div>
+                  <div className="text-xs text-ink-3">{ago(a.createdAt)}</div>
                 </div>
               ))}
             </div>
@@ -115,18 +115,18 @@ export function LiveDashboard() {
 
       <div className="grid lg:grid-cols-2 gap-4 mt-4">
         <Card className="p-5">
-          <SectionTitle action={<Link to={`${b}/agents`} className="text-[13px] text-ink-3 hover:text-ink">All</Link>}>Agents</SectionTitle>
+          <SectionTitle action={<Link to={`${b}/agents`} className="text-compact text-ink-3 hover:text-ink">All</Link>}>Agents</SectionTitle>
           {agents.isPending ? <Loading /> : agents.error ? <LoadError error={agents.error} retry={() => void agents.refetch()} /> : (
             <div className="divide-y divide-line">
-              {live.length === 0 && <p className="text-[14px] text-ink-3 py-2">No agents yet. <Link className="text-accent hover:underline" to={`${b}/agents?new=1`}>Create one</Link>.</p>}
+              {live.length === 0 && <p className="text-sm text-ink-3 py-2">No agents yet. <Link className="text-accent hover:underline" to={`${b}/agents?new=1`}>Create one</Link>.</p>}
               {live.slice(0, 6).map((a) => {
                 const [kind, label] = agentStatusOf(a.status);
                 return (
                   <Link key={a.id} to={`${b}/agents/${a.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-2/40 -mx-2 px-2 rounded-md">
                     <Avatar name={a.name} hue={org.hue + 40} size={32} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-medium">{a.name} <span className="text-ink-3 font-normal">· {names.role(a)}</span></div>
-                      <div className="text-[12px] text-ink-3 truncate">{a.adapterType}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
+                      <div className="text-sm font-medium">{a.name} <span className="text-ink-3 font-normal">· {names.role(a)}</span></div>
+                      <div className="text-xs text-ink-3 truncate">{a.adapterType}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
                     </div>
                     <Status kind={kind} label={label} />
                   </Link>
@@ -136,15 +136,15 @@ export function LiveDashboard() {
           )}
         </Card>
         <Card className="p-5">
-          <SectionTitle action={<Link to={`${b}/tasks`} className="text-[13px] text-ink-3 hover:text-ink">All</Link>}>Open tasks</SectionTitle>
+          <SectionTitle action={<Link to={`${b}/tasks`} className="text-compact text-ink-3 hover:text-ink">All</Link>}>Open tasks</SectionTitle>
           {issues.isPending ? <Loading /> : issues.error ? <LoadError error={issues.error} retry={() => void issues.refetch()} /> : (
             <div className="divide-y divide-line">
-              {open.length === 0 && <p className="text-[14px] text-ink-3 py-2">No open tasks.</p>}
+              {open.length === 0 && <p className="text-sm text-ink-3 py-2">No open tasks.</p>}
               {open.slice(0, 6).map((t) => (
                 <Link key={t.id} to={`${b}/tasks/${t.identifier ?? t.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-2/40 -mx-2 px-2 rounded-md">
                   <span title={ISSUE_LABEL[t.status]}>{ISSUE_ICON[t.status]}</span>
-                  <span className="flex-1 text-[14px] truncate">{t.title}</span>
-                  <span className="text-[12px] text-ink-3">{ISSUE_LABEL[t.status]}{t.assigneeAgentId ? ` · ${names.agent(t.assigneeAgentId)}` : ""}</span>
+                  <span className="flex-1 text-sm truncate">{t.title}</span>
+                  <span className="text-xs text-ink-3">{ISSUE_LABEL[t.status]}{t.assigneeAgentId ? ` · ${names.agent(t.assigneeAgentId)}` : ""}</span>
                 </Link>
               ))}
             </div>
@@ -165,14 +165,14 @@ function MachinesCard() {
     <Card className="p-5 mt-4">
       <SectionTitle>Container sessions</SectionTitle>
       {guests.length === 0 ? (
-        <p className="text-[14px] text-ink-3">No containers running for {org.name}.</p>
+        <p className="text-sm text-ink-3">No containers running for {org.name}.</p>
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {guests.map((g) => (
             <div key={g.vmid} className="rounded-lg border border-line p-3 flex items-center gap-3">
               <Box className="h-4 w-4 text-ink-3" />
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] truncate">{g.name} <span className="text-ink-3 tabular-nums">#{g.vmid}</span></div>
+                <div className="text-sm truncate">{g.name} <span className="text-ink-3 tabular-nums">#{g.vmid}</span></div>
                 <BarMeter className="mt-1.5" label="Memory" pct={g.memMax ? (g.memUsed / g.memMax) * 100 : 0} value={`${formatBytes(g.memUsed)} of ${formatBytes(g.memMax)}`} />
               </div>
             </div>

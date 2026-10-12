@@ -41,7 +41,7 @@ export function EngineUnavailable({ gate, compact }: { gate: Exclude<EngineGate,
 
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-14 text-ink-3 text-[14px]" aria-busy="true">
+    <div className="flex items-center justify-center gap-2 py-14 text-ink-3 text-sm" aria-busy="true">
       <Loader2 className="h-4 w-4 animate-spin" />
       {label}
     </div>
@@ -51,7 +51,7 @@ export function Loading({ label = "Loading" }: { label?: string }) {
 /** A failed read, with the engine's own words and a retry. */
 export function LoadError({ error, retry }: { error: unknown; retry?: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-[14px]" role="alert">
+    <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-sm" role="alert">
       <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
       <span className="flex-1 text-ink-2">{errorText(error)}</span>
       {retry && <Button size="sm" variant="ghost" onClick={retry}><RefreshCw className="h-3.5 w-3.5" />Try again</Button>}
@@ -62,7 +62,7 @@ export function LoadError({ error, retry }: { error: unknown; retry?: () => void
 /** A write that failed, shown inline under the form. */
 export function ActionError({ error }: { error: unknown }) {
   if (!error) return null;
-  return <p className="text-[13px] text-critical mt-2" role="alert">{errorText(error)}</p>;
+  return <p className="text-compact text-critical mt-2" role="alert">{errorText(error)}</p>;
 }
 
 /** Pages under an organization that the engine doesn't back yet. Live, they redirect to the dashboard rather than show made-up data. */
@@ -108,11 +108,11 @@ function LiveOrgRoute() {
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[13px] text-ink-2 mb-1.5">{label}{hint && <span className="text-ink-3"> {hint}</span>}</span>
+      <span className="block text-compact text-ink-2 mb-1.5">{label}{hint && <span className="text-ink-3"> {hint}</span>}</span>
       {children}
     </label>
   );
 }
 
-export const selectClass = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-[14px] outline-none focus:border-line-strong";
-export const textareaClass = "w-full rounded-lg bg-surface-2 border border-line px-3.5 py-2.5 text-[14px] text-ink placeholder:text-ink-3 outline-none focus:border-line-strong focus:ring-2 focus:ring-accent/30 transition";
+export const selectClass = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm outline-none focus:border-line-strong";
+export const textareaClass = "w-full rounded-lg bg-surface-2 border border-line px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-3 outline-none focus:border-line-strong focus:ring-2 focus:ring-accent/30 transition";

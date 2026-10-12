@@ -17,9 +17,9 @@ function DemoConnectors() {
     <PageFrame width="6xl">
       <PageHeader title="Connectors" subtitle="System-wide connections, set up once. For each one, choose who can use it: Pin, and any of your organizations. An org's agents only see the connectors granted to it." />
       <Card className="overflow-x-auto">
-        <table className="w-full text-[14px] min-w-[640px]">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
-            <tr className="text-[12px] text-ink-3 border-b border-line">
+            <tr className="text-xs text-ink-3 border-b border-line">
               <th className="text-left font-normal px-5 h-11">Connector</th>
               <th className="font-normal px-3"><span className="inline-flex items-center gap-1.5"><PinOrb size={14} />Pin</span></th>
               {data.orgs.map((o) => (
@@ -48,7 +48,7 @@ function DemoConnectors() {
           </tbody>
         </table>
       </Card>
-      <p className="text-[12px] text-ink-3 mt-3">Credentials stay in the Vault. Agents and Pin receive short-lived, run-scoped access, never the key itself.</p>
+      <p className="text-xs text-ink-3 mt-3">Credentials stay in the Vault. Agents and Pin receive short-lived, run-scoped access, never the key itself.</p>
     </PageFrame>
   );
 }
@@ -92,7 +92,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
         <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{BRAND_ICONS[c.id] ? <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" role="img" aria-label={BRAND_ICONS[c.id].title}><path d={BRAND_ICONS[c.id].path} /></svg> : KIND_ICON(c.kind)}</span>
         <div className="flex-1 min-w-[160px]">
           <div className="font-medium">{name}</div>
-          <div className="text-[12px] text-ink-3">
+          <div className="text-xs text-ink-3">
             {c.configured ? <>Key ending in <span className="font-mono">{c.last4 ?? "••••"}</span>{c.updatedBy ? ` · set by ${c.updatedBy}` : ""}{c.testedAt ? ` · tested ${ago(c.testedAt)}${c.ok === false ? ", failed" : ""}` : ""}</> : "No key yet"}
           </div>
         </div>
@@ -105,14 +105,14 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
       </div>
       {editing && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Input type="password" autoComplete="off" spellCheck={false} aria-label={`${name} key`} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Paste the key" className="h-9 text-[14px] font-mono flex-1 min-w-[220px]" autoFocus />
+          <Input type="password" autoComplete="off" spellCheck={false} aria-label={`${name} key`} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Paste the key" className="h-9 text-sm font-mono flex-1 min-w-[220px]" autoFocus />
           <Button size="sm" variant="primary" onClick={save} disabled={!key.trim() || busy}>Save</Button>
         </div>
       )}
-      {editing && <p className="text-[12px] text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are.</p>}
-      {!result && c.configured && c.ok === false && c.error && <p className="text-[13px] text-critical mt-2">{c.error}</p>}
-      {result && <p className={`text-[13px] mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
-      {act.isError && act.variables?.kind !== "test" && <p className="text-[13px] text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}
+      {editing && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are.</p>}
+      {!result && c.configured && c.ok === false && c.error && <p className="text-compact text-critical mt-2">{c.error}</p>}
+      {result && <p className={`text-compact mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
+      {act.isError && act.variables?.kind !== "test" && <p className="text-compact text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}
     </div>
   );
 }
@@ -124,12 +124,12 @@ function LiveConnectors() {
     <PageFrame width="6xl">
       <PageHeader title="Connectors" subtitle="System-wide connections, set up once. Keys are kept in this device's vault; agents and Pin get short-lived, run-scoped access, never the key itself." />
       <Card className="divide-y divide-line">
-        {list.isPending && <p className="px-5 py-6 text-[14px] text-ink-3" aria-busy="true">Loading connectors…</p>}
-        {list.error && <p className="px-5 py-4 text-[14px] text-ink-2" role="alert">{errorText(list.error)}</p>}
+        {list.isPending && <p className="px-5 py-6 text-sm text-ink-3" aria-busy="true">Loading connectors…</p>}
+        {list.error && <p className="px-5 py-4 text-sm text-ink-2" role="alert">{errorText(list.error)}</p>}
         {list.data?.connectors.length === 0 && <EmptyState icon={<Cable className="h-5 w-5" />} title="No connectors" body="The host service doesn't offer any connectors yet." />}
         {(list.data?.connectors ?? []).map((c) => <ConnectorRow key={c.id} c={c} canManage={list.data?.canManage === true} />)}
       </Card>
-      {list.data && !list.data.canManage && <p className="text-[12px] text-ink-3 mt-3">Only Proxmox administrators can add, test or remove keys. You can see which connectors are set up.</p>}
+      {list.data && !list.data.canManage && <p className="text-xs text-ink-3 mt-3">Only Proxmox administrators can add, test or remove keys. You can see which connectors are set up.</p>}
     </PageFrame>
   );
 }

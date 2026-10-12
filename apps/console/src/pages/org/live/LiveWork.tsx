@@ -39,9 +39,9 @@ export function LiveGoals() {
         {goals.data?.length === 0 && <Card><EmptyState icon={<Target className="h-5 w-5" />} title="No goals yet" body="Set a goal and your agents plan toward it." /></Card>}
         {(goals.data ?? []).map((g) => (
           <Card key={g.id} className="p-5">
-            <div className="flex flex-wrap items-center gap-2"><Target className="h-4 w-4 text-ink-3" /><span className="font-medium flex-1">{g.title}</span><Chip>{GOAL_LEVEL[g.level] ?? g.level}</Chip><span className="text-[12px] text-ink-3">{GOAL_STATUS[g.status] ?? g.status}</span></div>
-            {g.description && <p className="text-[13px] text-ink-2 mt-2 whitespace-pre-wrap">{g.description}</p>}
-            {g.ownerAgentId && <p className="text-[12px] text-ink-3 mt-2">Owner: {names.agent(g.ownerAgentId)}</p>}
+            <div className="flex flex-wrap items-center gap-2"><Target className="h-4 w-4 text-ink-3" /><span className="font-medium flex-1">{g.title}</span><Chip>{GOAL_LEVEL[g.level] ?? g.level}</Chip><span className="text-xs text-ink-3">{GOAL_STATUS[g.status] ?? g.status}</span></div>
+            {g.description && <p className="text-compact text-ink-2 mt-2 whitespace-pre-wrap">{g.description}</p>}
+            {g.ownerAgentId && <p className="text-xs text-ink-3 mt-2">Owner: {names.agent(g.ownerAgentId)}</p>}
           </Card>
         ))}
       </div>
@@ -89,10 +89,10 @@ export function LiveProjects() {
           const done = mine.filter((t) => t.status === "done").length;
           return (
             <Card key={p.id} className="p-5">
-              <div className="flex items-center gap-2 font-medium"><FolderOpen className="h-4 w-4 text-ink-3" /><span className="flex-1 truncate">{p.name}</span><span className="text-[12px] text-ink-3 font-normal">{PROJECT_STATUS[p.status] ?? p.status}</span></div>
-              {p.description && <p className="text-[13px] text-ink-2 mt-2 line-clamp-2">{p.description}</p>}
+              <div className="flex items-center gap-2 font-medium"><FolderOpen className="h-4 w-4 text-ink-3" /><span className="flex-1 truncate">{p.name}</span><span className="text-xs text-ink-3 font-normal">{PROJECT_STATUS[p.status] ?? p.status}</span></div>
+              {p.description && <p className="text-compact text-ink-2 mt-2 line-clamp-2">{p.description}</p>}
               <BarMeter className="mt-4" label="Progress" pct={mine.length ? (done / mine.length) * 100 : 0} value={`${done} of ${mine.length} tasks`} />
-              <div className="text-[12px] text-ink-3 mt-3">Lead: {p.leadAgentId ? names.agent(p.leadAgentId) : "none"}</div>
+              <div className="text-xs text-ink-3 mt-3">Lead: {p.leadAgentId ? names.agent(p.leadAgentId) : "none"}</div>
             </Card>
           );
         })}
@@ -141,16 +141,16 @@ export function LiveDecisions() {
             <Card key={a.id} className="p-4">
               <div className="flex flex-wrap items-center gap-3">
                 <Avatar name={who} hue={org.hue + 40} size={32} />
-                <div className="flex-1 min-w-[200px]"><div className="text-[14px] font-medium">{payloadTitle(a.type, a.payload ?? {})}</div><div className="text-[12px] text-ink-3">{who} · {APPROVAL_TYPE_LABEL[a.type] ?? a.type} · {ago(a.createdAt)}</div></div>
+                <div className="flex-1 min-w-[200px]"><div className="text-sm font-medium">{payloadTitle(a.type, a.payload ?? {})}</div><div className="text-xs text-ink-3">{who} · {APPROVAL_TYPE_LABEL[a.type] ?? a.type} · {ago(a.createdAt)}</div></div>
                 {a.status === "approved" ? <Status kind="good" label="Approved" /> : a.status === "rejected" ? <Status kind="critical" label="Rejected" /> : a.status === "cancelled" ? <Status kind="off" label="Cancelled" /> : null}
               </div>
               {(a.status === "pending" || a.status === "revision_requested") ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Input aria-label={`Note for ${payloadTitle(a.type, a.payload ?? {})}`} value={notes[a.id] ?? ""} onChange={(e) => setNotes({ ...notes, [a.id]: e.target.value })} placeholder="Add a note (optional)" className="h-8 text-[13px] flex-1 min-w-[180px]" />
+                  <Input aria-label={`Note for ${payloadTitle(a.type, a.payload ?? {})}`} value={notes[a.id] ?? ""} onChange={(e) => setNotes({ ...notes, [a.id]: e.target.value })} placeholder="Add a note (optional)" className="h-8 text-compact flex-1 min-w-[180px]" />
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate({ id: a.id, approve: false, note: notes[a.id]?.trim() || undefined })}><X className="h-3.5 w-3.5" />Reject</Button>
                   <Button size="sm" variant="primary" disabled={busy} onClick={() => decide.mutate({ id: a.id, approve: true, note: notes[a.id]?.trim() || undefined })}><Check className="h-3.5 w-3.5" />Approve</Button>
                 </div>
-              ) : a.decisionNote ? <p className="text-[13px] text-ink-2 mt-2">“{a.decisionNote}”</p> : null}
+              ) : a.decisionNote ? <p className="text-compact text-ink-2 mt-2">“{a.decisionNote}”</p> : null}
               {decide.isError && decide.variables?.id === a.id && <ActionError error={decide.error} />}
             </Card>
           );
@@ -173,7 +173,7 @@ export function LiveCosts() {
       {costs.error && <Card><LoadError error={costs.error} retry={() => void costs.refetch()} /></Card>}
       {s && (
         <Card className="p-5 mb-4">
-          <div className="flex items-baseline gap-2"><CircleDollarSign className="h-5 w-5 text-ink-3 self-center" /><span className="text-[32px] font-semibold tabular-nums">{dollars(s.spendCents)}</span><span className="text-ink-3">{s.budgetCents ? `of ${dollars(s.budgetCents)} budgeted` : "spent, no budget set"}</span></div>
+          <div className="flex items-baseline gap-2"><CircleDollarSign className="h-5 w-5 text-ink-3 self-center" /><span className="text-display font-semibold tabular-nums">{dollars(s.spendCents)}</span><span className="text-ink-3">{s.budgetCents ? `of ${dollars(s.budgetCents)} budgeted` : "spent, no budget set"}</span></div>
           {s.budgetCents ? <BarMeter className="mt-3" label="Month to date" pct={s.utilizationPercent} value={`${Math.round(s.utilizationPercent)}%`} /> : null}
         </Card>
       )}
@@ -183,7 +183,7 @@ export function LiveCosts() {
           {rows.map((r) => (
             <div key={r.agentId} className="flex items-center gap-3 px-5 py-3">
               <Avatar name={r.agentName ?? "Agent"} hue={210} size={28} />
-              <span className="w-32 text-[14px] truncate">{r.agentName ?? "Removed agent"}</span>
+              <span className="w-32 text-sm truncate">{r.agentName ?? "Removed agent"}</span>
               <BarMeter className="flex-1" label={`${(r.inputTokens + r.outputTokens).toLocaleString()} tokens · ${r.apiRunCount + r.subscriptionRunCount} runs`} pct={(r.costCents / max) * 100} value={dollars(r.costCents)} />
             </div>
           ))}
@@ -207,10 +207,10 @@ export function LiveActivity() {
         {(activity.data ?? []).map((a) => {
           const who = names.actor(a);
           return (
-            <div key={a.id} className="flex items-center gap-3 px-5 py-3 text-[14px]">
+            <div key={a.id} className="flex items-center gap-3 px-5 py-3 text-sm">
               <Avatar name={who} hue={a.actorType === "agent" ? org.hue + 40 : 210} size={26} />
               <span className="flex-1 min-w-0"><span className="font-medium">{who}</span> <span className="text-ink-2">{describeActivity(a)}</span></span>
-              <span className="text-[12px] text-ink-3 shrink-0">{ago(a.createdAt)}</span>
+              <span className="text-xs text-ink-3 shrink-0">{ago(a.createdAt)}</span>
             </div>
           );
         })}
@@ -237,9 +237,9 @@ export function LiveMembers() {
           return (
             <div key={m.id} className="flex items-center gap-3 px-5 py-3">
               <Avatar name={name} hue={210} size={30} />
-              <div className="flex-1 min-w-0"><div className="text-[14px] font-medium truncate">{name}</div>{m.user?.email && m.user.name && <div className="text-[12px] text-ink-3 truncate">{m.user.email}</div>}</div>
+              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{name}</div>{m.user?.email && m.user.name && <div className="text-xs text-ink-3 truncate">{m.user.email}</div>}</div>
               {m.status !== "active" && <Chip tone="warning">{m.status === "pending" ? "Invited" : m.status}</Chip>}
-              <span className="text-[13px] text-ink-2">{(m.membershipRole && ROLE[m.membershipRole]) ?? "Member"}</span>
+              <span className="text-compact text-ink-2">{(m.membershipRole && ROLE[m.membershipRole]) ?? "Member"}</span>
             </div>
           );
         })}
@@ -256,9 +256,9 @@ export function LiveOrgSettings() {
     <PageFrame width="3xl">
       <PageHeader title="Organization settings" />
       <Card className="p-5 space-y-4">
-        <div className="flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={44} /><div><div className="font-medium">{org.name}</div><div className="text-[12px] text-ink-3 font-mono">/{org.slug} · tasks are {org.engine?.prefix}-1, {org.engine?.prefix}-2…</div></div></div>
-        {org.engine?.description && <p className="text-[14px] text-ink-2">{org.engine.description}</p>}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[14px]">
+        <div className="flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={44} /><div><div className="font-medium">{org.name}</div><div className="text-xs text-ink-3 font-mono">/{org.slug} · tasks are {org.engine?.prefix}-1, {org.engine?.prefix}-2…</div></div></div>
+        {org.engine?.description && <p className="text-sm text-ink-2">{org.engine.description}</p>}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-ink-3">Resources</dt>
           <dd>{rg.isPending ? "…" : rg.error ? <span className="text-ink-3">Unknown</span> : g ? `${g.cores} cores · ${formatBytes(g.memoryMb * 1024 ** 2)} memory · ${g.diskGb} GB disk · up to ${g.maxGuests} containers (pool ${g.pool})` : <span className="text-ink-3">No resource group yet</span>}</dd>
           <dt className="text-ink-3">Monthly budget</dt><dd>{org.engine?.budgetMonthlyCents ? dollars(org.engine.budgetMonthlyCents) : "None"}</dd>

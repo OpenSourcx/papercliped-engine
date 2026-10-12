@@ -81,6 +81,7 @@
   --color-scrim: var(--scrim);
   --color-code: var(--code);
   --color-screen: var(--screen);
+  --color-review: var(--review);
   --color-good: var(--good);
   --color-live: var(--live);
   --color-warning: var(--warning);
@@ -175,6 +176,7 @@
   --shadow-color: rgb(0 0 0 / 0.5);
   --rim: rgb(255 255 255 / 0.07);
   /* Status: one vocabulary everywhere, always with an icon or shape and a label, never colour alone. */
+  --review: #9474f0; /* a task waiting on review: its own hue, neither warning nor good */
   --good: #34c759;
   --live: #6aa5ff;
   --warning: #fab219;
@@ -626,9 +628,4 @@ body {
  * allow src/theme/theme.tsx | colour | the theme presets are the runtime half of the token layer
  * allow src/pages/Appearance.tsx | colour | the accent swatches and colour picker are literal colours the user chooses
  * allow src/data/brandIcons.ts | colour | third-party brand marks keep their own colours
- * allow src/data/ | * | owned by the engine-data builder this run; convert with scripts/codemod-tokens.mjs after merge
- * allow src/pages/org/ | * | owned by the engine-data builder this run; convert with scripts/codemod-tokens.mjs after merge
- * allow src/pages/OrgDashboard.tsx | * | owned by the engine-data builder this run; convert after merge
- * allow src/pages/NewOrg.tsx | * | owned by the engine-data builder this run; convert after merge
- * allow src/pages/Connectors.tsx | * | owned by the engine-data builder this run; convert after merge
  */

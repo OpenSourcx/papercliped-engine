@@ -155,7 +155,7 @@ export function OrgChart() {
         <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
           <div className="relative">
             <Search className="h-3.5 w-3.5 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find an agent" className="h-9 w-48 pl-8 text-[13px]" aria-label="Find an agent" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find an agent" className="h-9 w-48 pl-8 text-compact" aria-label="Find an agent" />
           </div>
         </div>
         <div className="absolute right-3 top-3 z-10 flex rounded-lg border border-line bg-surface-2 overflow-hidden">
@@ -177,7 +177,7 @@ export function OrgChart() {
               const ok = drag ? validTarget(drag.id, n.id) : false;
               if (n.id === YOU) {
                 return (
-                  <div key={n.id} data-node={YOU} className={cn("absolute rounded-full border bg-surface-2 flex items-center justify-center text-[13px] font-medium transition", target && ok ? "border-accent ring-2 ring-accent/40" : "border-line-strong")} style={{ left: n.x + W / 2 - 60, top: n.y, width: 120, height: 44 }}>
+                  <div key={n.id} data-node={YOU} className={cn("absolute rounded-full border bg-surface-2 flex items-center justify-center text-compact font-medium transition", target && ok ? "border-accent ring-2 ring-accent/40" : "border-line-strong")} style={{ left: n.x + W / 2 - 60, top: n.y, width: 120, height: 44 }}>
                     You
                   </div>
                 );
@@ -200,13 +200,13 @@ export function OrgChart() {
                   >
                     <Avatar name={a.name} hue={org.hue + 40} size={36} />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[14px] font-medium truncate">{a.name}</span>
-                      <span className="block text-[12px] text-ink-3 truncate">{a.role} · {a.adapter}</span>
-                      <Status kind={kind} label={label} className="text-[12px]" />
+                      <span className="block text-sm font-medium truncate">{a.name}</span>
+                      <span className="block text-xs text-ink-3 truncate">{a.role} · {a.adapter}</span>
+                      <Status kind={kind} label={label} className="text-xs" />
                     </span>
                   </button>
                   {hasKids && (
-                    <button onClick={() => setCollapsed((s) => { const next = new Set(s); if (next.has(a.id)) next.delete(a.id); else next.add(a.id); return next; })} className="absolute left-1/2 -translate-x-1/2 -bottom-3 h-6 min-w-6 px-1.5 rounded-full border border-line-strong bg-surface text-[11px] text-ink-2 flex items-center gap-0.5 hover:text-ink" aria-label={collapsed.has(a.id) ? `Show ${n.children.length} reports` : `Hide reports`} aria-expanded={!collapsed.has(a.id)}>
+                    <button onClick={() => setCollapsed((s) => { const next = new Set(s); if (next.has(a.id)) next.delete(a.id); else next.add(a.id); return next; })} className="absolute left-1/2 -translate-x-1/2 -bottom-3 h-6 min-w-6 px-1.5 rounded-full border border-line-strong bg-surface text-micro text-ink-2 flex items-center gap-0.5 hover:text-ink" aria-label={collapsed.has(a.id) ? `Show ${n.children.length} reports` : `Hide reports`} aria-expanded={!collapsed.has(a.id)}>
                       {collapsed.has(a.id) ? <><ChevronRight className="h-3 w-3" />{n.children.length}</> : <ChevronDown className="h-3 w-3" />}
                     </button>
                   )}
@@ -218,17 +218,17 @@ export function OrgChart() {
               return (
                 <div className="absolute pointer-events-none rounded-xl border border-accent bg-surface-3 px-3 flex items-center gap-2 shadow-2xl" style={{ left: drag.x - W / 2, top: drag.y - H / 2, width: W, height: 56 }}>
                   <Avatar name={a.name} hue={org.hue + 40} size={28} />
-                  <span className="text-[13px] font-medium">{a.name}</span>
+                  <span className="text-compact font-medium">{a.name}</span>
                 </div>
               );
             })()}
           </div>
         </div>
-        {toast && <div role="status" className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-surface-3 border border-line-strong px-4 h-9 flex items-center text-[13px] shadow-xl fade-in">{toast}</div>}
+        {toast && <div role="status" className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-surface-3 border border-line-strong px-4 h-9 flex items-center text-compact shadow-xl fade-in">{toast}</div>}
       </div>
       {selected && (
         <Modal title={selected.name} subtitle={`${selected.role} in ${org.name}`} icon={<Avatar name={selected.name} hue={org.hue + 40} size={40} />} onClose={() => setOpen(null)}>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-[14px] items-center">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm items-center">
             <dt className="text-ink-3">Status</dt><dd><Status kind={STATUS[selected.status][0]} label={STATUS[selected.status][1]} /></dd>
             <dt className="text-ink-3">Working on</dt><dd>{selected.task ?? "Nothing right now"}</dd>
             <dt className="text-ink-3">Harness</dt><dd>{selected.adapter} · {selected.engine === "native" ? "native" : "container sessions"}</dd>
@@ -240,7 +240,7 @@ export function OrgChart() {
                   const r = setReportsTo(org.slug, selected.id, e.target.value || null);
                   if (!r.ok) setToast(r.error ?? "Couldn't move");
                 }}
-                className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-[14px]"
+                className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-sm"
                 aria-label={`${selected.name} reports to`}
               >
                 <option value="">You</option>

@@ -39,7 +39,7 @@ function DemoOrgDashboard() {
             <BarMeter label="Disk" pct={(org.usage.diskGb / rg.diskGb) * 100} value={`${org.usage.diskGb} of ${rg.diskGb} GB`} />
             <BarMeter label="Containers" pct={(org.usage.guests / rg.maxGuests) * 100} value={`${org.usage.guests} of ${rg.maxGuests}`} />
           </div>
-          <p className="text-[12px] text-ink-3 mt-4">Agents in {org.name} can only use what's inside this group (Proxmox pool <span className="font-mono">{rg.pool}</span>). Pin can resize it.</p>
+          <p className="text-xs text-ink-3 mt-4">Agents in {org.name} can only use what's inside this group (Proxmox pool <span className="font-mono">{rg.pool}</span>). Pin can resize it.</p>
         </Card>
         <Card className="p-5">
           <SectionTitle>Access</SectionTitle>
@@ -47,14 +47,14 @@ function DemoOrgDashboard() {
             {members.map((u) => (
               <div key={u.id} className="flex items-center gap-2.5">
                 <Avatar name={u.name} hue={210} size={26} />
-                <span className="text-[14px] flex-1 truncate">{u.name}</span>
-                <span className="text-[12px] text-ink-3 capitalize">{u.orgs.find((o) => o.slug === org.slug)?.role}</span>
+                <span className="text-sm flex-1 truncate">{u.name}</span>
+                <span className="text-xs text-ink-3 capitalize">{u.orgs.find((o) => o.slug === org.slug)?.role}</span>
               </div>
             ))}
           </div>
           <div className="mt-4 pt-3 border-t border-line">
-            <div className="text-[12px] text-ink-3 mb-2 flex items-center gap-1.5"><Cable className="h-3.5 w-3.5" />Connectors</div>
-            <div className="flex flex-wrap gap-1.5">{connectors.length ? connectors.map((c) => <Chip key={c.id}>{c.name}</Chip>) : <span className="text-[13px] text-ink-3">None granted</span>}</div>
+            <div className="text-xs text-ink-3 mb-2 flex items-center gap-1.5"><Cable className="h-3.5 w-3.5" />Connectors</div>
+            <div className="flex flex-wrap gap-1.5">{connectors.length ? connectors.map((c) => <Chip key={c.id}>{c.name}</Chip>) : <span className="text-compact text-ink-3">None granted</span>}</div>
           </div>
         </Card>
       </div>
@@ -63,15 +63,15 @@ function DemoOrgDashboard() {
         <Card className="p-5">
           <SectionTitle>Agents</SectionTitle>
           <div className="divide-y divide-line">
-            {org.agents.length === 0 && <p className="text-[14px] text-ink-3 py-2">No agents yet. Ask Pin to hire one.</p>}
+            {org.agents.length === 0 && <p className="text-sm text-ink-3 py-2">No agents yet. Ask Pin to hire one.</p>}
             {org.agents.map((a) => {
               const [kind, label] = AGENT_STATUS[a.status];
               return (
                 <div key={a.id} className="flex items-center gap-3 py-3">
                   <Avatar name={a.name} hue={org.hue + 40} size={32} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[14px] font-medium">{a.name} <span className="text-ink-3 font-normal">· {a.role}</span></div>
-                    <div className="text-[12px] text-ink-3 truncate">{a.task ?? `${a.adapter} · ${a.engine === "native" ? "runs natively" : "runs in a container session"}`}</div>
+                    <div className="text-sm font-medium">{a.name} <span className="text-ink-3 font-normal">· {a.role}</span></div>
+                    <div className="text-xs text-ink-3 truncate">{a.task ?? `${a.adapter} · ${a.engine === "native" ? "runs natively" : "runs in a container session"}`}</div>
                   </div>
                   <Status kind={kind} label={label} />
                 </div>
@@ -82,12 +82,12 @@ function DemoOrgDashboard() {
         <Card className="p-5">
           <SectionTitle>Tasks</SectionTitle>
           <div className="divide-y divide-line">
-            {org.tasks.length === 0 && <p className="text-[14px] text-ink-3 py-2">No tasks yet.</p>}
+            {org.tasks.length === 0 && <p className="text-sm text-ink-3 py-2">No tasks yet.</p>}
             {org.tasks.map((t) => (
               <div key={t.id} className="flex items-center gap-3 py-3">
                 <span title={TASK_LABEL[t.status]}>{TASK_ICON[t.status]}</span>
-                <span className="flex-1 text-[14px] truncate">{t.title}</span>
-                <span className="text-[12px] text-ink-3">{TASK_LABEL[t.status]}{t.agent ? ` · ${t.agent}` : ""}</span>
+                <span className="flex-1 text-sm truncate">{t.title}</span>
+                <span className="text-xs text-ink-3">{TASK_LABEL[t.status]}{t.agent ? ` · ${t.agent}` : ""}</span>
               </div>
             ))}
           </div>
@@ -97,14 +97,14 @@ function DemoOrgDashboard() {
       <Card className="p-5 mt-4">
         <SectionTitle>Container sessions</SectionTitle>
         {guests.length === 0 ? (
-          <p className="text-[14px] text-ink-3">No containers running for {org.name}.</p>
+          <p className="text-sm text-ink-3">No containers running for {org.name}.</p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {guests.map((g) => (
               <div key={g.vmid} className="rounded-lg border border-line p-3 flex items-center gap-3">
                 <Box className="h-4 w-4 text-ink-3" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[14px] truncate">{g.name} <span className="text-ink-3 tabular-nums">#{g.vmid}</span></div>
+                  <div className="text-sm truncate">{g.name} <span className="text-ink-3 tabular-nums">#{g.vmid}</span></div>
                   <BarMeter className="mt-1.5" label="Memory" pct={(g.memUsed / g.memMax) * 100} value={`${formatBytes(g.memUsed)} of ${formatBytes(g.memMax)}`} />
                 </div>
               </div>

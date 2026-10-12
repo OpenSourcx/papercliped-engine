@@ -39,13 +39,13 @@ export function LiveTasks() {
       <PageHeader title="Tasks" subtitle={issues.data ? `${openCount} open in ${org.name}.` : undefined} actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New task</Button>} />
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented value={filter === "open" || filter === "done" || filter === "all" ? filter : "all"} onChange={(v) => setFilter(v)} options={[{ value: "open", label: "Open" }, { value: "done", label: "Closed" }, { value: "all", label: "All" }]} />
-        <select aria-label="Status" value={ISSUE_STATUSES.includes(filter as IssueStatus) ? filter : ""} onChange={(e) => setFilter((e.target.value || "all") as Filter)} className="bg-surface-2 border border-line rounded-full h-9 text-[13px] px-3">
+        <select aria-label="Status" value={ISSUE_STATUSES.includes(filter as IssueStatus) ? filter : ""} onChange={(e) => setFilter((e.target.value || "all") as Filter)} className="bg-surface-2 border border-line rounded-full h-9 text-compact px-3">
           <option value="">Any status</option>
           {ISSUE_STATUSES.map((s) => <option key={s} value={s}>{ISSUE_LABEL[s]}</option>)}
         </select>
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="h-4 w-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
-          <Input aria-label="Search tasks" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or key" className="h-9 pl-9 text-[14px]" />
+          <Input aria-label="Search tasks" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or key" className="h-9 pl-9 text-sm" />
         </div>
       </div>
       <Card className="divide-y divide-line">
@@ -55,11 +55,11 @@ export function LiveTasks() {
         {list.map((t) => (
           <Link key={t.id} to={`${b}/tasks/${t.identifier ?? t.id}`} className="flex flex-wrap items-center gap-3 px-5 py-3 hover:bg-surface-2/40">
             <span title={ISSUE_LABEL[t.status]}>{ISSUE_ICON[t.status]}</span>
-            <span className="text-[12px] text-ink-3 font-mono w-20 truncate">{t.identifier}</span>
-            <span className="flex-1 min-w-[180px] text-[14px]">{t.title}</span>
+            <span className="text-xs text-ink-3 font-mono w-20 truncate">{t.identifier}</span>
+            <span className="flex-1 min-w-[180px] text-sm">{t.title}</span>
             {(t.priority === "high" || t.priority === "critical") && <Chip tone="warning">{PRIORITY_LABEL[t.priority]}</Chip>}
-            <span className="text-[13px] text-ink-2 w-28 truncate">{t.assigneeAgentId ? names.agent(t.assigneeAgentId) : t.assigneeUserId ? names.user(t.assigneeUserId) : "Unassigned"}</span>
-            <span className="text-[12px] text-ink-3 w-20 text-right">{ISSUE_LABEL[t.status]}</span>
+            <span className="text-compact text-ink-2 w-28 truncate">{t.assigneeAgentId ? names.agent(t.assigneeAgentId) : t.assigneeUserId ? names.user(t.assigneeUserId) : "Unassigned"}</span>
+            <span className="text-xs text-ink-3 w-20 text-right">{ISSUE_LABEL[t.status]}</span>
           </Link>
         ))}
       </Card>
@@ -140,7 +140,7 @@ export function LiveTaskDetail() {
 
   return (
     <PageFrame width="4xl">
-      <Link to={`${b}/tasks`} className="inline-flex items-center gap-1.5 text-[13px] text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Tasks</Link>
+      <Link to={`${b}/tasks`} className="inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Tasks</Link>
       {issue.isPending && <Card><Loading label="Loading task" /></Card>}
       {issue.error && <Card><LoadError error={issue.error} retry={() => void issue.refetch()} /></Card>}
       {t && (
@@ -149,22 +149,22 @@ export function LiveTaskDetail() {
           <div className="grid md:grid-cols-[1fr_240px] gap-4">
             <div className="space-y-4 min-w-0">
               <Card className="p-5">
-                {t.description ? <p className="text-[14px] text-ink-2 whitespace-pre-wrap break-words">{t.description}</p> : <p className="text-[14px] text-ink-3">No description.</p>}
+                {t.description ? <p className="text-sm text-ink-2 whitespace-pre-wrap break-words">{t.description}</p> : <p className="text-sm text-ink-3">No description.</p>}
               </Card>
               <Card>
-                <div className="px-5 pt-4 pb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-3"><MessageSquare className="h-3.5 w-3.5" />Comments</div>
+                <div className="px-5 pt-4 pb-2 flex items-center gap-2 text-compact font-semibold uppercase tracking-label text-ink-3"><MessageSquare className="h-3.5 w-3.5" />Comments</div>
                 {comments.isPending && <Loading />}
                 {comments.error && <LoadError error={comments.error} retry={() => void comments.refetch()} />}
                 <div className="divide-y divide-line">
-                  {comments.data?.length === 0 && <p className="px-5 py-3 text-[14px] text-ink-3">No comments yet.</p>}
+                  {comments.data?.length === 0 && <p className="px-5 py-3 text-sm text-ink-3">No comments yet.</p>}
                   {(comments.data ?? []).map((c) => {
                     const who = c.authorAgentId ? names.agent(c.authorAgentId) : names.user(c.authorUserId);
                     return (
                       <div key={c.id} className="px-5 py-3 flex gap-3">
                         <Avatar name={who} hue={c.authorAgentId ? org.hue + 40 : 210} size={28} />
                         <div className="min-w-0 flex-1">
-                          <div className="text-[13px]"><span className="font-medium">{who}</span> <span className="text-ink-3">{ago(c.createdAt)}</span></div>
-                          <p className="text-[14px] text-ink-2 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
+                          <div className="text-compact"><span className="font-medium">{who}</span> <span className="text-ink-3">{ago(c.createdAt)}</span></div>
+                          <p className="text-sm text-ink-2 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
                         </div>
                       </div>
                     );
@@ -197,7 +197,7 @@ export function LiveTaskDetail() {
                 </select>
               </Field>
               <ActionError error={update.error} />
-              <p className="text-[12px] text-ink-3">Updated {ago(t.updatedAt)}</p>
+              <p className="text-xs text-ink-3">Updated {ago(t.updatedAt)}</p>
             </Card>
           </div>
         </>
