@@ -67,7 +67,7 @@ export function ActionError({ error }: { error: unknown }) {
 }
 
 /** Pages under an organization that the engine doesn't back yet. Live, they redirect to the dashboard rather than show made-up data. */
-export const LIVE_HIDDEN = new Set(["chat", "artifacts", "workspaces", "connectors"]);
+export const LIVE_HIDDEN = new Set(["chat", "connectors"]);
 
 /**
  * Everything under /<device>/<org>. Live, it waits for the engine and the organization list, explains calmly when the

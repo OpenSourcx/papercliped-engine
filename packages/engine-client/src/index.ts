@@ -234,6 +234,9 @@ export const ENGINE_PATHS_UNDOCUMENTED = {
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** An engine-relative file address the console may fetch: under /api/, no dot segments, no scheme or host, no backslashes. */
+export const safeEnginePath = (p: string) => /^\/api\/[A-Za-z0-9_\-./%?=&]+$/.test(p) && !p.split("?")[0].split("/").some((seg) => seg === ".." || seg === ".");
+
 const fill = (tpl: string, params: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (_, k: string) => encodeURIComponent(params[k] ?? ""));
 
 export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) {
@@ -384,6 +387,9 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       attachments: (issueId: string) => call<IssueAttachment[]>("GET", P.issueAttachments, { id: issueId }),
       upload: (companyId: string, issueId: string, file: File) => { const form = new FormData(); form.append("file", file); return upload<IssueAttachment>(P.attachmentUpload, { companyId, issueId }, form); },
       content: (attachmentId: string) => raw(P.attachmentContent, { attachmentId }),
+      /** Fetches an engine file by the path the engine gave (contentPath). Only /api/ paths without tricks are followed. */
+      fetchPath: (path: string) => { if (!safeEnginePath(path)) throw new EngineError(400, "That file address isn't one the console will open."); return f(`${base}${path}`, { method: "GET", credentials: "same-origin" }); },
+      pathUrl: (path: string) => (safeEnginePath(path) ? `${base}${path}` : null),
       contentUrl: (attachmentId: string) => href(P.attachmentContent, { attachmentId }),
       removeAttachment: (attachmentId: string) => call<unknown>("DELETE", P.attachment, { attachmentId }),
     },

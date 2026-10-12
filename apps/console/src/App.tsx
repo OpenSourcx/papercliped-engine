@@ -17,12 +17,13 @@ import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
-import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks } from "./pages/org/OrgPages.tsx";
+import { Activity, Agents, Artifacts, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
 import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
 import { LiveTaskDetail } from "./pages/org/live/LiveTasks.tsx";
 import { LiveMembers } from "./pages/org/live/LiveWork.tsx";
+import { LiveWorkspaceDetail } from "./pages/org/live/LiveArtifacts.tsx";
 import { LiveRoutineDetail } from "./pages/org/live/LiveRoutines.tsx";
 
 /** Pages only the engine has (a task's thread, an agent's runs, the member list). The demo goes back to the list instead. */
@@ -100,8 +101,9 @@ export function App() {
             <Route path="connectors" element={<OrgConnectors />} />
             <Route path="settings" element={<OrgSettings />} />
             <Route path="chat" element={<ComingFromPaperclip title="Chat" body="Talk with your agents in threads, with their runs and tool calls inline." />} />
-            <Route path="artifacts" element={<ComingFromPaperclip title="Artifacts" body="Files, documents and outputs your agents produce, versioned per task." />} />
-            <Route path="workspaces" element={<ComingFromPaperclip title="Workspaces" body="Code workspaces your agents work in, with diffs and branches." />} />
+            <Route path="artifacts" element={<Artifacts />} />
+            <Route path="workspaces" element={<Workspaces />} />
+            <Route path="workspaces/:workspaceId" element={<LiveOnly fallback="..">{<LiveWorkspaceDetail />}</LiveOnly>} />
             <Route path="skills" element={<Skills />} />
           </Route>
         </Route>
