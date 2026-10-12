@@ -369,10 +369,11 @@ else
   say "installing the engine (Paperclip $new_engine) from its lockfile; this takes about 2 minutes"
   # Only the lockfile decides what's installed, every package is checked against its integrity hash, and no package's
   # install scripts run. The host's own npm settings aren't read.
-  printf 'registry=https://registry.npmjs.org/\n' >"$TMPDIR_EPC/npmrc"
-  (cd "$STAGE/engine" && HOME="$TMPDIR_EPC" npm_config_userconfig="$TMPDIR_EPC/npmrc" npm_config_globalconfig="$TMPDIR_EPC/npmrc" \
-    npm_config_cache="$TMPDIR_EPC/npm-cache" npm_config_update_notifier=false \
-    "$NODE" "$NPM_CLI" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error) >"$TMPDIR_EPC/npm.log" 2>&1 \
+  # (Settings on the command line win over any npm settings in the environment; a proxy in it is still used.)
+  : >"$TMPDIR_EPC/npmrc-user"; : >"$TMPDIR_EPC/npmrc-global"
+  (cd "$STAGE/engine" && HOME="$TMPDIR_EPC" "$NODE" "$NPM_CLI" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error \
+    --registry=https://registry.npmjs.org/ --userconfig="$TMPDIR_EPC/npmrc-user" --globalconfig="$TMPDIR_EPC/npmrc-global" \
+    --cache="$TMPDIR_EPC/npm-cache" --update-notifier=false) >"$TMPDIR_EPC/npm.log" 2>&1 \
     || { tail -n 30 "$TMPDIR_EPC/npm.log" >&2; die "couldn't install the engine from registry.npmjs.org. Nothing was changed."; }
   "$NODE" "$ROOT/deploy/engine-links.mjs" "$STAGE/engine" >/dev/null || die "the engine's database binaries couldn't be prepared. Nothing was changed."
   [ -f "$STAGE/$ENGINE_ENTRY" ] || die "the engine installed, but $ENGINE_ENTRY isn't in it. Nothing was changed."
