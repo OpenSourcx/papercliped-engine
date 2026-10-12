@@ -6,6 +6,7 @@ import type { Org } from "../../../data/types.ts";
 import { useOrgEvents } from "../../../data/engine/events.ts";
 import { errorText, useEngineStatus, useOrgs, type EngineGate } from "../../../data/engine/queries.ts";
 import { Button, Card, EmptyState, PageFrame, PageHeader } from "../../../ui/primitives.tsx";
+import { AgentContainersBanner } from "../../containers/Banner.tsx";
 
 /** The live organization at /<device>/<org>, with its engine company id. Only valid under LiveOrgRoute. */
 export function useLiveOrg(): { org: Org; companyId: string } {
@@ -102,7 +103,12 @@ function LiveOrgRoute() {
   if (!org) return <Navigate to={`/${device}/home`} replace />;
   const page = loc.pathname.split("/")[3];
   if (page && LIVE_HIDDEN.has(page)) return <Navigate to={`/${device}/${org.slug}`} replace />;
-  return <Outlet />;
+  return (
+    <>
+      <AgentContainersBanner />
+      <Outlet />
+    </>
+  );
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {

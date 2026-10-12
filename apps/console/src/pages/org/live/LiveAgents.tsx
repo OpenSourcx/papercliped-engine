@@ -11,6 +11,7 @@ import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
+import { useAgentsCanRun } from "../../containers/Banner.tsx";
 
 export function LiveAgents() {
   const { org, companyId } = useLiveOrg();
@@ -139,6 +140,7 @@ export function LiveAgentDetail() {
   const runs = useRuns(companyId, agentId);
   const names = useNames(companyId);
   const act = useAgentAction(companyId);
+  const canRun = useAgentsCanRun();
   const a = agent.data;
   const [kind, label] = a ? agentStatusOf(a.status) : ["idle" as const, ""];
   return (
@@ -158,7 +160,7 @@ export function LiveAgentDetail() {
                 ) : (
                   <Button onClick={() => act.mutate({ id: a.id, action: "pause" })} disabled={act.isPending || a.status === "terminated" || a.status === "pending_approval"}><Pause className="h-4 w-4" />Pause</Button>
                 )}
-                <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"}><Zap className="h-4 w-4" />Wake up</Button>
+                <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={!canRun || act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"} title={canRun ? undefined : "Agents can't run until agent containers are set up"}><Zap className="h-4 w-4" />Wake up</Button>
               </>
             }
           />
