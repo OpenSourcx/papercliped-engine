@@ -73,7 +73,7 @@ export function DisksCard({ g, kind, running, onGrow, version, onChanged }: { g:
               <Row key={x.key}>
                 {x.kind === "cdrom" ? <Disc3 className="h-4 w-4 text-ink-3 shrink-0" /> : x.kind === "bind" ? <FolderInput className="h-4 w-4 text-ink-3 shrink-0" /> : <HardDrive className="h-4 w-4 text-ink-3 shrink-0" />}
                 <div className="flex-1 min-w-0 basis-48">
-                  <div className="text-sm"><span className="font-mono">{x.key}</span>{x.mp && <span className="text-ink-3"> · mounted at <span className="font-mono">{x.mp}</span></span>}<span className="text-ink-3"> · {KIND_LABEL[x.kind]}</span></div>
+                  <div className="text-sm"><span className="font-mono">{x.key}</span>{x.mp && x.kind !== "rootfs" && <span className="text-ink-3"> · mounted at <span className="font-mono">{x.mp}</span></span>}<span className="text-ink-3"> · {KIND_LABEL[x.kind]}</span></div>
                   <div className="text-xs text-ink-3 truncate font-mono" title={x.volume}>{x.kind === "cdrom" ? (x.volume === "none" ? "Empty" : x.volume === "cdrom" ? "Host drive" : volName(x.volume)) : x.kind === "bind" ? `Host folder ${x.volume}` : `${x.storage ?? ""} · ${volName(x.volume)}`}</div>
                   {(chips(x).length > 0 || x.staged || x.backup === false) && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
