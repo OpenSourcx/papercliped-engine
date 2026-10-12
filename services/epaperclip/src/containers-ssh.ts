@@ -65,6 +65,12 @@ export interface SshRunner {
   run(target: SshTarget, script: string, onLine: (line: string) => void, timeoutMs: number): Promise<{ exitCode: number | null; timedOut: boolean }>;
 }
 
+/**
+ * The script is saved to a file first and run from there with stdin closed, so nothing it runs (apt, dpkg) can read the
+ * rest of the script from the pipe.
+ */
+const RUN_REMOTE = 'umask 077; f="$HOME/.epc-run.sh"; cat > "$f" && { bash "$f" </dev/null; rc=$?; rm -f "$f"; exit $rc; }';
+
 const SSH_USER = /^[a-z_][a-z0-9_-]{0,31}$/;
 
 /**
@@ -178,6 +184,6 @@ export function realSsh(opts: { binary?: string } = {}): SshRunner {
         const r = await exec([...sshArgs(dir, key, target), "true"], null, (l) => (last = l), timeoutMs);
         return r.exitCode === 0 ? { ok: true } : { ok: false, error: r.timedOut ? "timed out" : last.slice(0, 200) || `exit ${r.exitCode ?? "none"}` };
       }),
-    run: (target, script, onLine, timeoutMs) => withKey(target, (dir, key) => exec([...sshArgs(dir, key, target), "bash", "-s"], script, onLine, timeoutMs)),
+    run: (target, script, onLine, timeoutMs) => withKey(target, (dir, key) => exec([...sshArgs(dir, key, target), RUN_REMOTE], script, onLine, timeoutMs)),
   };
 }
