@@ -12,7 +12,7 @@
 //   EPC_E2E_HOLD=/path/file.json      after the stages, keep everything running and write the host's address there (for poking at it)
 //   EPC_E2E_KEEP=1                     leave the engine data directory behind
 import { spawn, type ChildProcess } from "node:child_process";
-import { chownSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chownSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -34,6 +34,7 @@ const engineNode = process.env.EPC_E2E_ENGINE_NODE ?? "/opt/epc-eng/node-v24.21.
 const nobody = 65534;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(shots, { recursive: true });
+for (const f of readdirSync(shots)) if (f.endsWith(".png")) rmSync(join(shots, f));
 if (!existsSync(join(dist, "index.html"))) throw new Error(`The console isn't built: run \`pnpm --filter @papercliped-engine/console exec vite build\` (looked in ${dist})`);
 if (!existsSync(join(enginePrefix, "node_modules/@paperclipai/server/dist/index.js"))) throw new Error(`No engine in ${enginePrefix} (EPC_E2E_ENGINE_APP)`);
 if (process.getuid?.() !== 0) throw new Error("Run as root: the engine's embedded Postgres refuses to run as root, so it is started as nobody.");

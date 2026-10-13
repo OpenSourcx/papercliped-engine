@@ -40,6 +40,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function runStages(c: Ctx): Promise<Result[]> {
   const results: Result[] = [];
   const problems: string[] = [];
+  /** A tab left open while its session expires can't reconnect its live socket; that console line is expected then. */
+  let signedOutNoise = false;
+  /** Things the run found that need a decision, not a code change here: listed at the end and in docs/E2E.md. */
+  const openFindings: string[] = [];
   const S: { org?: { id: string; name: string }; [k: string]: unknown } = {};
 
   // ---- browser helpers
@@ -52,6 +56,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     let where = "";
     page.on("pageerror", (e: Error) => problems.push(`[${user}] page error at ${where || page.url()}: ${e.message}`));
     page.on("console", (m: { type(): string; text(): string }) => {
+      if (signedOutNoise && /WebSocket connection to .* failed/.test(m.text())) return;
       if (m.type() === "error" && !/Failed to load resource/.test(m.text())) problems.push(`[${user}] console error at ${page.url()}: ${m.text().slice(0, 200)}`);
     });
     page.on("response", (r: { status(): number; url(): string; request(): { method(): string } }) => {
@@ -118,9 +123,9 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     }
   };
   /** Signs a person in through the console's form and finishes the first-run questions if they come up. */
-  const signedIn = async (user: string) => {
+  const signedIn = async (user: string, password = "right") => {
     const { page } = await open(user);
-    await signInUi(page, user);
+    await signInUi(page, user, password);
     await page.waitForSelector("text=/What should Pin call you|Good (morning|afternoon|evening)/", { timeout: 20000 });
     if (await page.locator("text=What should Pin call you?").count()) {
       for (let i = 0; i < 6 && !(await page.locator("button:has-text('Meet Pin')").count()); i++) {
@@ -388,6 +393,8 @@ export async function runStages(c: Ctx): Promise<Result[]> {
       return Array.isArray(r.json) && r.json.length ? r.json : null;
     });
     console.log("       approval:", JSON.stringify(pending[0]).slice(0, 300));
+    const feed = (await eng("sam", "GET", `/api/companies/${S.org!.id}/attention`)).json.items.find((i: any) => i.sourceKind === "approval");
+    console.log("       attention item for it:", JSON.stringify(feed).slice(0, 900));
     await page.goto(c.base + "/pve/acm/decisions");
     await page.waitForSelector("text=Scout", { timeout: 15000 });
     await shot(page, "09-decisions-hire");
@@ -818,8 +825,10 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await page.getByRole("button", { name: "Comment", exact: true }).click();
     await page.waitForSelector("text=Use the fine stone.");
     const comments = (await eng("sam", "GET", `/api/issues/${S.taskId}/comments`)).json;
-    const list = Array.isArray(comments) ? comments : comments.comments ?? comments.items ?? comments.data ?? [];
-    expect(list.some((x: any) => x.body === "Use the fine stone."), `the engine has the comment, got ${JSON.stringify(comments).slice(0, 300)}`);
+    await until("the engine to list the comment", async () => {
+      const r = (await eng("sam", "GET", `/api/issues/${S.taskId}/comments`)).json;
+      return (Array.isArray(r) ? r : r.comments ?? r.items ?? r.data ?? []).some((x: any) => x.body === "Use the fine stone.");
+    });
     await page.fill('input[aria-label="New label"]', "urgent");
     await page.getByRole("button", { name: "Add", exact: true }).first().click();
     await page.waitForSelector('button[aria-pressed="true"]:has-text("urgent")');
@@ -900,6 +909,187 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     S.org!.name = "Acme Labs Ltd";
   });
 
+  await stage("agent containers: the settings screen says they aren't set up; setup fails with a reason, not a crash; non-admins see only the state", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/home?settings=agent-containers");
+    await page.waitForSelector("text=/Agent containers/");
+    await sleep(1200);
+    await shot(page, "29-containers-state");
+    const st = (await call("sam", "GET", "/api/agent-containers")).json;
+    expect(st.state === "not_set_up" && st.canManage === true, `containers aren't set up and sam can manage them, got ${JSON.stringify(st).slice(0, 200)}`);
+    const lee = (await call("lee", "GET", "/api/agent-containers")).json;
+    expect(lee.canManage === false && !("steps" in lee && lee.steps?.length), `a non-admin gets the state only, got ${JSON.stringify(lee).slice(0, 200)}`);
+    expect((await call("lee", "POST", "/api/agent-containers/setup", {})).status === 403, "a non-admin can't start the setup");
+    const btn = page.getByRole("button", { name: /Set up|Start setup|Set up agent containers/ }).first();
+    await btn.click();
+    const job = await until("the setup job to end", async () => {
+      const cur = (await call("sam", "GET", "/api/agent-containers")).json?.job;
+      if (!cur) return null;
+      const j = (await call("sam", "GET", `/api/agent-containers/jobs/${cur.id ?? cur.jobId}`)).json;
+      return j && j.status !== "running" ? j : null;
+    }, 60000);
+    console.log("       setup ended:", job.status, "-", String(job.error ?? "").slice(0, 200));
+    expect(job.status === "failed" && !!job.error, `the setup stops with a reason when the provider isn't installed, got ${job.status} ${job.error}`);
+    await page.waitForTimeout(1500);
+    await shot(page, "29-containers-failed");
+    expect(!/stack|at Object|undefined/.test(await bodyText(page)), "no stack trace or 'undefined' on screen");
+    const after = (await eng("sam", "GET", "/api/instance/settings/experimental")).json;
+    expect(after.enableManagedSandboxOnly === true, "a failed setup leaves agents fenced off the host");
+  });
+
+  await stage("costs with spend: reported spend shows by agent, provider and model; an agent budget below it opens an incident the console can resolve", async () => {
+    const { page } = await open("sam");
+    const post = (cents: number, provider: string, model: string) => eng("sam", "POST", `/api/companies/${S.org!.id}/cost-events`, { agentId: S.agentId, provider, model, inputTokens: 1200, outputTokens: 300, costCents: cents, occurredAt: new Date().toISOString() });
+    expect((await post(42, "anthropic", "model-fast")).status === 201, "the engine takes a cost event");
+    expect((await post(8, "openai", "model-small")).status === 201, "and a second");
+    await page.goto(c.base + "/pve/acm/costs");
+    await page.waitForSelector("text=$0.50");
+    await shot(page, "32-costs-spend");
+    expect((await bodyText(page)).includes("Runner"), "the by-agent view names the agent");
+    await tab(page, "By provider").click();
+    await page.waitForSelector("text=anthropic");
+    await tab(page, "By model").click();
+    await page.waitForSelector("text=model-fast");
+    await page.fill('input[aria-label="Monthly budget for Runner in dollars"]', "0.10");
+    await page.locator('input[aria-label="Monthly budget for Runner in dollars"]').locator('xpath=ancestor::div[.//button[normalize-space()="Save"]][1]').getByRole("button", { name: "Save", exact: true }).click();
+    const overview = await until("a budget policy and an incident", async () => {
+      const r = (await eng("sam", "GET", `/api/companies/${S.org!.id}/budgets/overview`)).json;
+      return (r.policies ?? []).length && (r.activeIncidents ?? []).length ? r : null;
+    }, 20000).catch(async (e) => { console.log("       budgets overview:", JSON.stringify((await eng("sam", "GET", `/api/companies/${S.org!.id}/budgets/overview`)).json).slice(0, 500)); throw e; });
+    console.log("       incident:", JSON.stringify(overview.activeIncidents[0]).slice(0, 240));
+    await page.reload();
+    await page.waitForSelector("text=Budget policies");
+    await sleep(1200);
+    await shot(page, "32-costs-incident");
+    const agent = (await eng("sam", "GET", `/api/agents/${S.agentId}`)).json;
+    console.log("       Runner after the budget:", agent.status, agent.pauseReason ?? "");
+    const resolve = page.getByRole("button", { name: /Raise|Keep paused|Resolve/ }).first();
+    if (await resolve.count()) { await resolve.click(); await sleep(1500); await shot(page, "32-costs-resolve"); }
+  });
+
+  await stage("inbox with work: assigned tasks, reading and archiving; artifacts list the attached file", async () => {
+    const { page } = await open("sam");
+    const me = (await eng("sam", "GET", "/api/cli-auth/me")).json;
+    const made = await eng("sam", "POST", `/api/companies/${S.org!.id}/issues`, { title: "For the board", assigneeUserId: me.userId });
+    expect(made.status === 201, `a task can be assigned to a person, got ${made.status}`);
+    await page.goto(c.base + "/pve/acm/inbox");
+    await tab(page, "Assigned and mentioned").click();
+    await page.waitForSelector("text=For the board", { timeout: 15000 });
+    await shot(page, "33-inbox-assigned");
+    await page.click("text=For the board");
+    await sleep(1500);
+    await page.goto(c.base + "/pve/acm/inbox");
+    await tab(page, "Assigned and mentioned").click();
+    await page.waitForSelector("text=For the board");
+    const archive = page.getByRole("button", { name: /Archive|Mark read/ }).first();
+    if (await archive.count()) { await archive.click(); await sleep(1200); }
+    await shot(page, "33-inbox-after");
+    // The engine lists what agents produced; a file a person attached to a task isn't an artifact.
+    await page.goto(c.base + "/pve/acm/artifacts");
+    await page.waitForSelector("text=No artifacts yet", { timeout: 15000 });
+    await shot(page, "33-artifacts");
+  });
+
+  await stage("routines: a webhook trigger shows its address and secret once, and can be rotated; revisions list", async () => {
+    const { page } = await open("sam");
+    const routines = (await eng("sam", "GET", `/api/companies/${S.org!.id}/routines`)).json;
+    const r = (Array.isArray(routines) ? routines : routines.routines).find((x: any) => x.title === "Morning summary");
+    await page.goto(c.base + `/pve/acm/routines/${r.id}`);
+    await page.waitForSelector("text=Morning summary");
+    await page.getByRole("button", { name: "Add trigger" }).click();
+    await page.selectOption("#tg-kind", "webhook");
+    await page.fill("#tg-label", "From the build server");
+    await page.getByRole("button", { name: /^Add/ }).last().click();
+    const url = await page.getByRole("textbox", { name: "Webhook address" }).inputValue({ timeout: 15000 });
+    const secret = await page.getByRole("textbox", { name: "Webhook secret" }).inputValue();
+    console.log("       webhook address shown:", url);
+    expect(secret.length >= 16, "the secret is shown");
+    await shot(page, "34-webhook");
+    await page.getByRole("button", { name: "Done" }).click();
+    expect(!(await bodyText(page)).includes(secret), "the secret is not on the page after closing the dialog");
+    const u = new URL(url);
+    if (u.port !== new URL(c.base).port) openFindings.push(`OPEN: a routine's webhook address is the engine's own loopback address (${u.origin}); nothing outside the device can reach it, and the host service has no unauthenticated route for it (design decision: see docs/E2E.md)`);
+    await page.getByRole("button", { name: "Revisions" }).click();
+    await page.waitForSelector("text=Every change to this routine is kept");
+    await shot(page, "34-revisions");
+    await page.keyboard.press("Escape");
+  });
+
+  await stage("decisions: reject and request a revision on hires", async () => {
+    const { page } = await open("sam");
+    await eng("sam", "PATCH", `/api/companies/${S.org!.id}`, { requireBoardApprovalForNewAgents: true });
+    const hire = (name: string) => eng("sam", "POST", `/api/companies/${S.org!.id}/agent-hires`, { name, role: "qa", adapterType: "claude_local", adapterConfig: {} });
+    expect((await hire("Probe One")).status === 201 && (await hire("Probe Two")).status === 201, "two hires are waiting");
+    await page.goto(c.base + "/pve/acm/decisions");
+    await page.waitForSelector("text=Probe One");
+    await shot(page, "35-decisions-two");
+    await page.getByRole("button", { name: "Reject", exact: true }).first().click();
+    await until("a rejected approval", async () => ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).some((a) => a.status === "rejected"));
+    await page.getByRole("button", { name: "Request revision" }).first().click();
+    await until("a revision request", async () => ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).some((a) => a.status === "revision_requested"))
+      .catch(async (e) => { const left = ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals?status=pending`)).json as any[])[0]; console.log("       request-revision with no note:", JSON.stringify(await eng("sam", "POST", `/api/approvals/${left.id}/request-revision`, {})).slice(0, 300)); console.log("       approvals:", JSON.stringify(((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).map((a) => [a.payload?.name, a.status]))); throw e; });
+    await page.reload();
+    await tab(page, "History").click();
+    await sleep(1000);
+    await shot(page, "35-decisions-history");
+    await eng("sam", "PATCH", `/api/companies/${S.org!.id}`, { requireBoardApprovalForNewAgents: false });
+  });
+
+  await stage("a viewer in the organization reads it but can't change it; a person with only device access reads the device", async () => {
+    const ana = await signedIn("ana", "an-okay-passphrase");
+    const own = await eng("ana", "GET", "/api/companies");
+    expect(own.status === 200 && own.json.length === 1 && own.json[0].id === S.org!.id, `ana sees exactly the organization she was given, got ${own.text.slice(0, 160)}`);
+    await ana.goto(c.base + "/pve/acm/tasks");
+    await ana.waitForSelector("text=Sharpen the anvils");
+    await shot(ana, "31-viewer-tasks");
+    const write = await eng("ana", "POST", `/api/companies/${S.org!.id}/issues`, { title: "A viewer's task" });
+    console.log("       viewer creating a task:", write.status, write.text.slice(0, 120));
+    expect(write.status === 403, `a viewer can't create tasks, got ${write.status}`);
+    expect((await eng("ana", "PATCH", `/api/companies/${S.org!.id}`, { name: "Hijacked" })).status === 403, "a viewer can't rename the organization");
+    expect((await call("ana", "PUT", `/api/iac/orgs/${S.org!.id}/members/yuki@pve`, { role: "owner" })).status === 403, "a viewer can't hand out roles");
+    expect((await call("ana", "PUT", `/api/resource-groups/${S.org!.id}`, { name: "x", cores: 1, memoryMb: 512, diskGb: 1, maxGuests: 1 })).status === 403, "a viewer can't resize the resource group");
+    await ana.goto(c.base + "/pve/acm/agents");
+    await ana.waitForSelector("text=Runner");
+    await shot(ana, "31-viewer-agents");
+    const { page } = await open("lee");
+    const alerts: string[] = [];
+    for (const r of ["home", "machines", "machines/101", "storage", "summary", "tasks", "host/services", "access-control", "disks"]) {
+      await page.goto(c.base + "/pve/" + r);
+      await page.waitForTimeout(1300);
+      for (const a of await page.locator('[role="alert"]').allInnerTexts()) alerts.push(`${r}: ${a.replace(/\s+/g, " ").slice(0, 140)}`);
+      await shot(page, `31-lee-${r.replace(/\W+/g, "_")}`);
+      expect(!/Something went wrong|Unexpected|undefined/.test(await bodyText(page)), `${r} renders for a non-admin without crashing`);
+    }
+    console.log("       lee's alerts:", alerts.join(" | ") || "none");
+  });
+
+  await stage("phone width: no page scrolls sideways", async () => {
+    const { ctx } = await open("sam");
+    const small = await ctx.newPage();
+    await small.setViewportSize({ width: 390, height: 844 });
+    const wide: string[] = [];
+    const base = "/pve/acm";
+    const routes = ["/pve/home", "/pve/machines", "/pve/machines/101", "/pve/disks", "/pve/host/services", "/pve/datacenter/ha", "/pve/pin", "/pve/pin?tab=plans", "/pve/automations", "/pve/summary", "/pve/storage", "/pve/network",
+      base, `${base}/inbox`, `${base}/decisions`, `${base}/tasks`, `${base}/tasks/${S.taskId}`, `${base}/routines`, `${base}/agents`, `${base}/agents/${S.agentId}`, `${base}/chat`, `${base}/costs`, `${base}/settings`, `${base}/members`, `${base}/goals`, `${base}/projects`, `${base}/org`, `${base}/skills`, `${base}/activity`];
+    for (const r of routes) {
+      await small.goto(c.base + r);
+      await small.waitForSelector("h1", { timeout: 15000 }).catch(() => undefined);
+      await small.waitForTimeout(900);
+      const over = await small.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      if (over > 0) wide.push(`${r} scrolls sideways by ${over}px`);
+      await shot(small, `30-phone-${r.replace(/\W+/g, "_")}`);
+    }
+    for (const modal of ["/pve/home?settings=access", "/pve/home?modal=new-org", "/pve/machines?modal=new-machine"]) {
+      await small.goto(c.base + modal);
+      await small.waitForTimeout(1200);
+      const over = await small.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      if (over > 0) wide.push(`${modal} scrolls sideways by ${over}px`);
+      await shot(small, `30-phone-${modal.replace(/\W+/g, "_")}`);
+    }
+    await small.close();
+    if (wide.length) throw new Error(wide.join("\n"));
+  });
+
   await stage("security headers: the console is served with its strict policy and signs cookies HttpOnly, SameSite=Strict", async () => {
     const home = await fetch(c.base + "/");
     const csp = home.headers.get("content-security-policy") ?? "";
@@ -930,17 +1120,24 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     // Signing back in lands on the console again, and an idle session expires after two hours.
     await signInUi(page, "lee");
     await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
+    signedOutNoise = true;
     c.clock.skew += 3 * 3600_000;
+    // A page somebody left open notices on its own, without a click: its next refresh is refused and it asks for a sign-in.
+    const idle = users.get("ana")!.page;
+    await idle.waitForSelector("text=Sign in to ePaperclip", { timeout: 60000 });
+    await shot(idle, "25-idle-tab-expired");
     await page.goto(c.base + "/pve/machines");
     await page.waitForSelector("text=Sign in to ePaperclip", { timeout: 15000 });
     expect((await call("lee", "GET", "/api/host")).status === 401, "an idle session older than two hours is refused");
     await shot(page, "25-session-expired");
     c.clock.skew = 0;
+    signedOutNoise = false;
     await signInUi(page, "lee");
     await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
     // The other people's sessions expired with the clock too; sign-in works for them again.
     await signedInAgain("sam");
   });
 
+  for (const o of openFindings) console.log(`\n  ${o}`);
   return results;
 }

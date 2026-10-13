@@ -63,6 +63,10 @@ function AttentionCard({ item }: { item: AttentionItem }) {
   const w = useInboxWrites(companyId);
   const target = useTarget()(item);
   const kindLabel = SOURCE_LABEL[item.sourceKind] ?? item.sourceKind.replace(/_/g, " ");
+  // The attention feed names an approval only by its type ("hire agent"); the approval itself says who is being hired.
+  const approvals = useApprovals(companyId);
+  const approval = item.sourceKind === "approval" ? approvals.data?.find((a) => a.id === item.subject.id) : undefined;
+  const title = approval ? payloadTitle(approval.type, approval.payload ?? {}) : item.subject.title;
   const detail = item.detail;
   const excerpt = detail && "summaryExcerpt" in detail ? detail.summaryExcerpt : detail && "promptExcerpt" in detail ? detail.promptExcerpt : detail && "failureReasonExcerpt" in detail ? detail.failureReasonExcerpt : detail && "firstQuestionText" in detail ? detail.firstQuestionText : null;
   return (
@@ -70,7 +74,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
       <div className="flex flex-wrap items-start gap-3">
         <Avatar name={item.originAgentName ?? kindLabel} hue={org.hue + 40} size={32} />
         <div className="flex-1 min-w-52">
-          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-medium">{item.subject.title}</span><Chip tone={SEVERITY_TONE[item.severity] ?? "neutral"}>{kindLabel}</Chip></div>
+          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-medium">{title}</span><Chip tone={SEVERITY_TONE[item.severity] ?? "neutral"}>{kindLabel}</Chip></div>
           <div className="text-xs text-ink-3">{item.originAgentName ? `${item.originAgentName} · ` : ""}{item.whyNow} · {ago(item.createdAt)}</div>
           {excerpt && <p className="text-compact text-ink-2 mt-2 line-clamp-3 whitespace-pre-wrap">{excerpt}</p>}
         </div>
@@ -79,14 +83,14 @@ function AttentionCard({ item }: { item: AttentionItem }) {
           <Button size="sm" variant="ghost" loading={w.dismiss.isPending && w.dismiss.variables === item.dismissalKey} onClick={() => w.dismiss.mutate(item.dismissalKey)}>Dismiss</Button>
         </div>
       </div>
-      {item.sourceKind === "approval" && <ApprovalActions item={item} />}
+      {item.sourceKind === "approval" && <ApprovalActions item={item} title={title} />}
       {item.sourceKind === "issue_thread_interaction" && item.relatedIssue && <InteractionActions item={item} issueId={item.relatedIssue.id} />}
       <ActionError error={w.dismiss.error} />
     </Card>
   );
 }
 
-function ApprovalActions({ item }: { item: AttentionItem }) {
+function ApprovalActions({ item, title }: { item: AttentionItem; title: string }) {
   const { companyId } = useLiveOrg();
   const decide = useDecide(companyId);
   const w = useInboxWrites(companyId);
@@ -96,7 +100,7 @@ function ApprovalActions({ item }: { item: AttentionItem }) {
   const busy = decide.isPending || w.requestRevision.isPending;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <Input aria-label={`Note for ${item.subject.title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note (optional)" className="h-8 text-compact flex-1 min-w-48" />
+      <Input aria-label={`Note for ${title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note (optional)" className="h-8 text-compact flex-1 min-w-48" />
       <Button size="sm" variant="ghost" disabled={busy} onClick={() => w.requestRevision.mutate({ id, note: n })}>Request revision</Button>
       <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate({ id, approve: false, note: n })}><X className="h-3.5 w-3.5" />Reject</Button>
       <Button size="sm" variant="primary" disabled={busy} onClick={() => decide.mutate({ id, approve: true, note: n })}><Check className="h-3.5 w-3.5" />Approve</Button>

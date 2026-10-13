@@ -99,6 +99,7 @@ describe("the inbox", () => {
   it("lets you approve with a note, reject, ask for changes and dismiss without leaving the page", async () => {
     let items = [approvalItem()];
     state.routes["GET /engine/api/companies/c1/attention"] = () => [200, feed(items)];
+    state.routes["GET /engine/api/companies/c1/approvals"] = () => [200, []];
     state.routes["POST /engine/api/approvals/ap1/approve"] = (b) => { items = []; return [200, { id: "ap1", status: "approved", ...(b as object) }]; };
     state.routes["POST /engine/api/approvals/ap1/request-revision"] = () => [200, {}];
     state.routes["POST /engine/api/companies/c1/inbox-dismissals"] = () => [201, {}];
@@ -144,5 +145,18 @@ describe("the inbox", () => {
     fireEvent.click(await screen.findByText("History"));
     expect(await screen.findByText("Hire Quinn (designer)")).toBeTruthy();
     expect(screen.getByText(/Welcome/)).toBeTruthy();
+  });
+
+  it("names who is being hired, since the engine's feed only says \"hire agent\"", async () => {
+    const hire = (n: number, name: string) => approvalItem({ id: `approval:ap${n}`, subject: { kind: "approval", id: `ap${n}`, title: "hire agent", identifier: null, status: "pending" }, dismissalKey: `attention:approval:ap${n}`, detail: { kind: "approval", approvalType: "hire_agent", images: [] }, originAgentName: null, _name: name });
+    state.routes["GET /engine/api/companies/c1/attention"] = () => [200, feed([hire(1, "Probe One"), hire(2, "Probe Two")])];
+    state.routes["GET /engine/api/companies/c1/approvals"] = () => [200, [
+      { id: "ap1", type: "hire_agent", status: "pending", payload: { name: "Probe One", role: "qa" }, requestedByAgentId: null, requestedByUserId: "u1", createdAt: "2026-10-01T00:00:00Z" },
+      { id: "ap2", type: "hire_agent", status: "pending", payload: { name: "Probe Two", role: "researcher" }, requestedByAgentId: null, requestedByUserId: "u1", createdAt: "2026-10-01T00:00:00Z" },
+    ]];
+    renderOrg("/pve/acme/inbox");
+    expect(await screen.findByText("Hire Probe One (qa)")).toBeTruthy();
+    expect(screen.getByText("Hire Probe Two (researcher)")).toBeTruthy();
+    expect(screen.getByLabelText("Note for Hire Probe Two (researcher)")).toBeTruthy();
   });
 });
