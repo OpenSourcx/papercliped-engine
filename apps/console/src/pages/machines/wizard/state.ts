@@ -347,7 +347,7 @@ export interface StepDef {
 }
 export const VM_STEPS: StepDef[] = [
   { id: "general", label: "General", fields: ["general"] },
-  { id: "os", label: "Operating system", fields: ["os"] },
+  { id: "os", label: "OS", fields: ["os"] },
   { id: "system", label: "System", fields: ["system"] },
   { id: "disks", label: "Disks", fields: ["disks"] },
   { id: "cpu", label: "CPU", fields: ["cpu"] },

@@ -516,6 +516,12 @@ export function buildVm(raw: unknown, vmid: number | null, ctx: WizardContext = 
     out.audio0 = prop([["device", oneOf(a.device, AUDIO_DEVICES, "That audio device", "hardware.audio.device")], ["driver", oneOf(a.driver, AUDIO_DRIVERS, "That audio driver", "hardware.audio.driver", "spice")]]);
   }
 
+  if (ostype === "win11") {
+    const first = diskSpecs.find((d) => d.bus !== undefined);
+    if (first && first.size < 64) warnings.push("Windows 11 needs at least 64 GB of disk.");
+    if (memory < 4096) warnings.push("Windows 11 needs at least 4 GB of memory.");
+  }
+
   // Boot order: the first disk, then the install media, then the network.
   const order = [keys[0], media !== "none" ? "ide2" : undefined, nicLines.length ? "net0" : undefined].filter(Boolean);
   const params: Params = {
