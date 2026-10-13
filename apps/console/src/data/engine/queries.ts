@@ -210,6 +210,8 @@ export function useDecide(companyId: string) {
     mutationFn: ({ id, approve, note }: { id: string; approve: boolean; note?: string }) => (approve ? engine.approvals.approve(id, note) : engine.approvals.reject(id, note)),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.approvals(companyId) });
+      void qc.invalidateQueries({ queryKey: qk.attention(companyId) });
+      void qc.invalidateQueries({ queryKey: qk.badges(companyId) });
       void qc.invalidateQueries({ queryKey: qk.dashboard(companyId) });
       void qc.invalidateQueries({ queryKey: qk.agents(companyId) });
       void qc.invalidateQueries({ queryKey: qk.activity(companyId) });

@@ -69,7 +69,7 @@ export function TaskExtras({ task }: { task: Issue }) {
         <div className="flex flex-wrap items-center gap-2">
           {all.map((l) => <button key={l.id} onClick={() => toggle(l.id)} aria-pressed={have.has(l.id)} disabled={update.isPending}><Chip tone={have.has(l.id) ? "accent" : "neutral"}>{l.name}</Chip></button>)}
           {all.length === 0 && <span className="text-sm text-ink-3">No labels yet.</span>}
-          <form className="flex items-center gap-1" onSubmit={(ev) => { ev.preventDefault(); const n = labelName.trim(); if (n) newLabel.mutate(n, { onSuccess: (l) => { setLabelName(""); toggle(l.id); } }); }}>
+          <form className="flex items-center gap-1" onSubmit={(ev) => { ev.preventDefault(); const n = labelName.trim(); if (!n) return; const same = all.find((l) => l.name.toLowerCase() === n.toLowerCase()); if (same) { setLabelName(""); if (!have.has(same.id)) toggle(same.id); return; } newLabel.mutate(n, { onSuccess: (l) => { setLabelName(""); toggle(l.id); } }); }}>
             <Input aria-label="New label" value={labelName} onChange={(ev) => setLabelName(ev.target.value)} placeholder="New label" className="h-8 w-32 text-compact" />
             <Button size="sm" variant="ghost" type="submit" disabled={!labelName.trim()} loading={newLabel.isPending}>Add</Button>
           </form>
