@@ -4,6 +4,7 @@ import { createServer as createHttps } from "node:https";
 import { hostname } from "node:os";
 import { TRUSTED_KEYS, trustedKey } from "@papercliped-engine/marketplace";
 import { createApp } from "./app.ts";
+import { TlsReloader } from "./features/nodeTls.ts";
 import { SessionStore } from "./sessions.ts";
 import { StateStore } from "./state.ts";
 
@@ -68,6 +69,8 @@ const server = devHttp
   ? createHttp(handle)
   : createHttps({ cert: readFileSync(env.EPC_TLS_CERT ?? "/etc/pve/local/pve-ssl.pem"), key: readFileSync(env.EPC_TLS_KEY ?? "/etc/pve/local/pve-ssl.key"), minVersion: "TLSv1.2" }, handle);
 server.on("upgrade", handle.upgrade);
+// Follow the node's certificate: a custom or ACME certificate (or Proxmox's daily renewal) is swapped in without a restart.
+if (!devHttp) new TlsReloader().attach(server as unknown as Parameters<TlsReloader["attach"]>[0]);
 server.headersTimeout = 20_000;
 // Uploads of multi-gigabyte ISOs can take a long time on a slow link; a stalled socket still times out below.
 server.requestTimeout = 6 * 3600_000;
