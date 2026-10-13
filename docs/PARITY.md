@@ -26,7 +26,7 @@ By workstream (Proxmox rows only):
 | W-DISK | disks, storage definitions, VM/CT disk management | 50 | 6 | 13 | 1 |
 | W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 48 | 13 | 40 | 9 |
 | W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 8 | 7 | 19 | 7 |
-| W-CLUSTER | cluster, HA, replication, Ceph, migration | 1 | 2 | 33 | 0 |
+| W-CLUSTER | cluster, HA, replication, Ceph, migration | 25 | 7 | 4 | 0 |
 | W-ENGINE | organizations, agents, Pin, engine screens | 0 | 0 | 0 | 0 |
 
 ### P0 gaps by workstream
@@ -79,32 +79,32 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 
 | ID | Screen | Item | API | Status | Pri | Workstream | Evidence | Seq |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DC-001 | Summary | Health, node online count, quorum | GET /cluster/status | partial | P1 | W-CLUSTER | Home and Summary show the one node only; no quorum or cluster status |  |
+| DC-001 | Summary | Health, node online count, quorum | GET /cluster/status | done | P1 | W-CLUSTER | Datacenter summary and Cluster page: quorum, votes, nodes online, per-node machines; /api/cluster/overview |  |
 | DC-002 | Summary | Guests running/stopped counts | GET /cluster/resources | done | P1 | W-NODE | Home.tsx stat tiles; GET /api/host |  |
 | DC-003 | Summary | Resource totals (CPU, memory, storage across nodes) | GET /cluster/resources | partial | P1 | W-NODE | Resources.tsx lists guests and storage; no cluster-wide totals |  |
 | DC-004 | Summary | Resource tree with filter by type, pool, tag | GET /cluster/resources | partial | P1 | W-NODE | Resources.tsx and ContextSidebar machine list; no pool or tag view |  |
-| DC-005 | Summary | Cluster log | GET /cluster/log | missing | P2 | W-CLUSTER |  |  |
-| DC-006 | Summary | Cluster-wide task list | GET /cluster/tasks | partial | P1 | W-CLUSTER | Tasks.tsx reads this node only (GET /api/tasks) |  |
+| DC-005 | Summary | Cluster log | GET /cluster/log | done | P2 | W-CLUSTER | Cluster page, recent log; GET /api/cluster/log |  |
+| DC-006 | Summary | Cluster-wide task list | GET /cluster/tasks | done | P1 | W-CLUSTER | All tasks across nodes (/api/node/tasks); every task screen follows the node selector |  |
 | DC-007 | Summary | Datacenter notes | GET/PUT /cluster/options (description) | missing | P2 | W-NODE |  |  |
-| DC-008 | Cluster | Create cluster | POST /cluster/config | missing | P1 | W-CLUSTER |  |  |
-| DC-009 | Cluster | Join information (copy/paste) | GET /cluster/config/join | missing | P1 | W-CLUSTER |  |  |
-| DC-010 | Cluster | Join cluster | POST /cluster/config/join | missing | P1 | W-CLUSTER |  |  |
-| DC-011 | Cluster | Node list, link addresses, votes | GET /cluster/config/nodes; GET /cluster/config/totem | missing | P1 | W-CLUSTER |  |  |
-| DC-012 | Cluster | Remove node from cluster | DELETE /cluster/config/nodes/{node} | missing | P1 | W-CLUSTER |  |  |
-| DC-013 | Cluster | QDevice status and setup | GET /cluster/config/qdevice | missing | P2 | W-CLUSTER |  |  |
-| DC-014 | Cluster | Corosync link and config edit | GET /cluster/config/apiversion | missing | P2 | W-CLUSTER |  |  |
+| DC-008 | Cluster | Create cluster | POST /cluster/config | done | P1 | W-CLUSTER | Cluster, Create cluster (name typed, links); POST /api/cluster/create |  |
+| DC-009 | Cluster | Join information (copy/paste) | GET /cluster/config/join | done | P1 | W-CLUSTER | Cluster, Join information (copy); GET /api/cluster/join-info, same encoding as Proxmox's |  |
+| DC-010 | Cluster | Join cluster | POST /cluster/config/join | done | P1 | W-CLUSTER | Cluster, Join a cluster (fingerprint, write-only password, device name typed); POST /api/cluster/join |  |
+| DC-011 | Cluster | Node list, link addresses, votes | GET /cluster/config/nodes; GET /cluster/config/totem | done | P1 | W-CLUSTER | Cluster, nodes table with ids, votes, link addresses; totem read |  |
+| DC-012 | Cluster | Remove node from cluster | DELETE /cluster/config/nodes/{node} | done | P1 | W-CLUSTER | Cluster, Remove node (off nodes only, name typed, guidance); POST /api/cluster/nodes/:node/remove |  |
+| DC-013 | Cluster | QDevice status and setup | GET /cluster/config/qdevice | partial | P2 | W-CLUSTER | Quorum device status read on Cluster; setup is pvecm only (no API) |  |
+| DC-014 | Cluster | Corosync link and config edit | GET /cluster/config/apiversion | partial | P2 | W-CLUSTER | Totem settings, link addresses and join API version read; Proxmox has no API to edit corosync.conf |  |
 | DC-015 | Options | Keyboard layout and language | GET/PUT /cluster/options | missing | P2 | W-NODE |  |  |
 | DC-016 | Options | Default console viewer | PUT /cluster/options (console) | missing | P2 | W-NODE |  |  |
 | DC-017 | Options | HTTP proxy for updates and downloads | PUT /cluster/options (http_proxy) | missing | P1 | W-NODE |  |  |
 | DC-018 | Options | Email from address and notification defaults | PUT /cluster/options (email_from) | missing | P1 | W-NODE |  |  |
 | DC-019 | Options | MAC address prefix | PUT /cluster/options (mac_prefix) | missing | P2 | W-NODE |  |  |
-| DC-020 | Options | Migration type and network | PUT /cluster/options (migration) | missing | P1 | W-CLUSTER |  |  |
+| DC-020 | Options | Migration type and network | PUT /cluster/options (migration) | done | P1 | W-CLUSTER | Datacenter Options, Migration (schema form), PUT /api/node/datacenter/options |  |
 | DC-021 | Options | Bandwidth limits (migration, restore, clone, move) | PUT /cluster/options (bwlimit) | missing | P2 | W-NODE |  |  |
 | DC-022 | Options | Max parallel workers for bulk actions | PUT /cluster/options (max_workers) | missing | P2 | W-NODE |  |  |
 | DC-023 | Options | Tag style, registered tags, user tag access | PUT /cluster/options (tag-style, registered-tags, user-tag-access) | missing | P2 | W-NODE |  |  |
 | DC-024 | Options | Next free VMID range | PUT /cluster/options (next-id) | missing | P2 | W-MACHINE |  |  |
 | DC-025 | Options | WebAuthn and U2F settings | PUT /cluster/options (webauthn, u2f) | missing | P1 | W-ACCESS |  |  |
-| DC-026 | Options | Cluster resource scheduling and HA settings | PUT /cluster/options (crs, ha) | missing | P2 | W-CLUSTER |  |  |
+| DC-026 | Options | Cluster resource scheduling and HA settings | PUT /cluster/options (crs, ha) | done | P2 | W-CLUSTER | Datacenter Options, HA settings and resource scheduling (schema form) |  |
 | DC-027 | Options | Login consent banner | PUT /cluster/options (consent-text) | missing | P2 | W-ACCESS |  |  |
 | DC-028 | Options | Custom CPU models | GET/POST /cluster/qemu/custom-cpu-models; GET /cluster/qemu/cpu-flags | missing | P2 | W-MACHINE |  |  |
 | DC-029 | Storage | List storage definitions | GET /storage | done | P0 | W-DISK | GET /api/storage-config; StorageAdmin.tsx |  |
@@ -137,8 +137,8 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-056 | Backup | Backup file browser and single-file restore | GET /nodes/{node}/storage/{storage}/file-restore/list; GET .../file-restore/download | missing | P1 | W-DISK |  |  |
 | DC-057 | Backup | Protect a backup, edit its notes | PUT /nodes/{node}/storage/{storage}/content/{volume} | missing | P2 | W-DISK |  |  |
 | DC-058 | Backup | Show a backup's guest config | GET /nodes/{node}/vzdump/extractconfig | missing | P2 | W-DISK |  |  |
-| DC-059 | Replication | List, create, edit, delete replication jobs | GET/POST /cluster/replication; PUT/DELETE /cluster/replication/{id} | missing | P1 | W-CLUSTER |  |  |
-| DC-060 | Replication | Schedule now, view status and log | POST /nodes/{node}/replication/{id}/schedule_now; GET .../status; GET .../log | missing | P1 | W-CLUSTER |  |  |
+| DC-059 | Replication | List, create, edit, delete replication jobs | GET/POST /cluster/replication; PUT/DELETE /cluster/replication/{id} | done | P1 | W-CLUSTER | Replication page and machine page card; /api/cluster/replication |  |
+| DC-060 | Replication | Schedule now, view status and log | POST /nodes/{node}/replication/{id}/schedule_now; GET .../status; GET .../log | done | P1 | W-CLUSTER | Replication: Run now, status, log; /api/cluster/replication/:id/run-now, /log |  |
 | DC-061 | Permissions: Users | List users with realm, enabled, expiry, TFA | GET /access/users | done | P0 | W-ACCESS | LiveAccess.tsx; iac.ts snapshot |  |
 | DC-062 | Permissions: Users | Create user | POST /access/users | done | P0 | W-ACCESS | POST /api/iac/users |  |
 | DC-063 | Permissions: Users | Edit user (name, email, comment, groups, enabled, expiry, SSH keys) | PUT /access/users/{userid} | done | P0 | W-ACCESS | PATCH /api/iac/users/:id covers enable, expire, groups; no UI for email, comment, keys | 41 |
@@ -167,12 +167,12 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-086 | Permissions: Authentication realms | Add/edit/delete realm (LDAP, Active Directory, OpenID Connect, PAM, PVE) | POST /access/domains; PUT/DELETE /access/domains/{realm} | missing | P1 | W-ACCESS |  |  |
 | DC-087 | Permissions: Authentication realms | Sync realm users and groups; scheduled sync jobs | POST /access/domains/{realm}/sync; GET/POST /cluster/jobs/realm-sync | missing | P1 | W-ACCESS |  |  |
 | DC-088 | Permissions: Authentication realms | OpenID Connect sign-in | POST /access/openid/auth-url; POST /access/openid/login | missing | P1 | W-ACCESS |  |  |
-| DC-089 | HA | HA status, quorum, current manager | GET /cluster/ha/status/current; GET /cluster/ha/status/manager_status | missing | P1 | W-CLUSTER |  |  |
-| DC-090 | HA | Add/edit/remove HA resource (state, max restart, relocate, group) | GET/POST /cluster/ha/resources; PUT/DELETE /cluster/ha/resources/{sid} | missing | P1 | W-CLUSTER |  |  |
-| DC-091 | HA | HA groups (nodes, priority, restricted, nofailback) | GET/POST /cluster/ha/groups; PUT/DELETE /cluster/ha/groups/{group} | missing | P1 | W-CLUSTER |  |  |
-| DC-092 | HA | HA rules (node affinity, resource affinity) | GET/POST /cluster/ha/rules; PUT/DELETE /cluster/ha/rules/{rule} | missing | P2 | W-CLUSTER |  |  |
-| DC-093 | HA | Manual HA migrate / relocate | POST /cluster/ha/resources/{sid}/migrate; POST .../relocate | missing | P1 | W-CLUSTER |  |  |
-| DC-094 | HA | Arm/disarm HA | POST /cluster/ha/status/arm-ha; POST /cluster/ha/status/disarm-ha | missing | P2 | W-CLUSTER |  |  |
+| DC-089 | HA | HA status, quorum, current manager | GET /cluster/ha/status/current; GET /cluster/ha/status/manager_status | done | P1 | W-CLUSTER | High availability, Status and fencing; GET /api/cluster/ha |  |
+| DC-090 | HA | Add/edit/remove HA resource (state, max restart, relocate, group) | GET/POST /cluster/ha/resources; PUT/DELETE /cluster/ha/resources/{sid} | done | P1 | W-CLUSTER | High availability, Resources: add, edit, remove; /api/cluster/ha/resources |  |
+| DC-091 | HA | HA groups (nodes, priority, restricted, nofailback) | GET/POST /cluster/ha/groups; PUT/DELETE /cluster/ha/groups/{group} | done | P1 | W-CLUSTER | High availability, Groups on Proxmox versions that have them; /api/cluster/ha/groups |  |
+| DC-092 | HA | HA rules (node affinity, resource affinity) | GET/POST /cluster/ha/rules; PUT/DELETE /cluster/ha/rules/{rule} | done | P2 | W-CLUSTER | High availability, Rules (node and resource affinity) where Proxmox has them; /api/cluster/ha/rules |  |
+| DC-093 | HA | Manual HA migrate / relocate | POST /cluster/ha/resources/{sid}/migrate; POST .../relocate | done | P1 | W-CLUSTER | High availability, Move (migrate or relocate); /api/cluster/ha/resources/:sid/{migrate,relocate} |  |
+| DC-094 | HA | Arm/disarm HA | POST /cluster/ha/status/arm-ha; POST /cluster/ha/status/disarm-ha | done | P2 | W-CLUSTER | High availability, Status and fencing: Arm and Disarm (typed) where Proxmox has them |  |
 | DC-095 | ACME | ACME accounts (register, deactivate, update) | GET/POST /cluster/acme/account; GET/PUT/DELETE /cluster/acme/account/{name} | missing | P1 | W-NODE |  |  |
 | DC-096 | ACME | Challenge plugins (DNS API, standalone) | GET/POST /cluster/acme/plugins; GET/PUT/DELETE /cluster/acme/plugins/{id}; GET /cluster/acme/challenge-schema | missing | P1 | W-NODE |  |  |
 | DC-097 | ACME | Directories, terms of service, meta | GET /cluster/acme/directories; GET /cluster/acme/tos; GET /cluster/acme/meta | missing | P1 | W-NODE |  |  |
@@ -204,7 +204,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-123 | Resource Mappings | Directory mappings (VirtIO-FS) | GET/POST /cluster/mapping/dir; PUT/DELETE .../{id} | missing | P2 | W-MACHINE |  |  |
 | DC-124 | Bulk and jobs | Bulk start/shutdown/suspend/migrate guests | POST /cluster/bulk-action/guest/{start,shutdown,suspend,migrate} | missing | P1 | W-MACHINE |  |  |
 | DC-125 | Bulk and jobs | Schedule analyzer (next runs of a calendar event) | GET /cluster/jobs/schedule-analyze | missing | P2 | W-NODE |  |  |
-| DC-126 | Bulk and jobs | Cluster-wide Ceph overview | GET /cluster/ceph/status; GET /cluster/ceph/flags | missing | P2 | W-CLUSTER |  |  |
+| DC-126 | Bulk and jobs | Cluster-wide Ceph overview | GET /cluster/ceph/status; GET /cluster/ceph/flags | done | P2 | W-CLUSTER | Ceph, Overview: health, usage, I/O, flags; /api/cluster/ceph |  |
 
 ### Node
 
@@ -250,13 +250,13 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-038 | Disks | ZFS scrub, replace device, pool health | GET /nodes/{node}/disks/zfs/{name} | missing | P2 | W-DISK |  |  |
 | ND-039 | Disks | Storage scans for the add-storage dialog | GET /nodes/{node}/scan/{nfs,cifs,iscsi,lvm,lvmthin,zfs,pbs} | done | P1 | W-DISK | GET /api/storage-config/scan/* |  |
 | ND-040 | Ceph | Install Ceph and initial configuration wizard | POST /nodes/{node}/ceph/init; GET /nodes/{node}/ceph/releases | missing | P1 | W-CLUSTER |  |  |
-| ND-041 | Ceph | Status, health, monitors, managers, metadata servers | GET /nodes/{node}/ceph/status; mon, mgr, mds endpoints | missing | P1 | W-CLUSTER |  |  |
-| ND-042 | Ceph | OSDs: create, destroy, in/out, scrub | GET/POST /nodes/{node}/ceph/osd; DELETE .../{osdid}; POST .../in, out, scrub | missing | P1 | W-CLUSTER |  |  |
-| ND-043 | Ceph | Pools: create, edit, delete | GET/POST /nodes/{node}/ceph/pool; PUT/DELETE .../{name} | missing | P1 | W-CLUSTER |  |  |
-| ND-044 | Ceph | CephFS | GET/POST /nodes/{node}/ceph/fs/{name} | missing | P2 | W-CLUSTER |  |  |
-| ND-045 | Ceph | Configuration, CRUSH map, rules, log | GET /nodes/{node}/ceph/cfg, crush, rules, log | missing | P2 | W-CLUSTER |  |  |
-| ND-046 | Ceph | Cluster flags, health mute, service start/stop/restart | PUT /cluster/ceph/flags; PUT /cluster/ceph/health-mute/{code}; POST /nodes/{node}/ceph/{start,stop,restart} | missing | P2 | W-CLUSTER |  |  |
-| ND-047 | Replication (node) | Jobs for this node, status, log, schedule now | GET /nodes/{node}/replication; .../{id}/status; .../log; POST .../schedule_now | missing | P1 | W-CLUSTER |  |  |
+| ND-041 | Ceph | Status, health, monitors, managers, metadata servers | GET /nodes/{node}/ceph/status; mon, mgr, mds endpoints | done | P1 | W-CLUSTER | Ceph, Overview and Services: health, monitors, managers, metadata servers |  |
+| ND-042 | Ceph | OSDs: create, destroy, in/out, scrub | GET/POST /nodes/{node}/ceph/osd; DELETE .../{osdid}; POST .../in, out, scrub | partial | P1 | W-CLUSTER | Ceph, OSDs: list, in, out (typed), scrub; create and destroy stay in pveceph |  |
+| ND-043 | Ceph | Pools: create, edit, delete | GET/POST /nodes/{node}/ceph/pool; PUT/DELETE .../{name} | partial | P1 | W-CLUSTER | Ceph, Pools: list, create, tune (size change typed); delete stays in pveceph |  |
+| ND-044 | Ceph | CephFS | GET/POST /nodes/{node}/ceph/fs/{name} | partial | P2 | W-CLUSTER | Ceph, Services lists CephFS; create and destroy stay in pveceph |  |
+| ND-045 | Ceph | Configuration, CRUSH map, rules, log | GET /nodes/{node}/ceph/cfg, crush, rules, log | partial | P2 | W-CLUSTER | Ceph, Configuration: ceph.conf, rules and log read; CRUSH map not shown |  |
+| ND-046 | Ceph | Cluster flags, health mute, service start/stop/restart | PUT /cluster/ceph/flags; PUT /cluster/ceph/health-mute/{code}; POST /nodes/{node}/ceph/{start,stop,restart} | partial | P2 | W-CLUSTER | Ceph flags (pause typed) and health mute; service start, stop, restart stay in pveceph |  |
+| ND-047 | Replication (node) | Jobs for this node, status, log, schedule now | GET /nodes/{node}/replication; .../{id}/status; .../log; POST .../schedule_now | done | P1 | W-CLUSTER | Replication page, jobs and status per source node; /api/cluster/replication |  |
 | ND-048 | Task History | List tasks with type, status, user, time | GET /nodes/{node}/tasks | done | P0 | W-NODE | GET /api/tasks; Tasks.tsx |  |
 | ND-049 | Task History | Filter by user, type, status, date, source, VMID | GET /nodes/{node}/tasks (userfilter, typefilter, statusfilter, since, until, source, vmid) | partial | P1 | W-NODE | vmid filter only |  |
 | ND-050 | Task History | Task log and status viewer | GET /nodes/{node}/tasks/{upid}/log; .../status | done | P0 | W-NODE | GET /api/tasks/:upid |  |
@@ -281,7 +281,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-003 | Summary | Notes (edit) | PUT .../config (description) | done | P0 | W-MACHINE | Notes and tags card on the Overview; POST /api/guests/:id/notes (digest) |  |
 | GU-004 | Summary | Tags (edit, colors) | PUT .../config (tags) | done | P1 | W-MACHINE | Notes and tags card on the Overview; POST /api/guests/:id/notes (digest) |  |
 | GU-005 | Summary | Guest IP addresses and hostname | GET .../agent/network-get-interfaces; GET lxc/{vmid}/interfaces | done | P0 | W-MACHINE | GET /api/guests/:id/addresses (agent, container interfaces, configured fallback); Overview Details; features/guest.ts |  |
-| GU-006 | Summary | HA state of the guest | GET /cluster/ha/status/current | missing | P2 | W-CLUSTER |  |  |
+| GU-006 | Summary | HA state of the guest | GET /cluster/ha/status/current | done | P2 | W-CLUSTER | Machine overview, Cluster card; GET /api/cluster/ha/guest/:vmid |  |
 | GU-007 | Summary | Pending configuration changes (shown, revert) | GET .../pending | partial | P1 | W-MACHINE | pending read in /api/guests/:id/config; no revert |  |
 | GU-008 | Power | Start | POST .../status/start | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
 | GU-009 | Power | Shutdown (graceful) | POST .../status/shutdown | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
@@ -355,7 +355,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-077 | Backup (per guest) | Back up now (mode, compression, storage, notes) | POST /nodes/{node}/vzdump | done | P0 | W-DISK | modal backup-now; POST /api/backups/run |  |
 | GU-078 | Backup (per guest) | List backups of this guest and restore | GET /nodes/{node}/storage/{storage}/content (backup, vmid) | done | P0 | W-DISK | MachineBackups in MachinePage.tsx |  |
 | GU-079 | Backup (per guest) | Backup job membership (which jobs include this guest) | GET /cluster/backup-info/not-backed-up | missing | P2 | W-DISK |  |  |
-| GU-080 | Replication (per guest) | Guest replication jobs | GET/POST /cluster/replication (guest filter) | missing | P1 | W-CLUSTER |  |  |
+| GU-080 | Replication (per guest) | Guest replication jobs | GET/POST /cluster/replication (guest filter) | done | P1 | W-CLUSTER | Machine overview, Replication card; /api/cluster/replication?guest= |  |
 | GU-081 | Snapshots | List snapshots as a tree with current state | GET .../snapshot | done | P0 | W-MACHINE | Snapshots.tsx |  |
 | GU-082 | Snapshots | Take snapshot (name, description, include RAM) | POST .../snapshot | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots |  |
 | GU-083 | Snapshots | Roll back | POST .../snapshot/{snapname}/rollback | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots/:name/rollback |  |
@@ -363,7 +363,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-085 | Snapshots | Edit snapshot description | PUT .../snapshot/{snapname}/config | missing | P2 | W-MACHINE |  |  |
 | GU-086 | Firewall (per guest) | Rules, options, aliases, IP sets, log | GET/POST .../firewall/{rules,options,aliases,ipset,log} | done | P1 | W-NODE | /api/firewall/guest-<vmid>/*; MachineFirewall |  |
 | GU-087 | Permissions (per guest) | View and change who may use this guest | GET/PUT /access/acl (path /vms/{vmid}) | done | P1 | W-ACCESS | Permissions tab: list, grant, revoke (typed); GET/POST /api/guests/:id/permissions |  |
-| GU-088 | Migrate and clone | Migrate (online/offline, target node, local disks, target storage, preconditions) | GET/POST .../migrate | missing | P1 | W-CLUSTER |  |  |
+| GU-088 | Migrate and clone | Migrate (online/offline, target node, local disks, target storage, preconditions) | GET/POST .../migrate | done | P1 | W-CLUSTER | Machine, Migrate (online, offline, restart, target node, local disks and storage, HA aware, watched task); /api/cluster/migrate/:vmid |  |
 | GU-089 | Migrate and clone | Remote migrate to another cluster | POST .../remote_migrate | missing | P2 | W-CLUSTER |  |  |
 | GU-090 | Migrate and clone | Clone: name, target storage, full or linked (from template), pool | POST .../clone | done | P0 | W-MACHINE | POST /api/guests/:id/clone |  |
 | GU-091 | Migrate and clone | Clone: target node, VMID choice, format, from a snapshot, bandwidth limit | POST .../clone (target, newid, format, snapname, bwlimit) | missing | P1 | W-MACHINE |  |  |
