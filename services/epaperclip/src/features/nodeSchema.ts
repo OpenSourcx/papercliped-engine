@@ -53,7 +53,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    }
   },
   "console": {
-   "description": "Select the default Console viewer. You can either use the builtin java applet (VNC; deprecated and maps to html5), an external virt-viewer comtatible application (SPICE), an HTML5 based vnc viewer (noVNC), or an HTML5 based console client (xtermjs). If the selected viewer is not available (e.g. SPIC",
+   "description": "Select the default Console viewer.",
    "type": "string",
    "enum": [
     "applet",
@@ -118,7 +118,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    }
   },
   "description": {
-   "description": "Datacenter description. Shown in the web-interface datacenter notes panel. This is saved as comment inside the configuration file.",
+   "description": "Datacenter description.",
    "type": "string",
    "maxLength": 65536
   },
@@ -128,7 +128,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "format": "email-opt"
   },
   "fencing": {
-   "description": "Set the fencing mode of the HA cluster. Hardware mode needs a valid configuration of fence devices in /etc/pve/ha/fence.cfg. With both all two modes are used.",
+   "description": "Set the fencing mode of the HA cluster.",
    "type": "string",
    "enum": [
     "watchdog",
@@ -142,7 +142,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "type": "string",
    "props": {
     "shutdown_policy": {
-     "description": "The policy for HA services on node shutdown. 'freeze' disables auto-recovery, 'failover' ensures recovery, 'conditional' recovers on poweroff and freezes on reboot. 'migrate' will migrate running services to other nodes, if possible. With 'freeze' or 'failover', HA Services will always get stopped f",
+     "description": "The policy for HA services on node shutdown.",
      "type": "string",
      "enum": [
       "freeze",
@@ -233,7 +233,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "format": "pve-node-location"
   },
   "mac_prefix": {
-   "description": "Prefix for the auto-generated MAC addresses of virtual guests. The default 'BC:24:11' is the OUI assigned by the IEEE to Proxmox Server Solutions GmbH for a 24-bit large MAC block. You're allowed to use this in local networks, i.e., those not directly reachable by the public (e.g., in a LAN or behin",
+   "description": "Prefix for the auto-generated MAC addresses of virtual guests.",
    "type": "string",
    "default": "BC:24:11",
    "format": "mac-prefix"
@@ -248,12 +248,12 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "type": "string",
    "props": {
     "network": {
-     "description": "CIDR of the (sub) network that is used for migration. Used as a fallback for replications jobs if the replication network setting is not set",
+     "description": "CIDR of the (sub) network that is used for migration.",
      "type": "string",
      "format": "CIDR"
     },
     "type": {
-     "description": "Migration traffic is encrypted using an SSH tunnel by default. On secure, completely private networks this can be disabled to increase performance.",
+     "description": "Migration traffic is encrypted using an SSH tunnel by default.",
      "type": "string",
      "enum": [
       "secure",
@@ -286,7 +286,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    }
   },
   "registered-tags": {
-   "description": "A list of tags that require a `Sys.Modify` on '/' to set and delete. Tags set here that are also in 'user-tag-access' also require `Sys.Modify`.",
+   "description": "A list of tags that require a `Sys.Modify` on '/' to set and delete.",
    "type": "string",
    "pattern": {
     "source": "(?:(?:[a-z0-9_][a-z0-9_\\-\\+\\.]*);)*(?:[a-z0-9_][a-z0-9_\\-\\+\\.]*)",
@@ -303,7 +303,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
      "format": "CIDR"
     },
     "type": {
-     "description": "Replication traffic is encrypted using an SSH tunnel by default. On secure, completely private networks this can be disabled to increase performance.",
+     "description": "Replication traffic is encrypted using an SSH tunnel by default.",
      "type": "string",
      "enum": [
       "secure",
@@ -342,7 +342,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
      "default": "alphabetical"
     },
     "shape": {
-     "description": "Tag shape for the web ui tree. 'full' draws the full tag. 'circle' draws only a circle with the background color. 'dense' only draws a small rectancle (useful when many tags are assigned to each guest).'none' disables showing the tags.",
+     "description": "Tag shape for the web ui tree.",
      "type": "string",
      "enum": [
       "full",
@@ -575,7 +575,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    }
   },
   "match-field": {
-   "description": "Metadata fields to match (regex or exact match). Must be in the form (regex|exact):<field>=<value>",
+   "description": "Metadata fields to match (regex or exact match).",
    "type": "array",
    "items": {
     "description": "",
@@ -611,11 +611,11 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
  },
  "metricServer": {
   "api-path-prefix": {
-   "description": "An API path prefix inserted between '<host>:<port>/' and '/api2/'. Can be useful if the InfluxDB service runs behind a reverse proxy.",
+   "description": "An API path prefix inserted between '<host>:<port>/' and '/api2/'.",
    "type": "string"
   },
   "bucket": {
-   "description": "The InfluxDB bucket/db. Only necessary when using the http v2 api.",
+   "description": "The InfluxDB bucket/db.",
    "type": "string"
   },
   "disable": {
@@ -633,7 +633,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "default": "udp"
   },
   "max-body-size": {
-   "description": "InfluxDB max-body-size in bytes. Requests are batched up to this size.",
+   "description": "InfluxDB max-body-size in bytes.",
    "type": "integer",
    "min": 1,
    "default": 25000000
@@ -646,7 +646,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "default": 1500
   },
   "organization": {
-   "description": "The InfluxDB organization. Only necessary when using the http v2 api. Has no meaning when using v2 compatibility api.",
+   "description": "The InfluxDB organization.",
    "type": "string"
   },
   "otel-compression": {
@@ -714,7 +714,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "required": true
   },
   "proto": {
-   "description": "Protocol to send graphite data. TCP or UDP (default)",
+   "description": "Protocol to send graphite data.",
    "type": "string",
    "enum": [
     "udp",
@@ -734,7 +734,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "default": 1
   },
   "token": {
-   "description": "The InfluxDB access token. Only necessary when using the http v2 api. If the v2 compatibility api is used, use 'user:password' instead.",
+   "description": "The InfluxDB access token.",
    "type": "string",
    "secret": true
   },
@@ -937,7 +937,7 @@ export const SCHEMAS: Record<"clusterOptions" | "sendmail" | "gotify" | "smtp" |
    "format": "pve-node-list"
   },
   "validation-delay": {
-   "description": "Extra delay in seconds to wait before requesting validation. Allows to cope with a long TTL of DNS records.",
+   "description": "Extra delay in seconds to wait before requesting validation.",
    "type": "integer",
    "min": 0,
    "max": 172800,

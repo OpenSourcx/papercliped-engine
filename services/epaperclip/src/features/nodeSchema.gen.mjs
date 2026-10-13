@@ -39,7 +39,10 @@ const jsPattern = (p) => {
 };
 
 function field(name, p) {
-  const f = { description: String(p.description ?? "").split("\n")[0].slice(0, 300) };
+  // The first sentence keeps hints short and never cut mid-word.
+  const first = String(p.description ?? "").split("\n")[0];
+  const sentence = first.match(/^.{20,260}?[.!?](?:\s|$)/)?.[0].trim();
+  const f = { description: sentence ?? (first.length > 260 ? `${first.slice(0, first.lastIndexOf(" ", 260))}…` : first) };
   if (p.type === "array") {
     f.type = "array";
     f.items = field(name, p.items ?? { type: "string" });
