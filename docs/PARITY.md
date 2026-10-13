@@ -141,7 +141,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-060 | Replication | Schedule now, view status and log | POST /nodes/{node}/replication/{id}/schedule_now; GET .../status; GET .../log | missing | P1 | W-CLUSTER |  |  |
 | DC-061 | Permissions: Users | List users with realm, enabled, expiry, TFA | GET /access/users | done | P0 | W-ACCESS | LiveAccess.tsx; iac.ts snapshot |  |
 | DC-062 | Permissions: Users | Create user | POST /access/users | done | P0 | W-ACCESS | POST /api/iac/users |  |
-| DC-063 | Permissions: Users | Edit user (name, email, comment, groups, enabled, expiry, SSH keys) | PUT /access/users/{userid} | partial | P0 | W-ACCESS | PATCH /api/iac/users/:id covers enable, expire, groups; no UI for email, comment, keys | 41 |
+| DC-063 | Permissions: Users | Edit user (name, email, comment, groups, enabled, expiry, SSH keys) | PUT /access/users/{userid} | done | P0 | W-ACCESS | PATCH /api/iac/users/:id covers enable, expire, groups; no UI for email, comment, keys | 41 |
 | DC-064 | Permissions: Users | Delete user | DELETE /access/users/{userid} | done | P0 | W-ACCESS | DELETE /api/iac/users/:id |  |
 | DC-065 | Permissions: Users | Change a user's password | PUT /access/password | done | P0 | W-ACCESS | POST /api/iac/users/:id/password |  |
 | DC-066 | Permissions: Users | Change your own password | PUT /access/password | missing | P1 | W-ACCESS |  |  |
@@ -154,14 +154,14 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-073 | Permissions: Two Factor | Edit, remove entry; admin reset a user's TFA lockout | PUT/DELETE /access/tfa/{userid}/{id}; PUT /access/users/{userid}/unlock-tfa | missing | P1 | W-ACCESS |  |  |
 | DC-074 | Permissions: Groups | List, create, delete groups | GET/POST /access/groups; DELETE /access/groups/{groupid} | done | P0 | W-ACCESS | POST /api/iac/groups; DELETE /api/iac/groups/:id |  |
 | DC-075 | Permissions: Groups | Edit group comment and members | PUT /access/groups/{groupid} | missing | P1 | W-ACCESS |  |  |
-| DC-076 | Permissions: Pools | List pools with members | GET /pools; GET /pools/{poolid} | partial | P0 | W-ACCESS | pools.ts and resource-groups only list ePaperclip's own pools; no general pools page | 42 |
-| DC-077 | Permissions: Pools | Create, edit, delete pool | POST /pools; PUT/DELETE /pools/{poolid} | partial | P0 | W-ACCESS | /api/resource-groups creates epc-* pools for organizations only | 43 |
-| DC-078 | Permissions: Pools | Add and remove members (guests, storage) | PUT /pools/{poolid} (vms, storage, delete) | missing | P0 | W-ACCESS |  | 44 |
+| DC-076 | Permissions: Pools | List pools with members | GET /pools; GET /pools/{poolid} | done | P0 | W-ACCESS | pools.ts and resource-groups only list ePaperclip's own pools; no general pools page | 42 |
+| DC-077 | Permissions: Pools | Create, edit, delete pool | POST /pools; PUT/DELETE /pools/{poolid} | done | P0 | W-ACCESS | /api/resource-groups creates epc-* pools for organizations only | 43 |
+| DC-078 | Permissions: Pools | Add and remove members (guests, storage) | PUT /pools/{poolid} (vms, storage, delete) | done | P0 | W-ACCESS | docs/NODE.md or docs/ACCESS.md | 44 |
 | DC-079 | Permissions: Roles | List roles with privileges | GET /access/roles | missing | P1 | W-ACCESS | only used by containers.ts internally |  |
 | DC-080 | Permissions: Roles | Create, edit, delete role with privilege picker | POST /access/roles; PUT/DELETE /access/roles/{roleid} | missing | P1 | W-ACCESS |  |  |
-| DC-081 | Permissions: Path permissions (ACL) | List ACL entries | GET /access/acl | partial | P0 | W-ACCESS | iac.ts reads ACLs to map organization roles; no general table | 45 |
-| DC-082 | Permissions: Path permissions (ACL) | Add user, group or token permission on a path | PUT /access/acl | partial | P0 | W-ACCESS | iac.ts grants organization roles only | 46 |
-| DC-083 | Permissions: Path permissions (ACL) | Remove permission | PUT /access/acl (delete=1) | partial | P0 | W-ACCESS | iac.ts removes organization roles only | 47 |
+| DC-081 | Permissions: Path permissions (ACL) | List ACL entries | GET /access/acl | done | P0 | W-ACCESS | iac.ts reads ACLs to map organization roles; no general table | 45 |
+| DC-082 | Permissions: Path permissions (ACL) | Add user, group or token permission on a path | PUT /access/acl | done | P0 | W-ACCESS | iac.ts grants organization roles only | 46 |
+| DC-083 | Permissions: Path permissions (ACL) | Remove permission | PUT /access/acl (delete=1) | done | P0 | W-ACCESS | iac.ts removes organization roles only | 47 |
 | DC-084 | Permissions: Path permissions (ACL) | Effective permissions of a user or token | GET /access/permissions | partial | P2 | W-ACCESS | used internally for admin checks |  |
 | DC-085 | Permissions: Authentication realms | List realms | GET /access/domains | done | P0 | W-ACCESS | GET /api/realms; sign-in realm picker |  |
 | DC-086 | Permissions: Authentication realms | Add/edit/delete realm (LDAP, Active Directory, OpenID Connect, PAM, PVE) | POST /access/domains; PUT/DELETE /access/domains/{realm} | missing | P1 | W-ACCESS |  |  |
@@ -217,8 +217,8 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-005 | Notes | Node notes | GET/PUT /nodes/{node}/config (description) | missing | P2 | W-NODE |  |  |
 | ND-006 | Shell | Host shell in the browser | POST /nodes/{node}/termproxy; vncwebsocket | done | P0 | W-NODE | WebSocket /api/console/node; HostShell in DevicePages.tsx |  |
 | ND-007 | Shell | SPICE / xterm.js alternative viewers | POST /nodes/{node}/spiceshell | missing | P2 | W-NODE |  |  |
-| ND-008 | System: Services | List services with state | GET /nodes/{node}/services | missing | P0 | W-NODE |  | 4 |
-| ND-009 | System: Services | Start, stop, restart, reload a service | POST /nodes/{node}/services/{service}/{start,stop,restart,reload} | missing | P0 | W-NODE |  | 5 |
+| ND-008 | System: Services | List services with state | GET /nodes/{node}/services | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 4 |
+| ND-009 | System: Services | Start, stop, restart, reload a service | POST /nodes/{node}/services/{service}/{start,stop,restart,reload} | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 5 |
 | ND-010 | System: Network | Interfaces list with diff of pending changes | GET /nodes/{node}/network | done | P0 | W-NODE | GET /api/network; Network.tsx |  |
 | ND-011 | System: Network | Create/edit/delete Linux bridge, bond, VLAN | POST/PUT/DELETE /nodes/{node}/network/{iface} | done | P0 | W-NODE | POST /api/network, /api/network/:iface |  |
 | ND-012 | System: Network | Apply and revert pending network changes | PUT/DELETE /nodes/{node}/network | done | P0 | W-NODE | POST /api/network/apply, /revert; gateway guard |  |
@@ -232,12 +232,12 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-020 | System: Time | Read time and timezone; set timezone | GET/PUT /nodes/{node}/time | missing | P1 | W-NODE |  | 9 |
 | ND-021 | System: Syslog and Journal | View system log with since/until and search | GET /nodes/{node}/syslog | missing | P1 | W-NODE |  |  |
 | ND-022 | System: Syslog and Journal | View journal with cursor ranges | GET /nodes/{node}/journal | missing | P1 | W-NODE |  |  |
-| ND-023 | System: Updates | Refresh package index | POST /nodes/{node}/apt/update | missing | P0 | W-NODE |  | 2 |
-| ND-024 | System: Updates | List upgradable packages with version and origin | GET /nodes/{node}/apt/update | missing | P0 | W-NODE | Updates.tsx shows ePaperclip notices only, never Proxmox packages | 2 |
-| ND-025 | System: Updates | Upgrade (dist-upgrade) with live output | POST /nodes/{node}/termproxy (apt dist-upgrade); apt tasks | missing | P0 | W-NODE | Updates.tsx "Snapshot and update" button is disabled | 3 |
+| ND-023 | System: Updates | Refresh package index | POST /nodes/{node}/apt/update | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 2 |
+| ND-024 | System: Updates | List upgradable packages with version and origin | GET /nodes/{node}/apt/update | done | P0 | W-NODE | Updates.tsx shows ePaperclip notices only, never Proxmox packages | 2 |
+| ND-025 | System: Updates | Upgrade (dist-upgrade) with live output | POST /nodes/{node}/termproxy (apt dist-upgrade); apt tasks | done | P0 | W-NODE | Updates.tsx "Snapshot and update" button is disabled | 3 |
 | ND-026 | System: Updates | Package changelog | GET /nodes/{node}/apt/changelog | missing | P2 | W-NODE |  |  |
-| ND-027 | System: Repositories | List repositories and status | GET /nodes/{node}/apt/repositories | missing | P0 | W-NODE |  | 1 |
-| ND-028 | System: Repositories | Enable/disable repository; add no-subscription, test, Ceph repos | POST/PUT /nodes/{node}/apt/repositories | missing | P0 | W-NODE |  | 1 |
+| ND-027 | System: Repositories | List repositories and status | GET /nodes/{node}/apt/repositories | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 1 |
+| ND-028 | System: Repositories | Enable/disable repository; add no-subscription, test, Ceph repos | POST/PUT /nodes/{node}/apt/repositories | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 1 |
 | ND-029 | System: Subscription | View status; enter or remove key; check | GET/PUT/POST/DELETE /nodes/{node}/subscription | missing | P1 | W-NODE |  |  |
 | ND-030 | Disks | List disks with type, size, model, serial, usage, wearout | GET /nodes/{node}/disks/list | done | P0 | W-DISK | features/disks.ts /api/disks/list; pages/disks/DisksPage.tsx |  |
 | ND-031 | Disks | SMART values and health | GET /nodes/{node}/disks/smart | done | P1 | W-DISK | features/disks.ts /api/disks/smart |  |
@@ -262,8 +262,8 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-050 | Task History | Task log and status viewer | GET /nodes/{node}/tasks/{upid}/log; .../status | done | P0 | W-NODE | GET /api/tasks/:upid |  |
 | ND-051 | Task History | Stop a running task | DELETE /nodes/{node}/tasks/{upid} | missing | P1 | W-NODE |  |  |
 | ND-052 | Node firewall | Host rules, options, log | GET/POST /nodes/{node}/firewall/rules; GET/PUT .../options; GET .../log | done | P0 | W-NODE | /api/firewall/host/* |  |
-| ND-053 | Power | Reboot node | POST /nodes/{node}/status (command=reboot) | missing | P0 | W-NODE |  | 6 |
-| ND-054 | Power | Shut down node | POST /nodes/{node}/status (command=shutdown) | missing | P0 | W-NODE |  | 7 |
+| ND-053 | Power | Reboot node | POST /nodes/{node}/status (command=reboot) | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 6 |
+| ND-054 | Power | Shut down node | POST /nodes/{node}/status (command=shutdown) | done | P0 | W-NODE | docs/NODE.md or docs/ACCESS.md | 7 |
 | ND-055 | Power | Wake on LAN another node | POST /nodes/{node}/wakeonlan | missing | P2 | W-NODE |  |  |
 | ND-056 | Power | Bulk start all / stop all / suspend all / migrate all | POST /nodes/{node}/startall; stopall; suspendall; migrateall | missing | P1 | W-MACHINE |  |  |
 | ND-057 | Hardware and capabilities | List PCI devices, IOMMU groups, mediated types | GET /nodes/{node}/hardware/pci; .../{id}/mdev | missing | P1 | W-MACHINE |  |  |
