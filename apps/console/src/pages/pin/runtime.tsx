@@ -57,7 +57,7 @@ export function InboxTab() {
     <div className="space-y-4 fade-in">
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <p className="text-compact text-ink-3 max-w-xl">Everything lands here. Only warnings and failures, outside your quiet hours, make Pin's island expand.</p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="ghost" disabled={!unread} loading={read.isPending} onClick={() => read.mutate({ all: true })}><Check className="h-3.5 w-3.5" />Mark all read</Button>
           <Button size="sm" variant="ghost" disabled={notifications.every((n) => !n.read)} loading={clear.isPending} onClick={() => clear.mutate()}>Clear read</Button>
           <Button size="sm" onClick={() => setPrefsOpen(true)}><Bell className="h-3.5 w-3.5" />What to be told</Button>
@@ -68,9 +68,9 @@ export function InboxTab() {
       ) : (
         <Card className="divide-y divide-line">
           {notifications.map((n) => (
-            <div key={n.id} className="flex items-start gap-3 p-4">
-              <Status kind={LEVEL[n.level]} label={n.level === "info" ? "Info" : n.level === "warning" ? "Warning" : "Failed"} className="shrink-0 w-20" />
-              <div className="flex-1 min-w-0">
+            <div key={n.id} className="flex flex-wrap items-start gap-x-3 gap-y-2 p-4">
+              <Status kind={LEVEL[n.level]} label={n.level === "info" ? "Info" : n.level === "warning" ? "Warning" : "Failed"} className="shrink-0 sm:w-20" />
+              <div className="flex-1 min-w-0 basis-48">
                 <div className={cn("text-sm text-pretty", n.read ? "text-ink-2" : "font-medium")}>{n.title}</div>
                 <p className="text-compact text-ink-3 text-pretty">{n.body}</p>
                 <div className="text-xs text-ink-3 mt-1" title={when(n.at)}>{KIND_LABEL[n.kind][0]} · {ago(n.at)}</div>
