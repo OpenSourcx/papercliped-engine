@@ -7,6 +7,7 @@ import type { StateStore } from "../state.ts";
 import { handleDisks } from "./disks.ts";
 import { nodeFeature } from "./node.ts";
 import { access } from "./access.ts";
+import { handleWizard } from "./wizard.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -47,4 +48,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "disks", handle: handleDisks },
   { name: "node", handle: nodeFeature },
   { name: "access", handle: access },
+  { name: "wizard", handle: handleWizard },
 ];
