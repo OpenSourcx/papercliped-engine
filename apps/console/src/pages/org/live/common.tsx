@@ -7,6 +7,7 @@ import { useOrgEvents } from "../../../data/engine/events.ts";
 import { errorText, useEngineStatus, useOrgs, type EngineGate } from "../../../data/engine/queries.ts";
 import { Button, Card, EmptyState, PageFrame, PageHeader } from "../../../ui/primitives.tsx";
 import { AgentContainersBanner } from "../../containers/Banner.tsx";
+import { NotFound } from "../../NotFound.tsx";
 
 /** The live organization at /<device>/<org>, with its engine company id. Only valid under LiveOrgRoute. */
 export function useLiveOrg(): { org: Org; companyId: string } {
@@ -24,12 +25,14 @@ export function EngineUnavailable({ gate, compact }: { gate: Exclude<EngineGate,
     starting: { title: "The engine is getting ready", body: "It's starting up or finishing its first-time setup. This usually takes a minute; this page updates on its own." },
     unknown: { title: "Can't check the engine", body: "The host service didn't say whether the engine is ready. This page retries on its own." },
   }[gate.state];
-  const detail = gate.message && gate.message !== what.body ? gate.message : null;
+  // The host service's own sentence often repeats the title ("The engine isn't installed."), so only add what is new.
+  const same = (a: string, b: string) => a.trim().replace(/[.\s]+$/, "").toLowerCase() === b.trim().replace(/[.\s]+$/, "").toLowerCase();
+  const detail = gate.message && !same(gate.message, what.body) && !same(gate.message, what.title) ? gate.message : null;
   const body = (
     <EmptyState
       icon={gate.state === "starting" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plug className="h-5 w-5" />}
       title={what.title}
-      body={detail ? `${what.body} (${detail})` : what.body}
+      body={detail ? `${what.body} ${detail}` : what.body}
     />
   );
   if (compact) return body;
@@ -74,8 +77,11 @@ export const LIVE_HIDDEN = new Set(["inbox", "chat", "routines", "artifacts", "w
  * engine can't be used, keeps the organization's live-events socket open, and hides pages the engine doesn't back.
  */
 export function OrgRoute() {
-  const { live } = useEngine();
-  return live ? <LiveOrgRoute /> : <Outlet />;
+  const { live, data } = useEngine();
+  const { org: slug } = useParams();
+  if (live) return <LiveOrgRoute />;
+  // The demo has every organization it will ever have, so an unknown word is a mistyped address.
+  return data.orgs.some((o) => o.slug === slug) ? <Outlet /> : <NotFound />;
 }
 
 function LiveOrgRoute() {
@@ -88,6 +94,9 @@ function LiveOrgRoute() {
   useOrgEvents(org?.engine?.companyId);
   const device = setup?.deviceName ?? "pve";
   if (gate.state === "checking") return <PageFrame width="3xl"><Loading label="Checking the engine" /></PageFrame>;
+  // Without the engine there are no organizations, so a single unknown word (/pve/nope) is a mistyped address. A page
+  // inside one (/pve/acme/tasks) is someone's bookmark, and the engine is the useful thing to say.
+  if (!org && gate.state === "not_installed" && loc.pathname.split("/").filter(Boolean).length <= 2) return <NotFound body={`There is no page at ${loc.pathname}. If you meant an organization, those live in the Paperclip engine, which isn't installed on this device yet.`} />;
   if (gate.state !== "ready" && gate.state !== "demo") return <EngineUnavailable gate={gate} />;
   if (orgs.error && !orgs.data) {
     return (
@@ -100,7 +109,7 @@ function LiveOrgRoute() {
   if (!orgs.data) return <PageFrame width="3xl"><Loading label="Loading organizations" /></PageFrame>;
   // A list being refreshed may not have a just-created organization yet: wait for it before giving up on the address.
   if (!org && orgs.isFetching) return <PageFrame width="3xl"><Loading label="Loading organizations" /></PageFrame>;
-  if (!org) return <Navigate to={`/${device}/home`} replace />;
+  if (!org) return <NotFound />;
   const page = loc.pathname.split("/")[3];
   if (page && LIVE_HIDDEN.has(page)) return <Navigate to={`/${device}/${org.slug}`} replace />;
   return (

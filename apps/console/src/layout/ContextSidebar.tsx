@@ -7,6 +7,7 @@ import type { Guest, Org } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
 import { isOpen } from "../data/engine/labels.tsx";
 import { useApprovals, useIssues } from "../data/engine/queries.ts";
+import { NodeSwitcher } from "../pages/node/common.tsx";
 
 /**
  * The second column, like a Discord channel list. On the device it manages the machine; inside an organization it
@@ -54,11 +55,13 @@ function DeviceSidebar() {
   const d = setup?.deviceName ?? "pve";
   return (
     <>
-      <div className="px-3 h-14 flex items-center border-b border-line">
+      <div className="px-3 min-h-14 py-2 flex flex-col justify-center gap-2 border-b border-line">
         <div className="min-w-0">
           <div className="text-body font-semibold truncate">{d}</div>
           <div className="text-micro text-ink-3">CPU {host.cpuPct.toFixed(0)}% · Memory {Math.round((host.memUsed / host.memTotal) * 100)}%</div>
         </div>
+        {/* Only when the datacenter has more than one node; node screens read the choice (docs/NODE.md). */}
+        {live && <NodeSwitcher />}
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div className="mt-3 space-y-px">
