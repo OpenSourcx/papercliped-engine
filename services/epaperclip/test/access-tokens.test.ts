@@ -152,7 +152,7 @@ describe("using a Bearer token", () => {
 
   it("rejects wrong, malformed and unknown tokens the same way, and audits the failures", async () => {
     const { token, record } = await mint();
-    const [, id, secret] = token.split("_");
+    const [, id, secret] = /^epc_([^_]+)_(.+)$/.exec(token)!;
     const wrongSecret = `epc_${id}_${"A".repeat(43)}`;
     const unknownId = `epc_${"0".repeat(16)}_${secret}`;
     for (const t of [wrongSecret, unknownId, "epc_short", "epc_" + "x".repeat(80)]) {
