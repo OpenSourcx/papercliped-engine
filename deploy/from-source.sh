@@ -23,9 +23,14 @@ fi
 
 work="$(mktemp -d /var/tmp/epaperclip-build.XXXXXX)"; trap 'rm -rf "$work"' EXIT
 echo "epaperclip: fetching $REF"
-# A private repository needs a read-only token: EPC_GITHUB_TOKEN. It is passed to git for this one command only.
-auth=(); [ -z "${EPC_GITHUB_TOKEN:-}" ] || auth=(-c "http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' "$EPC_GITHUB_TOKEN" | base64 -w0)")
-git "${auth[@]}" clone --quiet --depth 1 --branch "$REF" "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+# A private repository needs a read-only token: EPC_GITHUB_TOKEN. It is handed to git for this one command through its
+# environment (never on the command line, where any user on the host could read it with ps), and not kept.
+if [ -n "${EPC_GITHUB_TOKEN:-}" ]; then
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$EPC_GITHUB_TOKEN" | base64 -w0)" \
+    git clone --quiet --depth 1 --branch "$REF" -- "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+else
+  git clone --quiet --depth 1 --branch "$REF" -- "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+fi
 
 # Reuse the installer's pinned Node.js version and checksums, so there is one place to update them.
 eval "$(grep -E '^NODE_(VERSION|SHA256_(x64|arm64))=' "$work/src/deploy/install.sh")"

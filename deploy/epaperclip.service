@@ -47,6 +47,9 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
+# Other processes (the engine's, Proxmox's, root's) aren't visible in /proc to this one, and its IPC objects go with it.
+ProtectProc=invisible
+RemoveIPC=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 UMask=0077

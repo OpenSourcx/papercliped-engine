@@ -28,6 +28,8 @@ export interface ApiTokenPrincipal {
   id: string;
   name: string;
   readOnly: boolean;
+  /** Privilege-separated: Proxmox limits it to the permissions given to the token itself, which the engine can't see. */
+  privsep: boolean;
   /** `user@realm!tokenname`, the Proxmox API token this one maps to. */
   pveTokenId: string;
   /** Its secret, read from the vault for this request only. Never logged, never returned. */
@@ -114,6 +116,13 @@ export class SessionStore {
     this.epochs.set(username, (this.epochs.get(username) ?? 0) + 1);
     let n = 0;
     for (const [id, s] of this.sessions) if (s.username === username) (this.sessions.delete(id), n++);
+    return n;
+  }
+
+  /** Ends someone's other sessions, keeping one (the person changing their password stays signed in where they are). */
+  destroyUserExcept(username: string, keepId: string | undefined): number {
+    let n = 0;
+    for (const [id, s] of this.sessions) if (s.username === username && id !== keepId) (this.sessions.delete(id), n++);
     return n;
   }
 

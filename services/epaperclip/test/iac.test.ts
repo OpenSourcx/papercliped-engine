@@ -172,6 +172,83 @@ describe("integrated access control", () => {
   });
 });
 
+describe("who may see and change what (privilege confusion with the engine's service account)", () => {
+  it("someone who isn't a Proxmox administrator only sees their own organizations in the overview", async () => {
+    const { sam, co } = await setup();
+    const lee = await signIn("lee");
+    const other = (await (await send("POST", "/engine/api/companies", sam, { name: "Secret Skunkworks" })).json()) as { id: string };
+    await send("PUT", `/api/iac/orgs/${co}/members/lee@pve`, sam, { role: "viewer" });
+    const r = (await (await fetch(base + "/api/iac", { headers: { Cookie: lee } })).json()) as any;
+    expect(r.orgs.map((o: any) => o.companyId)).toEqual([co]);
+    expect(JSON.stringify(r)).not.toContain("Secret Skunkworks");
+    expect(JSON.stringify(r)).not.toContain(other.id);
+    // The administrator still sees both.
+    const all = (await (await fetch(base + "/api/iac", { headers: { Cookie: sam } })).json()) as any;
+    expect(all.orgs.map((o: any) => o.companyId).sort()).toEqual([co, other.id].sort());
+  });
+
+  it("someone without the right to hand out device roles can't use that to sign others out or change their engine rights", async () => {
+    const { sam } = await setup();
+    await send("POST", "/api/iac/users", sam, { userid: "kim@pve", password: "longenough", deviceRole: "none" });
+    const kim = await signIn("kim");
+    const lee = await signIn("lee");
+    expect((await fetch(base + "/api/me", { headers: { Cookie: kim } })).status).toBe(200);
+    const r = await send("PUT", "/api/iac/users/kim@pve", lee, { deviceRole: "none" });
+    expect(r.status).toBe(403);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: kim } })).status).toBe(200);
+    // The administrator can.
+    expect((await send("PUT", "/api/iac/users/kim@pve", sam, { deviceRole: "none" })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: kim } })).status).toBe(401);
+  });
+
+  it("an organization's admin can't make themselves or anyone an owner, or change an owner (the engine would allow it for its instance admin)", async () => {
+    const sam = await signIn("sam");
+    await until(() => eng.st.admins.size >= 2);
+    const co = ((await (await send("POST", "/engine/api/companies", sam, { name: "Lumen" })).json()) as { id: string }).id; // no resource group: engine-only changes
+    const lee = await signIn("lee");
+    await until(() => eng.users.has(managedEmail("lee@pve")));
+    expect((await send("PUT", `/api/iac/orgs/${co}/members/lee@pve`, sam, { role: "admin" })).status).toBe(200);
+    const up = await send("PUT", `/api/iac/orgs/${co}/members/lee@pve`, lee, { role: "owner" });
+    expect(up.status).toBe(403);
+    const leeId = eng.userId(managedEmail("lee@pve"))!;
+    let members = (await (await send("GET", `/engine/api/companies/${co}/members`, sam)).json()) as any;
+    expect(members.members.find((m: any) => m.principalId === leeId)).toMatchObject({ membershipRole: "admin" });
+    // Nor can an admin demote or remove the owner (sam is the creator, so an owner).
+    expect((await send("PUT", `/api/iac/orgs/${co}/members/sam@pve`, lee, { role: "viewer" })).status).toBe(403);
+    expect((await send("DELETE", `/api/iac/orgs/${co}/members/sam@pve`, lee)).status).toBe(403);
+    members = (await (await send("GET", `/engine/api/companies/${co}/members`, sam)).json()) as any;
+    expect(members.members.find((m: any) => m.principalId === eng.userId(managedEmail("sam@pve"))!)).toMatchObject({ membershipRole: "owner", status: "active" });
+    // An admin can still manage members below owner.
+    expect((await send("PUT", `/api/iac/orgs/${co}/members/sam@pve`, sam, { role: "owner" })).status).toBe(200);
+  });
+});
+
+describe("changing a password", () => {
+  it("signs out the person's other sessions but keeps the one that made the change", async () => {
+    const { sam } = await setup();
+    const samElsewhere = await signIn("sam");
+    const lee1 = await signIn("lee");
+    const lee2 = await signIn("lee");
+    // An administrator resets lee's password: both of lee's sessions end, sam's stay.
+    expect((await send("PUT", "/api/iac/users/lee@pve/password", sam, { password: "a-new-password", confirmationPassword: "right" })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee1 } })).status).toBe(401);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee2 } })).status).toBe(401);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
+    // Changing one's own: the other browser is signed out, this one isn't.
+    expect((await send("PUT", "/api/iac/users/sam@pve/password", sam, { password: "another-password", confirmationPassword: "right" })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: samElsewhere } })).status).toBe(401);
+  });
+
+  it("changes nothing when Proxmox refuses", async () => {
+    await setup();
+    const lee = await signIn("lee");
+    const lee2 = await signIn("lee");
+    expect((await send("PUT", "/api/iac/users/lee@pve/password", lee, { password: "a-new-password", confirmationPassword: "right" })).status).toBe(403);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee2 } })).status).toBe(200);
+  });
+});
+
 describe("device roles from ACLs", () => {
   it("recognises our roles exactly and calls anything else custom", () => {
     const acl = (user: string, path: string, roleid: string) => ({ path, ugid: user, type: "user", roleid, propagate: 1 });

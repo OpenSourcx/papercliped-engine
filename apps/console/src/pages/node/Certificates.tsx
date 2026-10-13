@@ -6,6 +6,7 @@ import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Status, Tabs, Textarea, Toggle } from "../../ui/primitives.tsx";
 import { Async, Denied, LiveOnly, NodeSwitcher, TasksLink, TypedConfirm, useNodeName, useTaskRunner } from "./common.tsx";
+import { httpUrl } from "../../lib/safeUrl";
 
 type Tab = "certificates" | "acme";
 const day = (epoch: number | null) => (epoch ? new Date(epoch * 1000).toLocaleDateString([], { dateStyle: "medium" }) : "Unknown");
@@ -131,7 +132,7 @@ function AccountModal({ acme, onClose, onStart }: { acme: AcmeInfo; onClose: () 
             <Field label="HMAC key" hint="Never shown again." htmlFor="acme-hmac"><Input id="acme-hmac" type="password" value={hmac} onChange={(e) => setHmac(e.target.value)} autoComplete="off" className="font-mono" /></Field>
           </div>
         )}
-        <div className="flex items-start gap-3"><Toggle checked={accept} onChange={setAccept} label="Accept the terms of service" /><div className="text-compact text-ink-2">I accept the certificate authority's terms of service.{tos.data?.tos && <> <a className="underline underline-offset-2" href={tos.data.tos} target="_blank" rel="noreferrer noopener">Read them</a>.</>}</div></div>
+        <div className="flex items-start gap-3"><Toggle checked={accept} onChange={setAccept} label="Accept the terms of service" /><div className="text-compact text-ink-2">I accept the certificate authority's terms of service.{httpUrl(tos.data?.tos) && <> <a className="underline underline-offset-2" href={httpUrl(tos.data?.tos)!} target="_blank" rel="noreferrer noopener">Read them</a>.</>}</div></div>
       </div>
     </Modal>
   );

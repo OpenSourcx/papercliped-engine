@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.ts";
 import { managedEmail } from "../src/engine.ts";
-import { MAX_STEPS, parseMessages, sseEvents } from "../src/pin.ts";
+import { CHATS_AT_ONCE, CHATS_PER_MINUTE, MAX_STEPS, Pin, parseMessages, sseEvents } from "../src/pin.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
 import { fakeEngine, fakePve, fakeProviders, until } from "./fakes.ts";
@@ -335,5 +335,43 @@ describe("Pin helpers", () => {
     expect(out[0].role).toBe("user");
     expect(out.at(-1)).toEqual({ role: "user", content: "again" });
     expect(parseMessages([{ role: "user", content: "a" }, { role: "user", content: "b" }])).toEqual([{ role: "user", content: "a\n\nb" }]);
+  });
+});
+
+describe("chat cost and load limits", () => {
+  it("lets one person start only so many chats a minute, and so many at once, without affecting anyone else", () => {
+    let t = 1_000_000;
+    const pin = new Pin({ state: new StateStore(null), connectors: null as never, fetch: (async () => new Response()) as never, now: () => t });
+    const open = Array.from({ length: CHATS_AT_ONCE }, () => pin.admit("sam@pve"));
+    expect(() => pin.admit("sam@pve")).toThrow(/still answering/);
+    expect(() => pin.admit("lee@pve")()).not.toThrow(); // someone else is unaffected
+    open[0]();
+    open[0](); // releasing twice doesn't free a second slot
+    pin.admit("sam@pve")();
+    expect(() => pin.admit("sam@pve")).not.toThrow();
+    for (const r of open.slice(1)) r();
+    // The per-minute count: 20 in a minute, then wait.
+    const fresh = new Pin({ state: new StateStore(null), connectors: null as never, fetch: (async () => new Response()) as never, now: () => t });
+    for (let i = 0; i < CHATS_PER_MINUTE; i++) fresh.admit("sam@pve")();
+    expect(() => fresh.admit("sam@pve")).toThrow(/lot of questions/);
+    t += 61_000;
+    expect(() => fresh.admit("sam@pve")()).not.toThrow();
+  });
+
+  it("answers 429 over HTTP once the minute's allowance is used", async () => {
+    const c = await signIn();
+    await configure(c, "anthropic", "test-model");
+    prov.set((_r, res) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(`data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } })}\n\n`);
+    });
+    let status = 0;
+    for (let i = 0; i < CHATS_PER_MINUTE + 1; i++) {
+      const r = await send("POST", "/api/pin/chat", { messages: [{ role: "user", content: "hi" }], context: {} }, { Cookie: c });
+      status = r.status;
+      await r.text();
+    }
+    expect(status).toBe(429);
+    expect((await send("PUT", "/api/pin/settings", { mode: "agent" }, { Cookie: c })).status).toBe(200); // other routes unaffected
   });
 });

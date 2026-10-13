@@ -83,6 +83,9 @@ export async function access(ctx: FeatureCtx): Promise<boolean> {
   const read = method === "GET";
   if (!read) ctx.sameSite();
   const run = <T>(fn: (pve: ProxmoxClient) => Promise<T>) => ctx.asUser((pve) => pveRun(() => fn(pve)));
+  const noTokenMinting = () => {
+    if (ctx.session().apiToken) throw new HttpError(403, "ticket_only", "API tokens can't create or change Proxmox API tokens (that would outlive and escape this token's expiry and limits). Use a signed-in browser session.");
+  };
   const ticketOnly = () => {
     if (ctx.session().apiToken) throw new HttpError(403, "ticket_only", "Proxmox doesn't let API tokens manage two-factor settings. Use a signed-in browser session.");
   };
@@ -273,6 +276,7 @@ export async function access(ctx: FeatureCtx): Promise<boolean> {
       return true;
     }
     if (sub === "tokens" && !tokenid && method === "POST") {
+      noTokenMinting();
       const b = await ctx.readJson();
       const id = typeof b.tokenid === "string" && TOKENID.test(b.tokenid) ? b.tokenid : bad("Token names start with a letter and use letters, digits, . _ and -");
       if (/^epc-/i.test(id)) bad("Names starting with epc- are reserved for ePaperclip API tokens");
@@ -296,6 +300,7 @@ export async function access(ctx: FeatureCtx): Promise<boolean> {
         ctx.json(200, { ok: true });
         return true;
       }
+      noTokenMinting();
       const b = await ctx.readJson();
       const c = comment(b.comment);
       const expire = expireOf(b.expire);

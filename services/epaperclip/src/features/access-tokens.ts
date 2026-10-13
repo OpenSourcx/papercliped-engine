@@ -245,7 +245,7 @@ export class BearerAuth {
       }
       this.valid.set(id, { at: t, epoch });
     }
-    const principal: ApiTokenPrincipal = { id, name: rec.name, readOnly: rec.readOnly, pveTokenId: pveId, pveSecret };
+    const principal: ApiTokenPrincipal = { id, name: rec.name, readOnly: rec.readOnly, privsep: rec.privsep, pveTokenId: pveId, pveSecret };
     this.principals.set(req, { id: `token:${id}`, username: rec.userid, ticket: "", csrf: "", createdAt: rec.createdAt, renewedAt: t, lastSeen: t, apiToken: principal });
     // Remember when it was last used, writing the state file at most every five minutes per token.
     if (t - (this.persistedUse.get(id) ?? 0) > 5 * 60_000) {

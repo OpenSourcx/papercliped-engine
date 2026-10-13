@@ -395,6 +395,37 @@ describe("keeping agents off the host", () => {
     expect((await send("GET", "/engine/api/instance/settings/experimental", sam)).status).toBe(200);
   });
 
+  it("can't be talked round: other methods, spellings, encodings, repeated keys, a body too big to inspect", async () => {
+    const sam = await admin();
+    expect((await app.containers.enforce()).ok).toBe(true);
+    const off = { enableManagedSandboxOnly: false };
+    for (const [m, path] of [
+      ["PUT", "/engine/api/instance/settings/experimental"],
+      ["POST", "/engine/api/instance/settings/experimental"],
+      ["PATCH", "/engine/api/INSTANCE/settings/EXPERIMENTAL"],
+      ["PATCH", "/engine/api/instance/settings/%65xperimental"], // %65 is "e"
+      ["PATCH", "/engine/api/instance/%73ettings/experimental/"],
+      ["PATCH", "/engine/api/instance/settings/experimental?x=1"],
+    ] as const) {
+      const r = await send(m, path, sam, off);
+      expect(r.status, `${m} ${path}`).toBe(403);
+      expect(eng.st.managedSandboxOnly, `${m} ${path}`).toBe(true);
+    }
+    // Spellings that would reach the same engine route by other roads are refused outright.
+    for (const path of ["/engine/api/instance/./settings/experimental", "/engine/api/instance/settings/../settings/experimental", "/engine/api//instance/settings/experimental", "/engine/api/instance%2Fsettings/experimental", "/engine/api/instance\\settings/experimental"]) {
+      const r = await send("PATCH", path, sam, off);
+      expect([400, 403, 404], path).toContain(r.status); // (fetch tidies dot segments away first, which leaves the plain path the guard refuses)
+      expect(eng.st.managedSandboxOnly, path).toBe(true);
+    }
+    // A repeated key ("true" then "false") is read the way JSON readers read it: the last one wins, which is "false".
+    const dup = await fetch(base + "/engine/api/instance/settings/experimental", { method: "PATCH", headers: { Cookie: sam, "X-EPC-Request": "1", "Content-Type": "application/json" }, body: '{"enableManagedSandboxOnly":true,"enableManagedSandboxOnly":false}' });
+    expect(dup.status).toBe(403);
+    // A body too large to hold for inspection is refused rather than passed on unchecked.
+    const big = await fetch(base + "/engine/api/instance/settings/experimental", { method: "PATCH", headers: { Cookie: sam, "X-EPC-Request": "1", "Content-Type": "application/json" }, body: JSON.stringify({ pad: "x".repeat(1_200_000), enableManagedSandboxOnly: false }) });
+    expect([403, 413]).toContain(big.status);
+    expect(eng.st.managedSandboxOnly).toBe(true);
+  });
+
   it("reports it in the status while containers aren't set up", async () => {
     const sam = await admin();
     const s = await status(sam);
