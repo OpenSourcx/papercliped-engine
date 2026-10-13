@@ -6,8 +6,8 @@ import { OS_TYPES, buildCt, buildVm, type OsType } from "@papercliped-engine/pro
 
 const watchTask = vi.fn();
 const notify = vi.fn();
-const createVm = vi.fn(async () => ({ ok: true as const, vmid: 120 }));
-const createMachine = vi.fn(async () => ({ ok: true as const, vmid: 121 }));
+const createVm = vi.fn(async (_spec: Record<string, unknown>) => ({ ok: true as const, vmid: 120 }));
+const createMachine = vi.fn(async (_spec: Record<string, unknown>) => ({ ok: true as const, vmid: 121 }));
 const state = { live: false };
 const guests = [{ vmid: 100, name: "vm-lab", type: "qemu" }, { vmid: 101, name: "ct-web", type: "lxc" }];
 const orgs = [{ slug: "acme", name: "Acme", resourceGroup: { pool: "epc-acme", maxGuests: 1, cores: 2, memoryMb: 2048, diskGb: 20 } }];
