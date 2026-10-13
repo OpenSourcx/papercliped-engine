@@ -16,6 +16,22 @@ export interface Session {
   lastSeen: number;
   /** The person's engine session (their managed engine account's cookie). Server-side only, never sent to the browser. */
   engine?: EngineLogin;
+  /**
+   * Set only on the short-lived principal built for an ePaperclip API token (Bearer). It never lives in the session
+   * store, has no Proxmox ticket (`ticket` and `csrf` are empty), and acts on Proxmox with its Proxmox API token.
+   */
+  apiToken?: ApiTokenPrincipal;
+}
+
+export interface ApiTokenPrincipal {
+  /** The ePaperclip token's id (public, not the secret). */
+  id: string;
+  name: string;
+  readOnly: boolean;
+  /** `user@realm!tokenname`, the Proxmox API token this one maps to. */
+  pveTokenId: string;
+  /** Its secret, read from the vault for this request only. Never logged, never returned. */
+  pveSecret: string;
 }
 
 export interface EngineLogin {
@@ -43,6 +59,8 @@ export class SessionStore {
   private readonly sessions = new Map<string, Session>();
   private readonly pending = new Map<string, PendingTfa>();
   private readonly now: () => number;
+  /** Bumped whenever someone's sessions are ended, so API-token principals of that person are re-checked at once. */
+  private readonly epochs = new Map<string, number>();
 
   constructor(now: () => number = Date.now) {
     this.now = now;
@@ -93,9 +111,15 @@ export class SessionStore {
 
   /** Ends every session of one Proxmox user (their access was removed or disabled). Returns how many ended. */
   destroyUser(username: string): number {
+    this.epochs.set(username, (this.epochs.get(username) ?? 0) + 1);
     let n = 0;
     for (const [id, s] of this.sessions) if (s.username === username) (this.sessions.delete(id), n++);
     return n;
+  }
+
+  /** Changes whenever `destroyUser(username)` runs. */
+  epoch(username: string): number {
+    return this.epochs.get(username) ?? 0;
   }
 
   startTfa(username: string, challenge: string): PendingTfa {

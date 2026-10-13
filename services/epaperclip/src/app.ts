@@ -11,6 +11,7 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
+import { BearerAuth } from "./features/access-tokens.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
@@ -299,6 +300,22 @@ export const poolSlug = (name: string) =>
     .slice(0, 24)
     .replace(/-+$/, "") || "org";
 
+/**
+ * Proxmox's partial (two-factor) ticket carries the challenge as `!tfa!<url-encoded JSON>`. True when it offers a
+ * security key and nothing we can ask for (no authenticator app, recovery keys or Yubico). Unreadable means false.
+ */
+export function webauthnOnly(ticket: string): boolean {
+  try {
+    const seg = ticket.split(":").find((x) => x.startsWith("!tfa!"));
+    if (!seg) return false;
+    const c = JSON.parse(decodeURIComponent(seg.slice(5))) as Record<string, unknown>;
+    const has = (k: string) => c[k] !== undefined && c[k] !== false && c[k] !== null;
+    return (has("webauthn") || has("u2f")) && !has("totp") && !has("recovery") && !has("yubico");
+  } catch {
+    return false;
+  }
+}
+
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
   const limiter = new LoginLimiter(now);
@@ -307,6 +324,8 @@ export function createApp(d: AppDeps) {
   const cookie = (id: string, maxAge: number) => `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${d.secureCookies ? "; Secure" : ""}`;
 
   const clientFor = async (s: Session): Promise<ProxmoxClient> => {
+    // An ePaperclip API token acts through its own Proxmox API token (no ticket to renew).
+    if (s.apiToken) return new ProxmoxClient({ ...pveOpts, tokenId: s.apiToken.pveTokenId, tokenSecret: s.apiToken.pveSecret });
     if (d.sessions.needsRenewal(s)) {
       // Renew the Proxmox ticket by presenting the current one, as Proxmox's own UI does.
       const r = await ProxmoxClient.login(pveOpts, { username: s.username, password: s.ticket });
@@ -317,6 +336,11 @@ export function createApp(d: AppDeps) {
   };
 
   const requireSession = (req: IncomingMessage): Session => {
+    const t = bearer.principal(req);
+    if (t) {
+      bearer.guard(t, req);
+      return t;
+    }
     const s = d.sessions.get(cookieValue(req, COOKIE));
     if (!s) throw new HttpError(401, "signed_out", "Sign in with your Proxmox account");
     return s;
@@ -324,6 +348,9 @@ export function createApp(d: AppDeps) {
 
   /** Mutations must come from our own pages: a custom header (cross-site forms can't add one) and a matching Origin. */
   const requireSameSite = (req: IncomingMessage) => {
+    // A request that proved an API token has no browser; cookies are never accepted as tokens, nor tokens as cookies.
+    const t = bearer.principal(req);
+    if (t) return bearer.guard(t, req);
     if (req.headers["x-epc-request"] !== "1") throw new HttpError(403, "csrf", "Missing request header");
     const origin = req.headers.origin;
     if (origin === undefined) return;
@@ -341,6 +368,10 @@ export function createApp(d: AppDeps) {
     try {
       return await fn(await clientFor(s), s);
     } catch (e) {
+      if (e instanceof ProxmoxError && e.status === 401 && s.apiToken) {
+        bearer.rejectedByProxmox(s, req);
+        throw new HttpError(401, "token_invalid", "Proxmox no longer accepts this API token");
+      }
       if (e instanceof ProxmoxError && e.status === 401) {
         d.sessions.destroy(s.id);
         res.setHeader("Set-Cookie", cookie("", 0));
@@ -353,6 +384,7 @@ export function createApp(d: AppDeps) {
 
   const state = d.state ?? new StateStore(null);
   const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
+  const bearer = new BearerAuth({ state, sessions: d.sessions, now, pve: (tokenId, tokenSecret) => new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret }) });
   const iac = new Iac({ gateway, state, sessions: d.sessions });
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
@@ -412,6 +444,7 @@ export function createApp(d: AppDeps) {
         const r = await ProxmoxClient.login(pveOpts, { username, password, realm });
         limiter.clear(keys);
         if (r.needTfa) {
+          if (webauthnOnly(r.ticket)) throw new HttpError(403, "tfa_webauthn_only", "This account's only second factor is a security key (WebAuthn), which ePaperclip can't ask for yet. Add an authenticator app or recovery keys from another session, or sign in with Proxmox's own page.");
           const p = d.sessions.startTfa(r.username, r.ticket);
           return sendJson(res, 200, { needTfa: true, challenge: p.id });
         }
@@ -454,7 +487,7 @@ export function createApp(d: AppDeps) {
     if (method === "GET" && path === "/api/me") {
       const s = requireSession(req);
       const [name, realm] = s.username.split("@");
-      return sendJson(res, 200, { user: { username: s.username, name, realm, node: d.pve.node } });
+      return sendJson(res, 200, { user: { username: s.username, name, realm, node: d.pve.node }, ...(s.apiToken ? { via: "token", readOnly: s.apiToken.readOnly } : {}) });
     }
 
     // ---- The engine, connectors and Pin.
@@ -570,6 +603,7 @@ export function createApp(d: AppDeps) {
       requireSameSite(req);
       const userid = decodeURIComponent(iacUser[1]);
       if (iacUser[2] && method === "PUT") {
+        if (requireSession(req).apiToken) throw new HttpError(403, "ticket_only", "Changing a password needs a signed-in browser session; API tokens can't do it");
         const b = await readJson(req);
         await asUser(req, res, (pve) => iac.setPassword(pve, userid, b.password as string, b.confirmationPassword as string));
         return sendJson(res, 200, { ok: true });
@@ -830,7 +864,7 @@ export function createApp(d: AppDeps) {
       const upid = decodeURIComponent(task[1]);
       // UPID:node:pid:pstart:starttime:type:id:user: — the id can hold a volume id with ":" and "/", so only the fixed
       // fields are pinned. It is URL-encoded on the way to Proxmox, and must name this node.
-      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:\w+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
+      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[\w-]+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
       const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(d.pve.node, upid), pve.taskLog(d.pve.node, upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
       return sendJson(res, 200, { status: status.status, exitstatus: (status as { exitstatus?: string }).exitstatus ?? null, log: log.map((l) => l.t) });
     }
@@ -1086,6 +1120,7 @@ export function createApp(d: AppDeps) {
 
       if (what === "vnc") {
         const s = requireSession(req);
+        if (s.apiToken) throw new HttpError(403, "ticket_only", "Consoles need a signed-in browser session; API tokens can't open them");
         const out = await asUser(req, res, async (pve) => {
           const g = await findGuest(pve, vmid);
           if (g.type !== "qemu") throw new HttpError(400, "bad_request", "Containers use the text console");
@@ -1657,6 +1692,7 @@ export function createApp(d: AppDeps) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
+      if (req.headers.authorization !== undefined && (url.pathname.startsWith("/api/") || url.pathname === "/engine" || url.pathname.startsWith("/engine/"))) await bearer.attach(req);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });
