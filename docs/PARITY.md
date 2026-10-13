@@ -45,26 +45,15 @@ Every P0 row that is not done, in the order a person setting up a new host would
 - `ND-053` Reboot node (missing) - Power
 - `ND-054` Shut down node (missing) - Power
 
-**W-DISK** (1)
+**W-DISK** (0)
 
-- `WZ-012` Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks (partial) - Create VM
-
-**W-MACHINE** (14)
+**W-MACHINE** (5)
 
 - `GU-005` Guest IP addresses and hostname (missing) - Summary
 - `GU-057` DNS: nameserver and search domain (missing) - Hardware: Container
 - `GU-058` Features: nesting, keyctl, fuse, mknod, mount types (missing) - Hardware: Container
-- `WZ-001` General: hostname, VMID, resource pool, password, SSH key, unprivileged (partial) - Create CT
-- `WZ-004` CPU and memory, swap (partial) - Create CT
-- `WZ-005` Network: bridge, VLAN, static or DHCP, IPv6, firewall (missing) - Create CT
-- `WZ-015` Network: bridge, VLAN, model, MAC, firewall, disconnect (missing) - Create VM
-- `WZ-009` General: name, VMID, pool, start at boot, start order, tags (partial) - Create VM
-- `WZ-011` System: graphic card, machine, BIOS, SCSI controller, EFI, TPM, guest agent (partial) - Create VM
-- `WZ-013` CPU: sockets, cores, type, vCPUs, limit, NUMA (partial) - Create VM
 - `GU-038` Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) (partial) - Hardware: VM
 - `GU-056` Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) (partial) - Hardware: Container
-- `WZ-010` OS: ISO from storage, physical drive, no media; guest OS type and version (partial) - Create VM
-- `WZ-014` Memory: fixed or ballooning (partial) - Create VM
 
 **W-ACCESS** (7)
 
@@ -412,24 +401,27 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 
 | ID | Screen | Item | API | Status | Pri | Workstream | Evidence | Seq |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| WZ-001 | Create CT | General: hostname, VMID, resource pool, password, SSH key, unprivileged | POST /nodes/{node}/lxc | partial | P0 | W-MACHINE | NewMachine.tsx and POST /api/machines: hostname, pool, password, SSH key; always unprivileged; VMID auto | 35 |
+| WZ-001 | Create CT | General: hostname, VMID, resource pool, password, SSH key, unprivileged | POST /nodes/{node}/lxc | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 | WZ-002 | Create CT | Template: pick storage and template | POST /nodes/{node}/lxc (ostemplate) | done | P0 | W-MACHINE | GET /api/machines/options |  |
 | WZ-003 | Create CT | Disks: storage and root disk size | POST /nodes/{node}/lxc (rootfs) | done | P0 | W-DISK | NewMachine.tsx size presets plus storage choice |  |
-| WZ-004 | Create CT | CPU and memory, swap | POST /nodes/{node}/lxc (cores, memory, swap) | partial | P0 | W-MACHINE | presets only; swap fixed at 512 MB | 36 |
-| WZ-005 | Create CT | Network: bridge, VLAN, static or DHCP, IPv6, firewall | POST /nodes/{node}/lxc (net0) | missing | P0 | W-MACHINE | net0 always vmbr0 with DHCP | 37 |
-| WZ-006 | Create CT | DNS settings | POST /nodes/{node}/lxc (nameserver, searchdomain) | missing | P1 | W-MACHINE |  |  |
+| WZ-004 | Create CT | CPU and memory, swap | POST /nodes/{node}/lxc (cores, memory, swap) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-005 | Create CT | Network: bridge, VLAN, static or DHCP, IPv6, firewall | POST /nodes/{node}/lxc (net0) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-006 | Create CT | DNS settings | POST /nodes/{node}/lxc (nameserver, searchdomain) | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 | WZ-007 | Create CT | Start after created | POST /nodes/{node}/lxc (start) | done | P0 | W-MACHINE | always starts |  |
 | WZ-008 | Create CT | Create from backup (restore) | POST /nodes/{node}/lxc (archive) | done | P0 | W-DISK | POST /api/backups/restore |  |
-| WZ-009 | Create VM | General: name, VMID, pool, start at boot, start order, tags | POST /nodes/{node}/qemu | partial | P0 | W-MACHINE | POST /api/vms: name, pool; VMID auto; start flag | 38 |
-| WZ-010 | Create VM | OS: ISO from storage, physical drive, no media; guest OS type and version | POST /nodes/{node}/qemu (ide2, ostype) | partial | P0 | W-MACHINE | ISO choice; types limited to Linux, Windows 11, Other |  |
-| WZ-011 | Create VM | System: graphic card, machine, BIOS, SCSI controller, EFI, TPM, guest agent | POST /nodes/{node}/qemu (vga, machine, bios, scsihw, efidisk0, tpmstate0, agent) | partial | P0 | W-MACHINE | chosen by OS type defaults, no user choice | 39 |
-| WZ-012 | Create VM | Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks | POST /nodes/{node}/qemu (scsi0...) | partial | P0 | W-DISK | POST /api/vms still takes one disk of storage and size; the machine page can add more after creation | 25 |
-| WZ-013 | Create VM | CPU: sockets, cores, type, vCPUs, limit, NUMA | POST /nodes/{node}/qemu (sockets, cores, cpu) | partial | P0 | W-MACHINE | cores only; CPU type fixed x86-64-v2-AES | 40 |
-| WZ-014 | Create VM | Memory: fixed or ballooning | POST /nodes/{node}/qemu (memory, balloon) | partial | P0 | W-MACHINE | fixed only |  |
-| WZ-015 | Create VM | Network: bridge, VLAN, model, MAC, firewall, disconnect | POST /nodes/{node}/qemu (net0) | missing | P0 | W-MACHINE | net0 always vmbr0 with VirtIO or e1000e | 37 |
-| WZ-016 | Create VM | Create from template: cloud-init VM (clone, set user, keys, IP) | POST .../clone; PUT .../cloudinit | missing | P1 | W-MACHINE |  |  |
+| WZ-009 | Create VM | General: name, VMID, pool, start at boot, start order, tags | POST /nodes/{node}/qemu | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-010 | Create VM | OS: ISO from storage, physical drive, no media; guest OS type and version | POST /nodes/{node}/qemu (ide2, ostype) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-011 | Create VM | System: graphic card, machine, BIOS, SCSI controller, EFI, TPM, guest agent | POST /nodes/{node}/qemu (vga, machine, bios, scsihw, efidisk0, tpmstate0, agent) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-012 | Create VM | Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks | POST /nodes/{node}/qemu (scsi0...) | done | P0 | W-DISK | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-013 | Create VM | CPU: sockets, cores, type, vCPUs, limit, NUMA | POST /nodes/{node}/qemu (sockets, cores, cpu) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-014 | Create VM | Memory: fixed or ballooning | POST /nodes/{node}/qemu (memory, balloon) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-015 | Create VM | Network: bridge, VLAN, model, MAC, firewall, disconnect | POST /nodes/{node}/qemu (net0) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-016 | Create VM | Create from template: cloud-init VM (clone, set user, keys, IP) | POST .../clone; PUT .../cloudinit | partial | P1 | W-MACHINE | Create VM wizard adds a cloud-init drive with user, password, keys, IP, DNS; cloning a template into a cloud-init VM is not built |  |
 | WZ-017 | Create VM | Import from ESXi or OVA | POST /nodes/{node}/qemu (import-from) | missing | P2 | W-MACHINE |  |  |
 | WZ-018 | Create VM | Create from backup (restore) | POST /nodes/{node}/qemu (archive) | done | P0 | W-DISK | POST /api/backups/restore |  |
+| WZ-019 | Create VM | Create VM: cloud-init drive, user, password, SSH keys, IP per NIC, DNS | POST /nodes/{node}/qemu (ideN: cloudinit, ciuser, cipassword, sshkeys, ipconfigN, nameserver, searchdomain) | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-020 | Create VM | Create VM: PCI and USB passthrough (raw, mapped, PCIe, primary GPU, ROM-bar, SPICE) | POST /nodes/{node}/qemu (hostpciN, usbN); GET /nodes/{node}/hardware/pci, usb; GET /cluster/mapping/pci, usb | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
+| WZ-021 | Create VM | Create VM: serial ports, audio device, display (VGA type, memory) | POST /nodes/{node}/qemu (serialN, audio0, vga) | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 
 ### Beyond Proxmox
 
