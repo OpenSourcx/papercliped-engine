@@ -360,7 +360,7 @@ describe("chat cost and load limits", () => {
 
   it("answers 429 over HTTP once the minute's allowance is used", async () => {
     const c = await signIn();
-    await configure(c, "anthropic", "claude-test");
+    await configure(c, "anthropic", "test-model");
     prov.set((_r, res) => {
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       res.end(`data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } })}\n\n`);

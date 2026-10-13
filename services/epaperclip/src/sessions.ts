@@ -119,6 +119,13 @@ export class SessionStore {
     return n;
   }
 
+  /** Ends someone's other sessions, keeping one (the person changing their password stays signed in where they are). */
+  destroyUserExcept(username: string, keepId: string | undefined): number {
+    let n = 0;
+    for (const [id, s] of this.sessions) if (s.username === username && id !== keepId) (this.sessions.delete(id), n++);
+    return n;
+  }
+
   /** Changes whenever `destroyUser(username)` runs. */
   epoch(username: string): number {
     return this.epochs.get(username) ?? 0;

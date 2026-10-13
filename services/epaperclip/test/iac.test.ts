@@ -223,6 +223,32 @@ describe("who may see and change what (privilege confusion with the engine's ser
   });
 });
 
+describe("changing a password", () => {
+  it("signs out the person's other sessions but keeps the one that made the change", async () => {
+    const { sam } = await setup();
+    const samElsewhere = await signIn("sam");
+    const lee1 = await signIn("lee");
+    const lee2 = await signIn("lee");
+    // An administrator resets lee's password: both of lee's sessions end, sam's stay.
+    expect((await send("PUT", "/api/iac/users/lee@pve/password", sam, { password: "a-new-password", confirmationPassword: "right" })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee1 } })).status).toBe(401);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee2 } })).status).toBe(401);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
+    // Changing one's own: the other browser is signed out, this one isn't.
+    expect((await send("PUT", "/api/iac/users/sam@pve/password", sam, { password: "another-password", confirmationPassword: "right" })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: samElsewhere } })).status).toBe(401);
+  });
+
+  it("changes nothing when Proxmox refuses", async () => {
+    await setup();
+    const lee = await signIn("lee");
+    const lee2 = await signIn("lee");
+    expect((await send("PUT", "/api/iac/users/lee@pve/password", lee, { password: "a-new-password", confirmationPassword: "right" })).status).toBe(403);
+    expect((await fetch(base + "/api/me", { headers: { Cookie: lee2 } })).status).toBe(200);
+  });
+});
+
 describe("device roles from ACLs", () => {
   it("recognises our roles exactly and calls anything else custom", () => {
     const acl = (user: string, path: string, roleid: string) => ({ path, ugid: user, type: "user", roleid, propagate: 1 });

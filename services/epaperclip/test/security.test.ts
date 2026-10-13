@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, userKey } from "../src/app.ts";
+import { limits } from "../src/http.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
 import { generateSigningKey, signIndex, trustedKey } from "@papercliped-engine/marketplace";
@@ -305,6 +306,28 @@ describe("the Store's signed catalog", () => {
     } finally {
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+});
+
+describe("slow requests", () => {
+  it("answers 408 to a sign-in body that trickles in, instead of holding the connection", async () => {
+    const saved = limits.bodyTimeoutMs;
+    limits.bodyTimeoutMs = 300;
+    try {
+      const u = new URL(h.base);
+      const out = await new Promise<{ status: number; closed: boolean }>((resolve, reject) => {
+        const req = request({ host: u.hostname, port: u.port, method: "POST", path: "/api/login", headers: { "Content-Type": "application/json", "X-EPC-Request": "1", "Content-Length": "200" } }, (res) => {
+          res.resume();
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, closed: res.headers.connection === "close" }));
+        });
+        req.on("error", reject);
+        req.write('{"username":"sam",'); // ...and then nothing
+      });
+      expect(out.status).toBe(408);
+      expect(out.closed).toBe(true);
+    } finally {
+      limits.bodyTimeoutMs = saved;
     }
   });
 });

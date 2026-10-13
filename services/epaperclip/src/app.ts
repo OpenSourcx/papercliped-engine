@@ -635,6 +635,8 @@ export function createApp(d: AppDeps) {
         if (requireSession(req).apiToken) throw new HttpError(403, "ticket_only", "Changing a password needs a signed-in browser session; API tokens can't do it");
         const b = await readJson(req);
         await asUser(req, res, (pve) => iac.setPassword(pve, userid, b.password as string, b.confirmationPassword as string));
+        // Whoever knew the old password (or held a session opened with it) is signed out; the person making the change stays.
+        d.sessions.destroyUserExcept(userid, cookieValue(req, COOKIE));
         return sendJson(res, 200, { ok: true });
       }
       if (!iacUser[2] && method === "PUT") {

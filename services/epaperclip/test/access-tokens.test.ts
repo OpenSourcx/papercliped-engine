@@ -36,7 +36,7 @@ describe("creating an ePaperclip API token", () => {
     const pveTok = h.pve.tokens.get("sam@pve")!.get(`epc-${record.id}`)!;
     expect(pveTok.expire).toBe(Math.floor((h.clock.t + 30 * 86_400_000) / 1000));
     // On disk: the bearer secret is nowhere; the Proxmox secret is only in sealed form.
-    const secret = token.split("_")[2];
+    const secret = token.replace(/^epc_[0-9a-f]{16}_/, "");
     const disk = stateText();
     expect(disk).not.toContain(secret);
     expect(disk).not.toContain(token);
@@ -253,7 +253,7 @@ describe("using a Bearer token", () => {
     await h.call("GET", "/api/me", { bearer: token });
     await h.call("GET", "/api/me", { bearer: `epc_${record.id}_${"C".repeat(43)}` });
     const text = JSON.stringify(logs.flatMap((s) => s.mock.calls));
-    expect(text).not.toContain(token.split("_")[2]);
+    expect(text).not.toContain(token.replace(/^epc_[0-9a-f]{16}_/, ""));
     expect(text).not.toContain(h.pve.tokens.get("sam@pve")!.get(`epc-${record.id}`)!.secret);
   });
 });

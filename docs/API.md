@@ -51,11 +51,12 @@ Errors are JSON, `{"error": "…", "code": "…"}`:
 | 403 | `read_only_token` | A change was attempted with a read-only token |
 | 403 | `forbidden` | Proxmox refused; the message names the missing privilege |
 | 403 | `ticket_only` | The route needs a signed-in browser session (see below) |
+| 403 | `token_scope` | A privilege-separated token asked for something only the person's full access gives (the engine) |
 | 429 | `rate_limited`, `too_many_attempts` | More than 600 requests a minute with one token, or 10 invalid tokens in 5 minutes from one address |
 
 ### What a token can't do
 
-Proxmox itself doesn't allow API tokens to change a password or two-factor settings, and consoles are WebSockets tied to a browser session. These answer 403 `ticket_only`: opening a console (`POST /api/guests/:vmid/vnc`, the console sockets), changing a password, adding or removing two-factor entries. Tokens also can't create or revoke ePaperclip API tokens. Everything else works, including uploads.
+Proxmox itself doesn't allow API tokens to change a password or two-factor settings, and consoles are WebSockets tied to a browser session. These answer 403 `ticket_only`: opening a console (`POST /api/guests/:vmid/vnc`, the console sockets), changing a password, adding or removing two-factor entries. Tokens also can't create or revoke ePaperclip API tokens, and can't create, regenerate or change Proxmox API tokens (a token minted that way would outlive this one's expiry and limits). A token with **Separate privileges** on can't use the engine at all (`/engine/api`, organizations, Pin's organization tools): the engine knows the person, not the token, so it would otherwise hand the token all of that person's engine access (403 `token_scope`). Everything else works, including uploads.
 
 ## How it works (and why it is safe)
 
