@@ -438,7 +438,7 @@ export function fakeAccessPve() {
       if (t === "storage") return ok(storage);
       return ok([...vm, ...storage, { id: "node/pve", type: "node", node: "pve", status: "online" }, { id: "sdn/pve/zone1", type: "sdn", sdn: "zone1", node: "pve" }]);
     }
-    if (path === "/nodes/pve/status") return ok({ uptime: 1 });
+    if (path === "/nodes/pve/status") return ok({ cpu: 0.07, cpuinfo: { cpus: 8, model: "Test CPU" }, memory: { total: 17_179_869_184, used: 4_294_967_296, free: 12_884_901_888 }, rootfs: { total: 107_374_182_400, used: 21_474_836_480 }, uptime: 86_400, pveversion: "pve-manager/8.4.1", loadavg: ["0.10", "0.08", "0.05"] });
     return err(`no such fake endpoint ${req.method} ${path}`, 501);
   };
 
