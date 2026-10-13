@@ -65,7 +65,8 @@ async function route(ctx: FeatureCtx, m: RegExpMatchArray): Promise<boolean> {
   }
   if (ctx.method !== "POST") throw new HttpError(405, "method", "Method not allowed");
   ctx.sameSite();
-  const b = await ctx.readJson();
+  // Notes may be 8192 characters (more with escapes), so the body limit is wider than the default.
+  const b = await ctx.readJson(48 * 1024);
 
   if (what === "permissions") {
     const out = await ctx.asUser(async (pve) => {
