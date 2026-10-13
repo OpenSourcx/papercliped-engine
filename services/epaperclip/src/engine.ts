@@ -346,6 +346,9 @@ export class EngineGateway {
 
   /** The engine session for this signed-in person, creating their managed account the first time. */
   async loginFor(s: Session): Promise<EngineLogin> {
+    // The engine knows the person, not the token: a privilege-separated API token is meant to have only the permissions
+    // it was given in Proxmox, and the engine can't see those, so it never gets the person's engine access.
+    if (s.apiToken?.privsep) throw new HttpError(403, "token_scope", "This API token is privilege-separated, so it can't use the engine. Create a token that acts as you if it needs to.");
     if (s.engine) return s.engine;
     const cached = this.logins.get(s.username);
     if (cached) return (s.engine = cached);

@@ -206,16 +206,32 @@ export class Iac {
     return g.userJson<T>(caller, method, path, body);
   }
 
-  private async members(caller: Session, companyId: string): Promise<EngineMember[]> {
-    const r = await this.engine<{ members?: EngineMember[] } | EngineMember[]>(caller, "GET", `/api/companies/${encodeURIComponent(companyId)}/members`);
+  /** A read for the overview: an administrator sees everything (as the service account), anyone else only what their own engine account sees. */
+  private async view<T>(caller: Session, callerIsNodeAdmin: boolean, path: string): Promise<T> {
+    if (callerIsNodeAdmin) return this.engine<T>(caller, "GET", path);
+    const g = this.gateway;
+    if (!g) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
+    return g.userJson<T>(caller, "GET", path);
+  }
+
+  private async members(caller: Session, companyId: string, asAdmin = true): Promise<EngineMember[]> {
+    const path = `/api/companies/${encodeURIComponent(companyId)}/members`;
+    const r = await (asAdmin ? this.engine<{ members?: EngineMember[] } | EngineMember[]>(caller, "GET", path) : this.view<{ members?: EngineMember[] } | EngineMember[]>(caller, false, path));
     return Array.isArray(r) ? r : r.members ?? [];
   }
 
   /** May the caller change who is in this organization? Device admins may; so may its owners and admins. */
-  private async assertOrgManager(caller: Session, companyId: string, callerIsNodeAdmin: boolean) {
-    if (callerIsNodeAdmin) return;
+  private async assertOrgManager(caller: Session, companyId: string, callerIsNodeAdmin: boolean): Promise<"node" | "owner" | "admin"> {
+    if (callerIsNodeAdmin) return "node";
     const m = await this.gateway?.membership(caller, companyId).catch(() => null);
     if (!m || (m.role !== "owner" && m.role !== "admin")) throw new HttpError(403, "forbidden", "Only this organization's owners and admins, or a Proxmox administrator, can change who is in it");
+    return m.role;
+  }
+
+  /** The Proxmox right to hand out device roles: ACL changes at "/". Without it, nothing about someone's device role may change. */
+  private async assertCanGrant(pve: ProxmoxClient) {
+    const p = await pve.call<Record<string, Record<string, number>>>("GET", "/access/permissions", { path: "/" }).catch(() => null);
+    if (p?.["/"]?.["Permissions.Modify"] !== 1) throw new HttpError(403, "forbidden", "Your Proxmox account doesn't have permission to change device roles");
   }
 
   // ---- Proxmox side, always as the caller
@@ -266,11 +282,11 @@ export class Iac {
     const warnings: string[] = [];
     if (this.gateway) {
       try {
-        const companies = await this.engine<{ id: string; name: string; status?: string }[]>(caller, "GET", "/api/companies");
+        const companies = await this.view<{ id: string; name: string; status?: string }[]>(caller, callerIsNodeAdmin, "/api/companies");
         orgs = companies.filter((c) => c.status !== "archived").map((c) => ({ companyId: c.id, name: c.name, pool: pools[c.id]?.pool ?? null }));
         await Promise.all(
           orgs.map(async (o) => {
-            const ms = await this.members(caller, o.companyId).catch(() => [] as EngineMember[]);
+            const ms = await this.members(caller, o.companyId, callerIsNodeAdmin).catch(() => [] as EngineMember[]);
             for (const m of ms) {
               if (m.principalType !== "user" || m.status !== "active") continue;
               const u = byEngineId.get(m.principalId);
@@ -339,7 +355,14 @@ export class Iac {
     if (!USERID.test(userid)) throw new HttpError(400, "bad_request", "Invalid user id");
     if (role !== null && !ORG_ROLES.has(role)) throw new HttpError(400, "bad_request", "role is owner, admin, operator or viewer");
     if (!this.gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
-    await this.assertOrgManager(caller, companyId, callerIsNodeAdmin);
+    const manager = await this.assertOrgManager(caller, companyId, callerIsNodeAdmin);
+    if (manager === "admin") {
+      // The engine's changes here are made as its instance admin, so its own rules about who may make owners don't apply: keep them.
+      if (role === "owner") throw new HttpError(403, "forbidden", "Only an organization's owners (or a Proxmox administrator) can make someone an owner");
+      const id = await this.gateway.accountId(userid).catch(() => null);
+      const target = id ? (await this.members(caller, companyId)).find((x) => x.principalType === "user" && x.principalId === id && x.status === "active") : undefined;
+      if (target?.membershipRole === "owner") throw new HttpError(403, "forbidden", "Only an organization's owners (or a Proxmox administrator) can change an owner");
+    }
     if (role === null && userid === caller.username && !callerIsNodeAdmin) throw new HttpError(400, "bad_request", "You can't remove yourself; ask another owner or a Proxmox administrator");
     await pve.call("GET", `/access/users/${encodeURIComponent(userid)}`); // Proxmox has to know them first.
     const pool = this.pools()[companyId]?.pool;
@@ -414,6 +437,7 @@ export class Iac {
     if (Object.keys(fields).length) await pve.call("PUT", `/access/users/${encodeURIComponent(userid)}`, fields);
     if (spec.enable === false) this.sessions.destroyUser(userid);
     if (spec.deviceRole !== undefined) {
+      await this.assertCanGrant(pve);
       if (userid === caller.username && spec.deviceRole !== "admin" && callerIsNodeAdmin) throw new HttpError(400, "bad_request", "You can't take your own administrator role away; ask another administrator");
       await this.applyDeviceRole(pve, userid, spec.deviceRole);
       await this.gateway?.syncAdminUser(userid, spec.deviceRole === "admin").catch((e: Error) => warnings.push(`Engine administrator status: ${e.message}`));

@@ -28,6 +28,8 @@ export interface ApiTokenPrincipal {
   id: string;
   name: string;
   readOnly: boolean;
+  /** Privilege-separated: Proxmox limits it to the permissions given to the token itself, which the engine can't see. */
+  privsep: boolean;
   /** `user@realm!tokenname`, the Proxmox API token this one maps to. */
   pveTokenId: string;
   /** Its secret, read from the vault for this request only. Never logged, never returned. */

@@ -60,7 +60,7 @@ export interface AppDeps {
   containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
 }
 
-const COOKIE = "epc_session";
+const COOKIE_BASE = "epc_session";
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".md": "text/plain; charset=utf-8" };
 const TIMEFRAMES = ["hour", "day", "week", "month", "year"];
@@ -94,12 +94,22 @@ class LoginLimiter {
   }
 }
 
+/** One key per person however the name is typed: `sam` + realm `pve`, `sam@pve`, `SAM@PVE` all count against the same record. */
+export function userKey(username: string, realm?: string): string {
+  const at = username.lastIndexOf("@");
+  const name = at >= 0 ? username.slice(0, at) : username;
+  const r = at >= 0 ? username.slice(at + 1) : (realm ?? "");
+  return `user:${name.toLowerCase()}@${r.toLowerCase()}`;
+}
+
 function baseHeaders(res: ServerResponse, secure: boolean) {
   res.setHeader("Content-Security-Policy", CSP);
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   if (secure) res.setHeader("Strict-Transport-Security", "max-age=31536000");
 }
 
@@ -319,6 +329,9 @@ export function webauthnOnly(ticket: string): boolean {
 
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
+  // Over HTTPS the session cookie carries the __Host- prefix: browsers then refuse to take it from a sibling domain or over
+  // plain HTTP, and it can't be given a Domain, so nobody can plant their own session id in someone else's browser.
+  const COOKIE = d.secureCookies ? `__Host-${COOKIE_BASE}` : COOKIE_BASE;
   const limiter = new LoginLimiter(now);
   const pveOpts = { baseUrl: d.pve.baseUrl, caPem: d.pve.caPem, transport: d.pve.transport, streamTransport: d.pve.streamTransport };
   const maxUpload = d.maxUploadBytes ?? 64 * 1024 ** 3;
@@ -443,11 +456,12 @@ export function createApp(d: AppDeps) {
       const password = str(b.password, 1024);
       const realm = b.realm === undefined ? undefined : str(b.realm, 32) ?? undefined;
       if (!username || !password) throw new HttpError(400, "bad_request", "Enter a username and password");
-      const keys = [`ip:${ip}`, `user:${username.toLowerCase()}@${realm ?? ""}`];
+      const keys = [`ip:${ip}`, userKey(username, realm)];
       if (limiter.blocked(keys)) throw new HttpError(429, "too_many_attempts", "Too many failed sign-ins. Wait 15 minutes and try again.");
       try {
         const r = await ProxmoxClient.login(pveOpts, { username, password, realm });
-        limiter.clear(keys);
+        // A password that is right but still owes a second factor doesn't wipe the record: guessing codes counts too.
+        if (!r.needTfa) limiter.clear(keys);
         if (r.needTfa) {
           if (webauthnOnly(r.ticket)) throw new HttpError(403, "tfa_webauthn_only", "This account's only second factor is a security key (WebAuthn), which ePaperclip can't ask for yet. Add an authenticator app or recovery keys from another session, or sign in with Proxmox's own page.");
           const p = d.sessions.startTfa(r.username, r.ticket);
@@ -471,14 +485,24 @@ export function createApp(d: AppDeps) {
       const kind = b.kind === "recovery" ? "recovery" : "totp";
       const code = str(b.code, 128);
       if (!code || (kind === "totp" && !/^\d{6,8}$/.test(code))) throw new HttpError(400, "bad_code", "Enter the code from your authenticator app");
+      // Wrong codes count against the person and the address across sign-ins, so starting over (password again) doesn't reset them.
+      const keys = [`ip:${ip}`, userKey(p.username)];
+      if (limiter.blocked(keys)) throw new HttpError(429, "too_many_attempts", "Too many failed sign-ins. Wait 15 minutes and try again.");
       p.attempts++;
       try {
         const r = await ProxmoxClient.login(pveOpts, { username: p.username, password: `${kind}:${code}`, tfaChallenge: p.challenge });
-        if (r.needTfa || !r.csrf) throw new HttpError(401, "bad_code", "That code didn't work");
+        if (r.needTfa || !r.csrf) {
+          limiter.fail(keys);
+          throw new HttpError(401, "bad_code", "That code didn't work");
+        }
         d.sessions.endTfa(p.id);
+        limiter.clear(keys);
         return signIn(res, r.username, r.ticket, r.csrf);
       } catch (e) {
-        if (e instanceof ProxmoxError && e.status === 401) throw new HttpError(401, "bad_code", "That code didn't work");
+        if (e instanceof ProxmoxError && e.status === 401) {
+          limiter.fail(keys);
+          throw new HttpError(401, "bad_code", "That code didn't work");
+        }
         throw e;
       }
     }
@@ -1494,7 +1518,15 @@ export function createApp(d: AppDeps) {
         try {
           const [body, sig] = await Promise.all([fetchText(url), fetchText(`${url}.sig`)]);
           const index = verifyIndex(Buffer.from(body, "utf8"), sig, { keys, now: now(), lastSequence: marketSequence < 0 ? undefined : marketSequence });
-          marketSequence = Math.max(marketSequence, index.sequence);
+          if (index.sequence > marketSequence) {
+            marketSequence = index.sequence;
+            // Kept across restarts, so an older (still unexpired) signed copy can't be replayed after one.
+            try {
+              state.setSetting("marketplace.sequence", marketSequence);
+            } catch {
+              /* the in-memory floor still holds */
+            }
+          }
           marketCache.index = index;
           marketCache.problem = null;
         } catch (e) {
@@ -1582,7 +1614,10 @@ export function createApp(d: AppDeps) {
   // number never goes back within this run. When it can't be read or checked, the answer says why and the Store carries on
   // with what ships with ePaperclip.
   const marketCache: { at: number; index: Index | null; problem: { code: string; message: string } | null } = { at: 0, index: null, problem: null };
-  let marketSequence = -1;
+  let marketSequence = (() => {
+    const v = state.getSetting<number>("marketplace.sequence");
+    return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : -1;
+  })();
 
   // One-time VNC sessions: created by POST /api/guests/:vmid/vnc for one signed-in session, used once within 30 seconds.
   const vncSessions = new Map<string, { session: string; node: string; vmid: number; port: string; ticket: string; expires: number }>();
@@ -1706,6 +1741,9 @@ export function createApp(d: AppDeps) {
         if (sess) await nodeScope.resolve(req, sess.id, () => clientFor(sess));
       }
       if (req.headers.authorization !== undefined && (url.pathname.startsWith("/api/") || url.pathname === "/engine" || url.pathname.startsWith("/engine/"))) await bearer.attach(req);
+      // Every change under /api needs our own page's header and Origin (or an API token), whichever route it is for: a route
+      // that forgets its own check can't be reached cross-site, and a read-only token can't reach it either.
+      if (url.pathname.startsWith("/api/") && (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE")) requireSameSite(req);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });

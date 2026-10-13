@@ -245,7 +245,9 @@ describe("sign-in through Proxmox", () => {
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ user: { username: "sam@pve" } });
     const c = r.headers.get("set-cookie")!;
-    expect(c).toMatch(/^epc_session=[\w-]{40,};/);
+    expect(c).toMatch(/^__Host-epc_session=[\w-]{40,};/);
+    expect(c).toContain("Path=/");
+    expect(c).not.toContain("Domain");
     expect(c).toContain("HttpOnly");
     expect(c).toContain("SameSite=Strict");
     expect(c).toContain("Secure");
