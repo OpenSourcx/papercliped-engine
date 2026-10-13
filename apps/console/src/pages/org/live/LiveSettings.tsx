@@ -9,6 +9,7 @@ import { formatBytes } from "../../../lib/storage.ts";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Textarea, Toggle } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
+import { memberName } from "./names.ts";
 
 const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", operator: "Operator", viewer: "Viewer", member: "Member" };
 
@@ -77,7 +78,7 @@ export function LiveOrgSettings() {
             {members.isPending && <Loading />}
             {members.error && <LoadError error={members.error} retry={() => void members.refetch()} />}
             {active.slice(0, 6).map((m) => {
-              const n = m.user?.name || m.user?.email || "Someone";
+              const n = memberName(m.user);
               return <div key={m.id} className="flex items-center gap-3 px-5 py-2.5"><Avatar name={n} hue={210} size={26} /><span className="flex-1 text-sm truncate">{n}</span><Chip>{(m.membershipRole && ROLE[m.membershipRole]) ?? "Member"}</Chip></div>;
             })}
             {members.data && active.length === 0 && <p className="px-5 py-4 text-sm text-ink-3">Nobody else has access yet.</p>}

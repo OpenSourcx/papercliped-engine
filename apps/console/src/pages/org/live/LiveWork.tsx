@@ -9,7 +9,7 @@ import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
-import { describeActivity, useNames } from "./names.ts";
+import { describeActivity, memberName, realEmail, useNames } from "./names.ts";
 
 const GOAL_STATUS: Record<string, string> = { planned: "Planned", active: "Active", achieved: "Achieved", cancelled: "Cancelled" };
 const GOAL_LEVEL: Record<GoalLevel, string> = { company: "Organization", team: "Team", agent: "Agent", task: "Task" };
@@ -151,11 +151,11 @@ export function LiveMembers() {
         {members.error && <LoadError error={members.error} retry={() => void members.refetch()} />}
         {members.data && list.length === 0 && <EmptyState icon={<Users className="h-5 w-5" />} title="No members" body="Nobody has access yet." />}
         {list.map((m) => {
-          const name = m.user?.name || m.user?.email || "Someone";
+          const name = memberName(m.user);
           return (
             <div key={m.id} className="flex items-center gap-3 px-5 py-3">
               <Avatar name={name} hue={210} size={30} />
-              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{name}</div>{m.user?.email && m.user.name && <div className="text-xs text-ink-3 truncate">{m.user.email}</div>}</div>
+              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{name}</div>{realEmail(m.user?.email) && m.user?.name && <div className="text-xs text-ink-3 truncate">{realEmail(m.user.email)}</div>}</div>
               {m.status !== "active" && <Chip tone="warning">{m.status === "pending" ? "Invited" : m.status}</Chip>}
               <span className="text-compact text-ink-2">{(m.membershipRole && ROLE[m.membershipRole]) ?? "Member"}</span>
             </div>

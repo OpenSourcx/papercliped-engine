@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route } from "react-router-dom";
 import type { ReactNode } from "react";
 
 vi.mock("../src/auth/session.tsx", () => ({
@@ -17,6 +17,7 @@ import { chatDisabled } from "../src/data/engine/chat.ts";
 import { EngineError } from "@papercliped-engine/engine-client";
 import { previewKind } from "../src/pages/org/live/LiveArtifacts.tsx";
 import { logText } from "../src/pages/org/live/LiveAgentTabs.tsx";
+import { LiveMembers } from "../src/pages/org/live/LiveWork.tsx";
 import { CommandPalette } from "../src/search/CommandPalette.tsx";
 import { agent, callsTo, issue, renderOrg, setup, state } from "./engine-harness.tsx";
 
@@ -327,5 +328,18 @@ describe("creating an agent", () => {
     renderOrg("/pve/acme/agents");
     fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
     await waitFor(() => expect((screen.getByLabelText(/Runs with/) as HTMLSelectElement).value).toBe("cli_local"));
+  });
+});
+
+describe("members", () => {
+  it("never shows the engine's made-up address for a managed account", async () => {
+    const member = (id: string, name: string | null, email: string, role = "operator") => ({ id: `m-${id}`, companyId: "c1", principalType: "user", principalId: id, membershipRole: role, status: "active", createdAt: "2026-10-01T00:00:00Z", user: { id, name, email } });
+    state.routes["GET /engine/api/companies/c1/members"] = () => [200, { members: [member("u1", "sam", "sam.pve-35093ab3@epaperclip.invalid", "owner"), member("u2", null, "kim.pve-0a1b2c3d@epaperclip.invalid"), member("u3", "Lee", "lee@example.com")], access: { currentUserRole: "owner", canManageMembers: true, canInviteUsers: true } }];
+    renderOrg("/pve/acme/members", <Route path="members" element={<LiveMembers />} />);
+    expect(await screen.findByText("sam")).toBeTruthy();
+    expect(screen.getByText("Lee")).toBeTruthy();
+    expect(screen.getByText("lee@example.com")).toBeTruthy();
+    expect(screen.getByText("Someone")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("epaperclip.invalid");
   });
 });

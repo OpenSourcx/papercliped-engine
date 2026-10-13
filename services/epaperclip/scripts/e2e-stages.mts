@@ -137,7 +137,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   const signedInAgain = async (user: string) => {
     const { page } = await open(user);
     await page.goto(c.base + "/");
-    await page.waitForSelector("text=/Sign in to ePaperclip|THIS DEVICE/", { timeout: 15000 });
+    await page.waitForSelector("text=/Sign in to ePaperclip|THIS DEVICE/i", { timeout: 15000 });
     if (await page.locator("text=Sign in to ePaperclip").count()) {
       await signInUi(page, user);
       await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
@@ -808,6 +808,96 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   await stage("datacenter and cluster: summary, options, notifications, metrics, mappings, tags, HA, replication, Ceph", async () => {
     await crawl("sam", [["datacenter/cluster", /lab|Cluster/], ["datacenter/summary", /pve2|Datacenter|Cluster/], ["datacenter/options", /keyboard|Keyboard|Options/], ["datacenter/notifications", /Notification/i], ["datacenter/metrics", /Metric/i],
       ["datacenter/mappings", /gpu0|Mapping/i], ["datacenter/tags", /Tag/i], ["datacenter/ha", /vm:103|High availability/], ["datacenter/replication", /101-0|Replication/], ["datacenter/ceph", /Ceph|vm-pool/], ["tasks/all", /Tasks|tasks/i]], "23-datacenter");
+  });
+
+  await stage("tasks: comment, label, sub-task, file, status and priority work on a real task; the list updates over the live socket", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + `/pve/acm/tasks/${S.taskId}`);
+    await page.waitForSelector("text=Sharpen the anvils");
+    await page.fill('textarea[aria-label="Add a comment"]', "Use the fine stone.");
+    await page.getByRole("button", { name: "Comment", exact: true }).click();
+    await page.waitForSelector("text=Use the fine stone.");
+    const comments = (await eng("sam", "GET", `/api/issues/${S.taskId}/comments`)).json;
+    const list = Array.isArray(comments) ? comments : comments.comments ?? comments.items ?? comments.data ?? [];
+    expect(list.some((x: any) => x.body === "Use the fine stone."), `the engine has the comment, got ${JSON.stringify(comments).slice(0, 300)}`);
+    await page.fill('input[aria-label="New label"]', "urgent");
+    await page.getByRole("button", { name: "Add", exact: true }).first().click();
+    await page.waitForSelector('button[aria-pressed="true"]:has-text("urgent")');
+    await page.fill('input[aria-label="New sub-task"]', "Buy a whetstone");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("text=Buy a whetstone");
+    await page.setInputFiles('input[aria-label="Choose a file to attach"]', { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("twelve anvils\n") });
+    await page.waitForSelector("button:has-text('notes.txt')", { timeout: 15000 });
+    const atts = (await eng("sam", "GET", `/api/issues/${S.taskId}/attachments`)).json;
+    expect(atts.length === 1 && atts[0].originalFilename === "notes.txt", `the engine has the attachment, got ${JSON.stringify(atts).slice(0, 200)}`);
+    await page.click("button:has-text('notes.txt')");
+    await page.waitForSelector("text=twelve anvils", { timeout: 15000 });
+    await shot(page, "26-task-attachment");
+    await page.keyboard.press("Escape");
+    await page.selectOption('select[aria-label="Priority"]', "high");
+    await until("priority saved", async () => (await eng("sam", "GET", `/api/issues/${S.taskId}`)).json.priority === "high");
+    await page.selectOption('select[aria-label="Status"]', "in_progress");
+    await until("status saved", async () => (await eng("sam", "GET", `/api/issues/${S.taskId}`)).json.status === "in_progress");
+    await shot(page, "26-task-detail");
+    // The list follows the engine's live socket: a task made elsewhere shows up well before the 15 s poll.
+    await page.goto(c.base + "/pve/acm/tasks");
+    await page.waitForSelector("text=Sharpen the anvils");
+    await sleep(1500);
+    const t0 = Date.now();
+    await eng("sam", "POST", `/api/companies/${S.org!.id}/issues`, { title: "Arrived live" });
+    await page.waitForSelector("text=Arrived live", { timeout: 12000 });
+    const took = Date.now() - t0;
+    console.log(`       a task made through the API appeared in the open list after ${took} ms`);
+    expect(took < 8000, `the list updated from the socket, not the poll (${took} ms)`);
+  });
+
+  await stage("agent: configuration, instructions, budget and org chart save to the engine", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + `/pve/acm/agents/${S.agentId}`);
+    await tab(page, "Configuration").click();
+    await page.waitForSelector("text=Save configuration");
+    await shot(page, "27-agent-configuration");
+    const title = page.getByLabel("Title", { exact: true });
+    if (await title.count()) {
+      await title.fill("Anvil engineer");
+      await page.getByRole("button", { name: "Save configuration" }).click();
+      await until("the agent's title", async () => ((await eng("sam", "GET", `/api/agents/${S.agentId}`)).json.title) === "Anvil engineer");
+    }
+    await tab(page, "Instructions").click();
+    await page.waitForTimeout(1500);
+    await shot(page, "27-agent-instructions");
+    await tab(page, "Budget").click();
+    await page.waitForTimeout(1000);
+    await shot(page, "27-agent-budget");
+    await tab(page, "Skills").click();
+    await page.waitForTimeout(1500);
+    await shot(page, "27-agent-skills");
+    await page.goto(c.base + "/pve/acm/org");
+    await page.waitForSelector("text=Runner");
+    await shot(page, "27-org-chart");
+    await page.goto(c.base + "/pve/acm/skills");
+    await page.waitForSelector("text=Installed");
+    for (const t of ["Catalog", "Sources"]) { await tab(page, t).click(); await page.waitForTimeout(800); }
+    await shot(page, "27-skills");
+  });
+
+  await stage("organization settings: rename, and no internal addresses on the members page", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/settings");
+    await page.waitForSelector("text=Organization settings");
+    await shot(page, "28-org-settings");
+    await field(page, "Name").first().fill("Acme Labs Ltd").catch(async () => page.getByLabel("Name").first().fill("Acme Labs Ltd"));
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await until("the new name", async () => (await eng("sam", "GET", `/api/companies/${S.org!.id}`)).json.name === "Acme Labs Ltd");
+    await page.reload();
+    await page.waitForSelector("text=Acme Labs Ltd");
+    const members = await bodyText(page);
+    expect(!/@epaperclip\.invalid/.test(members), "an internal sign-in address isn't shown on the organization's pages");
+    await page.goto(c.base + "/pve/acm/members");
+    await page.waitForSelector("text=sam");
+    expect(!/@epaperclip\.invalid/.test(await bodyText(page)), "the Members page doesn't show the engine's internal e-mail addresses");
+    await shot(page, "28-members");
+    S.org!.name = "Acme Labs Ltd";
   });
 
   await stage("security headers: the console is served with its strict policy and signs cookies HttpOnly, SameSite=Strict", async () => {

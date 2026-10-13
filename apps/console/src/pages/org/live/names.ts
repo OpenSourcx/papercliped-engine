@@ -3,6 +3,15 @@ import type { ActivityEntry, Agent } from "@papercliped-engine/engine-client";
 import { AGENT_ROLE_LABEL } from "../../../data/engine/map.ts";
 import { useAgents, useMe, useMembers } from "../../../data/engine/queries.ts";
 
+/**
+ * People in an organization are Proxmox users; the engine holds a managed account for each, with an address made up
+ * for it (`name.realm-1a2b3c4d@epaperclip.invalid`). That address means nothing to a person, so it is never shown.
+ */
+export const realEmail = (email: string | null | undefined): string | null => (email && !/@epaperclip\.invalid$/i.test(email) ? email : null);
+
+/** How a member is named: their name, else a real address, else "Someone". */
+export const memberName = (user: { name?: string | null; email?: string | null } | null | undefined): string => user?.name || realEmail(user?.email) || "Someone";
+
 /** Turns the engine's ids into names: agents by name, people by name (you as "You"). */
 export function useNames(companyId: string) {
   const agents = useAgents(companyId);
@@ -10,7 +19,7 @@ export function useNames(companyId: string) {
   const me = useMe();
   return useMemo(() => {
     const byId = new Map((agents.data ?? []).map((a) => [a.id, a]));
-    const people = new Map((members.data?.members ?? []).map((m) => [m.principalId, m.user?.name || m.user?.email || "Someone"]));
+    const people = new Map((members.data?.members ?? []).map((m) => [m.principalId, memberName(m.user)]));
     const user = (id: string | null | undefined) => (!id ? "Someone" : id === me.data?.userId ? "You" : people.get(id) ?? "Someone");
     return {
       agent: (id: string | null | undefined) => (id ? byId.get(id)?.name ?? "An agent" : "Unassigned"),
