@@ -76,10 +76,10 @@ export function useResourceGroup(companyId: string | null | undefined) {
   return { ...q, group: q.data ? q.data.find((g) => g.companyId === companyId) ?? null : undefined };
 }
 
-function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean } = {}) {
+export function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean; retry?: boolean } = {}) {
   const ready = useEngineReady();
   const interval = usePollInterval(companyId);
-  return useQuery({ queryKey: key, queryFn: () => fn(companyId!), enabled: ready && !!companyId, refetchInterval: opts.poll === false ? false : interval });
+  return useQuery({ queryKey: key, queryFn: () => fn(companyId!), enabled: ready && !!companyId, refetchInterval: opts.poll === false ? false : interval, ...(opts.retry === false ? { retry: false } : {}) });
 }
 
 export const useOrg = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.detail(companyId ?? ""), (id) => engine.companies.get(id));
@@ -210,6 +210,8 @@ export function useDecide(companyId: string) {
     mutationFn: ({ id, approve, note }: { id: string; approve: boolean; note?: string }) => (approve ? engine.approvals.approve(id, note) : engine.approvals.reject(id, note)),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.approvals(companyId) });
+      void qc.invalidateQueries({ queryKey: qk.attention(companyId) });
+      void qc.invalidateQueries({ queryKey: qk.badges(companyId) });
       void qc.invalidateQueries({ queryKey: qk.dashboard(companyId) });
       void qc.invalidateQueries({ queryKey: qk.agents(companyId) });
       void qc.invalidateQueries({ queryKey: qk.activity(companyId) });

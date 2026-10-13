@@ -17,12 +17,14 @@ import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
-import { Activity, Agents, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Tasks } from "./pages/org/OrgPages.tsx";
+import { Activity, Agents, Artifacts, Chat, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
 import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
 import { LiveTaskDetail } from "./pages/org/live/LiveTasks.tsx";
 import { LiveMembers } from "./pages/org/live/LiveWork.tsx";
+import { LiveWorkspaceDetail } from "./pages/org/live/LiveArtifacts.tsx";
+import { LiveRoutineDetail } from "./pages/org/live/LiveRoutines.tsx";
 
 /** Pages only the engine has (a task's thread, an agent's runs, the member list). The demo goes back to the list instead. */
 function LiveOnly({ children, fallback }: { children: React.ReactNode; fallback: string }) {
@@ -87,6 +89,7 @@ export function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="goals" element={<Goals />} />
             <Route path="routines" element={<Routines />} />
+            <Route path="routines/:routineId" element={<LiveOnly fallback="..">{<LiveRoutineDetail />}</LiveOnly>} />
             <Route path="machines" element={<Machines />} />
             <Route path="machines/:vmid" element={<MachinePage />} />
             <Route path="agents" element={<Agents />} />
@@ -97,10 +100,11 @@ export function App() {
             <Route path="activity" element={<Activity />} />
             <Route path="connectors" element={<OrgConnectors />} />
             <Route path="settings" element={<OrgSettings />} />
-            <Route path="chat" element={<ComingFromPaperclip title="Chat" body="Talk with your agents in threads, with their runs and tool calls inline." />} />
-            <Route path="artifacts" element={<ComingFromPaperclip title="Artifacts" body="Files, documents and outputs your agents produce, versioned per task." />} />
-            <Route path="workspaces" element={<ComingFromPaperclip title="Workspaces" body="Code workspaces your agents work in, with diffs and branches." />} />
-            <Route path="skills" element={<ComingFromPaperclip title="Skills" body="Reusable skills you can give your agents, from the skills catalog." />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="artifacts" element={<Artifacts />} />
+            <Route path="workspaces" element={<Workspaces />} />
+            <Route path="workspaces/:workspaceId" element={<LiveOnly fallback="..">{<LiveWorkspaceDetail />}</LiveOnly>} />
+            <Route path="skills" element={<Skills />} />
           </Route>
         </Route>
       </Route>

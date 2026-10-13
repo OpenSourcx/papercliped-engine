@@ -8,7 +8,8 @@ import { agentStatusOf } from "../../../data/engine/labels.tsx";
 import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useRuns } from "../../../data/engine/queries.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
-import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs } from "../../../ui/primitives.tsx";
+import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 import { useAgentsCanRun } from "../../containers/Banner.tsx";
@@ -142,6 +143,10 @@ export function LiveAgentDetail() {
   const act = useAgentAction(companyId);
   const canRun = useAgentsCanRun();
   const a = agent.data;
+  const [params, setParams] = useSearchParams();
+  type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
+  const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
+  const setTab = (t: AgentTab) => setParams((p) => { const n = new URLSearchParams(p); if (t === "overview") n.delete("tab"); else n.set("tab", t); return n; }, { replace: true });
   const [kind, label] = a ? agentStatusOf(a.status) : ["idle" as const, ""];
   return (
     <PageFrame width="4xl">
@@ -166,7 +171,13 @@ export function LiveAgentDetail() {
           />
           <ActionError error={act.error} />
           {act.isSuccess && act.variables?.action === "wakeup" && <p className="text-compact text-ink-3 mb-3">Asked {a.name} to run now.</p>}
-          <div className="grid md:grid-cols-2 gap-4">
+          <Tabs value={tab} onChange={setTab} className="mb-4" tabs={[{ id: "overview", label: "Overview" }, { id: "runs", label: "Runs" }, { id: "configuration", label: "Configuration" }, { id: "instructions", label: "Instructions" }, { id: "skills", label: "Skills" }, { id: "budget", label: "Budget" }]} />
+          {tab === "runs" && <AgentRunsTab agent={a} />}
+          {tab === "configuration" && <AgentConfigTab key={a.updatedAt as unknown as string} agent={a} />}
+          {tab === "instructions" && <AgentInstructionsTab agent={a} />}
+          {tab === "skills" && <AgentSkillsTab agent={a} />}
+          {tab === "budget" && <AgentBudgetTab key={a.budgetMonthlyCents} agent={a} />}
+          {tab === "overview" && <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-5">
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
                 <dt className="text-ink-3">Runs with</dt><dd>{a.adapterType}{typeof a.adapterConfig?.model === "string" ? ` · ${a.adapterConfig.model}` : ""}</dd>
@@ -191,7 +202,7 @@ export function LiveAgentDetail() {
                 ))}
               </div>
             </Card>
-          </div>
+          </div>}
         </>
       )}
     </PageFrame>

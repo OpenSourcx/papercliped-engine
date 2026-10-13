@@ -25,7 +25,7 @@ export function keysForEvent(companyId: string, e: LiveEvent): readonly (readonl
   if (e.type.startsWith("heartbeat.run.")) {
     if (e.type === "heartbeat.run.log" || e.type === "heartbeat.run.event") return [];
     const agentId = str(p.agentId);
-    return [qk.agents(companyId), qk.dashboard(companyId), qk.costs(companyId), qk.runs(companyId), ...(agentId ? [qk.agent(companyId, agentId)] : [])];
+    return [qk.agents(companyId), qk.dashboard(companyId), qk.costs(companyId), qk.runs(companyId), qk.attention(companyId), qk.badges(companyId), qk.workspaces(companyId), ...(agentId ? [qk.agent(companyId, agentId)] : [])];
   }
   if (e.type === "agent.status") {
     const agentId = str(p.agentId);
@@ -35,10 +35,17 @@ export function keysForEvent(companyId: string, e: LiveEvent): readonly (readonl
     const entityType = str(p.entityType) ?? "";
     const entityId = str(p.entityId);
     const action = str(p.action) ?? "";
-    const keys: (readonly unknown[])[] = [qk.activity(companyId), qk.dashboard(companyId)];
+    const keys: (readonly unknown[])[] = [qk.activity(companyId), qk.dashboard(companyId), qk.attention(companyId), qk.badges(companyId), qk.mine(companyId)];
     if (entityType === "issue" || action.startsWith("issue.")) {
-      keys.push(qk.issues(companyId), qk.anyIssue(companyId), qk.anyComments(companyId));
+      keys.push(qk.issues(companyId), qk.anyIssue(companyId), qk.anyComments(companyId), qk.chats(companyId), qk.artifacts(companyId), qk.anyExtras(companyId));
     }
+    if (entityType.startsWith("routine") || action.startsWith("routine")) keys.push(qk.routines(companyId), qk.anyRoutine(companyId));
+    if (entityType.includes("skill") || action.startsWith("skill") || action.startsWith("company_skill")) keys.push(qk.skills(companyId), qk.skillSources(companyId));
+    if (entityType.includes("workspace") || action.includes("workspace")) keys.push(qk.workspaces(companyId));
+    if (entityType.includes("document") || entityType.includes("attachment") || entityType.includes("work_product") || action.includes("attachment") || action.includes("document") || action.includes("work_product")) keys.push(qk.artifacts(companyId), qk.anyExtras(companyId));
+    if (entityType.includes("secret") || action.startsWith("secret")) keys.push(qk.secrets(companyId));
+    if (entityType.includes("budget") || action.includes("budget")) keys.push(qk.budgets(companyId), qk.costs(companyId), qk.costBreakdown(companyId));
+    if (entityType.includes("instructions") || action.includes("instructions")) keys.push(qk.anyInstructions(companyId));
     if (entityType === "agent" || action.startsWith("agent.")) keys.push(qk.agents(companyId), ...(entityId ? [qk.agent(companyId, entityId)] : []));
     if (entityType === "approval" || action.startsWith("approval.")) keys.push(qk.approvals(companyId));
     if (entityType === "goal" || action.startsWith("goal.")) keys.push(qk.goals(companyId));
@@ -51,8 +58,20 @@ export function keysForEvent(companyId: string, e: LiveEvent): readonly (readonl
   return [];
 }
 
+type Listener = (e: LiveEvent) => void;
+const taps = new Map<string, Set<Listener>>();
+
+/** Hears every raw event of one organization, for things the cache can't hold (a run's log lines). Returns the unsubscribe. */
+export function tapEvents(companyId: string, fn: Listener): () => void {
+  const set = taps.get(companyId) ?? new Set<Listener>();
+  set.add(fn);
+  taps.set(companyId, set);
+  return () => void set.delete(fn);
+}
+
 export function applyEvent(qc: QueryClient, companyId: string, e: LiveEvent) {
   if (e.companyId && e.companyId !== companyId) return;
+  for (const fn of taps.get(companyId) ?? []) fn(e);
   for (const queryKey of keysForEvent(companyId, e)) void qc.invalidateQueries({ queryKey });
 }
 

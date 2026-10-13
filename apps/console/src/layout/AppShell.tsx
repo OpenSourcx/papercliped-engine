@@ -5,6 +5,8 @@ import { House, Menu, Plug, Plus, Settings, X } from "lucide-react";
 import { ContextSidebar } from "./ContextSidebar.tsx";
 import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
+import { useInboxCounts } from "../data/engine/more.ts";
+import { CommandPalette } from "../search/CommandPalette.tsx";
 import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
 import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
@@ -71,6 +73,8 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
   const updates = data.notices.filter((n) => !n.read && n.kind === "update").length;
   const onOrg = data.orgs.some((o) => o.slug === loc.pathname.split("/")[2]);
   const onPin = loc.pathname.split("/")[2] === "pin";
+  // Live: what is waiting on the person in each organization (approvals, questions, unread tasks, failed runs).
+  const waiting = useInboxCounts(data.orgs.flatMap((o) => (o.engine ? [o.engine.companyId] : [])));
   const nav = (to: string, label: string, icon: ReactNode, sub?: string, badge?: ReactNode) => (
     <NavLink key={to} to={to} onClick={onNavigate} aria-label={label} className={cn("group block outline-none", expanded && "px-3")}>
       {({ isActive }) => <RailButton active={isActive || loc.pathname.startsWith(`${to}/`)} label={label} sub={sub} badge={badge} expanded={expanded}>{icon}</RailButton>}
@@ -99,7 +103,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
             o.name,
             <Avatar name={o.name} hue={o.hue} size={48} className="rounded-none text-lead" />,
             working ? `${working} agents working` : "Idle",
-            working ? <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-good border-3 border-bg" /> : undefined,
+            (o.engine && waiting.get(o.engine.companyId)) ? <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-critical text-on-status text-micro font-bold flex items-center justify-center border-3 border-bg tabular-nums" aria-label={`${waiting.get(o.engine.companyId)} waiting for you`}>{waiting.get(o.engine.companyId)}</span> : working ? <span aria-hidden className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-good border-3 border-bg" /> : undefined,
           );
         })}
         {modalLink(modalHref("new-org"), "Create an organization", <Plus className="h-5 w-5" />, modals.modal === "new-org")}
@@ -169,6 +173,7 @@ export function AppShell() {
       </div>
       <RouteActions />
       <PinIsland />
+      <CommandPalette />
       <ModalHost />
     </div>
   );

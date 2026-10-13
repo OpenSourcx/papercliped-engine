@@ -1,12 +1,14 @@
 import { FEATURES, type FeatureNav } from "../features/registry.ts";
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Archive, Box, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Shield, Sparkles, SquareTerminal, Store, Target, Users, Vote, Workflow } from "lucide-react";
+import { Archive, Box, Search, Boxes, Cable, ChevronDown, CircleDollarSign, Database, FolderOpen, GitBranch, History, House, Gauge, Inbox, LayoutDashboard, ListTree, ListChecks, MessageCircle, Monitor, Network, Package, Repeat, Settings, Shield, Sparkles, SquareTerminal, Store, Target, Users, Vote, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import type { Guest, Org } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
 import { isOpen } from "../data/engine/labels.tsx";
-import { useApprovals, useIssues } from "../data/engine/queries.ts";
+import { useIssues } from "../data/engine/queries.ts";
+import { useAttention, useBadges } from "../data/engine/more.ts";
+import { openSearch } from "../search/CommandPalette.tsx";
 
 /**
  * The second column, like a Discord channel list. On the device it manages the machine; inside an organization it
@@ -114,10 +116,12 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
   const b = `/${d}/${org.slug}`;
   const machines = data.guests.filter((g) => g.org === org.slug);
   const issues = useIssues(companyId);
-  const approvals = useApprovals(companyId);
+  const badges = useBadges(companyId);
+  const attention = useAttention(companyId);
   const rg = org.resourceGroup;
   const open = (issues.data ?? []).filter((t) => isOpen(t.status)).length;
-  const pending = (approvals.data ?? []).filter((a) => a.status === "pending").length;
+  const inbox = badges.data?.inbox ?? 0;
+  const waiting = (attention.data?.items ?? []).filter((i) => !i.dismissal?.isActive).length;
   return (
     <>
       <Link to={`${b}/settings`} className="px-3 h-14 flex items-center gap-2 border-b border-line hover:bg-surface-2/60 transition-colors">
@@ -129,13 +133,23 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
       </Link>
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div className="mt-3 space-y-px">
+          <button onClick={openSearch} className="flex w-full items-center gap-2 h-8 px-2 rounded-md text-sm text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors" aria-label="Search">
+            <span className="text-ink-3 shrink-0"><Search className="h-4 w-4" /></span>
+            <span className="flex-1 text-left">Search</span>
+            <kbd className="font-mono text-micro text-ink-3 border border-line rounded-sm px-1">/</kbd>
+          </button>
           <Item to={b} end icon={<LayoutDashboard className="h-4 w-4" />}>Dashboard</Item>
-          <Item to={`${b}/decisions`} icon={<Vote className="h-4 w-4" />} count={pending}>Decisions</Item>
+          <Item to={`${b}/inbox`} icon={<Inbox className="h-4 w-4" />} count={inbox}>Inbox</Item>
+          <Item to={`${b}/chat`} icon={<MessageCircle className="h-4 w-4" />}>Chat</Item>
+          <Item to={`${b}/decisions`} icon={<Vote className="h-4 w-4" />} count={waiting}>Decisions</Item>
         </div>
         <Section id="sec-work" label="Work">
           <Item to={`${b}/tasks`} icon={<ListChecks className="h-4 w-4" />} count={open}>Tasks</Item>
           <Item to={`${b}/projects`} icon={<FolderOpen className="h-4 w-4" />}>Projects</Item>
+          <Item to={`${b}/routines`} icon={<Repeat className="h-4 w-4" />}>Routines</Item>
+          <Item to={`${b}/artifacts`} icon={<Package className="h-4 w-4" />}>Artifacts</Item>
           <Item to={`${b}/goals`} icon={<Target className="h-4 w-4" />}>Goals</Item>
+          <Item to={`${b}/workspaces`} icon={<GitBranch className="h-4 w-4" />}>Workspaces</Item>
         </Section>
         <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {machines.length === 0 && <p className="px-2 text-xs text-ink-3 py-1">None running</p>}
@@ -152,6 +166,7 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
         <Section id="sec-org" label="Organization">
           <Item to={`${b}/org`} icon={<Boxes className="h-4 w-4" />}>Org chart</Item>
           <Item to={`${b}/members`} icon={<Users className="h-4 w-4" />}>Members</Item>
+          <Item to={`${b}/skills`} icon={<Sparkles className="h-4 w-4" />}>Skills</Item>
           <Item to={`${b}/costs`} icon={<CircleDollarSign className="h-4 w-4" />}>Costs</Item>
           <Item to={`${b}/activity`} icon={<History className="h-4 w-4" />}>Activity</Item>
           <Item to={`${b}/settings`} icon={<Settings className="h-4 w-4" />}>Settings</Item>

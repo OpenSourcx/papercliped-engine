@@ -10,7 +10,14 @@ import { Modal } from "../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind } from "../../ui/primitives.tsx";
 import { LiveAgents } from "./live/LiveAgents.tsx";
 import { LiveTasks } from "./live/LiveTasks.tsx";
-import { LiveActivity, LiveCosts, LiveDecisions, LiveGoals, LiveOrgSettings, LiveProjects } from "./live/LiveWork.tsx";
+import { LiveRoutines } from "./live/LiveRoutines.tsx";
+import { LiveDecisions, LiveInbox } from "./live/LiveInbox.tsx";
+import { LiveOrgSettings } from "./live/LiveSettings.tsx";
+import { LiveArtifacts, LiveWorkspaces } from "./live/LiveArtifacts.tsx";
+import { LiveChat } from "./live/LiveChat.tsx";
+import { LiveSkills } from "./live/LiveSkills.tsx";
+import { LiveCosts } from "./live/LiveCosts.tsx";
+import { LiveActivity, LiveGoals, LiveProjects } from "./live/LiveWork.tsx";
 
 const ago = (iso: string | null) => {
   if (!iso) return "never";
@@ -30,7 +37,7 @@ function OrgGate({ children }: { children: (org: Org) => ReactNode }) {
   return <>{children(org)}</>;
 }
 
-export function Inbox() {
+function DemoInbox() {
   const { readInbox } = useEngine();
   return (
     <OrgGate>
@@ -156,7 +163,7 @@ function DemoGoals() {
   );
 }
 
-export function Routines() {
+function DemoRoutines() {
   const { toggleRoutine } = useEngine();
   return (
     <OrgGate>
@@ -360,6 +367,8 @@ export function ComingFromPaperclip({ title, body }: { title: string; body: stri
 const pick = (live: ReactNode, demo: ReactNode) => function Page() {
   return <>{useEngine().live ? live : demo}</>;
 };
+export const Routines = pick(<LiveRoutines />, <DemoRoutines />);
+export const Inbox = pick(<LiveInbox />, <DemoInbox />);
 export const Tasks = pick(<LiveTasks />, <DemoTasks />);
 export const Projects = pick(<LiveProjects />, <DemoProjects />);
 export const Goals = pick(<LiveGoals />, <DemoGoals />);
@@ -368,3 +377,7 @@ export const Agents = pick(<LiveAgents />, <DemoAgents />);
 export const Costs = pick(<LiveCosts />, <DemoCosts />);
 export const Activity = pick(<LiveActivity />, <DemoActivity />);
 export const OrgSettings = pick(<LiveOrgSettings />, <DemoOrgSettings />);
+export const Skills = pick(<LiveSkills />, <ComingFromPaperclip title="Skills" body="Reusable skills you can give your agents, from the skills catalog." />);
+export const Artifacts = pick(<LiveArtifacts />, <ComingFromPaperclip title="Artifacts" body="Files, documents and outputs your agents produce, versioned per task." />);
+export const Workspaces = pick(<LiveWorkspaces />, <ComingFromPaperclip title="Workspaces" body="Code workspaces your agents work in, with diffs and branches." />);
+export const Chat = pick(<LiveChat />, <ComingFromPaperclip title="Chat" body="Talk with your agents in threads, with their runs and tool calls inline." />);

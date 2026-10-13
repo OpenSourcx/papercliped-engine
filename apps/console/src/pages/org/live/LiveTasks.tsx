@@ -10,6 +10,7 @@ import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
+import { TaskExtras } from "./LiveTaskExtras.tsx";
 
 type Filter = "open" | "done" | "all" | IssueStatus;
 
@@ -151,6 +152,7 @@ export function LiveTaskDetail() {
               <Card className="p-5">
                 {t.description ? <p className="text-sm text-ink-2 whitespace-pre-wrap break-words">{t.description}</p> : <p className="text-sm text-ink-3">No description.</p>}
               </Card>
+              <TaskExtras task={t} />
               <Card>
                 <div className="px-5 pt-4 pb-2 flex items-center gap-2 text-compact font-semibold uppercase tracking-label text-ink-3"><MessageSquare className="h-3.5 w-3.5" />Comments</div>
                 {comments.isPending && <Loading />}
