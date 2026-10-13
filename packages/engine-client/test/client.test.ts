@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ENGINE_PATHS, ENGINE_PATHS_UNDOCUMENTED, EngineError, createEngineClient, engineEventsUrl } from "../src/index.ts";
+import { ENGINE_PATHS, ENGINE_PATHS_UNDOCUMENTED, EngineError, safeEnginePath, MAX_ATTACHMENT_BYTES, createEngineClient, engineEventsUrl } from "../src/index.ts";
 
 const spec = JSON.parse(readFileSync(new URL("../spec/openapi.json", import.meta.url), "utf8")) as { paths: Record<string, Record<string, unknown>> };
 
@@ -86,5 +86,22 @@ describe("the engine client", () => {
 
   it("builds the events socket address on the same origin", () => {
     expect(engineEventsUrl("abc", "https://pve.lan")).toBe("wss://pve.lan/engine/api/companies/abc/events/ws");
+  });
+
+  it("only follows engine file addresses that stay under /api/", () => {
+    expect(safeEnginePath("/api/attachments/abc/content")).toBe(true);
+    expect(safeEnginePath("/api/attachments/abc/content?download=1")).toBe(true);
+    for (const bad of ["https://evil.example/api/x", "//evil.example/api/x", "/api/../auth/x", "/other/x", "/api/a\\b", "/api/"]) expect(safeEnginePath(bad), bad).toBe(false);
+    expect(MAX_ATTACHMENT_BYTES).toBe(10 * 1024 * 1024);
+  });
+
+  it("uploads a file as multipart with the request header and reports a too-large answer in words", async () => {
+    const seen: RequestInit[] = [];
+    const c = createEngineClient({ fetch: async (_u, init) => { seen.push(init ?? {}); return new Response(JSON.stringify({ error: "Uploads are limited to 10 MiB" }), { status: 413 }); } });
+    const e = await c.artifacts.upload("c1", "i1", new File(["x"], "a.txt")).catch((x) => x);
+    expect(e).toMatchObject({ status: 413, message: "Uploads are limited to 10 MiB" });
+    expect((seen[0].headers as Record<string, string>)["X-EPC-Request"]).toBe("1");
+    expect(seen[0].body).toBeInstanceOf(FormData);
+    expect(() => c.artifacts.fetchPath("https://evil.example/x")).toThrow();
   });
 });

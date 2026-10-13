@@ -67,7 +67,7 @@ export function useChatSettings() {
   return useQuery({ queryKey: qk.chatSettings, queryFn: engine.chat.settings, enabled: ready, staleTime: 30_000, retry: false });
 }
 export const useChats = (companyId: Id, enabled: boolean) =>
-  useCompanyQuery(enabled ? companyId : null, qk.chats(k(companyId)), (id) => engine.chat.list(id));
+  useCompanyQuery(enabled ? companyId : null, qk.chats(k(companyId)), (id) => engine.chat.list(id), { retry: false });
 
 export function useChatWrites(companyId: string) {
   const qc = useQueryClient();
