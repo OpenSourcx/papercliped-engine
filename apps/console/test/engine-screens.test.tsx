@@ -304,3 +304,28 @@ describe("live events for the new screens", () => {
     expect(seen).toEqual(["heartbeat.run.log"]);
   });
 });
+
+describe("creating an agent", () => {
+  const adapters = [
+    { type: "process", label: "process", source: "builtin", modelsCount: 0, loaded: true, disabled: false },
+    { type: "http", label: "http", source: "builtin", modelsCount: 0, loaded: true, disabled: false },
+    { type: "cli_local", label: "cli_local", source: "builtin", modelsCount: 0, loaded: true, disabled: false },
+  ];
+  const caps = (sandbox: string[]) => ({ adapters: adapters.map((a) => ({ adapterType: a.type, drivers: { local: "supported", sandbox: sandbox.includes(a.type) ? "supported" : "unsupported" } })) });
+
+  it("starts from an adapter that can run in a container, never from a bare command that can't", async () => {
+    state.routes["GET /engine/api/adapters"] = () => [200, adapters];
+    state.routes["GET /engine/api/companies/c1/environments/capabilities"] = () => [200, caps(["cli_local"])];
+    renderOrg("/pve/acme/agents");
+    fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
+    await waitFor(() => expect((screen.getByLabelText(/Runs with/) as HTMLSelectElement).value).toBe("cli_local"));
+  });
+
+  it("still avoids process and http when the engine can't say which adapters fit", async () => {
+    state.routes["GET /engine/api/adapters"] = () => [200, adapters];
+    state.routes["GET /engine/api/companies/c1/environments/capabilities"] = () => [500, { error: "nope" }];
+    renderOrg("/pve/acme/agents");
+    fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
+    await waitFor(() => expect((screen.getByLabelText(/Runs with/) as HTMLSelectElement).value).toBe("cli_local"));
+  });
+});

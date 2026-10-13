@@ -5,7 +5,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useRuns } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs } from "../../../ui/primitives.tsx";
@@ -67,9 +67,14 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("");
   const [capabilities, setCapabilities] = useState("");
   const usable = (adapters.data ?? []).filter((a) => a.loaded !== false && !a.disabled);
+  // Agents run in containers, so start from an adapter that can: the first one the engine says supports a sandbox,
+  // else any that isn't a bare command or HTTP call (those can never run in a container).
+  const sandbox = useSandboxAdapters(companyId);
   useEffect(() => {
-    if (!adapter && usable.length) setAdapter(usable.find((a) => a.type === "process")?.type ?? usable[0].type);
-  }, [adapter, usable]);
+    if (adapter || !usable.length || (sandbox.isPending && !sandbox.isError)) return;
+    const fits = (a: { type: string }) => sandbox.data?.has(a.type);
+    setAdapter((usable.find(fits) ?? usable.find((a) => a.type !== "process" && a.type !== "http") ?? usable[0]).type);
+  }, [adapter, usable, sandbox.data, sandbox.isPending, sandbox.isError]);
   const info = usable.find((a) => a.type === adapter);
   const models = useAdapterModels(companyId, info && info.modelsCount > 0 ? adapter : null);
   useEffect(() => setModel(""), [adapter]);

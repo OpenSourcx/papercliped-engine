@@ -81,6 +81,8 @@ export interface Member { id: string; companyId: string; principalType: string; 
 export interface MembersAnswer { members: Member[]; access: { currentUserRole: string | null; canManageMembers: boolean; canInviteUsers: boolean } }
 export interface AdapterInfo { type: string; label: string; source: "builtin" | "external"; modelsCount: number; loaded: boolean; disabled: boolean; [k: string]: unknown }
 export interface AdapterModel { id: string; label: string }
+/** Which adapters can run in which kind of environment ("supported" or "unsupported"); a sandbox is where ePaperclip's agents run. */
+export interface EnvironmentCapabilities { adapters: { adapterType: string; drivers: Record<string, string> }[] }
 
 /** Request bodies, as Paperclip's validators (createCompanySchema, createAgentSchema, createIssueSchema, ...) accept them. */
 export interface CreateCompanyBody { name: string; description?: string | null; budgetMonthlyCents?: number }
@@ -151,6 +153,7 @@ export const ENGINE_PATHS = {
   heartbeatRuns: "/api/companies/{companyId}/heartbeat-runs",
   adapters: "/api/adapters",
   adapterModels: "/api/companies/{companyId}/adapters/{type}/models",
+  environmentCapabilities: "/api/companies/{companyId}/environments/capabilities",
   // Routines
   routine: "/api/routines/{id}",
   routineRuns: "/api/routines/{id}/runs",
@@ -450,6 +453,7 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     search: (companyId: string, p: SearchParams) => call<CompanySearchResponse>("GET", P.search, { companyId }, undefined, { q: p.q, scope: p.scope, limit: p.limit ?? 8 }),
     adapters: () => call<AdapterInfo[]>("GET", P.adapters),
     adapterModels: (companyId: string, type: string) => call<AdapterModel[]>("GET", P.adapterModels, { companyId, type }),
+    environmentCapabilities: (companyId: string) => call<EnvironmentCapabilities>("GET", P.environmentCapabilities, { companyId }),
   };
 }
 

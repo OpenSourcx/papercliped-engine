@@ -106,6 +106,12 @@ export function useAdapters() {
   return useQuery({ queryKey: qk.adapters, queryFn: engine.adapters, enabled: ready, staleTime: 5 * 60_000 });
 }
 
+/** The adapters that can run in a container (a sandbox environment). Agents run nowhere else, so these are the ones worth offering first. */
+export function useSandboxAdapters(companyId: string | null | undefined) {
+  const ready = useEngineReady();
+  return useQuery({ queryKey: qk.envCaps(companyId ?? ""), queryFn: () => engine.environmentCapabilities(companyId!), enabled: ready && !!companyId, staleTime: 5 * 60_000, retry: false, select: (c) => new Set(c.adapters.filter((a) => a.drivers.sandbox === "supported").map((a) => a.adapterType)) });
+}
+
 export function useAdapterModels(companyId: string | null | undefined, type: string | null) {
   const ready = useEngineReady();
   return useQuery({ queryKey: qk.models(companyId ?? "", type ?? ""), queryFn: () => engine.adapterModels(companyId!, type!), enabled: ready && !!companyId && !!type, staleTime: 5 * 60_000, retry: false });

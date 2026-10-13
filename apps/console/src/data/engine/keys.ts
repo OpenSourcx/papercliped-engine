@@ -26,6 +26,7 @@ export const qk = {
   costs: (id: string) => ["engine", "co", id, "costs"] as const,
   activity: (id: string) => ["engine", "co", id, "activity"] as const,
   members: (id: string) => ["engine", "co", id, "members"] as const,
+  envCaps: (id: string) => ["engine", "co", id, "env-capabilities"] as const,
   models: (id: string, type: string) => ["engine", "co", id, "models", type] as const,
   routines: (id: string) => ["engine", "co", id, "routines"] as const,
   routine: (id: string, routineId: string) => ["engine", "co", id, "routine", routineId] as const,

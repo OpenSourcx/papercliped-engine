@@ -135,6 +135,8 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   };
   /** The engine makes a Proxmox administrator an instance admin shortly after sign-in, in the background. */
   const engineAdmin = (user: string) => until(`${user} to be an engine instance admin`, async () => (await eng(user, "GET", "/api/companies")).status === 200 && (await eng(user, "GET", "/api/admin/users")).status === 200);
+  /** The control inside the <label> whose first line is this text (the engine pages wrap their inputs in labels). */
+  const field = (page: Page, label: string) => page.locator("label").filter({ has: page.locator("span", { hasText: new RegExp(`^${label}\\b`) }) }).locator("input, select, textarea").first();
   const bodyText = async (page: Page) => (await page.innerText("body")).replace(/\s+/g, " ");
 
   // ---- stages
@@ -190,6 +192,142 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     // Lee (not a member) still sees nothing of it.
     const lee = await eng("lee", "GET", `/api/companies/${co.id}`);
     expect(lee.status >= 400, `a non-member can't read the organization, got ${lee.status}`);
+  });
+
+  const poolAcl = () => c.pve.acl.filter((a) => a.path === "/pool/epc-acme-labs");
+  const openUser = async (page: Page, userid: string) => {
+    await page.goto(c.base + "/pve/home?settings=access");
+    await page.click(`button:has-text("${userid}")`);
+    await page.waitForSelector("text=Save changes");
+  };
+  const orgMembers = async (): Promise<any[]> => {
+    const r = await eng("sam", "GET", `/api/companies/${S.org!.id}/members`);
+    expect(r.status === 200, `members listed, got ${r.status}`);
+    const list = Array.isArray(r.json) ? r.json : r.json?.members;
+    expect(Array.isArray(list), `members is a list, got ${r.text.slice(0, 200)}`);
+    return list;
+  };
+
+  await stage("access: give kim a role in the organization; Proxmox ACLs and engine membership follow", async () => {
+    const { page } = await open("sam");
+    await openUser(page, "kim@pve");
+    await page.getByLabel("Role in Acme Labs").selectOption("operator");
+    await shot(page, "04-iac-kim-operator");
+    await page.click("button:has-text('Save changes')");
+    await until("kim's ACL on the pool", () => poolAcl().some((a) => a.ugid === "kim@pve"));
+    expect(poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEVMUser"), `kim has PVEVMUser on the pool, got ${JSON.stringify(poolAcl())}`);
+    expect(!c.pve.acl.some((a) => a.ugid === "kim@pve" && a.path === "/"), "kim got no device-wide access");
+    const kim = await until("the engine to list kim as a member", async () => (await orgMembers()).find((m) => m.user?.name === "kim" || JSON.stringify(m.user ?? {}).includes("kim.pve")));
+    expect(kim.membershipRole === "operator" && kim.status === "active", `kim's engine role is operator, got ${JSON.stringify(kim)}`);
+    await page.goto(c.base + `/pve/acm/members`);
+    await page.waitForSelector("text=kim");
+    await shot(page, "04-members");
+  });
+
+  await stage("access: create a user with a role in the organization", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/home?settings=access");
+    await page.click("button:has-text('New user')");
+    await page.fill('input[placeholder="sam@pve"]', "ana@pve");
+    await page.fill('input[type="password"]', "an-okay-passphrase");
+    await page.getByLabel("Role in Acme Labs").selectOption("viewer");
+    await page.click("button:has-text('Create user')");
+    await until("ana in Proxmox", () => c.pve.users.has("ana@pve"));
+    await until("ana's pool ACL", () => poolAcl().some((a) => a.ugid === "ana@pve"));
+    expect(poolAcl().some((a) => a.ugid === "ana@pve" && a.roleid === "PVEAuditor"), `ana has PVEAuditor on the pool, got ${JSON.stringify(poolAcl())}`);
+    const asAna = await fetch(c.base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "ana", password: "an-okay-passphrase", realm: "pve" }) });
+    expect(asAna.status === 200, `the new user can sign in with the password, got ${asAna.status}`);
+  });
+
+  await stage("access: the member signs in and sees only their organization; role changes and removal reach Proxmox", async () => {
+    const kim = await signedIn("kim");
+    await kim.waitForSelector("text=Acme Labs", { timeout: 20000 });
+    await shot(kim, "05-kim-home");
+    const own = await eng("kim", "GET", "/api/companies");
+    expect(own.json.length === 1 && own.json[0].id === S.org!.id, `kim sees exactly Acme Labs, got ${own.text.slice(0, 200)}`);
+    expect((await eng("kim", "POST", "/api/companies", { name: "Nope" })).status === 403, "kim can't create organizations");
+    await kim.goto(c.base + "/pve/acm");
+    await kim.waitForSelector("text=RESOURCE GROUP");
+    const settingsEdit = await call("kim", "PUT", `/api/resource-groups/${S.org!.id}`, { name: "Acme Labs", cores: 99, memoryMb: 1024, diskGb: 1, maxGuests: 1 });
+    expect(settingsEdit.status === 403, `an operator can't change the organization's resources, got ${settingsEdit.status}`);
+    const { page } = await open("sam");
+    await openUser(page, "kim@pve");
+    await page.getByLabel("Role in Acme Labs").selectOption("viewer");
+    await page.click("button:has-text('Save changes')");
+    await until("kim becomes an auditor", () => poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEAuditor"));
+    expect(!poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEVMUser"), "the operator role was taken away");
+    await openUser(page, "kim@pve");
+    await page.getByLabel("Role in Acme Labs").selectOption("");
+    await page.click("button:has-text('Save changes')");
+    await until("kim's pool ACLs removed", () => !poolAcl().some((a) => a.ugid === "kim@pve"));
+    await until("kim to leave the engine membership", async () => !(await orgMembers()).some((m) => (m.user?.name === "kim") && m.status === "active"));
+    // Taking someone's organization role away ends their open sessions, so a stale tab can't keep working.
+    expect((await eng("kim", "GET", "/api/companies")).status === 401, "kim's open session ended when her access was removed");
+    const again = await fetch(c.base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "kim", password: "right", realm: "pve" }) });
+    const cookie = again.headers.get("set-cookie")!.split(";")[0];
+    const fresh = await fetch(c.base + "/engine/api/companies", { headers: { Cookie: cookie } });
+    expect(fresh.status === 200 && (await fresh.json()).length === 0, "signing in again, kim sees no organizations");
+  });
+
+  await stage("agents: create an agent through the console; its pages open against the real engine", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/agents");
+    await page.click("button:has-text('New agent')");
+    await field(page, "Name").fill("Runner");
+    await field(page, "Role").selectOption("engineer");
+    const runsWith = await field(page, "Runs with").inputValue();
+    expect(runsWith !== "process", `the default adapter can run in a container; "process" can't (default was ${runsWith})`);
+    await shot(page, "06-new-agent");
+    await page.click("button:has-text('Create agent')");
+    await page.waitForURL(/\/pve\/acm\/agents\/[0-9a-f-]{36}$/, { timeout: 20000 });
+    S.agentId = page.url().split("/").pop();
+    const list = await eng("sam", "GET", `/api/companies/${S.org!.id}/agents`);
+    const a = list.json.find((x: any) => x.id === S.agentId);
+    expect(a && a.name === "Runner" && a.role === "engineer", `the engine has the agent, got ${list.text.slice(0, 300)}`);
+    expect(/^[0-9a-f-]{36}$/.test(a.id), "agent ids are UUIDs");
+    for (const tab of ["Overview", "Runs", "Configuration", "Instructions", "Skills", "Budget"]) {
+      await page.getByRole("tab", { name: tab }).or(page.getByRole("button", { name: tab, exact: true })).first().click();
+      await page.waitForTimeout(700);
+      await shot(page, `06-agent-${tab.toLowerCase()}`);
+    }
+  });
+
+  await stage("tasks: create a task for the agent; the run fails closed because there is no container", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/tasks");
+    await page.click("button:has-text('New task')");
+    await page.fill('input[placeholder="What needs doing?"]', "Sharpen the anvils");
+    await page.fill("textarea", "All twelve of them.");
+    await page.locator("select").filter({ hasText: "Unassigned" }).selectOption({ label: "Runner" });
+    await shot(page, "07-new-task");
+    await page.click("button:has-text('Create task')");
+    await page.waitForSelector("text=Sharpen the anvils");
+    const issues = await eng("sam", "GET", `/api/companies/${S.org!.id}/issues`);
+    const t = (Array.isArray(issues.json) ? issues.json : issues.json.issues).find((x: any) => x.title === "Sharpen the anvils");
+    expect(t, `the engine has the task, got ${issues.text.slice(0, 200)}`);
+    expect(t.identifier === "ACM-1" && t.assigneeAgentId === S.agentId, `the task is ACM-1 and assigned to the agent, got ${t.identifier} ${t.assigneeAgentId}`);
+    S.taskId = t.id;
+    // Assigning wakes the agent; with no agent containers the engine's managed-sandbox-only policy refuses the run.
+    const runs = await until("a failed run", async () => {
+      const r = await eng("sam", "GET", `/api/companies/${S.org!.id}/heartbeat-runs?agentId=${S.agentId}`);
+      const list = Array.isArray(r.json) ? r.json : r.json?.runs ?? [];
+      return list.find((x: any) => x.status === "failed") ? list : null;
+    }, 30000);
+    const failed = runs.find((x: any) => x.status === "failed");
+    const why = `${failed.error ?? ""} ${failed.errorCode ?? ""}`;
+    console.log("       run failed with:", why.trim().slice(0, 200));
+    expect(/managed sandbox|local execution|sandbox/i.test(why), `the run failed because of the sandbox policy, got: ${why}`);
+    expect(!runs.some((x: any) => x.status === "running" || x.status === "succeeded"), "no run started on the host");
+    await page.goto(c.base + `/pve/acm/tasks/${t.id}`);
+    await page.waitForSelector("text=Sharpen the anvils");
+    await shot(page, "07-task-detail");
+    await page.goto(c.base + `/pve/acm/agents/${S.agentId}`);
+    await page.waitForSelector("text=Runner");
+    await page.getByRole("tab", { name: "Runs" }).or(page.getByRole("button", { name: "Runs", exact: true })).first().click();
+    await page.waitForTimeout(1200);
+    await shot(page, "07-agent-runs-failed");
+    const wake = await eng("sam", "POST", `/api/agents/${S.agentId}/wakeup`, { source: "on_demand", triggerDetail: "manual" });
+    console.log("       manual wakeup:", wake.status, wake.text.slice(0, 160));
   });
 
   return results;
