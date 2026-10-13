@@ -53,13 +53,13 @@ export function fakeCluster(opts: ClusterFakeOptions = {}, inner: Transport = fa
     options: { keyboard: "en-us", fencing: "watchdog", migration: "type=secure" } as Record<string, unknown>,
     ha: {
       digest: "h1",
-      resources: new Map<string, Record<string, unknown>>([["vm:103", { sid: "vm:103", state: "started", group: rules ? undefined : "prefer-pve2", max_restart: 1, max_relocate: 1, comment: "app server" }]]),
+      resources: new Map<string, Record<string, unknown>>(single ? [] : [["vm:103", { sid: "vm:103", state: "started", group: rules ? undefined : "prefer-pve2", max_restart: 1, max_relocate: 1, comment: "app server" }]]),
       groups: new Map<string, Record<string, unknown>>(rules ? [] : [["prefer-pve2", { group: "prefer-pve2", nodes: "pve2:2,pve:1", restricted: 0, nofailback: 0, digest: "g1" }]]),
       rules: new Map<string, Record<string, unknown>>(rules ? [["keep-app-home", { rule: "keep-app-home", type: "node-affinity", resources: "vm:103", nodes: "pve2:2,pve:1", strict: 0, affinity: "positive", digest: "r1" }]] : []),
       armed: "armed",
     },
-    replication: new Map<string, Record<string, unknown>>([["101-0", { id: "101-0", type: "local", guest: 101, jobnum: 0, target: "pve2", schedule: "*/15", comment: "web copy", source: "pve", digest: "p1" }]]),
-    replStatus: new Map<string, Record<string, unknown>>([["101-0", { id: "101-0", guest: 101, jobnum: 0, source: "pve", target: "pve2", schedule: "*/15", last_sync: 1_760_000_000, last_try: 1_760_000_000, next_sync: 1_760_000_900, duration: 4.2, fail_count: 0 }]]),
+    replication: new Map<string, Record<string, unknown>>(single ? [] : [["101-0", { id: "101-0", type: "local", guest: 101, jobnum: 0, target: "pve2", schedule: "*/15", comment: "web copy", source: "pve", digest: "p1" }]]),
+    replStatus: new Map<string, Record<string, unknown>>(single ? [] : [["101-0", { id: "101-0", guest: 101, jobnum: 0, source: "pve", target: "pve2", schedule: "*/15", last_sync: 1_760_000_000, last_try: 1_760_000_000, next_sync: 1_760_000_900, duration: 4.2, fail_count: 0 }]]),
     replLog: ["start replication job", "end replication job"] as string[],
     ceph: opts.ceph === true && !single,
     cephFlags: new Map<string, boolean>([["noout", false], ["pause", false], ["noscrub", false]]),
@@ -93,7 +93,7 @@ export function fakeCluster(opts: ClusterFakeOptions = {}, inner: Transport = fa
     const f = new URLSearchParams(req.body ?? "");
     const q = u.searchParams;
     const m = req.method;
-    calls.push({ method: m, path, body: req.body ?? "", user });
+    calls.push({ method: m, path: decodeURIComponent(path), body: req.body ?? "", user });
     if (m !== "GET" && !admin) return deny;
 
     if (path === "/version") return ok({ version, release: version.split(".").slice(0, 2).join(".") });
@@ -150,7 +150,7 @@ export function fakeCluster(opts: ClusterFakeOptions = {}, inner: Transport = fa
       bump();
       return ok(null);
     }
-    const hr = path.match(/^\/cluster\/ha\/resources\/((?:vm|ct):\d+)(?:\/(migrate|relocate))?$/);
+    const hr = decodeURIComponent(path).match(/^\/cluster\/ha\/resources\/((?:vm|ct):\d+)(?:\/(migrate|relocate))?$/);
     if (hr) {
       const r = st.ha.resources.get(hr[1]);
       if (!r) return fail(500, `no such resource '${hr[1]}'`);

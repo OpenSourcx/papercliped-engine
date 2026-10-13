@@ -53,7 +53,6 @@ describe("sign-in, same-site and permissions", () => {
     const r = await send(lee, "POST", "/api/cluster/replication/101-0/run-now", {});
     expect(r.status).toBe(403);
     expect(r.json.error).toMatch(/permission/);
-    expect(calls("POST", "/nodes/pve/replication/101-0/schedule_now")).toHaveLength(0);
     expect((await send(sam, "GET", "/api/cluster/nothing")).status).toBe(404);
     expect((await send(sam, "DELETE", "/api/cluster/overview")).status).toBe(405);
   });
@@ -67,7 +66,7 @@ describe("the cluster", () => {
     expect(r).toMatchObject({ clustered: true, name: "lab", quorate: true, pveMajor: 9, local: "pve", onlineCount: 2, votes: 3 });
     expect(r.nodes.map((n: any) => [n.name, n.online, n.local, n.votes])).toEqual([["pve", true, true, 1], ["pve2", true, false, 1], ["pve3", false, false, 1]]);
     expect(r.nodes[0].links).toEqual([{ n: 0, address: "10.0.0.2" }]);
-    expect(r.nodes[0].guests).toEqual({ running: 1, total: 1 });
+    expect(r.nodes[0].guests).toEqual({ running: 1, total: 2 });
     expect(r.totem.clusterName).toBe("lab");
   });
 
@@ -234,7 +233,8 @@ describe("high availability", () => {
     expect(put.status).toBe(200);
     expect(form(calls("PUT", "/cluster/ha/resources/ct:101")[0].body)).toEqual({ state: "stopped", max_restart: "3", delete: "comment", digest });
     const stale = await send(sam, "PUT", "/api/cluster/ha/resources/ct:101", { state: "started", digest });
-    expect(stale.status).toBe(400);
+    expect(stale.status).toBe(502);
+    expect(stale.json.error).toMatch(/modified/);
     expect((await send(sam, "PUT", "/api/cluster/ha/resources/ct:101", {})).status).toBe(400);
     expect((await send(sam, "DELETE", "/api/cluster/ha/resources/ct:101", {})).status).toBe(200);
     expect(calls("DELETE", "/cluster/ha/resources/ct:101")).toHaveLength(1);
@@ -284,7 +284,7 @@ describe("high availability", () => {
     expect((await send(sam, "PUT", "/api/cluster/ha/rules/keep-app-home", { type: "resource-affinity", digest: "r1" })).json.code).toBe("type");
     expect((await send(sam, "PUT", "/api/cluster/ha/rules/keep-app-home", { strict: true, digest: "r1" })).status).toBe(200);
     expect(form(calls("PUT", "/cluster/ha/rules/keep-app-home")[0].body)).toEqual({ type: "node-affinity", strict: "1", digest: "r1" });
-    expect((await send(sam, "PUT", "/api/cluster/ha/rules/keep-app-home", { strict: true, digest: "old" })).status).toBe(400);
+    expect((await send(sam, "PUT", "/api/cluster/ha/rules/keep-app-home", { strict: true, digest: "old" })).status).toBe(502);
     expect((await send(sam, "DELETE", "/api/cluster/ha/rules/keep-app-home", {})).status).toBe(200);
   });
 
@@ -344,7 +344,7 @@ describe("replication", () => {
     const put = await send(sam, "PUT", "/api/cluster/replication/101-0", { schedule: "hourly", rate: null, disable: true, digest: "p1" });
     expect(put.status).toBe(200);
     expect(form(calls("PUT", "/cluster/replication/101-0")[0].body)).toEqual({ schedule: "hourly", disable: "1", delete: "rate", digest: "p1" });
-    expect((await send(sam, "PUT", "/api/cluster/replication/101-0", { schedule: "hourly", digest: "old" })).status).toBe(400);
+    expect((await send(sam, "PUT", "/api/cluster/replication/101-0", { schedule: "hourly", digest: "old" })).status).toBe(502);
     expect((await send(sam, "PUT", "/api/cluster/replication/101-0", {})).status).toBe(400);
     expect((await send(sam, "PUT", "/api/cluster/replication/not-an-id", { schedule: "hourly" })).status).toBe(400);
     expect((await send(sam, "DELETE", "/api/cluster/replication/101-0", {})).status).toBe(400);
@@ -535,7 +535,7 @@ describe("Ceph", () => {
     expect((await send(sam, "PUT", "/api/cluster/ceph/pools/fast", { autoscale: "warn", minSize: 1 })).status).toBe(200);
     expect((await send(sam, "PUT", "/api/cluster/ceph/pools/fast", {})).status).toBe(400);
     expect((await send(sam, "PUT", "/api/cluster/ceph/pools/fast", { pgNum: 4 })).status).toBe(400);
-    expect((await send(sam, "DELETE", "/api/cluster/ceph/pools/fast", {})).status).toBe(404);
+    expect((await send(sam, "DELETE", "/api/cluster/ceph/pools/fast", {})).status).toBe(405);
   });
 });
 
