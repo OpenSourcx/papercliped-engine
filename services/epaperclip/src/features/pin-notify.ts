@@ -132,7 +132,7 @@ async function collectTasks(rt: PinRuntime, user: string, pve: ProxmoxClient, no
 }
 
 async function collectNodes(rt: PinRuntime, user: string, pve: ProxmoxClient) {
-  const res = await pve.clusterResources().catch(() => []);
+  const res = await pve.call<{ type: string; node?: string; status?: string }[]>("GET", "/cluster/resources", { type: "node" }).catch(() => []);
   const states = rt.store.nodeStates();
   const next = { ...states };
   for (const r of res) {

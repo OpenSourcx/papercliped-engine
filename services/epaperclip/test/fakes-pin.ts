@@ -101,6 +101,7 @@ export function fakePinPve() {
 
     if (path === "/cluster/resources") {
       if (params.type === "storage") return base.transport(req);
+      if (params.type === "node") return ok([{ id: "node/pve", type: "node", node: "pve", status: st.nodeOnline ? "online" : "offline" }]);
       const vm = [...guests].filter(([id]) => privs(who, `/vms/${id}`).has("VM.Audit")).map(([vmid, g]) => ({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status, mem: g.mem, maxmem: g.maxmem, cpu: g.cpu, maxcpu: 2, disk: 1 * GiB, maxdisk: 8 * GiB, tags: g.tags, pool: g.pool }));
       return ok(params.type === "vm" ? vm : [...vm, { id: "node/pve", type: "node", node: "pve", status: st.nodeOnline ? "online" : "offline" }]);
     }

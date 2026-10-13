@@ -97,7 +97,7 @@ export class AutomationRunner {
       const now = this.rt.now();
       for (const a of Object.values(this.rt.store.automations())) {
         if (a.paused || this.active.has(a.id)) continue;
-        const due = a.retryAt ?? nextDue(a.spec.trigger, a.lastRunAt, now);
+        const due = dueOf(a, now);
         if (due > this.rt.now()) continue;
         await this.run(a.id, "schedule").catch(() => {});
       }
@@ -257,6 +257,9 @@ export function startPinRuntime(state: Parameters<typeof configurePinRuntime>[0]
   return { rt, runner };
 }
 
+/** When an automation is next due. A daily time counts from when it was made, so one made after today's time waits for tomorrow's. */
+const dueOf = (a: Automation, now: number) => a.retryAt ?? nextDue(a.spec.trigger, a.lastRunAt ?? (a.spec.trigger.type === "schedule" && a.spec.trigger.dailyAt ? a.createdAt : null), now);
+
 const pathsFor = (spec: AutomationSpec): string[] => {
   const s = spec.scope;
   if (s.vmids && s.vmids.length <= 50) return s.vmids.map((v) => `/vms/${v}`);
@@ -282,7 +285,7 @@ const view = (rt: PinRuntime, a: Automation) => {
     lastRunAt: a.lastRunAt,
     lastStatus: a.lastStatus,
     consecutiveFailures: a.consecutiveFailures,
-    nextRunAt: a.paused ? null : (a.retryAt ?? nextDue(a.spec.trigger, a.lastRunAt, rt.now())),
+    nextRunAt: a.paused ? null : dueOf(a, rt.now()),
     retryAt: a.retryAt,
   };
 };

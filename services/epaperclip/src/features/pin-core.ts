@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Transport } from "@papercliped-engine/proxmox-client";
 import type { AutomationSpec } from "@papercliped-engine/automations";
-import type { EngineGateway } from "../engine.ts";
 import type { HttpFetch } from "../connectors.ts";
 import type { StateStore } from "../state.ts";
 import { appendAudit } from "./access-tokens.ts";
@@ -21,7 +20,6 @@ export type Sleep = (ms: number) => Promise<void>;
 export interface PinRuntimeOpts {
   /** How to reach Proxmox for background work (automations act with their own Proxmox API token, never a ticket). */
   pve: { baseUrl: string; node: string; caPem?: string; transport?: Transport };
-  gateway?: EngineGateway | null;
   /** Outbound HTTP for the release feed. */
   fetch?: HttpFetch;
   now?: () => number;
