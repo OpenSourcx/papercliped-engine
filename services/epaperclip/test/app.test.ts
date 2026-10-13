@@ -79,6 +79,7 @@ function fakePve() {
     if (path.startsWith("/nodes/pve/tasks/") && path.endsWith("/log")) return ok([{ n: 1, t: "downloading" }, { n: 2, t: "TASK OK" }]);
     if (path === "/nodes/pve/qemu" && req.method === "POST") return admin ? ok("UPID:pve:qm") : { status: 403, body: "" };
     if (path === "/nodes/pve/lxc/101/termproxy" && req.method === "POST") return ok({ port: 5901, ticket: "PVEVNC:abc", user, upid: "UPID:pve:1:2:3:vncproxy:101:x:" });
+    if (path === "/nodes/pve/termproxy" && req.method === "POST") termproxyBodies.push(req.body ?? "");
     if (path === "/nodes/pve/termproxy" && req.method === "POST") return admin ? ok({ port: 5900, ticket: "PVEVNC:node", user, upid: "UPID:pve:1:2:3:vncshell::x:" }) : { status: 403, body: "" };
     if (path === "/cluster/backup" && req.method === "GET") return admin ? ok([{ id: "backup-1a2b", schedule: "21:00", storage: "drive2", all: 1, mode: "snapshot", compress: "zstd", enabled: 1, "prune-backups": "keep-last=3", "next-run": 1900000000 }]) : { status: 403, body: "" };
     if (path === "/cluster/backup" && req.method === "POST") return admin ? ok(null) : { status: 403, body: "" };
@@ -159,6 +160,7 @@ const INTEGRITY = `sha512-${"A".repeat(86)}==`;
 const catalog = (sequence: number, expires = "2026-12-01T00:00:00Z") => JSON.stringify({ schema: 1, sequence, generatedAt: "2026-10-01T00:00:00Z", expires, entries: [{ id: "slack", kind: "connector", connectorKind: "chat", name: "Slack", vendor: "Slack", summary: "Post updates.", version: "1.0.0", source: { type: "npm", name: "@epc/slack", version: "1.0.0", integrity: INTEGRITY }, permissions: ["net.slack.com"] }] });
 const publish = (body: string, key = signer) => { market = { body, sig: signIndex(Buffer.from(body), key.privateKeyPem, key.publicKeyPem) }; };
 let consoleSeen: { url: string; cookie: string | undefined; frames: string[] }[];
+const termproxyBodies: string[] = [];
 
 beforeEach(async () => {
   pve = fakePve();
@@ -959,7 +961,32 @@ describe("live consoles", () => {
     await until(() => out.length > 0);
     expect(out).toEqual(["echo:whoami"]);
     expect(consoleSeen[0].url).toContain("/api2/json/nodes/pve/vncwebsocket?port=5900");
+    expect(termproxyBodies.at(-1)).toBe("");
     ws.close();
+  });
+
+  it("passes the package upgrade command to the node terminal, and nothing else", async () => {
+    const c = await signIn();
+    const { ws, out } = await open("/api/console/node?cmd=upgrade", { Cookie: c, Origin: base });
+    ws.send("0:2:ls");
+    await until(() => out.length > 0);
+    expect(termproxyBodies.at(-1)).toBe("cmd=upgrade");
+    expect(consoleSeen.at(-1)!.url).toContain("/api2/json/nodes/pve/vncwebsocket?port=5900");
+    ws.close();
+    const before = termproxyBodies.length;
+    for (const target of ["/api/console/node?cmd=rm%20-rf", "/api/console/node?cmd=", "/api/console/guests/101?cmd=upgrade"]) {
+      const bad = await open(target, { Cookie: c, Origin: base });
+      expect(await bad.closed).toBe(4000);
+      expect(bad.out.join("")).toContain("isn't available");
+    }
+    expect(termproxyBodies.length).toBe(before);
+  });
+
+  it("refuses the upgrade command to people Proxmox gives no node terminal", async () => {
+    const c = await signIn("lee");
+    const { out, closed } = await open("/api/console/node?cmd=upgrade", { Cookie: c, Origin: base });
+    expect(await closed).toBe(4000);
+    expect(out.join("")).toContain("doesn't have console access");
   });
 });
 

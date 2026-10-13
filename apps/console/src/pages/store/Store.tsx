@@ -43,6 +43,7 @@ function StatusChip({ it }: { it: StoreItem }) {
 /** The Store: one place to get operating systems, apps, driver disks and plugins, with what's installed and what has an update. */
 export function Store() {
   const nav = useNavigate();
+  const engine = useEngine();
   const { items, loading, problems } = useStoreItems();
   const [cat, setCat] = useState<Category | "home">("home");
   const [q, setQ] = useState("");
@@ -78,7 +79,7 @@ export function Store() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the Store" className="pl-9" aria-label="Search the Store" />
         </div>
       </div>
-      {problems.length > 0 && <p className="text-compact text-warning mb-4">{problems.join(" ")} What's installed may be out of date.</p>}
+      {problems.length > 0 && <p className="text-compact text-warning mb-4">{problems.join(" ")} What's installed may be out of date. <button onClick={() => engine.watchTask(null, "")} className="underline hover:text-ink">Try again</button></p>}
       {cat === "home" && !q && updates.length > 0 && (
         <section className="mb-6"><h2 className="text-sm font-medium mb-2">Updates</h2>{grid(updates)}</section>
       )}

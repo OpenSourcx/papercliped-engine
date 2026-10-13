@@ -57,9 +57,9 @@ export function Settings() {
         </div>
       </Card>
       <Card className="p-5">
-        <SectionTitle>Demo</SectionTitle>
-        <p className="text-sm text-ink-2">{live ? "The host and its machines are live. Organizations, agents, tasks and rules are still demo data in this browser until ePaperclip's backend lands. Starting over clears that and runs onboarding again." : "The console is running on demo data in this browser. Starting over clears it and runs onboarding again."}</p>
-        <Button variant="danger" className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>Start over</Button>
+        <SectionTitle>{live ? "This browser" : "Demo"}</SectionTitle>
+        <p className="text-sm text-ink-2">{live ? "The device, its machines, organizations, agents and tasks are kept on the device, not in this browser. This browser only remembers the console's own settings: the device name, Pin's mode and files, and your appearance. Resetting clears those here and runs onboarding again. Nothing on the device changes." : "The console is running on demo data in this browser. Starting over clears it and runs onboarding again."}</p>
+        <Button variant={live ? "secondary" : "danger"} className="mt-3" onClick={() => { resetAll(); navigate("/setup"); }}>{live ? "Reset this browser's settings" : "Start over"}</Button>
       </Card>
     </PageFrame>
   );

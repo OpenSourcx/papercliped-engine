@@ -86,6 +86,15 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
   const move = (r: FwRule, to: number) => guard.run(() => engine.backend.firewallPost(scope, `rules/${r.pos}`, { moveto: to }), setError).then(reload);
   const remove = (r: FwRule) => guard.run((extra) => engine.backend.firewallPost(scope, `rules/${r.pos}/delete`, extra), setError).then(() => { setRemoving(null); reload(); });
 
+  const actions = (r: FwRule, i: number) => (
+    <>
+      <button onClick={() => move(r, r.pos - 1)} disabled={i === 0} aria-label={`Move rule ${i + 1} up`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
+      <button onClick={() => move(r, r.pos + 1)} disabled={i === (rules?.length ?? 1) - 1} aria-label={`Move rule ${i + 1} down`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
+      <button onClick={() => setEditing(r)} aria-label={`Edit rule ${i + 1}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Pencil className="h-4 w-4" /></button>
+      <button onClick={() => setRemoving(r)} aria-label={`Delete rule ${i + 1}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
+    </>
+  );
+
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-2">
@@ -99,7 +108,7 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
         ) : !rules?.length ? (
           <EmptyState icon={<ListFilter className="h-5 w-5" />} title="No rules" body="With no rules, the default policy decides. Add rules for the traffic you want to let in." action={<Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" />Add rule</Button>} />
         ) : (
-          <table className="w-full text-compact min-w-[760px]">
+          <table className="hidden md:table w-full text-compact min-w-[760px]">
             <thead>
               <tr className="border-b border-line text-ink-3 text-left">
                 <th className="font-normal px-3 h-10 w-12">On</th>
@@ -123,15 +132,31 @@ export function RulesTable({ scope, title, note }: { scope: string; title?: stri
                   <td className="px-3 font-mono text-xs">{r.dest ?? <span className="text-ink-3">anywhere</span>}</td>
                   <td className="px-3 text-ink-2 truncate max-w-[220px]">{r.comment ?? ""}</td>
                   <td className="px-3 whitespace-nowrap text-right">
-                    <button onClick={() => move(r, r.pos - 1)} disabled={i === 0} aria-label="Move up" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
-                    <button onClick={() => move(r, r.pos + 1)} disabled={i === rules.length - 1} aria-label="Move down" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
-                    <button onClick={() => setEditing(r)} aria-label="Edit rule" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => setRemoving(r)} aria-label="Delete rule" className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>
+                    {actions(r, i)}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+        {rules && rules.length > 0 && (
+          // On a phone a rule is a small card, so nothing hides off the edge and its actions are always in reach.
+          <ul className="md:hidden divide-y divide-line">
+            {rules.map((r, i) => (
+              <li key={`${r.pos}-${r.comment}-${r.action}`} className={cn("p-3", !r.enable && "opacity-60")}>
+                <div className="flex items-center gap-3">
+                  <Toggle checked={r.enable} onChange={() => toggle(r)} label={`${r.enable ? "Disable" : "Enable"} rule ${i + 1}`} />
+                  <span className="uppercase text-xs tracking-wide text-ink-2">{r.type === "group" ? "Group" : r.type}</span>
+                  <span className={cn("font-medium text-compact", ACTION_STYLE[r.action] ?? "text-ink")}>{r.type === "group" ? <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" />{r.action}</span> : r.action}</span>
+                  <span className="ml-auto text-xs text-ink-3 tabular-nums">#{i + 1}</span>
+                </div>
+                <div className="mt-2 font-mono text-xs break-words">{describeRule(r)}{r.log && r.log !== "nolog" ? <Chip className="ml-2">log {r.log}</Chip> : null}</div>
+                <div className="mt-1 font-mono text-xs text-ink-2 break-words">{r.source ?? "anywhere"} <span className="text-ink-3">to</span> {r.dest ?? "anywhere"}</div>
+                {r.comment && <div className="mt-1 text-compact text-ink-2 break-words">{r.comment}</div>}
+                <div className="mt-2 flex justify-end">{actions(r, i)}</div>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
       <p className="text-xs text-ink-3 mt-2">Rules are checked from the top; the first one that matches decides.</p>
@@ -480,7 +505,7 @@ export function FirewallPage() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Firewall" subtitle="Who can reach this device and its machines. Machines also have their own firewall on their page." actions={enabled === null ? null : enabled ? <Status kind="good" label="On" /> : <Status kind="off" label="Off for the whole device" />} />
-      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
+      <div className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:[scrollbar-width:none]" role="tablist">
         {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
       </div>
       {enabled === false && tab === "rules" && <p className="text-compact text-warning mb-3">The firewall is off for the whole device, so none of these rules apply yet. Turn it on in Options.</p>}

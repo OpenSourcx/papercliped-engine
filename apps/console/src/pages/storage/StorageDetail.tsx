@@ -23,8 +23,9 @@ export function StorageDetail() {
   const device = engine.setup?.deviceName ?? "pve";
   const s = engine.data.host.storage.find((x) => x.id === id);
   const tabs = tabsFor(s);
-  const tab = tabs.find((t) => t.kind === params.get("tab")) ?? tabs[0];
   const [items, setItems] = useState<StorageItem[] | null>(null);
+  // Open on the first tab that holds something, so a storage full of backups doesn't greet you with "No ISO images".
+  const tab = tabs.find((t) => t.kind === params.get("tab")) ?? (items ? tabs.find((t) => items.some((i) => i.content === t.kind)) : undefined) ?? tabs[0];
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [confirm, setConfirm] = useState<StorageItem | null>(null);

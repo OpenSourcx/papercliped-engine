@@ -81,7 +81,7 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
 }
 
 export function Apps() {
-  const { data, host, setAppMode } = useEngine();
+  const { data, host, setAppMode, live } = useEngine();
   const [how, setHow] = useState("Claude");
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
@@ -97,6 +97,18 @@ export function Apps() {
       // clipboard blocked; the address stays visible to copy by hand
     }
   };
+
+  // Live, nothing on the device serves app connections yet, so there is no address to copy, no sessions to list and no
+  // access mode to switch. A switch that changes nothing would be worse than none (docs/QA-FINDINGS.md, QA-11).
+  if (live)
+    return (
+      <PageFrame width="3xl">
+        <PageHeader title="Connected apps" subtitle="Connect Claude, ChatGPT, Codex or any MCP app to this device." />
+        <Card>
+          <EmptyState icon={<Plug className="h-5 w-5" />} title="Not available on this device yet" body="This device doesn't serve app connections yet, so there is no address to give an app and nothing to approve. Pin and the console work as usual. This page will show the address, the connected apps and what each may do once the device serves them." />
+        </Card>
+      </PageFrame>
+    );
 
   return (
     <PageFrame width="6xl">

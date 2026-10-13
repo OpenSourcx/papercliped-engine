@@ -1,12 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { Archive, Box, Camera, Copy, Shield, Cpu, HardDrive, ListChecks, Loader2, Lock, MemoryStick, Monitor, Network, Play, Power, RotateCw, Sparkles, Square, SquareTerminal, Trash2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Archive, Box, Camera, Copy, Shield, Cpu, ListChecks, Loader2, Lock, Monitor, Play, Power, RotateCw, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { Hardware } from "./Hardware.tsx";
 import { MachineTasks } from "./MachineTasks.tsx";
 import { MachineFirewall } from "../firewall/Firewall.tsx";
+import { AddressRows, NotesCard } from "./MachineAbout.tsx";
+import { MachinePermissions } from "./MachinePermissions.tsx";
+import { Tag } from "../../ui/Tag.tsx";
 const Screen = lazy(() => import("./Screen.tsx"));
 import { Snapshots } from "./Snapshots.tsx";
 import { useEngine } from "../../data/store.tsx";
@@ -16,7 +19,7 @@ import { Terminal } from "../../terminal/LazyTerminal.tsx";
 import { DemoTransport, LiveTransport } from "../../terminal/transport.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, PageFrame, SectionTitle, Segmented, Status } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, PageFrame, SectionTitle, Segmented, Status } from "../../ui/primitives.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: <Box className="h-4 w-4" /> },
@@ -25,6 +28,7 @@ const TABS = [
   { id: "backups", label: "Backups", icon: <Archive className="h-4 w-4" /> },
   { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" /> },
   { id: "firewall", label: "Firewall", icon: <Shield className="h-4 w-4" /> },
+  { id: "permissions", label: "Permissions", icon: <Users className="h-4 w-4" /> },
   { id: "tasks", label: "Tasks", icon: <ListChecks className="h-4 w-4" /> },
 ] as const;
 
@@ -40,6 +44,19 @@ export function MachinePage() {
   const [params, setParams] = useSearchParams();
   const device = setup?.deviceName ?? "pve";
   const g = data.guests.find((x) => String(x.vmid) === vmid && (!orgSlug || x.org === orgSlug));
+  // A machine that was just created or cloned can take a few seconds to show up in Proxmox's list, so an unknown number
+  // waits briefly before it is called missing. A machine that was here and is gone (deleted) is reported at once.
+  const seen = useRef<string | null>(null);
+  if (g) seen.current = vmid ?? null;
+  const wasHere = !g && seen.current === (vmid ?? null);
+  const [waited, setWaited] = useState(false);
+  const [recheck, setRecheck] = useState(0);
+  useEffect(() => {
+    setWaited(false);
+    const t = setTimeout(() => setWaited(true), 6000);
+    return () => clearTimeout(t);
+  }, [vmid, recheck]);
+  const tablist = useRef<HTMLDivElement>(null);
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab")! : "overview";
   const [view, setView] = useState<"screen" | "serial">("screen");
   const make = useMemo(() => () => live && g ? new LiveTransport(`/api/console/guests/${g.vmid}`) : new DemoTransport({ kind: g?.type ?? "lxc", name: g?.name ?? "machine", os: g?.os ?? "Linux", ip: g?.ip ?? null, cores: g?.cores ?? 1, memUsed: g?.memUsed ?? 0, memMax: g?.memMax ?? 1, diskMax: g?.diskMax ?? 1, uptimeSec: host.uptimeSec - 3600 }), [g?.vmid, live]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,6 +70,16 @@ export function MachinePage() {
   const lock = g?.protected ? `${g.name} is protected` : g?.template ? `${g.name} is a template` : undefined;
   const openAction = (action: "destroy" | "template") => g && setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "machine-action"); n.set("action", action); n.set("vmid", String(g.vmid)); return n; });
   const running = g?.status === "running";
+  const [acting, setActing] = useState(false);
+  const act = (a: "start" | "shutdown") => {
+    setActing(true);
+    power(a);
+    setTimeout(() => setActing(false), 4000);
+  };
+  useEffect(() => {
+    const el = tablist.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    el?.scrollIntoView?.({ inline: "center", block: "nearest" });
+  }, [tab, g?.vmid]);
   usePinActions(g ? {
     context: `${g.name} #${g.vmid}`,
     items: [
@@ -73,18 +100,30 @@ export function MachinePage() {
     ],
   } : null);
   if (!ready) return <div className="p-10 text-ink-3 text-sm" aria-busy="true">Loading machine…</div>;
-  if (!g && live)
+  const back = orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`;
+  if (!g && live && !wasHere && !waited)
     return (
       <PageFrame width="3xl">
-        <Card className="p-8 text-center mt-6">
+        <Card className="p-8 text-center mt-6" aria-busy="true">
           <Loader2 className="h-5 w-5 animate-spin mx-auto text-ink-3" />
-          <p className="font-medium mt-3">Waiting for machine #{vmid}</p>
-          <p className="text-compact text-ink-3 mt-1">A new machine shows up as soon as Proxmox lists it. If it never does, your account may not be able to see it.</p>
-          <Link to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} className="inline-block mt-4 text-compact text-ink-2 hover:text-ink">Back to machines</Link>
+          <p className="font-medium mt-3">Looking for machine #{vmid}</p>
+          <p className="text-compact text-ink-3 mt-1">A new machine can take a few seconds to show up in Proxmox's list.</p>
         </Card>
       </PageFrame>
     );
-  if (!g || !base) return <Navigate to={orgSlug ? `/${device}/${orgSlug}/machines` : `/${device}/machines`} replace />;
+  if (!g || !base)
+    return (
+      <PageFrame width="3xl">
+        <Card className="mt-6">
+          <EmptyState
+            icon={<SearchX className="h-5 w-5" />}
+            title={wasHere ? `Machine #${vmid} is gone` : `There is no machine #${vmid}`}
+            body={wasHere ? "It was deleted, or moved to another device. Its page has nothing left to show." : orgSlug ? `${device} has no machine with that number in this organization, or your account can't see it.` : `${device} has no machine with that number, or your account can't see it. Check the number in the address.`}
+            action={<div className="flex flex-wrap justify-center gap-2"><Link to={back}><Button variant="primary">Back to machines</Button></Link>{live && !wasHere && <Button variant="ghost" onClick={() => setRecheck((n) => n + 1)}>Check again</Button>}</div>}
+          />
+        </Card>
+      </PageFrame>
+    );
   const org = data.orgs.find((o) => o.slug === g.org);
 
   return (
@@ -99,15 +138,23 @@ export function MachinePage() {
               {g.status === "running" ? <Status kind="good" label="Running" /> : <Status kind="off" label="Stopped" />}
               {g.template && <Chip tone="accent">Template</Chip>}
               <Chip>{g.type === "qemu" ? "Virtual machine" : "Container"}</Chip>
-              <Chip>{g.os}</Chip>
+              {g.os && g.os.trim() && <Chip>{g.os}</Chip>}
               {g.protected && <Chip><Lock className="h-3 w-3" />Protected</Chip>}
+              {(g.tags ?? []).map((t) => <Tag key={t} name={t} />)}
             </div>
           </div>
         </div>
-        <div className="text-xs text-ink-3 hidden sm:block self-center">Actions are in Pin: hover the island</div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Power and console for ${g.name}`}>
+          {running ? (
+            <Button onClick={() => act("shutdown")} disabled={!!lock || acting} title={lock} loading={acting}><Power className="h-4 w-4" />Shut down</Button>
+          ) : (
+            <Button variant="primary" onClick={() => act("start")} disabled={!!lock || acting} title={lock} loading={acting}><Play className="h-4 w-4" />Start</Button>
+          )}
+          <Button onClick={() => setTab("console")} disabled={!running} title={running ? undefined : "Start it to open its console"}><SquareTerminal className="h-4 w-4" />Console</Button>
+        </div>
       </div>
 
-      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto" role="tablist">
+      <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto" role="tablist">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-sm inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
             {t.icon}{t.label}
@@ -128,13 +175,14 @@ export function MachinePage() {
           <Card className="p-5">
             <SectionTitle>Details</SectionTitle>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="text-ink-3">Address</dt><dd className="font-mono text-compact">{g.ip ?? "—"}</dd>
+              <AddressRows vmid={g.vmid} status={g.status} />
               <dt className="text-ink-3">Node</dt><dd>{device}</dd>
               <dt className="text-ink-3">Owner</dt><dd>{org?.name ?? "Device"}</dd>
               <dt className="text-ink-3">Snapshots</dt><dd>{g.snapshots?.length ?? 0}</dd>
             </dl>
             <Button size="sm" className="mt-4 w-full" onClick={() => setTab("console")}><SquareTerminal className="h-3.5 w-3.5" />Open console</Button>
           </Card>
+          <NotesCard vmid={g.vmid} />
           <div className="lg:col-span-3 mt-2">
             <UsageGraphs seed={g.vmid} vmid={g.vmid} base={base} kind="guest" />
           </div>
@@ -173,6 +221,7 @@ export function MachinePage() {
 
       {tab === "hardware" && <Hardware g={g} />}
       {tab === "firewall" && <MachineFirewall vmid={g.vmid} />}
+      {tab === "permissions" && <MachinePermissions vmid={g.vmid} name={g.name} />}
 
       {tab === "tasks" && <MachineTasks g={g} />}
     </PageFrame>

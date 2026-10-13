@@ -43,9 +43,9 @@ export function BarMeter({ label, pct, value, className }: { label: string; pct:
   const v = clamp(pct);
   return (
     <div className={cn("min-w-0", className)} title={`${label}: ${value}`}>
-      <div className="flex items-baseline justify-between gap-2 text-xs mb-1.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs mb-1.5">
         <span className="text-ink-3">{label}</span>
-        <span className="text-ink-2 tabular-nums truncate">{value}</span>
+        <span className="text-ink-2 tabular-nums">{value}</span>
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in oklab, var(--accent) 16%, transparent)" }} role="meter" aria-label={label} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}>
         <div className="h-full rounded-full bg-accent transition-[width] duration-(--duration-deliberate)" style={{ width: `${v}%` }} />

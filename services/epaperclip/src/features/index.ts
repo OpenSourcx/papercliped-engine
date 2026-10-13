@@ -5,6 +5,7 @@ import type { HttpError } from "../http.ts";
 import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { handleDisks } from "./disks.ts";
+import { handleGuest } from "./guest.ts";
 import { nodeFeature } from "./node.ts";
 import { access } from "./access.ts";
 import { handleWizard } from "./wizard.ts";
@@ -49,4 +50,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "node", handle: nodeFeature },
   { name: "access", handle: access },
   { name: "wizard", handle: handleWizard },
+  { name: "guest", handle: handleGuest },
 ];

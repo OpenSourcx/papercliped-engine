@@ -177,7 +177,10 @@ export function newestDebian(files: string[]): string | null {
 
 const fp = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
 const hasTag = (tags: string | undefined, t: string) => (tags ?? "").split(/[;,\s]+/).includes(t);
-const errText = (e: unknown): string => (e instanceof ProxmoxError ? e.detail ?? e.message : e instanceof Error ? e.message : String(e));
+/** Proxmox's own reason when it gave one; otherwise a sentence about the status, never the API path it came from. */
+const proxmoxStatusText = (status: number): string =>
+  status === 401 ? "Your Proxmox session ended. Sign in again." : status === 403 ? "This Proxmox account doesn't have permission for that." : status === 404 ? "Proxmox doesn't have what was asked for. It may be a version ePaperclip doesn't know yet." : status >= 500 ? `Proxmox reported an error (${status}) without saying why. Its task log and system log have the details.` : `Proxmox refused the request (${status}).`;
+const errText = (e: unknown): string => (e instanceof ProxmoxError ? e.detail ?? proxmoxStatusText(e.status) : e instanceof Error ? e.message : String(e));
 
 export interface ContainersDeps {
   gateway: EngineGateway | null;
@@ -373,8 +376,9 @@ export class AgentContainers {
       }
       set("grant", vmid !== undefined && missing.length === 0, missing.length ? `Missing: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}` : undefined);
     } catch (e) {
-      checkError = `Couldn't check Proxmox: ${errText(e)}`;
-      for (const id of ["access", "key", "template", "grant"] as StepId[]) set(id, false, checkError);
+      checkError = `Couldn't check Proxmox. ${errText(e)}`;
+      // The reason is shown once, above the steps; each step only says it wasn't checked.
+      for (const id of ["access", "key", "template", "grant"] as StepId[]) set(id, false, "Not checked");
     }
     // The engine side.
     try {
@@ -394,8 +398,8 @@ export class AgentContainers {
       const ex = await this.eng<Record<string, unknown>>("GET", "/api/instance/settings/experimental");
       set("enforce", ex.enableManagedSandboxOnly === true, ex.enableManagedSandboxOnly === true ? undefined : "The engine would still run agents on the host");
     } catch (e) {
-      checkError = checkError ?? `Couldn't check the engine: ${errText(e)}`;
-      for (const id of ["plugin", "environments", "enforce"] as StepId[]) set(id, false, `Couldn't check the engine: ${errText(e)}`);
+      checkError = checkError ?? `Couldn't check the engine. ${errText(e)}`;
+      for (const id of ["plugin", "environments", "enforce"] as StepId[]) set(id, false, "Not checked");
     }
     const done = steps.filter((s) => s.done).length;
     // "Not set up" means none of the real work is there (a lone enforcement flag or an empty list of organizations isn't).

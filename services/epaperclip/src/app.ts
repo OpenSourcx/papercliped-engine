@@ -1625,7 +1625,11 @@ export function createApp(d: AppDeps) {
           guest = { type: g.type as GuestType, vmid: g.vmid! };
           node = g.node ?? node;
         }
-        const tp = await pve.termproxy(node, guest);
+        // The Updates screen asks for /api/console/node?cmd=upgrade: Proxmox runs the package upgrade in the node terminal
+        // (it has no task for it). Only that one command is ever passed on; Proxmox decides whether this person may.
+        const cmd = url.searchParams.get("cmd");
+        if (cmd !== null && (cmd !== "upgrade" || guest)) throw new Error("That terminal command isn't available.");
+        const tp = cmd === "upgrade" ? await pve.termproxyCommand(node, "upgrade") : await pve.termproxy(node, guest);
         const base = new URL(d.pve.baseUrl);
         return {
           url: `wss://${base.host}${ProxmoxClient.consoleSocketPath(node, guest, tp.port, tp.ticket)}`,

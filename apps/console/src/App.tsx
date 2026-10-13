@@ -17,6 +17,7 @@ import { Store } from "./pages/store/Store.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
+import { NotFound } from "./pages/NotFound.tsx";
 import { Activity, Agents, Artifacts, Chat, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
 import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
@@ -27,8 +28,10 @@ import { LiveWorkspaceDetail } from "./pages/org/live/LiveArtifacts.tsx";
 import { LiveRoutineDetail } from "./pages/org/live/LiveRoutines.tsx";
 
 /** Pages only the engine has (a task's thread, an agent's runs, the member list). The demo goes back to the list instead. */
-function LiveOnly({ children, fallback }: { children: React.ReactNode; fallback: string }) {
-  return useEngine().live ? <>{children}</> : <Navigate to={fallback} replace />;
+function LiveOnly({ children, fallback, demoMessage }: { children: React.ReactNode; fallback: string; demoMessage?: { title: string; body: string } }) {
+  if (useEngine().live) return <>{children}</>;
+  // A page with a message says why the demo has nothing to show instead of silently landing somewhere else.
+  return demoMessage ? <NotFound title={demoMessage.title} body={demoMessage.body} /> : <Navigate to={fallback} replace />;
 }
 
 /** Everything under /<device>/ needs a finished setup and the right device name; anything else is redirected. */
@@ -94,7 +97,7 @@ export function App() {
             <Route path="machines/:vmid" element={<MachinePage />} />
             <Route path="agents" element={<Agents />} />
             <Route path="agents/:agentId" element={<LiveOnly fallback="..">{<LiveAgentDetail />}</LiveOnly>} />
-            <Route path="members" element={<LiveOnly fallback="..">{<LiveMembers />}</LiveOnly>} />
+            <Route path="members" element={<LiveOnly fallback=".." demoMessage={{ title: "Members are managed on a device", body: "The demo has no accounts to list. On a device, people you add here sign in with their Proxmox account." }}>{<LiveMembers />}</LiveOnly>} />
             <Route path="org" element={<OrgChart />} />
             <Route path="costs" element={<Costs />} />
             <Route path="activity" element={<Activity />} />
