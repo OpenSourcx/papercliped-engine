@@ -117,7 +117,30 @@ const TOOL_ICON = { power: <Power />, snapshot: <Camera />, task: <ListPlus />, 
  * A proposal from Pin (a `tool` event). Proposed actions wait for the person: Confirm runs the console's own action,
  * Cancel leaves everything as it was. Actions Pin already did (status done or error) show their outcome.
  */
+/** Agent mode's plan, written down by Pin. Approving happens on the Plans tab, step by step; the card only points there. */
+function PlanProposal({ tool }: { tool: PinToolState }) {
+  const engine = useEngine();
+  const args = tool.args as { planId?: string; title?: string; summary?: string; steps?: { label: string; destructive: boolean }[] };
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  const device = engine.setup?.deviceName ?? "pve";
+  return (
+    <CardShell icon={<ListPlus />} label="Pin's plan" footer={<Link to={`/${device}/pin?tab=plans`} className="transition-control inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-line bg-surface-2/60 text-compact font-medium hover:bg-surface-3">Review the plan <ArrowRight className="h-3.5 w-3.5" /></Link>}>
+      <div className="font-medium text-sm">{args.title ?? "A plan"}</div>
+      {args.summary && <p className="text-compact text-ink-2 mt-0.5 text-pretty">{args.summary}</p>}
+      <ol className="mt-2 space-y-1">
+        {steps.map((s, i) => <li key={i} className="text-compact text-ink-2 flex gap-2"><span className="font-mono text-ink-3 tabular-nums">{i + 1}</span><span className="text-pretty">{s.label}{s.destructive ? " (needs your typed confirmation)" : ""}</span></li>)}
+      </ol>
+      <p className="text-xs text-ink-3 mt-2">Nothing has run. You approve each step on the Plans tab.</p>
+    </CardShell>
+  );
+}
+
 export function ToolCard({ messageId, tool }: { messageId: string; tool: PinToolState }) {
+  if (tool.name === "propose_plan" && tool.status === "proposed") return <PlanProposal tool={tool} />;
+  return <ActionCard messageId={messageId} tool={tool} />;
+}
+
+function ActionCard({ messageId, tool }: { messageId: string; tool: PinToolState }) {
   const engine = useEngine();
   const pin = usePin();
   const nav = useNavigate();

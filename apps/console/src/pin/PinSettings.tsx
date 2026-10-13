@@ -21,6 +21,7 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [test, setTest] = useState<{ state: "idle" | "running" | "ok" | "failed"; text?: string }>({ state: "idle" });
 
   useEffect(() => {
     let alive = true;
@@ -105,6 +106,17 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
     }
   };
 
+  const runTest = async () => {
+    if (!source.test || !draft.provider || !draft.model) return;
+    setTest({ state: "running" });
+    try {
+      const r = await source.test(draft.provider, draft.model);
+      setTest(r.ok ? { state: "ok", text: `Working${r.ms ? ` (${(r.ms / 1000).toFixed(1)} s)` : ""}.` } : { state: "failed", text: r.error ?? "The provider refused the request." });
+    } catch (e) {
+      setTest({ state: "failed", text: (e as Error).message || "The test didn't run." });
+    }
+  };
+
   return (
     <div className="space-y-8">
       <Section title="Model" body="The provider Pin thinks with and the model it uses. Keys stay on this device; Pin never sees them.">
@@ -145,6 +157,14 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
               </Select>
             )}
           </Field>
+        )}
+        {provider && source.test && draft.model && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button size="sm" loading={test.state === "running"} onClick={runTest}>Test connection</Button>
+            {test.state === "ok" && <span role="status" className="inline-flex items-center gap-1.5 text-compact text-good"><Check className="h-4 w-4" />{test.text}</span>}
+            {test.state === "failed" && <span role="alert" className="text-compact text-critical text-pretty">{test.text}</span>}
+            {test.state === "idle" && <span className="text-xs text-ink-3">Sends one tiny request with the saved key and this model.</span>}
+          </div>
         )}
       </Section>
 

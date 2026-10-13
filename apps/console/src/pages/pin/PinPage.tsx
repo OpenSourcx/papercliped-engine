@@ -10,6 +10,7 @@ import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinIsland.tsx";
 import { Button, Card, Chip, PageFrame, Segmented, Tabs, Toggle } from "../../ui/primitives.tsx";
 import { PinSettingsPanel } from "../../pin/PinSettings.tsx";
+import { AutomationsLive, InboxTab, PlansTab, UpdatesTab } from "./runtime.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
 
 const TABS = [
@@ -17,8 +18,11 @@ const TABS = [
   { id: "chat", label: "Chat" },
   { id: "memory", label: "Soul and memory" },
   { id: "automations", label: "Automations" },
+  { id: "inbox", label: "Inbox", live: true },
+  { id: "plans", label: "Plans", live: true },
   { id: "activity", label: "Activity" },
   { id: "skills", label: "Skills" },
+  { id: "updates", label: "Updates", live: true },
   { id: "settings", label: "Settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -42,7 +46,8 @@ export function PinPage() {
   const pin = usePin();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab: Tab = TABS.some((t) => t.id === params.get("tab")) ? (params.get("tab") as Tab) : "overview";
+  const tabs = TABS.filter((t) => !("live" in t) || engine.live);
+  const tab: Tab = tabs.some((t) => t.id === params.get("tab")) ? (params.get("tab") as Tab) : "overview";
   const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === "overview") n.delete("tab"); else n.set("tab", t); return n; }, { replace: true });
   const mode = engine.setup?.pinMode ?? "assistant";
   const access = engine.setup?.pinAccess ?? { system: true, orgs: true, connectors: true, docs: true };
@@ -79,7 +84,7 @@ export function PinPage() {
         </div>
       </div>
 
-      <Tabs className="mb-5" value={tab} onChange={setTab} tabs={TABS.map((t) => ({ id: t.id, label: t.label }))} />
+      <Tabs className="mb-5" value={tab} onChange={setTab} tabs={tabs.map((t) => ({ id: t.id, label: t.label }))} />
 
       {tab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 fade-in">
@@ -144,7 +149,11 @@ export function PinPage() {
 
       {tab === "chat" && <PinChat />}
       {tab === "memory" && <PinFiles />}
-      {tab === "automations" && (
+      {tab === "inbox" && <InboxTab />}
+      {tab === "plans" && <PlansTab />}
+      {tab === "updates" && <UpdatesTab />}
+      {tab === "automations" && engine.live && <AutomationsLive />}
+      {tab === "automations" && !engine.live && (
         <div className="space-y-3 fade-in">
           <div className="flex items-center justify-between">
             <p className="text-compact text-ink-3">Rules Pin runs for you. {mode === "assistant" ? "In Assistant mode, a firing rule asks you first." : "In Agent mode, a firing rule acts and tells you after."}</p>

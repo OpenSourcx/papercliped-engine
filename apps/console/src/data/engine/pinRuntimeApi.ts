@@ -172,7 +172,7 @@ export const pinRt = {
   setUpdateCheck: (check: boolean) => call<UpdateInfo>("PUT", "/api/pin/update/settings", { check }),
   startUpdate: (b: { action: "update" | "rollback"; confirm: string }) => call<{ requested: true }>("POST", "/api/pin/update", b),
 
-  testModel: () => call<ModelTest>("POST", "/api/pin/settings/test", {}),
+  testModel: (provider?: string | null, model?: string | null) => call<ModelTest>("POST", "/api/pin/settings/test", { ...(provider ? { provider } : {}), ...(model ? { model } : {}) }),
 };
 
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : "Something went wrong.");
