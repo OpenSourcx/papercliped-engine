@@ -117,3 +117,12 @@ describe("Pin's chat stream", () => {
     expect(events.at(-1)).toEqual({ type: "done" });
   });
 });
+
+describe("Pin's starting data", () => {
+  it("has made-up activity in the demo only, never on a live device", async () => {
+    const { defaultPinData } = await import("../src/data/pin.ts");
+    expect(defaultPinData().log.length).toBeGreaterThan(0);
+    expect(defaultPinData(true).log.length).toBeGreaterThan(0);
+    expect(defaultPinData(false).log).toEqual([]);
+  });
+});

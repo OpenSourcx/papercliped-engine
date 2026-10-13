@@ -222,7 +222,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
 
   const logTo = (kind: PinLogEntry["kind"], text: string) =>
     setData((d) => {
-      const pin = d.pin ?? defaultPinData();
+      const pin = d.pin ?? defaultPinData(!live);
       return { ...d, pin: { ...pin, log: [{ id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), kind, text }, ...pin.log].slice(0, 200) } };
     });
   storageRef.current = live ? storage : data.host.storage;
@@ -335,7 +335,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
         setSetup((s) => (s ? { ...s, pinMode: m } : s));
         logTo("changed", `Switched to ${m === "agent" ? "Agent" : "Assistant"} mode.`);
       },
-      pin: data.pin ?? defaultPinData(),
+      pin: data.pin ?? defaultPinData(!live),
       setPinAccess: (patch) => {
         setSetup((s) => (s ? { ...s, pinAccess: { ...s.pinAccess, ...patch } } : s));
         const names: Record<string, string> = { system: "manage this device", orgs: "manage organizations", connectors: "use connectors", docs: "read the Proxmox docs" };
@@ -343,7 +343,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
       },
       savePinFile: (file, text) => {
         setData((d) => {
-          const pin = d.pin ?? defaultPinData();
+          const pin = d.pin ?? defaultPinData(!live);
           return { ...d, pin: { ...pin, [file]: text, editedAt: { ...pin.editedAt, [file]: new Date().toISOString() } } };
         });
         logTo("changed", `You edited ${file === "soul" ? "SOUL.md" : "MEMORY.md"}.`);

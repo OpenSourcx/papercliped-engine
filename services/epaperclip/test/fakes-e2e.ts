@@ -80,6 +80,22 @@ export function fakeE2ePve(opts: { clustered?: boolean } = {}) {
       return node.transport({ ...req, headers: { ...req.headers, Cookie: `PVEAuthCookie=${encodeURIComponent(t)}` } });
     }
 
+    // Each fake keeps its own task records; ask them in turn, and call a task none of them made (the wizard's and the disks' don't keep any) finished.
+    const task = /^\/nodes\/[\w-]+\/tasks\/([^/]+)\/(status|log)$/.exec(path);
+    if (task) {
+      for (const t of [guest.transport, cluster.transport]) {
+        const r = await t(req);
+        if (r.status === 200 || r.status === 401) return r;
+      }
+      return ok(task[2] === "status" ? { status: "stopped", exitstatus: "OK" } : [{ n: 1, t: "TASK OK" }]);
+    }
+
+    // Statistics: none of the fakes keeps any. A gentle series, so the graphs have something to draw.
+    if (/^\/nodes\/[\w-]+\/(rrddata|(qemu|lxc)\/\d+\/rrddata)$/.test(path)) {
+      const now = Math.floor(Date.now() / 1000);
+      return ok(Array.from({ length: 30 }, (_, i) => ({ time: now - (29 - i) * 60, cpu: 0.1 + 0.05 * Math.sin(i / 4), maxcpu: 8, mem: 4e9 + 1e8 * Math.sin(i / 5), maxmem: 16e9, memused: 4e9, memtotal: 16e9, netin: 2000 + 500 * i, netout: 1000 + 300 * i, diskread: 1e4, diskwrite: 2e4, loadavg: 0.4, iowait: 0.01 })));
+    }
+
     if (path === "/cluster/resources" && !q.get("type")) return pin.transport(req);
     if (path === "/cluster/resources" && q.get("type") === "vm") {
       const mine = await pin.transport(req);

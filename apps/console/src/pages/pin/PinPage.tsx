@@ -10,6 +10,7 @@ import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinIsland.tsx";
 import { Button, Card, Chip, PageFrame, Segmented, Tabs, Toggle } from "../../ui/primitives.tsx";
 import { PinSettingsPanel } from "../../pin/PinSettings.tsx";
+import { useConnectors } from "../../data/engine/queries.ts";
 import { AutomationsLive, InboxTab, PlansTab, UpdatesTab } from "./runtime.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
 
@@ -53,6 +54,8 @@ export function PinPage() {
   const access = engine.setup?.pinAccess ?? { system: true, orgs: true, connectors: true, docs: true };
   const activeRules = engine.data.rules.filter((r) => r.enabled).length;
   const last = engine.pin.log[0];
+  // On a device the connectors are the host's (keys in its vault), not the demo's list.
+  const hostConnectors = useConnectors().data?.connectors.filter((c) => c.configured) ?? [];
   const device = engine.setup?.deviceName ?? "pve";
 
   usePinActions({
@@ -124,7 +127,21 @@ export function PinPage() {
             </Card>
             <Card className="p-5">
               <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Connectors</h2><Link to="?settings=connectors" className="text-compact text-ink-3 hover:text-ink">Manage</Link></div>
-              {engine.data.connectors.length === 0 ? (
+              {engine.live ? (
+                hostConnectors.length === 0 ? (
+                  <p className="text-compact text-ink-3">No connectors yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {hostConnectors.map((c) => (
+                      <div key={c.id} className="flex items-center gap-3">
+                        <span className="flex-1 text-compact truncate">{c.label ?? c.id}{c.ok === false && <span className="text-ink-3"> · needs attention</span>}</span>
+                        <Chip tone={c.ok === false ? "critical" : "good"}>{c.ok === false ? "Failed" : "Connected"}</Chip>
+                      </div>
+                    ))}
+                    <p className="text-xs text-ink-3">Pin chooses its model provider in Settings.</p>
+                  </div>
+                )
+              ) : engine.data.connectors.length === 0 ? (
                 <p className="text-compact text-ink-3">No connectors yet.</p>
               ) : (
                 <div className="space-y-2">

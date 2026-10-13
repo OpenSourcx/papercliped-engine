@@ -32,12 +32,13 @@ What I've learned about you and this device. Edit anything that's wrong; I read 
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 
-export function defaultPinData(): PinData {
+/** The demo starts with a few made-up log lines so its Activity tab has something to show; a live device never does. */
+export function defaultPinData(demo = true): PinData {
   return {
     soul: DEFAULT_SOUL,
     memory: DEFAULT_MEMORY,
     editedAt: { soul: null, memory: null },
-    log: [
+    log: !demo ? [] : [
       { id: "pl-1", at: ago(8), kind: "did", text: "Checked every machine against its memory and CPU rules. Nothing fired." },
       { id: "pl-2", at: ago(55), kind: "proposed", text: "Suggested keeping 3 nightly backups instead of 1." },
       { id: "pl-3", at: ago(190), kind: "learned", text: "Noted that drive2 is where backups and ISOs should go." },
