@@ -1,236 +1,285 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Box, ChevronDown, Loader2, Monitor } from "lucide-react";
-import { ApiError, type MachineOptions } from "../../data/api.ts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, Box, Monitor } from "lucide-react";
+import type { Params } from "@papercliped-engine/proxmox-client/wizard-schema";
+import { checkSpec, errorText, useWizardApi, type WizardOptions } from "../../data/engine/wizard.ts";
 import { orgRoom, roomError } from "../../data/quota.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
-import { Button, Input, Segmented, selectClass } from "../../ui/primitives.tsx";
+import { Button, Notice, Segmented, Skeleton } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-
-type Kind = "lxc" | "qemu";
-
-const SIZES: Record<Kind, { id: string; label: string; cores: number; memoryMb: number; diskGb: number; hint: string }[]> = {
-  lxc: [
-    { id: "small", label: "Small", cores: 1, memoryMb: 1024, diskGb: 8, hint: "Scripts, bots, a small service" },
-    { id: "medium", label: "Medium", cores: 2, memoryMb: 4096, diskGb: 32, hint: "Web apps, databases, builds" },
-    { id: "large", label: "Large", cores: 4, memoryMb: 8192, diskGb: 64, hint: "Heavier workloads" },
-  ],
-  qemu: [
-    { id: "small", label: "Small", cores: 2, memoryMb: 2048, diskGb: 32, hint: "A light Linux server" },
-    { id: "medium", label: "Medium", cores: 4, memoryMb: 8192, diskGb: 64, hint: "Windows, desktops, builds" },
-    { id: "large", label: "Large", cores: 8, memoryMb: 16384, diskGb: 128, hint: "Heavier workloads" },
-  ],
-};
-
-const OS_TYPES = [
-  { value: "l26", label: "Linux" },
-  { value: "win11", label: "Windows 11" },
-  { value: "other", label: "Other" },
-] as const;
-
-const NAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-const select = selectClass;
+import { ConfirmStep } from "./wizard/Confirm.tsx";
+import { CtCpuStep, CtDiskStep, CtMemoryStep, TemplateStep } from "./wizard/CtSteps.tsx";
+import { GeneralStep } from "./wizard/GeneralStep.tsx";
+import { HardwareStep } from "./wizard/HardwareStep.tsx";
+import { CloudInitStep, CtDnsStep, CtNetworkStep, VmNetworkStep } from "./wizard/NetSteps.tsx";
+import { CpuStep, DisksStep, MemoryStep, OsStep, SystemStep } from "./wizard/VmSteps.tsx";
+import { SizePicker } from "./wizard/SizePicker.tsx";
+import { CT_STEPS, VM_STEPS, applyOsDefaults, ctSpec, defaultCt, defaultVm, stepOfField, vmSpec, type CtForm, type Kind, type StepDef, type VmForm } from "./wizard/state.ts";
+import { summarize } from "./wizard/summary.ts";
 
 /**
- * Spin up a machine in a few clicks: a container from a template, or a virtual machine booting an ISO. Owned by the
- * device or by an organization, in which case it lands in that organization's resource group and has to fit it.
+ * Create a machine: a full container or virtual machine wizard, every choice Proxmox's own wizards offer plus
+ * cloud-init and hardware passthrough. The same checks run here and on the host (`wizard-schema`), the Confirm step
+ * shows the exact Proxmox request, and the machine is owned by the device or by an organization (its resource group).
+ * See docs/WIZARDS.md.
  */
 export function NewMachineModal({ onClose }: { onClose: () => void }) {
   const engine = useEngine();
+  const api = useWizardApi();
   const navigate = useNavigate();
   const device = engine.setup?.deviceName ?? "pve";
   const routeOrg = window.location.pathname.split("/")[2];
-  const initialOrg = engine.data.orgs.find((o) => o.slug === routeOrg)?.slug ?? null;
-  const initialKind: Kind = new URLSearchParams(window.location.search).get("kind") === "vm" ? "qemu" : "lxc";
+  const asked = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [kind, setKind] = useState<Kind>(asked.get("kind") === "vm" ? "qemu" : "lxc");
+  const [owner, setOwnerSlug] = useState<string | null>(engine.data.orgs.find((o) => o.slug === routeOrg)?.slug ?? null);
 
-  const [kind, setKind] = useState<Kind>(initialKind);
-  const [options, setOptions] = useState<MachineOptions | null>(null);
+  const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [owner, setOwner] = useState<string | null>(initialOrg);
-  const asked = new URLSearchParams(window.location.search);
-  const [size, setSize] = useState(["small", "medium", "large"].includes(asked.get("size") ?? "") ? asked.get("size")! : "small");
-  const [template, setTemplate] = useState(asked.get("template") ?? "");
-  const [iso, setIso] = useState(asked.get("iso") ?? "");
-  const [ostype, setOstype] = useState<"l26" | "win11" | "other">(asked.get("ostype") === "win11" ? "win11" : asked.get("ostype") === "other" ? "other" : "l26");
-  const [storage, setStorage] = useState("");
-  const nextName = () => {
+  const load = useCallback(() => {
+    setLoadError(null);
+    api.options().then(setOptions, (e) => setLoadError(errorText(e, "Couldn't load what this device offers")));
+  }, [api]);
+  useEffect(load, [load]);
+
+  const [vm, setVm] = useState<VmForm | null>(null);
+  const [ct, setCt] = useState<CtForm | null>(null);
+  const [stepOf, setStepOf] = useState<Record<Kind, number>>({ lxc: 0, qemu: 0 });
+  const [seen, setSeen] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const ownerPool = useCallback(
+    (slug: string | null, o: WizardOptions) => {
+      const org = engine.data.orgs.find((x) => x.slug === slug);
+      return org && o.pools.includes(org.resourceGroup.pool) ? org.resourceGroup.pool : "";
+    },
+    [engine.data.orgs],
+  );
+
+  // Once the device has answered, build both forms from what it offers.
+  useEffect(() => {
+    if (!options || (vm && ct)) return;
     const taken = new Set(engine.data.guests.map((g) => g.name));
     let n = 1;
     while (taken.has(`quick-${n}`)) n++;
-    return `quick-${n}`;
+    const name = `quick-${n}`;
+    const size = ["small", "medium", "large"].includes(asked.get("size") ?? "") ? asked.get("size")! : "small";
+    const pool = ownerPool(owner, options);
+    const tpl = asked.get("template") || (options.templates.find((x) => /debian/i.test(x.volid)) ?? options.templates[0])?.volid || "";
+    let v = { ...defaultVm(options, name, size), pool };
+    const os = asked.get("ostype");
+    if (os === "win11") v = applyOsDefaults(v, "win11");
+    else if (os === "other") v = applyOsDefaults(v, "other");
+    const iso = asked.get("iso");
+    if (iso) v.iso = iso;
+    else if (/win/i.test(v.iso) && os === null) v = applyOsDefaults(v, "win11");
+    setVm(v);
+    setCt({ ...defaultCt(options, name, size, tpl), pool });
+  }, [options]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const steps: StepDef[] = kind === "lxc" ? CT_STEPS : VM_STEPS;
+  const idx = Math.min(stepOf[kind], steps.length - 1);
+  const step = steps[idx];
+  const markSeen = (id: string) => setSeen((s) => (s.has(id) ? s : new Set(s).add(id)));
+  const go = (i: number) => {
+    markSeen(`${kind}:${step.id}`);
+    setStepOf((s) => ({ ...s, [kind]: Math.max(0, Math.min(steps.length - 1, i)) }));
   };
-  const [name, setName] = useState(nextName);
-  const [nameTouched, setNameTouched] = useState(false);
-  // Live machines can arrive after the dialog opens; keep the suggested name free until the user types their own.
-  useEffect(() => {
-    if (!nameTouched) setName(nextName());
-  }, [engine.data.guests.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [advanced, setAdvanced] = useState(false);
-  const [password, setPassword] = useState("");
-  const [sshKey, setSshKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const setVmForm = (p: Partial<VmForm>) => {
+    markSeen(`${kind}:${step.id}`);
+    setVm((v) => (v ? { ...v, ...p } : v));
+  };
+  const setCtForm = (p: Partial<CtForm>) => {
+    markSeen(`${kind}:${step.id}`);
+    setCt((c) => (c ? { ...c, ...p } : c));
+  };
+  const setOwner = (slug: string | null) => {
+    setOwnerSlug(slug);
+    if (options) {
+      const pool = ownerPool(slug, options);
+      setVm((v) => (v ? { ...v, pool } : v));
+      setCt((c) => (c ? { ...c, pool } : c));
+    }
+  };
 
-  useEffect(() => {
-    engine.backend.machineOptions().then(setOptions, (e) => setLoadError(e instanceof ApiError ? e.message : "Couldn't load templates"));
-  }, [engine.backend]);
-  useEffect(() => {
-    if (!options) return;
-    setTemplate((t) => t || (options.templates.find((x) => /debian/i.test(x.volid)) ?? options.templates[0])?.volid || "");
-    setIso((i) => i || options.isos[0]?.volid || "");
-  }, [options]);
-  const disks = (kind === "lxc" ? options?.storages : options?.vmStorages) ?? [];
-  useEffect(() => {
-    setStorage((s) => (disks.some((d) => d.storage === s) ? s : disks[0]?.storage ?? ""));
-  }, [kind, options]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (/win/i.test(iso)) setOstype("win11");
-  }, [iso]);
+  const k = kind === "lxc" ? "ct" : "vm";
+  const form = kind === "lxc" ? ct : vm;
+  const spec = useMemo(() => (kind === "lxc" ? (ct ? ctSpec(ct) : null) : vm ? vmSpec(vm) : null), [kind, vm, ct]);
+  const check = useMemo(() => (spec && options ? checkSpec(k, spec, options) : null), [spec, options, k]);
 
-  const spec = SIZES[kind].find((s) => s.id === size) ?? SIZES[kind][0];
+  // A new machine in an organization has to fit its resource group.
   const org = engine.data.orgs.find((o) => o.slug === owner) ?? null;
   const room = org ? orgRoom(org, engine.data.guests) : null;
-  const fitError = room ? roomError(room, spec) : null;
-  const nameError = name && !NAME_RE.test(name) ? "Lowercase letters, digits and hyphens." : engine.data.guests.some((g) => g.name === name) ? "A machine with that name exists." : null;
-  const tpl = options?.templates.find((t) => t.volid === template);
-  const isoItem = options?.isos.find((t) => t.volid === iso);
-  const noTemplates = options !== null && options.templates.length === 0;
-  const source = kind === "lxc" ? !!template : true; // a VM can be created without media and booted from the network
-  const canCreate = !!options && !!name && !nameError && !fitError && source && !!storage && !busy && (kind === "qemu" || password === "" || password.length >= 8);
-  const pool = useMemo(() => (org && options?.pools.includes(org.resourceGroup.pool) ? org.resourceGroup.pool : undefined), [org, options]);
-
-  const create = async () => {
-    if (!canCreate) return;
-    setBusy(true);
-    setError(null);
-    const r =
-      kind === "lxc"
-        ? await engine.createMachine({ name, template, storage, cores: spec.cores, memoryMb: spec.memoryMb, diskGb: spec.diskGb, pool, password: password || undefined, sshKey: sshKey.trim() || undefined, org: owner, os: tpl?.name ?? "Linux" })
-        : await engine.createVm({ name, iso: iso || null, ostype, storage, cores: spec.cores, memoryMb: spec.memoryMb, diskGb: spec.diskGb, pool, start: true, org: owner });
-    setBusy(false);
-    if (!r.ok) return setError(r.error);
-    engine.notify({ kind: "info", title: `${name} is ${engine.live ? "being created" : "running"}`, body: `${spec.label} ${kind === "lxc" ? "container" : "virtual machine"} #${r.vmid}${org ? ` in ${org.name}` : ""}.` });
-    onClose();
-    navigate(owner ? `/${device}/${owner}/machines/${r.vmid}` : `/${device}/machines/${r.vmid}`);
+  const size = useMemo(() => {
+    if (!form || !spec) return { cores: 0, memoryMb: 0, diskGb: 0 };
+    if (kind === "lxc") return { cores: Number(ct!.cores) || 0, memoryMb: Number(ct!.memoryMb) || 0, diskGb: Number(ct!.sizeGb) || 0 };
+    return { cores: (Number(vm!.sockets) || 1) * (Number(vm!.cores) || 0), memoryMb: Number(vm!.memoryMb) || 0, diskGb: vm!.disks.reduce((n, d) => n + (Number(d.sizeGb) || 0), 0) };
+  }, [form, spec, kind, vm, ct]);
+  const fitError = room ? roomError(room, size) : null;
+  const pickSize = (x: { cores: number; memoryMb: number; diskGb: number }) => {
+    markSeen(`${kind}:${step.id}`);
+    if (kind === "lxc") setCt((c) => (c ? { ...c, cores: String(x.cores), memoryMb: String(x.memoryMb), sizeGb: String(x.diskGb) } : c));
+    else setVm((v) => (v ? { ...v, cores: String(x.cores), sockets: "1", memoryMb: String(x.memoryMb), disks: v.disks.map((d, i) => (i === 0 ? { ...d, sizeGb: String(x.diskGb) } : d)) } : v));
   };
+  const ownerNote = org ? (room ? `${room.guests} machine${room.guests === 1 ? "" : "s"}, ${Math.max(0, room.cores)} cores and ${formatBytes(Math.max(0, room.memoryMb) * 1024 ** 2)} left in its resource group` : null) : null;
+
+  const failure = check && !check.ok ? check : null;
+  const failStep = failure ? stepOfField(steps, failure.field) : -1;
+  const shown = (i: number) => seen.has(`${kind}:${steps[i].id}`) || submitError !== null;
+  const err = (field: string): string | null => {
+    if (!failure || failStep !== idx || !shown(idx)) return null;
+    return failure.field === field || failure.field.startsWith(`${field}.`) ? failure.message : null;
+  };
+  const stepHasError = (i: number) => !!failure && failStep === i && i !== idx && shown(i);
+
+  // Confirm: ask the device for the exact request (live) or build it here (demo).
+  const [preview, setPreview] = useState<{ vmid: number; params: Params } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const onConfirm = step.id === "confirm";
+  const specKey = JSON.stringify(spec);
+  const lastKey = useRef("");
+  useEffect(() => {
+    if (!onConfirm || !spec || !check?.ok) return setPreview(null);
+    if (lastKey.current === specKey + kind) return;
+    lastKey.current = specKey + kind;
+    let alive = true;
+    setPreviewing(true);
+    api.preview(k, spec).then(
+      (p) => alive && (setPreview({ vmid: p.vmid, params: p.params }), setPreviewing(false)),
+      () => alive && (setPreview(null), setPreviewing(false)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [onConfirm, specKey, kind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const canCreate = !!check?.ok && !fitError && !busy && !!form;
+  const create = async () => {
+    if (!canCreate || !spec) return;
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      const r = await api.create(k, spec, owner);
+      const name = kind === "lxc" ? ct!.name : vm!.name;
+      if (engine.live) engine.watchTask(r.task, `Create ${kind === "lxc" ? "container" : "VM"} ${name}`);
+      engine.notify({ kind: "info", title: `${name} is ${engine.live ? "being created" : "running"}`, body: `${kind === "lxc" ? "Container" : "Virtual machine"} #${r.vmid}${org ? ` in ${org.name}` : ""}.` });
+      onClose();
+      navigate(owner ? `/${device}/${owner}/machines/${r.vmid}` : `/${device}/machines/${r.vmid}`);
+    } catch (e) {
+      setSubmitError(errorText(e, "Can't reach this device"));
+    }
+    setBusy(false);
+  };
+
+  const owners = [{ slug: null as string | null, name: `${device} (the device)` }, ...engine.data.orgs.map((o) => ({ slug: o.slug as string | null, name: o.name }))];
+  const ownerName = org ? org.name : `${device} (the device)`;
+  const rows = spec && check?.ok ? summarize(k, spec, options, preview?.vmid ?? check.vmid ?? null, ownerName) : null;
+  const startForm = kind === "lxc" ? ct?.start : vm?.start;
+  const setStart = (v: boolean) => (kind === "lxc" ? setCtForm({ start: v }) : setVmForm({ start: v }));
+  const startHint = kind === "lxc" ? "Starts the container as soon as it exists." : "Starts the machine as soon as it exists, so the installer begins.";
+
+  const common = options && form ? { o: options, err } : null;
+  const body = !common ? null : (
+    <div key={`${kind}-${step.id}`} className="fade-in">
+      {kind === "lxc" && ct && (
+        <>
+          {step.id === "general" && <GeneralStep f={ct} set={setCtForm} {...common} kind="lxc" owners={owners} owner={owner} setOwner={setOwner} ownerNote={ownerNote} vmidCheck={api.vmidFree} />}
+          {step.id === "template" && <TemplateStep f={ct} set={setCtForm} {...common} device={device} onClose={onClose} />}
+          {step.id === "disk" && <CtDiskStep f={ct} set={setCtForm} {...common} />}
+          {step.id === "cpu" && <CtCpuStep f={ct} set={setCtForm} {...common} />}
+          {step.id === "memory" && <CtMemoryStep f={ct} set={setCtForm} {...common} />}
+          {step.id === "network" && <CtNetworkStep f={ct} set={setCtForm} {...common} />}
+          {step.id === "dns" && <CtDnsStep f={ct} set={setCtForm} {...common} />}
+        </>
+      )}
+      {kind === "qemu" && vm && (
+        <>
+          {step.id === "general" && <GeneralStep f={vm} set={setVmForm} {...common} kind="qemu" owners={owners} owner={owner} setOwner={setOwner} ownerNote={ownerNote} vmidCheck={api.vmidFree} />}
+          {step.id === "os" && <OsStep f={vm} set={setVmForm} {...common} device={device} onClose={onClose} />}
+          {step.id === "system" && <SystemStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "disks" && <DisksStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "cpu" && <CpuStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "memory" && <MemoryStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "network" && <VmNetworkStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "cloudinit" && <CloudInitStep f={vm} set={setVmForm} {...common} />}
+          {step.id === "hardware" && <HardwareStep f={vm} set={setVmForm} {...common} />}
+        </>
+      )}
+      {step.id === "general" && (
+        <div className="mt-6">
+          <SizePicker kind={kind} current={size} onPick={pickSize} tooBig={(x) => (room ? roomError(room, x) !== null : false)} />
+        </div>
+      )}
+      {step.id === "confirm" && (
+        <ConfirmStep
+          kind={k}
+          rows={rows}
+          warnings={check?.ok ? check.warnings : []}
+          error={failure ? { message: failure.message, step: steps[failStep].label } : fitError ? { message: fitError, step: "General" } : null}
+          params={preview?.params ?? null}
+          loading={previewing}
+          start={startForm ?? true}
+          setStart={setStart}
+          startHint={startHint}
+        />
+      )}
+    </div>
+  );
+
+  const footerNote = failure && failStep === idx && shown(idx) ? failure.message : submitError;
+  const summaryLine = `${size.cores} core${size.cores === 1 ? "" : "s"} · ${formatBytes(size.memoryMb * 1024 ** 2)} · ${size.diskGb} GB`;
 
   return (
     <Modal
       size="lg"
       icon={kind === "lxc" ? <Box className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
       title="New machine"
-      subtitle={kind === "lxc" ? "A Linux container, ready in seconds. You can resize it later." : "A full virtual machine that boots from an ISO image, for any operating system."}
+      subtitle={kind === "lxc" ? "A Linux container, ready in seconds. You can change it later." : "A full virtual machine for any operating system."}
       onClose={onClose}
       footer={
         <>
-          <span className="mr-auto text-xs text-ink-3 tabular-nums hidden sm:block">{spec.cores} core{spec.cores === 1 ? "" : "s"} · {formatBytes(spec.memoryMb * 1024 ** 2)} · {spec.diskGb} GB{kind === "lxc" ? (tpl ? ` · ${tpl.name}` : "") : isoItem ? ` · ${isoItem.name}` : ""}</span>
+          <span role={footerNote ? "alert" : undefined} className={cn("mr-auto text-xs min-w-0 sm:max-w-[60%]", footerNote ? "text-critical" : "text-ink-3 tabular-nums hidden sm:block")}>{footerNote ?? summaryLine}</span>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={create} disabled={!canCreate}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Create and start</Button>
+          {idx > 0 && <Button variant="secondary" onClick={() => go(idx - 1)}>Back</Button>}
+          {step.id === "confirm" ? (
+            <Button variant="primary" onClick={create} disabled={!canCreate} loading={busy}>{startForm === false ? "Create machine" : "Create and start"}</Button>
+          ) : (
+            <>
+              {idx < steps.length - 2 && <Button variant="ghost" onClick={() => go(steps.length - 1)} disabled={!options}>Review</Button>}
+              <Button variant="primary" onClick={() => go(idx + 1)} disabled={!options}>Next</Button>
+            </>
+          )}
         </>
       }
     >
       <div className="space-y-5">
-        <Segmented value={kind} onChange={(k) => { setKind(k); setSize("small"); }} options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-          <label className="block">
-            <span className="block text-compact text-ink-2 mb-2">Name</span>
-            <Input value={name} onChange={(e) => { setName(e.target.value.toLowerCase()); setNameTouched(true); }} onKeyDown={(e) => e.key === "Enter" && create()} autoFocus spellCheck={false} />
-            <span className="block text-xs mt-1.5 min-h-4 text-critical">{nameError}</span>
-          </label>
-          <label className="block">
-            <span className="block text-compact text-ink-2 mb-2">Owner</span>
-            <select value={owner ?? ""} onChange={(e) => setOwner(e.target.value || null)} className={select}>
-              <option value="">{device} (the device)</option>
-              {engine.data.orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
-            </select>
-            <span className="block text-xs mt-1.5 min-h-4 text-ink-3">
-              {room && `${room.guests} machine${room.guests === 1 ? "" : "s"}, ${Math.max(0, room.cores)} cores and ${formatBytes(Math.max(0, room.memoryMb) * 1024 ** 2)} left in its resource group`}
-            </span>
-          </label>
-        </div>
-
-        <fieldset>
-          <legend className="text-compact text-ink-2 mb-2">Size</legend>
-          <div className="grid grid-cols-3 gap-2">
-            {SIZES[kind].map((s) => {
-              const tooBig = room ? roomError(room, s) !== null : false;
-              return (
-                <button key={s.id} type="button" onClick={() => setSize(s.id)} aria-pressed={size === s.id} className={cn("text-left rounded-xl border p-3 transition", size === s.id ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong", tooBig && "opacity-60")}>
-                  <span className="block font-medium text-sm">{s.label}</span>
-                  <span className="block text-xs text-ink-2 tabular-nums mt-0.5">{s.cores} core{s.cores === 1 ? "" : "s"} · {s.memoryMb / 1024} GiB · {s.diskGb} GB</span>
-                  <span className="hidden sm:block text-xs text-ink-3 mt-1">{s.hint}</span>
+        <Segmented value={kind} onChange={(x) => { setKind(x); setSubmitError(null); }} label="Kind of machine" options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
+        <nav aria-label="Steps" className="sticky top-0 z-(--z-raised) -mx-5 px-5 py-2 bg-surface border-b border-line">
+          <ol className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
+            {steps.map((st, i) => (
+              <li key={st.id} className="shrink-0">
+                <button type="button" onClick={() => go(i)} aria-current={i === idx ? "step" : undefined} className={cn("transition-control inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-compact whitespace-nowrap", i === idx ? "bg-surface-3 text-ink font-medium" : "text-ink-3 hover:text-ink hover:bg-surface-2")}>
+                  <span aria-hidden className={cn("inline-flex h-5 w-5 items-center justify-center rounded-full text-micro tabular-nums border", i === idx ? "border-accent/60 text-ink" : "border-line")}>{i + 1}</span>
+                  {st.label}
+                  {stepHasError(i) && (
+                    <>
+                      <AlertTriangle aria-hidden className="h-3.5 w-3.5 text-warning" />
+                      <span className="sr-only">needs attention</span>
+                    </>
+                  )}
                 </button>
-              );
-            })}
-          </div>
-          {fitError && <p className="text-xs text-critical mt-2">{fitError}</p>}
-        </fieldset>
-
+              </li>
+            ))}
+          </ol>
+        </nav>
         {loadError ? (
-          <p className="text-compact text-critical">{loadError}</p>
-        ) : !options ? (
-          <p className="text-compact text-ink-3 inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading from {device}…</p>
-        ) : kind === "lxc" ? (
-          <label className="block">
-            <span className="block text-compact text-ink-2 mb-2">System</span>
-            {noTemplates ? (
-              <p className="text-compact text-ink-2">No container templates on {device} yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Get one from the template catalog</Link> in Storage.</p>
-            ) : (
-              <select value={template} onChange={(e) => setTemplate(e.target.value)} className={select}>
-                {options.templates.map((t) => <option key={t.volid} value={t.volid}>{t.name}</option>)}
-              </select>
-            )}
-          </label>
+          <Notice tone="critical" title="Couldn't load what this device offers" action={<Button size="sm" onClick={load}>Try again</Button>}>{loadError}</Notice>
+        ) : !options || !form ? (
+          <div role="status" aria-label="Loading" className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-2/3" /><Skeleton className="h-24 w-full" /></div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_200px] gap-4">
-            <label className="block">
-              <span className="block text-compact text-ink-2 mb-2">Boot from</span>
-              <select value={iso} onChange={(e) => setIso(e.target.value)} className={select}>
-                {options.isos.map((t) => <option key={t.volid} value={t.volid}>{t.name}{t.size ? ` · ${formatBytes(t.size)}` : ""}</option>)}
-                <option value="">No media (network boot)</option>
-              </select>
-              {options.isos.length === 0 && <span className="block text-xs mt-1.5 text-ink-3">No ISO images yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Upload one or download it from a URL</Link> in Storage.</span>}
-            </label>
-            <label className="block">
-              <span className="block text-compact text-ink-2 mb-2">Operating system</span>
-              <select value={ostype} onChange={(e) => setOstype(e.target.value as typeof ostype)} className={select}>
-                {OS_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
-            {ostype === "win11" && <p className="sm:col-span-2 text-xs text-ink-3 -mt-2">Windows 11 gets UEFI, Secure Boot keys and a TPM 2.0, with SATA and e1000e so the installer sees the disk and network without extra drivers.</p>}
-          </div>
+          body
         )}
-
-        <div>
-          <button type="button" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced} className="text-compact text-ink-2 hover:text-ink inline-flex items-center gap-1">
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-180")} />{kind === "lxc" ? "Sign-in and storage" : "Storage"}
-          </button>
-          {advanced && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 fade-in">
-              {kind === "lxc" && (
-                <label className="block">
-                  <span className="block text-compact text-ink-2 mb-2">Root password <span className="text-ink-3">(optional)</span></span>
-                  <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  <span className="block text-xs mt-1.5 min-h-4 text-critical">{password && password.length < 8 ? "At least 8 characters." : ""}</span>
-                </label>
-              )}
-              <label className="block">
-                <span className="block text-compact text-ink-2 mb-2">Disk storage</span>
-                <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>
-                  {disks.map((s) => <option key={s.storage} value={s.storage}>{s.storage}{s.avail !== null ? ` · ${formatBytes(s.avail)} free` : ""}</option>)}
-                </select>
-              </label>
-              {kind === "lxc" && (
-                <label className="block sm:col-span-2">
-                  <span className="block text-compact text-ink-2 mb-2">SSH public key <span className="text-ink-3">(optional)</span></span>
-                  <Input value={sshKey} onChange={(e) => setSshKey(e.target.value)} placeholder="ssh-ed25519 AAAA…" spellCheck={false} />
-                </label>
-              )}
-            </div>
-          )}
-        </div>
-        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
   );
