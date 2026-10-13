@@ -152,3 +152,5 @@ export class AutomationEngine {
     return decisions;
   }
 }
+
+export { inScope, pointless };
