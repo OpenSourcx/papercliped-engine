@@ -8,6 +8,7 @@ import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, Segmented, Select, Skeleton, Status, Toggle } from "../../ui/primitives.tsx";
 import { TypedConfirm } from "../node/common.tsx";
+import { httpUrl } from "../../lib/safeUrl";
 
 type Inbox = Awaited<ReturnType<typeof pinRt.inbox>>;
 
@@ -454,7 +455,7 @@ export function UpdatesTab() {
           <div className="mt-4">
             <div className="text-sm font-medium">What's new in {u.latest.version}</div>
             <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-code border border-line p-3 text-compact font-mono whitespace-pre-wrap text-ink-2">{u.latest.notes || "No release notes were published."}</pre>
-            <a href={u.latest.url} target="_blank" rel="noopener noreferrer" className="text-compact text-accent hover:underline mt-2 inline-block">Release page on GitHub</a>
+            <a href={httpUrl(u.latest.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="text-compact text-accent hover:underline mt-2 inline-block">Release page on GitHub</a>
           </div>
         )}
       </Card>

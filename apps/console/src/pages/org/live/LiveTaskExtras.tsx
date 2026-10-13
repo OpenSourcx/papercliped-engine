@@ -14,6 +14,7 @@ import { Modal } from "../../../ui/Modal.tsx";
 import { Button, Card, Chip, Input, SectionTitle, Status, type StatusKind } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { Preview, previewKind } from "./LiveArtifacts.tsx";
+import { httpUrl } from "../../../lib/safeUrl";
 
 /** A calm colour for a new label, worked out from its name so the same name always gets the same one. */
 function labelColor(name: string): string {
@@ -115,7 +116,7 @@ export function TaskExtras({ task }: { task: Issue }) {
           <div className="divide-y divide-line -mx-5">
             {e.workProducts.map((w) => (
               <div key={w.id} className="flex items-center gap-3 px-5 py-2 text-sm">
-                <span className="flex-1 min-w-0 truncate">{w.url && /^https?:\/\//.test(w.url) ? <a className="hover:underline" href={w.url} target="_blank" rel="noreferrer noopener">{w.title}</a> : w.title}</span>
+                <span className="flex-1 min-w-0 truncate">{httpUrl(w.url) ? <a className="hover:underline" href={httpUrl(w.url)!} target="_blank" rel="noreferrer noopener">{w.title}</a> : w.title}</span>
                 <Chip>{w.type.replace(/_/g, " ")}</Chip>
                 <span className="text-xs text-ink-3 w-24 text-right">{w.status.replace(/_/g, " ")}</span>
               </div>

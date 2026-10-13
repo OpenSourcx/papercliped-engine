@@ -378,6 +378,28 @@ s_update_helper() {
   check "a request that is a link is ignored" eval '[ "$(ustat phase)" = failed ] && [ ! -e "$st/request" ]'
   check "no request, no change" eval 'urun; [ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
 
+  # The folder belongs to the unprivileged host service, so the helper (root) must not follow anything it plants there.
+  uask $'action=update\nversion=0.9.0\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "an older release than the one running is refused (use rollback for that)" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q "older" && [ "$(version)" = 1.0.0 ] && [ ! -e "$st/request" ]'
+
+  local victim="$H/victim"; printf 'precious\n' >"$victim"; chmod 0600 "$victim"
+  ln -sf "$victim" "$st/log"; ln -sf "$victim" "$st/status"
+  uask $'action=reinstall\n'; urun
+  check "links named log and status can't make the helper truncate, fill or chmod another file" eval '[ "$(cat "$victim")" = precious ] && [ "$(stat -c %a "$victim")" = 600 ] && [ ! -L "$st/status" ] && [ ! -L "$st/log" ] && [ "$(ustat phase)" = failed ]'
+  ln -sf "$victim" "$st/log"
+  uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; echo tampered >>"$web/v1.1.0/epaperclip.tar.gz"; urun
+  check "the same through a whole run (log written, status written)" eval '[ "$(cat "$victim")" = precious ] && [ "$(stat -c %a "$victim")" = 600 ] && [ ! -L "$st/log" ]'
+
+  mkdir -p "$H/elsewhere"; rm -rf "$st"; ln -s "$H/elsewhere" "$st"
+  printf 'action=rollback\n' >"$H/elsewhere/request"; urun
+  check "an update folder that has been swapped for a link is left alone" eval '[ "$RC" -eq 0 ] && [ -e "$H/elsewhere/request" ] && [ ! -e "$H/elsewhere/status" ] && [ ! -e "$H/elsewhere/log" ] && [ "$(version)" = 1.0.0 ]'
+  rm -f "$st"; mkdir -p "$st"; rm -rf "$H/elsewhere"
+
+  mkfifo "$st/request"; timeout 20 bash -c 'EPC_RELEASE_DOWNLOAD="file://$0" bash "$1/prefix/update/run.sh"' "$web" "$H" >"$H/out" 2>&1; RC=$?
+  check "a pipe in place of the request can't hold the helper up" eval '[ "$RC" -eq 0 ] && [ ! -e "$st/request" ] && [ "$(ustat phase)" = failed ]'
+  mkdir "$st/request"; urun
+  check "a folder in place of the request is cleared away, so the path unit doesn't loop" eval '[ ! -e "$st/request" ] && [ "$(ustat phase)" = failed ]'
+
   install --uninstall 2>/dev/null; R="$old" install --uninstall
   check "uninstall removes the helper's units" eval '[ ! -e "$H/units/epaperclip-update.path" ] && [ ! -e "$H/units/epaperclip-update.service" ]'
 }

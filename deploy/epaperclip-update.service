@@ -10,3 +10,12 @@ TimeoutStartSec=1h
 Nice=10
 PrivateTmp=yes
 ProtectHome=yes
+# Root, because it installs; but it needs nothing from the kernel's tunables, clock, modules or realtime scheduling, and
+# its files are made private (the folder it reads a request from belongs to the unprivileged host service; see run.sh).
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0022

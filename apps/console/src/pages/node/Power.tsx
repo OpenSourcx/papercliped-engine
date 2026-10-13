@@ -5,6 +5,7 @@ import { nodeApi, type PowerInfo } from "../../data/engine/nodeApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Status } from "../../ui/primitives.tsx";
 import { Async, LiveOnly, NodeSwitcher, TypedConfirm, useNodeName } from "./common.tsx";
+import { httpUrl } from "../../lib/safeUrl";
 
 function PowerCard({ info }: { info: PowerInfo }) {
   const { node } = useNodeName();
@@ -123,7 +124,7 @@ function SubscriptionCard() {
             <div className="flex flex-wrap gap-2 mt-4">
               <Button loading={check.isPending} onClick={() => check.mutate()}>Check now</Button>
               {s.keyLast4 && <Button variant="ghost" className="text-critical" onClick={() => setRemoving(true)}>Remove key…</Button>}
-              {s.url && <a href={s.url} target="_blank" rel="noreferrer noopener" className="transition-control inline-flex items-center h-10 px-3 rounded-lg text-compact text-ink-2 hover:text-ink hover:bg-surface-2">Proxmox shop</a>}
+              {httpUrl(s.url) && <a href={httpUrl(s.url)!} target="_blank" rel="noreferrer noopener" className="transition-control inline-flex items-center h-10 px-3 rounded-lg text-compact text-ink-2 hover:text-ink hover:bg-surface-2">Proxmox shop</a>}
             </div>
             {removing && <TypedConfirm title="Remove the subscription key?" phrase="remove subscription" action="Remove key" busy={remove.isPending} error={remove.error ? errorText(remove.error) : null} onClose={() => setRemoving(false)} onConfirm={() => remove.mutate()}><Notice tone="warning">Without a key this device loses access to the enterprise repository. Updates from it will stop until you set a key again.</Notice></TypedConfirm>}
           </Card>
