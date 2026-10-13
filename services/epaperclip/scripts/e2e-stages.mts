@@ -137,6 +137,8 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   const engineAdmin = (user: string) => until(`${user} to be an engine instance admin`, async () => (await eng(user, "GET", "/api/companies")).status === 200 && (await eng(user, "GET", "/api/admin/users")).status === 200);
   /** The control inside the <label> whose first line is this text (the engine pages wrap their inputs in labels). */
   const field = (page: Page, label: string) => page.locator("label").filter({ has: page.locator("span", { hasText: new RegExp(`^${label}\\b`) }) }).locator("input, select, textarea").first();
+  /** A tab or a segmented button, whichever the page uses. */
+  const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true }).or(page.getByRole("button", { name, exact: true })).or(page.getByRole("radio", { name, exact: true })).first();
   const bodyText = async (page: Page) => (await page.innerText("body")).replace(/\s+/g, " ");
 
   // ---- stages
@@ -285,10 +287,10 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     const a = list.json.find((x: any) => x.id === S.agentId);
     expect(a && a.name === "Runner" && a.role === "engineer", `the engine has the agent, got ${list.text.slice(0, 300)}`);
     expect(/^[0-9a-f-]{36}$/.test(a.id), "agent ids are UUIDs");
-    for (const tab of ["Overview", "Runs", "Configuration", "Instructions", "Skills", "Budget"]) {
-      await page.getByRole("tab", { name: tab }).or(page.getByRole("button", { name: tab, exact: true })).first().click();
+    for (const t of ["Overview", "Runs", "Configuration", "Instructions", "Skills", "Budget"]) {
+      await tab(page, t).click();
       await page.waitForTimeout(700);
-      await shot(page, `06-agent-${tab.toLowerCase()}`);
+      await shot(page, `06-agent-${t.toLowerCase()}`);
     }
   });
 
@@ -323,11 +325,232 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await shot(page, "07-task-detail");
     await page.goto(c.base + `/pve/acm/agents/${S.agentId}`);
     await page.waitForSelector("text=Runner");
-    await page.getByRole("tab", { name: "Runs" }).or(page.getByRole("button", { name: "Runs", exact: true })).first().click();
+    await tab(page, "Runs").click();
     await page.waitForTimeout(1200);
     await shot(page, "07-agent-runs-failed");
     const wake = await eng("sam", "POST", `/api/agents/${S.agentId}/wakeup`, { source: "on_demand", triggerDetail: "manual" });
     console.log("       manual wakeup:", wake.status, wake.text.slice(0, 160));
+  });
+
+  await stage("inbox: the failed run needs the person; the page and the rail badge agree", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/inbox");
+    await page.waitForSelector("text=Needs you");
+    await shot(page, "08-inbox");
+    // Pin's island floats over the top edge; the containers banner must sit clear of it.
+    const covered = await page.evaluate(() => {
+      const note = document.querySelector('[role="status"] span');
+      if (!note) return "the containers banner isn't shown";
+      const r = note.getBoundingClientRect();
+      for (const f of [0.05, 0.25, 0.5, 0.75, 0.95]) {
+        const hit = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2);
+        if (!hit || !note.closest('[role="status"]')!.contains(hit)) return `something covers the banner text at ${Math.round(f * 100)}% of its width`;
+      }
+      return null;
+    });
+    expect(!covered, String(covered));
+    const attention = await eng("sam", "GET", `/api/companies/${S.org!.id}/attention`);
+    expect(attention.status === 200, `attention feed answers, got ${attention.status}`);
+    const items = attention.json.items as any[];
+    console.log("       attention items:", items.map((i) => `${i.kind ?? i.sourceKind}:${i.title ?? ""}`.slice(0, 70)).join(" | "));
+    const badges = await eng("sam", "GET", `/api/companies/${S.org!.id}/sidebar-badges`);
+    console.log("       badges:", badges.text);
+    await page.goto(c.base + "/pve/acm/decisions");
+    await page.waitForSelector("text=Waiting");
+    await shot(page, "08-decisions");
+    console.log("       decisions:", (await bodyText(page)).slice(0, 500));
+  });
+
+  await stage("decisions: a hire waits for approval, and approving it in the console reaches the engine", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/settings");
+    await page.getByRole("switch", { name: "Require approval for new agents" }).click();
+    await until("the engine setting", async () => (await eng("sam", "GET", `/api/companies/${S.org!.id}`)).json?.requireBoardApprovalForNewAgents === true);
+    await page.goto(c.base + "/pve/acm/agents");
+    await page.click("button:has-text('New agent')");
+    await field(page, "Name").fill("Scout");
+    await field(page, "Role").selectOption("researcher");
+    await page.click("button:has-text('Create agent')");
+    await page.waitForURL(/\/agents\/[0-9a-f-]{36}$/);
+    const scoutId = page.url().split("/").pop()!;
+    const pending = await until("a pending approval", async () => {
+      const r = await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals?status=pending`);
+      return Array.isArray(r.json) && r.json.length ? r.json : null;
+    });
+    console.log("       approval:", JSON.stringify(pending[0]).slice(0, 300));
+    await page.goto(c.base + "/pve/acm/decisions");
+    await page.waitForSelector("text=Scout", { timeout: 15000 });
+    await shot(page, "09-decisions-hire");
+    await page.getByRole("button", { name: /^Approve/ }).first().click();
+    await until("the approval to be approved", async () => {
+      const r = await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`);
+      return (r.json as any[]).some((a) => a.status === "approved");
+    });
+    const agent = await until("the hired agent to leave pending_approval", async () => {
+      const a = (await eng("sam", "GET", `/api/agents/${scoutId}`)).json;
+      return a.status !== "pending_approval" ? a : null;
+    });
+    console.log("       Scout after approval:", agent.status);
+    await page.reload();
+    await tab(page, "History").click();
+    await page.waitForSelector("text=Scout");
+    await shot(page, "09-decisions-history");
+    await page.goto(c.base + "/pve/acm/settings");
+    await page.getByRole("switch", { name: "Require approval for new agents" }).click();
+    await until("the setting off again", async () => (await eng("sam", "GET", `/api/companies/${S.org!.id}`)).json?.requireBoardApprovalForNewAgents === false);
+  });
+
+  await stage("routines: create a scheduled routine, run it now, read its history", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/routines");
+    await page.click("button:has-text('New routine')");
+    await page.fill("#rt-title", "Morning summary");
+    await page.fill("#rt-desc", "Summarise what the anvils did yesterday.");
+    await page.selectOption("#rt-agent", { label: "Runner" });
+    await page.selectOption("#rt-schedule", "custom");
+    await page.fill("#rt-cron", "0 9 * * 1-5");
+    await shot(page, "10-new-routine");
+    await page.getByRole("button", { name: /^Create/ }).last().click();
+    await page.waitForURL(/\/routines\/[0-9a-f-]{36}$/, { timeout: 20000 });
+    const routineId = page.url().split("/").pop()!;
+    const r = await eng("sam", "GET", `/api/routines/${routineId}`);
+    expect(r.status === 200 && r.json.title === "Morning summary", `the engine has the routine, got ${r.text.slice(0, 200)}`);
+    const triggers = (r.json.triggers ?? []) as any[];
+    expect(triggers.some((t) => t.kind === "schedule" && t.cronExpression === "0 9 * * 1-5"), `the routine has its schedule trigger, got ${JSON.stringify(triggers).slice(0, 300)}`);
+    await page.waitForSelector("text=Morning summary");
+    await shot(page, "10-routine-detail");
+    await page.getByRole("button", { name: /Run now/ }).click();
+    const runs = await until("a routine run", async () => {
+      const x = await eng("sam", "GET", `/api/routines/${routineId}/runs`);
+      const list = Array.isArray(x.json) ? x.json : x.json?.runs ?? [];
+      return list.length ? list : null;
+    });
+    console.log("       routine run:", JSON.stringify({ status: runs[0].status, source: runs[0].source, issue: runs[0].linkedIssueId ?? runs[0].issueId }).slice(0, 200));
+    await page.reload();
+    await page.waitForSelector("text=Morning summary");
+    await page.waitForTimeout(1500);
+    await shot(page, "10-routine-run-history");
+    await page.goto(c.base + "/pve/acm/routines");
+    await page.waitForSelector("text=Morning summary");
+    await shot(page, "10-routines-list");
+  });
+
+  await stage("chat: off by default, an administrator turns it on without touching the container policy", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/chat");
+    await page.waitForSelector("text=Chat is switched off");
+    await shot(page, "11-chat-off");
+    const before = (await eng("sam", "GET", "/api/instance/settings/experimental")).json;
+    expect(before.enableAgentChat !== true && before.enableManagedSandboxOnly === true, `chat starts off and the sandbox policy is on, got ${JSON.stringify(before)}`);
+    await page.click("button:has-text('Turn on chat')");
+    await page.waitForSelector("text=Pick an agent", { timeout: 15000 });
+    const after = (await eng("sam", "GET", "/api/instance/settings/experimental")).json;
+    expect(after.enableAgentChat === true && after.enableManagedSandboxOnly === true, `chat is on and the sandbox policy is still on, got ${JSON.stringify(after)}`);
+    await page.click("button:has-text('Runner')");
+    await page.fill('textarea[aria-label="Message Runner"]', "How sharp are they?");
+    await page.keyboard.press("Enter");
+    // The message is a comment on the conversation's task (a UUID per message); it lands in the thread, not just the box.
+    await page.waitForSelector("p.whitespace-pre-wrap:has-text('How sharp are they?')", { timeout: 15000 });
+    await until("the message box to be cleared after sending", async () => (await page.inputValue('textarea[aria-label="Message Runner"]')) === "", 10000);
+    // The agent can't run (no containers), so its conversation must not claim it is still writing.
+    await sleep(6000);
+    const chats = await eng("sam", "GET", `/api/companies/${S.org!.id}/chats`);
+    console.log("       conversations:", JSON.stringify((chats.json as any[]).map((x) => ({ state: x.conversationState, agent: x.conversationAgentId?.slice(0, 8) }))));
+    await shot(page, "11-chat-thread");
+  });
+
+  await stage("costs: the summary reads, and a budget is saved to the engine", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/costs");
+    await page.waitForSelector("text=spent, no budget set");
+    await page.fill('input[aria-label="Monthly budget in dollars"]', "50");
+    await page.click("button:has-text('Save budget')");
+    await page.waitForSelector("text=of $50.00 budgeted", { timeout: 15000 });
+    const co = (await eng("sam", "GET", `/api/companies/${S.org!.id}`)).json;
+    expect(co.budgetMonthlyCents === 5000, `the engine has the budget, got ${co.budgetMonthlyCents}`);
+    for (const v of ["By project", "By provider", "By model"]) { await tab(page, v).click(); await page.waitForTimeout(500); }
+    await shot(page, "12-costs");
+  });
+
+  await stage("work: projects and goals are created in the engine; search finds the task", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/projects");
+    await page.click("button:has-text('New project')");
+    await page.fill('input[placeholder="e.g. Customer portal"]', "Forge expansion");
+    await page.getByRole("button", { name: /^Create/ }).last().click();
+    await page.waitForSelector("text=Forge expansion");
+    await page.goto(c.base + "/pve/acm/goals");
+    await page.click("button:has-text('New goal')");
+    await page.fill('input[placeholder="e.g. Ship the beta to 50 users"]', "Sharpen every anvil by Friday");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("text=Sharpen every anvil by Friday");
+    const projects = (await eng("sam", "GET", `/api/companies/${S.org!.id}/projects`)).json;
+    expect(projects.some((p: any) => p.name === "Forge expansion"), "the engine has the project");
+    const goals = (await eng("sam", "GET", `/api/companies/${S.org!.id}/goals`)).json;
+    expect(goals.some((g: any) => g.title === "Sharpen every anvil by Friday"), "the engine has the goal");
+    await shot(page, "13-goals");
+    await page.goto(c.base + "/pve/acm/tasks");
+    await page.keyboard.press("/");
+    await page.keyboard.type("anvils");
+    await page.waitForSelector("text=Sharpen the anvils", { timeout: 15000 });
+    await shot(page, "13-search");
+    await page.keyboard.press("Escape");
+    await page.goto(c.base + "/pve/acm/activity");
+    await page.waitForSelector("text=Forge expansion");
+    await shot(page, "13-activity");
+  });
+
+  // ---- Pin
+  const pinText = () => c.provider.asked.filter((a) => a.method === "POST").map((a) => a.body);
+  await stage("pin: set the model connector and Pin's model in the console", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/home?settings=connectors");
+    await page.click("button:has-text('Set key')");
+    await page.fill('input[aria-label="Anthropic key"]', "sk-ant-e2e-0123456789abcdefWXYZ");
+    await page.click("button:has-text('Save')");
+    await page.waitForSelector("text=WXYZ");
+    await page.click("button:has-text('Test')");
+    await page.waitForSelector("text=The key works.");
+    const asked = c.provider.asked.find((a) => a.method === "GET");
+    expect(asked?.headers["x-api-key"] === "sk-ant-e2e-0123456789abcdefWXYZ", "the saved key was used to call the provider");
+    const listed = await call("sam", "GET", "/api/connectors");
+    expect(!listed.text.includes("0123456789abcdef"), "the key is never sent back to the browser");
+    await shot(page, "14-connectors");
+    await page.goto(c.base + "/pve/pin?tab=settings");
+    await page.getByRole("radio", { name: /Anthropic/ }).click();
+    await page.selectOption("#pin-model", "model-fast");
+    await page.getByRole("radio", { name: /^Agent Acts on its own/ }).click();
+    await page.click("button:has-text('Test connection')");
+    await page.waitForSelector("text=/works|Working|Connected|ok/i");
+    await page.click("button:has-text('Save settings')");
+    await until("Pin's settings saved", async () => (await call("sam", "GET", "/api/pin/settings")).json?.model === "model-fast");
+    const saved = (await call("sam", "GET", "/api/pin/settings")).json;
+    expect(saved.provider === "anthropic" && saved.mode === "agent", `provider and mode saved, got ${JSON.stringify(saved)}`);
+    await shot(page, "14-pin-settings");
+  });
+
+  await stage("pin: a chat turn reads the real engine through a tool and answers from it", async () => {
+    const { page } = await open("sam");
+    c.provider.next = "orgs";
+    await page.goto(c.base + "/pve/home");
+    await page.waitForSelector("text=THIS DEVICE");
+    await page.fill('input[placeholder="Ask Pin"]', "Which organizations do we have?");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("text=/Pin saw:/", { timeout: 30000 });
+    await shot(page, "15-pin-chat-orgs");
+    const second = c.provider.asked.filter((a) => a.method === "POST" && a.body.includes("tool_result")).at(-1);
+    expect(second, "Pin sent the tool's result back to the model");
+    expect(second!.body.includes(S.org!.id) && second!.body.includes("Acme Labs"), "the tool result carries the real organization (a UUID id and its name)");
+    c.provider.next = "summary";
+    c.provider.orgId = S.org!.id;
+    await page.fill('input[placeholder="Ask Pin"]', "How is Acme Labs doing?");
+    await page.keyboard.press("Enter");
+    await until("the summary tool result", () => c.provider.asked.some((a) => a.body.includes("tool_result") && a.body.includes("openIssues")), 30000);
+    const sum = c.provider.asked.filter((a) => a.body.includes("openIssues")).at(-1)!.body;
+    expect(sum.includes("Runner") && sum.includes("Sharpen the anvils"), `the summary lists the real agent and task, got ${sum.slice(-600)}`);
+    expect(sum.includes("pendingApprovals"), "the summary includes approvals");
+    await page.waitForTimeout(800);
+    await shot(page, "15-pin-chat-summary");
   });
 
   return results;

@@ -132,6 +132,7 @@ export const ENGINE_PATHS = {
   company: "/api/companies/{companyId}",
   dashboard: "/api/companies/{companyId}/dashboard",
   agents: "/api/companies/{companyId}/agents",
+  agentHires: "/api/companies/{companyId}/agent-hires",
   agent: "/api/agents/{id}",
   agentWakeup: "/api/agents/{id}/wakeup",
   agentPause: "/api/agents/{id}/pause",
@@ -303,7 +304,20 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     agents: {
       list: (companyId: string) => call<Agent[]>("GET", P.agents, { companyId }),
       get: (id: string) => call<Agent>("GET", P.agent, { id }),
-      create: (companyId: string, body: CreateAgentBody) => call<Agent>("POST", P.agents, { companyId }, body),
+      /**
+       * Creates an agent. An organization that requires board approval for new agents refuses direct creation and points at
+       * the hire route (which makes the agent "pending_approval" and files an approval in Decisions); follow it, so the
+       * console works the same whichever way the organization is set.
+       */
+      create: async (companyId: string, body: CreateAgentBody): Promise<Agent> => {
+        try {
+          return await call<Agent>("POST", P.agents, { companyId }, body);
+        } catch (e) {
+          if (!(e instanceof EngineError) || e.status < 400 || e.status >= 500 || !/agent-hires/.test(e.message)) throw e;
+          const hired = await call<{ agent: Agent }>("POST", P.agentHires, { companyId }, body);
+          return hired.agent;
+        }
+      },
       update: (id: string, body: UpdateAgentBody) => call<Agent>("PATCH", P.agent, { id }, body),
       remove: (id: string) => call<unknown>("DELETE", P.agent, { id }),
       wakeup: (id: string, reason?: string) => call<unknown>("POST", P.agentWakeup, { id }, { source: "on_demand", triggerDetail: "manual", ...(reason ? { reason } : {}) }),

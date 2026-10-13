@@ -85,8 +85,6 @@ export function fakeE2ePve(opts: { clustered?: boolean } = {}) {
       const mine = await pin.transport(req);
       if (mine.status !== 200) return mine;
       const rows = JSON.parse(mine.body).data as Record<string, unknown>[];
-      const who = pin.privs;
-      void who;
       for (const [vmid, g] of guest.guests) {
         if (pinOwned.has(vmid) || vmid < 300 || [300, 301, 302, 303].includes(vmid)) continue;
         rows.push({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status, mem: 0, maxmem: Number(g.cfg.memory ?? 512) * 1048576, cpu: 0, maxcpu: Number(g.cfg.cores ?? 1), disk: 0, maxdisk: 8 * 1024 ** 3, tags: String(g.cfg.tags ?? ""), pool: g.pool });
@@ -113,10 +111,12 @@ export function fakeE2ePve(opts: { clustered?: boolean } = {}) {
 
 export interface ProviderScript {
   /** Every request the host sent to a provider, in order. */
-  asked: { url: string; method: string; body: string }[];
+  asked: { url: string; method: string; body: string; headers: Record<string, string> }[];
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   /** What Pin should do next time a person's message arrives. */
-  next: "orgs" | "plan" | "text";
+  next: "orgs" | "summary" | "plan" | "text";
+  /** The organization Pin summarises when next is "summary". */
+  orgId: string | null;
   /** Parameters of the plan Pin proposes when next is "plan". */
   plan: Record<string, unknown> | null;
 }
@@ -143,11 +143,13 @@ export function scriptedProvider(): ProviderScript {
   const script: ProviderScript = {
     asked: [],
     next: "orgs",
+    orgId: null,
     plan: null,
     fetch: async (url, init) => {
       const method = init.method ?? "GET";
       const body = typeof init.body === "string" ? init.body : "";
-      script.asked.push({ url, method, body });
+      const headers = Object.fromEntries(Object.entries((init.headers ?? {}) as Record<string, string>).map(([k, v]) => [k.toLowerCase(), v]));
+      script.asked.push({ url, method, body, headers });
       if (!url.startsWith("https://api.anthropic.com/v1/")) return new Response("{}", { status: 404 });
       if (method === "GET") return new Response(JSON.stringify({ data: [{ id: "model-fast", display_name: "Fast" }, { id: "model-thorough", display_name: "Thorough" }] }), { status: 200 });
       const req = JSON.parse(body) as { stream?: boolean; messages: { role: string; content: unknown }[] };
@@ -162,6 +164,7 @@ export function scriptedProvider(): ProviderScript {
       const asked = script.next;
       if (asked === "plan" && script.plan) return toolTurn("propose_plan", script.plan);
       if (asked === "orgs") return toolTurn("list_organizations", {});
+      if (asked === "summary") return toolTurn("org_summary", { companyId: script.orgId });
       return textTurn("All quiet on this node.");
     },
   };

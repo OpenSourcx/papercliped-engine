@@ -4,7 +4,7 @@ import { useAgentContainers } from "../../data/engine/queries.ts";
 import { settingsHref } from "../../modals/useModals.ts";
 
 /**
- * A calm note on organization pages while agent containers aren't ready: agents run only in containers, so until an
+ * A calm note on organization pages (below Pin's island, which floats over the top edge) while agent containers aren't ready: agents run only in containers, so until an
  * administrator has set them up, waking an agent fails by design. Renders nothing in the demo, while loading, or when ready.
  */
 export function AgentContainersBanner() {
@@ -12,7 +12,7 @@ export function AgentContainersBanner() {
   const s = q.data;
   if (!s || s.state === "ready") return null;
   return (
-    <div role="status" className="mx-auto max-w-6xl px-4 pt-4">
+    <div role="status" className="mx-auto max-w-6xl px-4 pt-14">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-compact">
         <ShieldAlert className="h-4 w-4 text-warning shrink-0" />
         <span className="flex-1 min-w-[220px]">Agents can't run until agent containers are set up. They never run on the host.{s.canManage ? "" : " Ask a Proxmox administrator."}</span>

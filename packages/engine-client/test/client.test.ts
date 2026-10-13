@@ -104,4 +104,22 @@ describe("the engine client", () => {
     expect(seen[0].body).toBeInstanceOf(FormData);
     expect(() => c.artifacts.fetchPath("https://evil.example/x")).toThrow();
   });
+
+  it("hires an agent through the approval route when the organization refuses direct creation, and unwraps the agent", async () => {
+    const seen: string[] = [];
+    const refusal = { error: "Direct agent creation requires board approval. Use POST /api/companies/:companyId/agent-hires to create a pending hire approval." };
+    const c = createEngineClient({
+      fetch: async (url, init) => {
+        seen.push(`${init?.method} ${url}`);
+        return url.endsWith("/agent-hires") ? new Response(JSON.stringify({ agent: { id: "a1", status: "pending_approval" }, approval: { id: "p1" } }), { status: 201 }) : new Response(JSON.stringify(refusal), { status: 409 });
+      },
+    });
+    expect(await c.agents.create("c1", { name: "Scout", adapterType: "x" })).toMatchObject({ id: "a1", status: "pending_approval" });
+    expect(seen).toEqual(["POST /engine/api/companies/c1/agents", "POST /engine/api/companies/c1/agent-hires"]);
+    // Any other refusal is not retried.
+    const other = createEngineClient({ fetch: async (url, init) => { seen.push(`${init?.method} ${url}`); return new Response(JSON.stringify({ error: "Name taken" }), { status: 409 }); } });
+    seen.length = 0;
+    await expect(other.agents.create("c1", { name: "Scout", adapterType: "x" })).rejects.toMatchObject({ status: 409, message: "Name taken" });
+    expect(seen).toEqual(["POST /engine/api/companies/c1/agents"]);
+  });
 });
