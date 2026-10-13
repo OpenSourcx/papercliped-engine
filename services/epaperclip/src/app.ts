@@ -12,6 +12,7 @@ import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
 import { BearerAuth } from "./features/access-tokens.ts";
+import { NodeScope } from "./features/clusterNode.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
@@ -382,6 +383,10 @@ export function createApp(d: AppDeps) {
     }
   };
 
+  // The node the console is managing in a cluster (X-EPC-Node); `hn(req)` is what host-level routes use instead of this device.
+  const nodeScope = new NodeScope(d.pve.node, now);
+  const hn = (req: IncomingMessage) => nodeScope.of(req);
+
   const state = d.state ?? new StateStore(null);
   const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
   const bearer = new BearerAuth({ state, sessions: d.sessions, now, pve: (tokenId, tokenSecret) => new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret }) });
@@ -687,16 +692,16 @@ export function createApp(d: AppDeps) {
           pve.version(),
           pve.clusterResources(),
           // Node status needs Sys.Audit; users without it still get their guests.
-          pve.nodeStatus(d.pve.node).catch((e) => (e instanceof ProxmoxError && e.status === 403 ? null : Promise.reject(e))),
+          pve.nodeStatus(hn(req)).catch((e) => (e instanceof ProxmoxError && e.status === 403 ? null : Promise.reject(e))),
           // Storage lists only what the user may audit (Datastore.Audit); none is fine.
           pve.clusterStorage().catch((e) => (e instanceof ProxmoxError && e.status === 403 ? [] : Promise.reject(e))),
         ]);
         return {
-          node: d.pve.node,
+          node: hn(req),
           version: version.version,
           status,
           resources: resources.filter((r) => r.type === "lxc" || r.type === "qemu"),
-          storage: storage.filter((r) => r.type === "storage" && (r.node === d.pve.node || r.shared === 1)).map((r) => ({ storage: r.storage, plugintype: r.plugintype ?? null, content: r.content ?? "", status: r.status ?? "unknown", used: r.disk ?? 0, total: r.maxdisk ?? 0, shared: r.shared === 1 })),
+          storage: storage.filter((r) => r.type === "storage" && (r.node === hn(req) || r.shared === 1)).map((r) => ({ storage: r.storage, plugintype: r.plugintype ?? null, content: r.content ?? "", status: r.status ?? "unknown", used: r.disk ?? 0, total: r.maxdisk ?? 0, shared: r.shared === 1 })),
         };
       });
       return sendJson(res, 200, data);
@@ -708,7 +713,7 @@ export function createApp(d: AppDeps) {
       const cf = url.searchParams.get("cf") ?? "AVERAGE";
       if (!TIMEFRAMES.includes(timeframe) || (cf !== "AVERAGE" && cf !== "MAX")) throw new HttpError(400, "bad_request", "Unknown timeframe or consolidation");
       const points = await asUser(req, res, async (pve) => {
-        if (stats[1] === "node") return pve.nodeRrd(d.pve.node, timeframe as RrdTimeframe, cf as RrdCf);
+        if (stats[1] === "node") return pve.nodeRrd(hn(req), timeframe as RrdTimeframe, cf as RrdCf);
         const vmid = Number(stats[2]);
         const g = (await pve.clusterResources()).find((r) => r.vmid === vmid);
         if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new HttpError(404, "not_found", "Unknown machine");
@@ -719,7 +724,7 @@ export function createApp(d: AppDeps) {
 
     if (method === "GET" && path === "/api/machines/options") {
       const data = await asUser(req, res, async (pve) => {
-        const node = d.pve.node;
+        const node = hn(req);
         const [tplStores, diskStores, isoStores, imageStores, pools, nextid] = await Promise.all([
           pve.nodeStorages(node, "vztmpl"),
           pve.nodeStorages(node, "rootdir"),
@@ -751,7 +756,7 @@ export function createApp(d: AppDeps) {
         const vmid = await pve.nextId();
         // An unprivileged container on the default bridge with DHCP, started once created. Proxmox checks this user's
         // VM.Allocate, Datastore.AllocateSpace and pool permissions; nothing here widens them.
-        const upid = await pve.createLxc(d.pve.node, {
+        const upid = await pve.createLxc(hn(req), {
           vmid,
           hostname: spec.name,
           ostemplate: spec.template,
@@ -778,7 +783,7 @@ export function createApp(d: AppDeps) {
       const storage = storageId(decodeURIComponent(content[1]));
       const kind = url.searchParams.get("content") ?? undefined;
       if (kind !== undefined && !CONTENT_KINDS.includes(kind)) throw new HttpError(400, "bad_request", "Unknown content type");
-      const items = await asUser(req, res, (pve) => pve.storageContentAll(d.pve.node, storage, kind));
+      const items = await asUser(req, res, (pve) => pve.storageContentAll(hn(req), storage, kind));
       return sendJson(res, 200, { items: items.map((i) => ({ volid: i.volid, content: i.content, format: i.format ?? null, size: i.size ?? null, ctime: i.ctime ?? null, vmid: i.vmid ?? null, notes: i.notes ?? null, protected: i.protected === 1 })) });
     }
 
@@ -787,12 +792,12 @@ export function createApp(d: AppDeps) {
       requireSameSite(req);
       const storage = storageId(decodeURIComponent(del[1]));
       const volid = volumeId((await readJson(req)).volid, storage);
-      const task = await asUser(req, res, (pve) => pve.deleteVolume(d.pve.node, storage, volid));
+      const task = await asUser(req, res, (pve) => pve.deleteVolume(hn(req), storage, volid));
       return sendJson(res, 202, { task: task ?? null });
     }
 
     if (method === "GET" && path === "/api/templates/catalog") {
-      const list = await asUser(req, res, (pve) => pve.templateCatalog(d.pve.node));
+      const list = await asUser(req, res, (pve) => pve.templateCatalog(hn(req)));
       return sendJson(res, 200, { templates: list.map((t) => ({ template: t.template, headline: t.headline ?? null, description: t.description ?? null, os: t.os ?? null, version: t.version ?? null, section: t.section ?? null, infopage: t.infopage ?? null })) });
     }
 
@@ -801,7 +806,7 @@ export function createApp(d: AppDeps) {
       const b = await readJson(req);
       const storage = storageId(b.storage);
       const template = fileName(b.template, "vztmpl");
-      const task = await asUser(req, res, (pve) => pve.downloadTemplate(d.pve.node, storage, template));
+      const task = await asUser(req, res, (pve) => pve.downloadTemplate(hn(req), storage, template));
       return sendJson(res, 202, { task });
     }
 
@@ -821,7 +826,7 @@ export function createApp(d: AppDeps) {
       if ((target.protocol !== "https:" && target.protocol !== "http:") || String(b.url).length > 2048) throw new HttpError(400, "bad_request", "Enter a full http(s) address");
       const filename = fileName(b.filename, kind);
       const sum = checksum(b.checksum, b.algorithm);
-      const task = await asUser(req, res, (pve) => pve.downloadUrl(d.pve.node, storage, { url: target.href, content: kind, filename, ...sum, verifyCertificates: b.verifyCertificates !== false }));
+      const task = await asUser(req, res, (pve) => pve.downloadUrl(hn(req), storage, { url: target.href, content: kind, filename, ...sum, verifyCertificates: b.verifyCertificates !== false }));
       return sendJson(res, 202, { task });
     }
 
@@ -847,7 +852,7 @@ export function createApp(d: AppDeps) {
         }
         if (seen !== size) throw new HttpError(400, "bad_length", "The upload ended early");
       }
-      const task = await asUser(req, res, (pve) => pve.upload(d.pve.node, storage, { content: kind, filename, size, file: exact(), ...sum }));
+      const task = await asUser(req, res, (pve) => pve.upload(hn(req), storage, { content: kind, filename, size, file: exact(), ...sum }));
       return sendJson(res, 202, { task });
     }
 
@@ -855,7 +860,7 @@ export function createApp(d: AppDeps) {
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50) || 50));
       const vm = url.searchParams.get("vmid");
       if (vm !== null && !/^\d{1,9}$/.test(vm)) throw new HttpError(400, "bad_request", "Unknown machine");
-      const list = await asUser(req, res, (pve) => pve.tasks(d.pve.node, limit, vm === null ? undefined : Number(vm)));
+      const list = await asUser(req, res, (pve) => pve.tasks(hn(req), limit, vm === null ? undefined : Number(vm)));
       return sendJson(res, 200, { tasks: list.map((t) => ({ upid: t.upid, type: t.type, id: t.id ?? null, user: t.user, status: t.status ?? null, start: t.starttime, end: t.endtime ?? null })) });
     }
 
@@ -864,8 +869,8 @@ export function createApp(d: AppDeps) {
       const upid = decodeURIComponent(task[1]);
       // UPID:node:pid:pstart:starttime:type:id:user: — the id can hold a volume id with ":" and "/", so only the fixed
       // fields are pinned. It is URL-encoded on the way to Proxmox, and must name this node.
-      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[\w-]+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== d.pve.node) throw new HttpError(400, "bad_request", "Unknown task");
-      const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(d.pve.node, upid), pve.taskLog(d.pve.node, upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
+      if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[\w-]+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== hn(req)) throw new HttpError(400, "bad_request", "Unknown task");
+      const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(hn(req), upid), pve.taskLog(hn(req), upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
       return sendJson(res, 200, { status: status.status, exitstatus: (status as { exitstatus?: string }).exitstatus ?? null, log: log.map((l) => l.t) });
     }
 
@@ -874,7 +879,7 @@ export function createApp(d: AppDeps) {
       const spec = parseVmSpec(await readJson(req));
       const created = await asUser(req, res, async (pve) => {
         const vmid = await pve.nextId();
-        return { vmid, task: await pve.createVm(d.pve.node, vmParams(vmid, spec)) };
+        return { vmid, task: await pve.createVm(hn(req), vmParams(vmid, spec)) };
       });
       return sendJson(res, 202, created);
     }
@@ -928,7 +933,7 @@ export function createApp(d: AppDeps) {
       const storage = storageId(b.storage);
       const notes = b.notes === undefined || b.notes === "" ? "{{guestname}}" : typeof b.notes === "string" && b.notes.length <= 200 && !/[\r\n]/.test(b.notes) ? b.notes : null;
       if (notes === null) throw new HttpError(400, "bad_request", "Keep the note to one line");
-      const task = await asUser(req, res, (pve) => pve.vzdump(d.pve.node, { all: all ? true : undefined, vmid: all ? undefined : vmids.join(","), storage, mode, compress: "zstd", "notes-template": notes }));
+      const task = await asUser(req, res, (pve) => pve.vzdump(hn(req), { all: all ? true : undefined, vmid: all ? undefined : vmids.join(","), storage, mode, compress: "zstd", "notes-template": notes }));
       return sendJson(res, 202, { task });
     }
 
@@ -951,7 +956,7 @@ export function createApp(d: AppDeps) {
           vmid = await pve.nextId();
         }
         const common = { vmid, storage: target, force: replace ? true : undefined, unique: replace ? undefined : true, start: b.start === true ? true : undefined };
-        const task = src.type === "lxc" ? await pve.createLxc(d.pve.node, { ...common, ostemplate: volid, restore: true }) : await pve.createVm(d.pve.node, { ...common, archive: volid });
+        const task = src.type === "lxc" ? await pve.createLxc(hn(req), { ...common, ostemplate: volid, restore: true }) : await pve.createVm(hn(req), { ...common, archive: volid });
         return { vmid, task };
       });
       return sendJson(res, 202, created);
@@ -1138,7 +1143,7 @@ export function createApp(d: AppDeps) {
 
     // ---- Host DNS and hosts file.
     if (path === "/api/network/dns" || path === "/api/network/hosts") {
-      const node = encodeURIComponent(d.pve.node);
+      const node = encodeURIComponent(hn(req));
       const which = path.endsWith("dns") ? "dns" : "hosts";
       if (method === "GET") {
         const out = await asUser(req, res, (pve) => pve.call<Record<string, unknown>>("GET", `/nodes/${node}/${which}`));
@@ -1236,7 +1241,7 @@ export function createApp(d: AppDeps) {
 
     // ---- Host network. Changes are staged by Proxmox and only take effect when applied.
     if (method === "GET" && path === "/api/network") {
-      const net = await asUser(req, res, (pve) => pve.network(d.pve.node));
+      const net = await asUser(req, res, (pve) => pve.network(hn(req)));
       return sendJson(res, 200, {
         interfaces: net.interfaces.map((i) => ({ iface: i.iface, type: i.type, active: i.active === 1, autostart: i.autostart === 1, cidr: i.cidr ?? (i.address && i.netmask ? `${i.address}/${i.netmask}` : null), gateway: i.gateway ?? null, ports: (i.bridge_ports ?? "").split(/\s+/).filter(Boolean), vlanAware: i.bridge_vlan_aware === 1, slaves: (i.slaves ?? "").split(/\s+/).filter(Boolean), bondMode: i.bond_mode ?? null, vlanRaw: i["vlan-raw-device"] ?? null, vlanId: i["vlan-id"] ?? null, comments: i.comments?.trim() || null, method: i.method ?? null })).sort((a, b) => a.iface.localeCompare(b.iface, undefined, { numeric: true })),
         changes: net.changes,
@@ -1247,20 +1252,20 @@ export function createApp(d: AppDeps) {
       requireSameSite(req);
       const b = await readJson(req);
       if (netRoute[1] === "apply") {
-        const task = await asUser(req, res, (pve) => pve.applyNetwork(d.pve.node));
+        const task = await asUser(req, res, (pve) => pve.applyNetwork(hn(req)));
         return sendJson(res, 202, { task });
       }
       if (netRoute[1] === "revert") {
-        await asUser(req, res, (pve) => pve.revertNetwork(d.pve.node));
+        await asUser(req, res, (pve) => pve.revertNetwork(hn(req)));
         return sendJson(res, 200, { ok: true });
       }
       const iface = netRoute[2];
       if (iface && netRoute[3]) {
         await asUser(req, res, async (pve) => {
           // Deleting the interface that carries the default route can cut the host off; ask for its name to be typed.
-          const cur = (await pve.network(d.pve.node)).interfaces.find((i) => i.iface === iface);
+          const cur = (await pve.network(hn(req))).interfaces.find((i) => i.iface === iface);
           if (cur?.gateway && b.confirm !== iface) throw new HttpError(409, "confirm", `${iface} carries this host's gateway. Type its name to delete it.`);
-          await pve.deleteInterface(d.pve.node, iface);
+          await pve.deleteInterface(hn(req), iface);
         });
         return sendJson(res, 200, { ok: true });
       }
@@ -1270,7 +1275,7 @@ export function createApp(d: AppDeps) {
       } catch (e) {
         throw new HttpError(400, "bad_request", (e as Error).message);
       }
-      await asUser(req, res, (pve) => (iface ? pve.updateInterface(d.pve.node, iface, ifaceParams(spec, false)) : pve.createInterface(d.pve.node, ifaceParams(spec, true))));
+      await asUser(req, res, (pve) => (iface ? pve.updateInterface(hn(req), iface, ifaceParams(spec, false)) : pve.createInterface(hn(req), ifaceParams(spec, true))));
       return sendJson(res, iface ? 200 : 201, { ok: true });
     }
 
@@ -1281,7 +1286,7 @@ export function createApp(d: AppDeps) {
       const consolePort = d.consolePort ?? 443;
       const resolve = async (pve: ProxmoxClient): Promise<{ level: Level | "group"; base: string }> => {
         if (scope === "datacenter") return { level: "cluster", base: "/cluster/firewall" };
-        if (scope === "host") return { level: "node", base: `/nodes/${encodeURIComponent(d.pve.node)}/firewall` };
+        if (scope === "host") return { level: "node", base: `/nodes/${encodeURIComponent(hn(req))}/firewall` };
         const gm = scope?.match(/^guest-(\d+)$/);
         if (gm) {
           const g = (await pve.clusterResources()).find((r) => r.vmid === Number(gm[1]));
@@ -1302,7 +1307,7 @@ export function createApp(d: AppDeps) {
 
       // Would the console stop being reachable after this change? (Firewall on, inbound policy not ACCEPT, no rule letting the port in.)
       const lockoutAfter = async (pve: ProxmoxClient, change: { options?: Record<string, string | number>; level?: Level | "group"; dropRule?: { level: string; pos: number } }) => {
-        const node = encodeURIComponent(d.pve.node);
+        const node = encodeURIComponent(hn(req));
         const [cOpts, nOpts, cRules, nRules] = await Promise.all([
           pve.call<Record<string, string | number>>("GET", "/cluster/firewall/options"),
           pve.call<Record<string, string | number>>("GET", `/nodes/${node}/firewall/options`).catch(() => ({}) as Record<string, string | number>),
@@ -1320,7 +1325,7 @@ export function createApp(d: AppDeps) {
       const guardOrKeep = async (pve: ProxmoxClient, body: Record<string, unknown>, change: Parameters<typeof lockoutAfter>[1]) => {
         if (body.ignoreLockout === true || !(await lockoutAfter(pve, change))) return;
         if (body.keepConsole === true) {
-          await pve.call("POST", `/nodes/${encodeURIComponent(d.pve.node)}/firewall/rules`, { ...consoleRule(consolePort), pos: 0 });
+          await pve.call("POST", `/nodes/${encodeURIComponent(hn(req))}/firewall/rules`, { ...consoleRule(consolePort), pos: 0 });
           return;
         }
         throw new HttpError(409, "lockout", `This would block port ${consolePort}, which this console runs on. Let ePaperclip add a rule that keeps it reachable, or continue anyway.`);
@@ -1696,6 +1701,10 @@ export function createApp(d: AppDeps) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
+      if (req.headers["x-epc-node"] !== undefined && url.pathname.startsWith("/api/")) {
+        const sess = d.sessions.get(cookieValue(req, COOKIE));
+        if (sess) await nodeScope.resolve(req, sess.id, () => clientFor(sess));
+      }
       if (req.headers.authorization !== undefined && (url.pathname.startsWith("/api/") || url.pathname === "/engine" || url.pathname.startsWith("/engine/"))) await bearer.attach(req);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);

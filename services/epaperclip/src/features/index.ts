@@ -4,6 +4,7 @@ import type { EngineGateway } from "../engine.ts";
 import type { HttpError } from "../http.ts";
 import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
+import { handleCluster } from "./cluster.ts";
 import { handleDisks } from "./disks.ts";
 import { handleGuest } from "./guest.ts";
 import { nodeFeature } from "./node.ts";
@@ -51,4 +52,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "access", handle: access },
   { name: "wizard", handle: handleWizard },
   { name: "guest", handle: handleGuest },
+  { name: "cluster", handle: handleCluster },
 ];
