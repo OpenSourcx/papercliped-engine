@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { disksFeature } from "./disks.tsx";
 import { nodeFeature } from "./node.tsx";
 import { accessFeature } from "./access.tsx";
+import { clusterFeature } from "./cluster.tsx";
 
 /**
  * Where new console areas go. A feature is one file in this folder exporting a Feature; adding it to FEATURES below is
@@ -34,7 +35,7 @@ export interface Feature {
   nav: FeatureNav[];
 }
 
-export const FEATURES: Feature[] = [disksFeature, nodeFeature, accessFeature];
+export const FEATURES: Feature[] = [disksFeature, nodeFeature, accessFeature, clusterFeature];
 
 /** Top-level paths features own, so an organization can never take one as its address. */
 export const featurePaths = (): string[] => FEATURES.flatMap((f) => f.routes.map((r) => r.path.split("/")[0]));

@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Archive, Box, Camera, Copy, Shield, Cpu, ListChecks, Loader2, Lock, Monitor, Play, Power, RotateCw, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
+import { Archive, Box, Camera, Copy, Shield, Cpu, ListChecks, Loader2, Lock, Monitor, Play, Power, RotateCw, Route, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { Hardware } from "./Hardware.tsx";
 import { MachineTasks } from "./MachineTasks.tsx";
+import { MachineCluster, MigrateModal } from "../cluster/Migrate.tsx";
 import { MachineFirewall } from "../firewall/Firewall.tsx";
 import { AddressRows, NotesCard } from "./MachineAbout.tsx";
 import { MachinePermissions } from "./MachinePermissions.tsx";
@@ -71,6 +72,7 @@ export function MachinePage() {
   const openAction = (action: "destroy" | "template") => g && setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "machine-action"); n.set("action", action); n.set("vmid", String(g.vmid)); return n; });
   const running = g?.status === "running";
   const [acting, setActing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const act = (a: "start" | "shutdown") => {
     setActing(true);
     power(a);
@@ -94,6 +96,7 @@ export function MachinePage() {
       ...(g.type === "qemu" ? [{ id: "reset", label: "Reset", icon: <RotateCw className="h-4 w-4" />, run: () => power("reset"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Reset ${g.name}?`, body: "A reset restarts the VM instantly, like pressing the reset button. Unsaved work inside is lost. Reboot is the gentle option.", label: "Reset now" } }] : []),
       { id: "template", label: "Convert to template", icon: <Copy className="h-4 w-4" />, run: () => openAction("template"), disabled: !!g.template || running, title: g.template ? "Already a template" : running ? "Shut it down first" : undefined, more: true },
       { id: "delete", label: "Delete", icon: <Trash2 className="h-4 w-4" />, run: () => openAction("destroy"), disabled: running || g.protected, title: g.protected ? `${g.name} is protected` : running ? "Shut it down first" : undefined, danger: true, more: true },
+      ...(live && !g.template ? [{ id: "migrate", label: "Migrate", icon: <Route className="h-4 w-4" />, run: () => setMigrating(true), more: true }] : []),
       { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" />, run: () => setTab("hardware"), more: true },
       { id: "tasks", label: "Task log", icon: <ListChecks className="h-4 w-4" />, run: () => setTab("tasks"), more: true },
       { id: "ask", label: "Ask Pin about it", icon: <Sparkles className="h-4 w-4" />, run: () => pin.send(`How is ${g.name} doing?`), more: true, group: "ask" },
@@ -182,6 +185,7 @@ export function MachinePage() {
             </dl>
             <Button size="sm" className="mt-4 w-full" onClick={() => setTab("console")}><SquareTerminal className="h-3.5 w-3.5" />Open console</Button>
           </Card>
+          <MachineCluster vmid={g.vmid} template={g.template} />
           <NotesCard vmid={g.vmid} />
           <div className="lg:col-span-3 mt-2">
             <UsageGraphs seed={g.vmid} vmid={g.vmid} base={base} kind="guest" />
@@ -224,6 +228,7 @@ export function MachinePage() {
       {tab === "permissions" && <MachinePermissions vmid={g.vmid} name={g.name} />}
 
       {tab === "tasks" && <MachineTasks g={g} />}
+      {migrating && <MigrateModal vmid={g.vmid} onClose={() => setMigrating(false)} />}
     </PageFrame>
   );
 }

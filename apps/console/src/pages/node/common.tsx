@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { getSelectedNode, setSelectedNode, subscribeSelectedNode } from "../../lib/selectedNode.ts";
 import { ListChecks, Loader2, Lock, Server, Square } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { nodeApi, type FieldSchema, type Schema, type Values } from "../../data/engine/nodeApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
-import { cn, readJson, writeJson } from "../../lib/storage.ts";
+import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, EmptyState, Field, Input, Notice, Select, Skeleton, Textarea, Toggle } from "../../ui/primitives.tsx";
 
@@ -35,19 +36,15 @@ export function Denied({ what }: { what: string }) {
 
 /* ── The selected node ─────────────────────────────────────────────────────────────── */
 
-const NODE_KEY = "epc.node";
-const listeners = new Set<() => void>();
-let selected: string | null = readJson<string | null>(NODE_KEY, null);
-const subscribe = (fn: () => void) => (listeners.add(fn), () => void listeners.delete(fn));
-
-/** The node the node screens work on. null means the device you signed in to. */
+/** The node the node screens work on. null means the device you signed in to. Changing it refetches everything. */
 export function useSelectedNode(): [string | null, (n: string | null) => void] {
-  const node = useSyncExternalStore(subscribe, () => selected, () => null);
+  const node = useSyncExternalStore(subscribeSelectedNode, getSelectedNode, () => null);
+  const qc = useQueryClient();
   const set = useCallback((n: string | null) => {
-    selected = n;
-    writeJson(NODE_KEY, n);
-    listeners.forEach((l) => l());
-  }, []);
+    if (n === getSelectedNode()) return;
+    setSelectedNode(n);
+    void qc.invalidateQueries();
+  }, [qc]);
   return [node, set];
 }
 

@@ -14,7 +14,7 @@ export class NodeApiError extends Error {
   }
 }
 
-async function call<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function call<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
@@ -40,8 +40,8 @@ async function call<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, 
   return data as T;
 }
 
-const enc = encodeURIComponent;
-const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
+export const enc = encodeURIComponent;
+export const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
   const s = p.toString();

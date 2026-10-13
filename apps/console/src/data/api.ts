@@ -1,4 +1,5 @@
 import type { ClusterResource, NodeStatus, RrdCf, RrdPoint, RrdTimeframe } from "@papercliped-engine/proxmox-client";
+import { nodeHeaders } from "../lib/selectedNode.ts";
 
 /**
  * The ePaperclip host service's API, as the console sees it. The service signs users in with their Proxmox account
@@ -336,6 +337,7 @@ function uploadFile(storage: string, content: "iso" | "vztmpl", file: File, onPr
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/storage/${enc(storage)}/upload?content=${content}&filename=${enc(file.name)}`);
     xhr.setRequestHeader("X-EPC-Request", "1");
+    for (const [k, v] of Object.entries(nodeHeaders())) xhr.setRequestHeader(k, v);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
@@ -362,7 +364,7 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown):
     res = await fetch(path, {
       method,
       credentials: "same-origin",
-      headers: method === "POST" ? { "Content-Type": "application/json", "X-EPC-Request": "1" } : { Accept: "application/json" },
+      headers: { ...nodeHeaders(), ...(method === "POST" ? { "Content-Type": "application/json", "X-EPC-Request": "1" } : { Accept: "application/json" }) },
       body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
     });
   } catch {
@@ -419,7 +421,16 @@ export const api = {
   saveBackupJob: (id: string | null, spec: BackupJobSpec) => request<{ ok: true }>("POST", id ? `/api/backups/jobs/${enc(id)}` : "/api/backups/jobs", spec),
   toggleBackupJob: (id: string, enabled: boolean) => request<{ ok: true }>("POST", `/api/backups/jobs/${enc(id)}`, { enabled }),
   deleteBackupJob: (id: string) => request<{ ok: true }>("POST", `/api/backups/jobs/${enc(id)}/delete`),
-  runBackup: (r: BackupRun) => request<{ task: string }>("POST", "/api/backups/run", r),
+  /** Machines on several nodes are backed up by their own node (one task each); the first task is the one followed. */
+  runBackup: async (r: BackupRun): Promise<{ task: string }> => {
+    try {
+      const out = await request<{ tasks: { task: string }[] }>("POST", "/api/cluster/backup/run", r);
+      if (out.tasks[0]) return { task: out.tasks[0].task };
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 404) throw e;
+    }
+    return request<{ task: string }>("POST", "/api/backups/run", r);
+  },
   restore: (r: RestoreSpec) => request<{ vmid: number; task: string }>("POST", "/api/backups/restore", r),
   hardware: (vmid: number) => request<GuestHardware>("GET", `/api/guests/${vmid}/config`),
   setHardware: (vmid: number, c: HardwareChange) => request<{ ok: true }>("POST", `/api/guests/${vmid}/config`, c),
