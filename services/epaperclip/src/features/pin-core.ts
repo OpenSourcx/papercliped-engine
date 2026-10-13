@@ -216,7 +216,7 @@ export class PinRuntime {
   readonly store: PinStore;
   readonly opts: PinRuntimeOpts;
   readonly now: () => number;
-  readonly sleep: Sleep;
+  sleep: Sleep;
   /** Set by the automation runner when it exists, so routes can ask it to run something now. */
   runner: { runNow(id: string): Promise<Run> } | null = null;
 

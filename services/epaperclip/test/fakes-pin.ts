@@ -166,7 +166,7 @@ export function fakePinPve() {
 export const FEED_BODY = (tag: string, extra: Record<string, unknown> = {}) => JSON.stringify({ tag_name: tag, name: tag, body: "Fixes and a calmer inbox.\n\n- One\n- Two", html_url: `https://github.com/OpenSourcx/papercliped-engine/releases/tag/${tag}`, published_at: "2026-10-01T00:00:00Z", draft: false, prerelease: false, ...extra });
 
 /** A running host service with Pin's runtime configured, a clock the test controls and no timers. */
-export async function startPinApp(o: { version?: string | null; helper?: boolean; feed?: { status: number; body: string } | "unreachable"; engine?: Parameters<typeof createApp>[0]["engine"]; pveTransport?: (base: Transport) => Transport } = {}) {
+export async function startPinApp(o: { version?: string | null; helper?: boolean; feed?: { status: number; body: string } | "unreachable"; engine?: Parameters<typeof createApp>[0]["engine"]; pveTransport?: (base: Transport) => Transport; providers?: (url: string, init: RequestInit) => Promise<Response> } = {}) {
   const pve = fakePinPve();
   const clock = { t: new Date(2026, 9, 13, 12, 0, 0).getTime() };
   const now = () => clock.t;
@@ -182,6 +182,7 @@ export async function startPinApp(o: { version?: string | null; helper?: boolean
   const state = new StateStore(mkdtempSync(join(tmpdir(), "epc-pin-state-")));
   const feed = { current: o.feed ?? { status: 200, body: FEED_BODY("v0.2.0") } as { status: number; body: string } | "unreachable", requests: [] as { url: string; headers: Record<string, string> }[] };
   const outbound = async (url: string, init: RequestInit): Promise<Response> => {
+    if (!url.startsWith("https://feed.test/")) return o.providers ? o.providers(url, init) : new Response("{}", { status: 404 });
     feed.requests.push({ url, headers: (init.headers ?? {}) as Record<string, string> });
     if (feed.current === "unreachable") throw new TypeError("fetch failed");
     return new Response(feed.current.body, { status: feed.current.status });
