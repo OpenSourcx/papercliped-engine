@@ -306,14 +306,15 @@ export class ProxmoxClient {
     return (JSON.parse(res.body || "{}") as { data?: { realm: string; type: string; comment?: string; default?: number }[] }).data ?? [];
   }
 
-  async call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  /** Parameters may also be lists (sent as repeated keys, the way Proxmox expects array parameters). */
+  async call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | string[] | undefined>): Promise<T> {
     return (await this.callFull<T>(method, path, params)).data;
   }
 
   /** Like call, but also returns the extra top-level fields some endpoints add next to `data` (e.g. `changes`). */
-  async callFull<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | undefined>): Promise<{ data: T; extra: Record<string, unknown> }> {
-    const entries = Object.entries(params ?? {}).filter((e): e is [string, string | number | boolean] => e[1] !== undefined);
-    const form = new URLSearchParams(entries.map(([k, v]): [string, string] => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)])).toString();
+  async callFull<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | string[] | undefined>): Promise<{ data: T; extra: Record<string, unknown> }> {
+    const entries = Object.entries(params ?? {}).filter((e): e is [string, string | number | boolean | string[]] => e[1] !== undefined);
+    const form = new URLSearchParams(entries.flatMap(([k, v]): [string, string][] => (Array.isArray(v) ? v.map((x): [string, string] => [k, x]) : [[k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)]]))).toString();
     const withQuery = method === "GET" || method === "DELETE";
     const url = `${this.base}${path}${withQuery && form ? `?${form}` : ""}`;
     const headers: Record<string, string> = { ...this.headers, Accept: "application/json", ...(method === "GET" ? {} : this.writeHeaders) };
@@ -460,6 +461,11 @@ export class ProxmoxClient {
   termproxy(node: string, guest: { type: GuestType; vmid: number } | null) {
     const path = guest ? `/nodes/${seg(node)}/${guest.type}/${seg(guest.vmid)}/termproxy` : `/nodes/${seg(node)}/termproxy`;
     return this.call<{ port: number; ticket: string; user: string; upid: string }>("POST", path, guest?.type === "qemu" ? { serial: "serial0" } : undefined);
+  }
+
+  /** Opens the node terminal proxy running one of Proxmox's own commands (`upgrade` runs the package upgrade in the terminal). */
+  termproxyCommand(node: string, cmd: "upgrade") {
+    return this.call<{ port: number; ticket: string; user: string; upid: string }>("POST", `/nodes/${seg(node)}/termproxy`, { cmd });
   }
 
   /** The vncwebsocket path (under /api2/json) that carries a termproxy session. */
