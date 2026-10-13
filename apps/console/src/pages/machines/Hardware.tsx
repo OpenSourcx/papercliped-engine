@@ -50,7 +50,7 @@ export function Hardware({ g }: { g: Guest }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 fade-in">
-      {ctx ? <ResourcesCard key={d!.digest ?? "r"} ctx={ctx} /> : <Card className="p-5"><SectionTitle>Processor and memory</SectionTitle>{dev.error ? <p role="alert" className="text-compact text-critical">{dev.error}</p> : <p className="text-sm text-ink-3">Reading…</p>}</Card>}
+      {ctx ? <ResourcesCard key={`res-${d!.digest}`} ctx={ctx} /> : <Card className="p-5"><SectionTitle>Processor and memory</SectionTitle>{dev.error ? <p role="alert" className="text-compact text-critical">{dev.error}</p> : <p className="text-sm text-ink-3">Reading…</p>}</Card>}
 
       <Card className="p-5">
         <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setOpts(true)}><Pencil className="h-3.5 w-3.5" />Edit</Button>}>Options</SectionTitle>
@@ -72,7 +72,7 @@ export function Hardware({ g }: { g: Guest }) {
       {ctx && d?.vm && <VmItemsCard ctx={ctx} />}
       {ctx && <NetworkCard ctx={ctx} />}
       {ctx && d?.dns && <DnsCard ctx={ctx} />}
-      {ctx && d?.features && <FeaturesCard key={d.digest ?? "f"} ctx={ctx} />}
+      {ctx && d?.features && <FeaturesCard key={`feat-${d.digest}`} ctx={ctx} />}
       {ctx && <PassthroughCard ctx={ctx} />}
 
       {grow && <GrowModal vmid={g.vmid} disk={grow.key} size={grow.size} onClose={() => setGrow(null)} onDone={() => setTick((n) => n + 1)} />}
