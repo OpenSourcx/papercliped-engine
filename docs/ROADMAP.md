@@ -8,8 +8,8 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Host broker: resource groups, Pin system scope, protected guests, lease expiry, audit log, HTTP API
 - [x] Automations engine: rule schema, validation, plain-language read-back, Assistant and Agent modes
 - [ ] Run the broker against a real host with a scoped token and one resource group
-- [ ] Automation runner: polls the broker's guest list, evaluates rules, executes or queues proposals, writes results to notifications
-- [ ] Notifications store and API (proposals awaiting approval, automation results, update notices)
+- [x] Automation runner: runs on the host service, acts through each automation's own Proxmox token, executes or queues proposals by Pin's mode, keeps run history, bounded retries, pauses itself after repeated failure (`docs/PIN.md`)
+- [x] Notifications store and API (task finished, backup failed, device events, approvals, automation results, proposals, update notices) with a quiet inbox and per-person preferences
 
 ## Phase 2: ePaperclip
 
@@ -24,18 +24,25 @@ Each phase ends with something that runs on a real Proxmox host.
 ## Papercliped, native (v1)
 
 - [x] Connected apps page on demo data: device MCP address and per-app setup steps, the API only / Full / Agent only switch, sessions with Read only or Full control, organization and agent limits capped by the owning user, activity
-- [ ] Move the Papercliped bridge into this repository as a device service (MCP at `/mcp`, OAuth against IAC users)
+- [x] Read-only MCP endpoint on the host service (`POST /api/mcp`, Bearer ePaperclip API tokens, Pin's read tools, Proxmox decides what each token sees): the part of the bridge that is small and safe to ship now
+- [ ] Move the Papercliped bridge into this repository as a device service (MCP at `/mcp`, OAuth against IAC users). Plan below.
+- [ ] Papercliped bridge, the exact plan (not started because it adds an OAuth server and write tools, which need their own review):
+  1. OAuth 2.1 authorization server on the host service for MCP clients (authorization code with PKCE, dynamic client registration, consent screen in the console), issuing the same kind of credential as an ePaperclip API token: a real Proxmox API token of the signed-in person, so Proxmox keeps deciding. Scopes are exactly two: Read only (`paperclip:read`) and Full control (`paperclip:control`).
+  2. Serve MCP at `/mcp` (today `/api/mcp`, kept as an alias) with the Papercliped tool set; Read only gets the tools `/api/mcp` has now, Full control adds the engine tools through `/engine/api` as the person's managed engine account.
+  3. Host-changing tools (power, snapshot) are never run by the bridge directly: they create an Agent mode plan, so a person still approves each step in the console (`docs/PIN.md`). Full control sessions whose user allows it may be given direct power tools later, behind the session limits below.
+  4. Revoke from Connected apps (the Proxmox token is deleted), audit every call in the existing audit trail, rate-limit per credential.
 - [ ] Session limits by organization, and host tools for Full control sessions whose user allows them
 - [ ] Remote access setup for web apps (Tailscale or tunnel connector)
 
 ## Phase 3: Pin
 
-- [ ] Pin principal and runtime: Assistant and Agent modes, schedule, triggers
+- [x] Pin runtime: Assistant and Agent modes, schedules and condition triggers, Agent mode plans approved step by step with typed confirmation and an audit trail (`docs/PIN.md`)
 - [x] `SOUL.md` and `MEMORY.md`, editable on Pin's page (stored in the browser until the runtime lands)
 - [ ] System skills: guests, storage, network, backups, companies, connectors
 - [ ] Natural language to automation rules, confirmed with the plain-language read-back before saving
 - [ ] Creating companies on request
-- [ ] Update awareness: track Proxmox and Paperclip releases, notify, apply on approval
+- [x] Update awareness: installed vs latest ePaperclip from the public release feed (no telemetry, read by the host only), notify, guided update and rollback through the installer's staged install
+- [ ] Update awareness for Proxmox packages and the pinned Paperclip engine version (the engine moves with ePaperclip releases today; Proxmox packages have their own Updates screen)
 
 ## Phase 4: the console
 
