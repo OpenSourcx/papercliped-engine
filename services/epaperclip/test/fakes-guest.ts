@@ -43,7 +43,7 @@ export function fakeGuest(base: Transport) {
     const path = u.pathname.replace("/api2/json", "");
     const form = new URLSearchParams(req.body ?? "");
     const params: Record<string, string> = Object.fromEntries([...u.searchParams, ...form]);
-    const mine = /^\/(nodes\/pve\/(qemu|lxc)\/\d+|nodes\/pve\/hardware|nodes\/pve\/network|cluster\/resources|cluster\/mapping|cluster\/sdn\/vnets|access\/(acl|roles|users|groups))/.test(path);
+    const mine = /^\/(nodes$|cluster\/firewall|nodes\/pve\/firewall|nodes\/pve\/(qemu|lxc)\/\d+|nodes\/pve\/hardware|nodes\/pve\/network|cluster\/resources|cluster\/mapping|cluster\/sdn\/vnets|access\/(acl|roles|users|groups))/.test(path);
     if (!mine) return base(req);
     const perm = await base({ ...req, method: "GET", url: `${u.origin}/api2/json/access/permissions?path=/`, body: undefined });
     if (perm.status === 401) return perm;
@@ -53,7 +53,12 @@ export function fakeGuest(base: Transport) {
     calls.push({ method: req.method, path, params });
     const deny = fail(403, "Permission check failed (user lacks the privilege)");
 
-    if (path === "/cluster/resources") return ok([...guests].map(([vmid, g]) => ({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status, pool: g.pool })));
+    if (path === "/cluster/resources" && params.type === "storage") return base(req);
+    if (path === "/cluster/resources") return ok([...guests].map(([vmid, g]) => ({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status, pool: g.pool, tags: String(g.cfg.tags ?? ""), cpu: g.status === "running" ? 0.12 : 0, maxcpu: Number(g.cfg.cores ?? 1), mem: g.status === "running" ? 1.1e9 : 0, maxmem: Number(g.cfg.memory ?? 512) * 1048576, disk: 3e9, maxdisk: 32e9, uptime: g.status === "running" ? 86400 : 0 })));
+    if (path === "/nodes") return ok([{ node: "pve", status: "online" }]);
+    if (/\/firewall\/options$/.test(path)) return ok({ enable: 1, policy_in: "DROP", policy_out: "ACCEPT" });
+    if (/\/firewall\/rules$/.test(path) && req.method === "GET") return ok([{ pos: 0, type: "in", action: "ACCEPT", macro: "SSH", source: "192.168.1.0/24", comment: "SSH from the office network", enable: 1 }, { pos: 1, type: "in", action: "ACCEPT", proto: "tcp", dport: "443", comment: "Web", enable: 1, log: "info" }, { pos: 2, type: "out", action: "DROP", dest: "10.99.0.0/16", comment: "Never reach the lab network", enable: 0 }]);
+    if (/\/firewall\/(aliases|ipset|log)$/.test(path)) return ok([]);
     if (path === "/nodes/pve/network") return admin ? ok([{ iface: "vmbr0", type: "bridge" }, { iface: "vmbr1", type: "bridge" }]) : deny;
     if (path === "/cluster/sdn/vnets") return ok([{ vnet: "acme", zone: "orgs" }]);
     if (path === "/nodes/pve/hardware/pci") return admin ? ok([{ id: "0000:01:00.0", vendor_name: "NVIDIA Corporation", device_name: "GA104 [GeForce RTX 3070]", class: "0x030000", iommugroup: 14, mdev: false }, { id: "0000:00:1f.6", vendor_name: "Intel Corporation", device_name: "Ethernet Connection", class: "0x020000", iommugroup: -1 }]) : deny;
@@ -75,6 +80,8 @@ export function fakeGuest(base: Transport) {
       return ok(null);
     }
 
+    const rrd = path.match(/^\/nodes\/pve\/(qemu|lxc)\/(\d+)\/rrddata$/);
+    if (rrd) return ok(Array.from({ length: 60 }, (_, i) => ({ time: 1_760_000_000 + i * 60, cpu: 0.1 + 0.05 * Math.sin(i / 6), maxcpu: 2, mem: 1.2e9 + 1e8 * Math.sin(i / 9), maxmem: 4e9, netin: 2e4 + 1e4 * Math.sin(i / 4), netout: 1e4, diskread: 0, diskwrite: 5e3 })));
     const g = path.match(/^\/nodes\/pve\/(qemu|lxc)\/(\d+)\/(config|pending|interfaces|agent\/network-get-interfaces|agent\/get-host-name)$/);
     if (!g) return fail(501, `fake: ${req.method} ${path} not implemented`);
     const id = Number(g[2]);

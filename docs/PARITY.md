@@ -12,22 +12,22 @@ Check it: `node scripts/parity.mjs` prints counts and exits non-zero while any P
 
 | | done | partial | missing | total | done % |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **All rows** | 126 | 35 | 169 | 330 | 38% |
-| P0 | 89 | 16 | 15 | 120 | 74% |
-| P1 | 23 | 14 | 86 | 123 | 19% |
-| P2 | 3 | 3 | 65 | 71 | 4% |
+| **All rows** | 139 | 36 | 155 | 330 | 42% |
+| P0 | 94 | 14 | 12 | 120 | 78% |
+| P1 | 29 | 17 | 77 | 123 | 24% |
+| P2 | 5 | 3 | 63 | 71 | 7% |
 | Beyond Proxmox | 11 | 2 | 3 | 16 | 69% |
 
 By workstream (Proxmox rows only):
 
 | Workstream | Owns | done | partial | missing | P0 not done |
 | --- | --- | ---: | ---: | ---: | ---: |
-| W-NODE | node and datacenter operations | 22 | 6 | 47 | 9 |
+| W-NODE | node and datacenter operations | 21 | 6 | 47 | 9 |
 | W-DISK | disks, storage definitions, VM/CT disk management | 50 | 6 | 13 | 1 |
-| W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 36 | 12 | 53 | 14 |
-| W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 7 | 7 | 20 | 7 |
+| W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 48 | 13 | 40 | 9 |
+| W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 8 | 7 | 19 | 7 |
 | W-CLUSTER | cluster, HA, replication, Ceph, migration | 1 | 2 | 33 | 0 |
-| W-ENGINE | organizations, agents, Pin, engine screens | 10 | 2 | 3 | 0 |
+| W-ENGINE | organizations, agents, Pin, engine screens | 0 | 0 | 0 | 0 |
 
 ### P0 gaps by workstream
 
@@ -49,11 +49,8 @@ Every P0 row that is not done, in the order a person setting up a new host would
 
 - `WZ-012` Disks: bus, storage, size, cache, discard, SSD, IO thread, multiple disks (partial) - Create VM
 
-**W-MACHINE** (14)
+**W-MACHINE** (9)
 
-- `GU-005` Guest IP addresses and hostname (missing) - Summary
-- `GU-057` DNS: nameserver and search domain (missing) - Hardware: Container
-- `GU-058` Features: nesting, keyctl, fuse, mknod, mount types (missing) - Hardware: Container
 - `WZ-001` General: hostname, VMID, resource pool, password, SSH key, unprivileged (partial) - Create CT
 - `WZ-004` CPU and memory, swap (partial) - Create CT
 - `WZ-005` Network: bridge, VLAN, static or DHCP, IPv6, firewall (missing) - Create CT
@@ -61,8 +58,6 @@ Every P0 row that is not done, in the order a person setting up a new host would
 - `WZ-009` General: name, VMID, pool, start at boot, start order, tags (partial) - Create VM
 - `WZ-011` System: graphic card, machine, BIOS, SCSI controller, EFI, TPM, guest agent (partial) - Create VM
 - `WZ-013` CPU: sockets, cores, type, vCPUs, limit, NUMA (partial) - Create VM
-- `GU-038` Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) (partial) - Hardware: VM
-- `GU-056` Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) (partial) - Hardware: Container
 - `WZ-010` OS: ISO from storage, physical drive, no media; guest OS type and version (partial) - Create VM
 - `WZ-014` Memory: fixed or ballooning (partial) - Create VM
 
@@ -289,9 +284,9 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | GU-001 | Summary | Status, uptime, CPU/memory/disk/network summary | GET /nodes/{node}/{qemu,lxc}/{vmid}/status/current | done | P0 | W-MACHINE | MachinePage.tsx Overview |  |
 | GU-002 | Summary | Usage graphs | GET .../rrddata | done | P0 | W-MACHINE | GET /api/stats/guests/:vmid |  |
-| GU-003 | Summary | Notes (edit) | PUT .../config (description) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
-| GU-004 | Summary | Tags (edit, colors) | PUT .../config (tags) | done | P1 | W-MACHINE | POST /api/guests/:id/config |  |
-| GU-005 | Summary | Guest IP addresses and hostname | GET .../agent/network-get-interfaces; GET lxc/{vmid}/interfaces | missing | P0 | W-MACHINE |  | 30 |
+| GU-003 | Summary | Notes (edit) | PUT .../config (description) | done | P0 | W-MACHINE | Notes and tags card on the Overview; POST /api/guests/:id/notes (digest) |  |
+| GU-004 | Summary | Tags (edit, colors) | PUT .../config (tags) | done | P1 | W-MACHINE | Notes and tags card on the Overview; POST /api/guests/:id/notes (digest) |  |
+| GU-005 | Summary | Guest IP addresses and hostname | GET .../agent/network-get-interfaces; GET lxc/{vmid}/interfaces | done | P0 | W-MACHINE | GET /api/guests/:id/addresses (agent, container interfaces, configured fallback); Overview Details; features/guest.ts |  |
 | GU-006 | Summary | HA state of the guest | GET /cluster/ha/status/current | missing | P2 | W-CLUSTER |  |  |
 | GU-007 | Summary | Pending configuration changes (shown, revert) | GET .../pending | partial | P1 | W-MACHINE | pending read in /api/guests/:id/config; no revert |  |
 | GU-008 | Power | Start | POST .../status/start | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
@@ -307,11 +302,11 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-018 | Console | SPICE console file | POST .../spiceproxy | missing | P2 | W-MACHINE |  |  |
 | GU-019 | Console | QEMU monitor | POST qemu/{vmid}/monitor | missing | P2 | W-MACHINE |  |  |
 | GU-020 | Hardware: VM | Memory: fixed amount | PUT qemu/{vmid}/config (memory) | done | P0 | W-MACHINE | POST /api/guests/:id/config; Hardware.tsx |  |
-| GU-021 | Hardware: VM | Memory: ballooning minimum, shares, hugepages | PUT qemu/{vmid}/config (balloon, shares, hugepages) | missing | P1 | W-MACHINE |  |  |
+| GU-021 | Hardware: VM | Memory: ballooning minimum, shares, hugepages | PUT qemu/{vmid}/config (balloon, shares, hugepages) | partial | P1 | W-MACHINE | minimum memory (balloon) in Resources; shares and hugepages missing |  |
 | GU-022 | Hardware: VM | Processors: sockets and cores | PUT qemu/{vmid}/config (sockets, cores) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
-| GU-023 | Hardware: VM | Processors: type, flags, vCPUs, limit, units, affinity, NUMA | PUT qemu/{vmid}/config (cpu, vcpus, cpulimit, cpuunits, affinity, numa) | missing | P1 | W-MACHINE |  | 34 |
-| GU-024 | Hardware: VM | BIOS (SeaBIOS/OVMF) | PUT qemu/{vmid}/config (bios) | missing | P1 | W-MACHINE | - set at creation only for Windows 11 |  |
-| GU-025 | Hardware: VM | Display (VGA type, memory, clipboard) | PUT qemu/{vmid}/config (vga) | missing | P1 | W-MACHINE |  |  |
+| GU-023 | Hardware: VM | Processors: type, flags, vCPUs, limit, units, affinity, NUMA | PUT qemu/{vmid}/config (cpu, vcpus, cpulimit, cpuunits, affinity, numa) | partial | P1 | W-MACHINE | CPU limit and weight in Resources; type, flags, vCPUs, affinity, NUMA missing |  |
+| GU-024 | Hardware: VM | BIOS (SeaBIOS/OVMF) | PUT qemu/{vmid}/config (bios) | done | P1 | W-MACHINE | BIOS change in Firmware and devices; POST .../items/bios |  |
+| GU-025 | Hardware: VM | Display (VGA type, memory, clipboard) | PUT qemu/{vmid}/config (vga) | done | P1 | W-MACHINE | Display type, video memory, VNC clipboard; POST .../items/display |  |
 | GU-026 | Hardware: VM | Machine type (i440fx, q35), version, vIOMMU | PUT qemu/{vmid}/config (machine) | missing | P1 | W-MACHINE |  |  |
 | GU-027 | Hardware: VM | SCSI controller type | PUT qemu/{vmid}/config (scsihw) | missing | P1 | W-MACHINE |  |  |
 | GU-028 | Hardware: VM | Hard disk: list with storage, size, format | GET qemu/{vmid}/config (scsiN, sataN, ideN, virtioN) | done | P0 | W-DISK | Hardware.tsx via normalizeConfig |  |
@@ -324,28 +319,28 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-035 | Hardware: VM | CD/DVD drive: add | PUT qemu/{vmid}/config (ideN, media=cdrom) | done | P0 | W-MACHINE | POST /api/guests/:id/disks/cdrom |  |
 | GU-036 | Hardware: VM | CD/DVD drive: change or eject ISO | PUT qemu/{vmid}/config (ide2) | done | P0 | W-MACHINE | POST /api/guests/:id/disks/cdrom |  |
 | GU-037 | Hardware: VM | Network device: list | GET qemu/{vmid}/config (netN) | done | P0 | W-MACHINE | Hardware.tsx |  |
-| GU-038 | Hardware: VM | Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) | PUT qemu/{vmid}/config (netN) | partial | P0 | W-MACHINE | POST /api/guests/:id/nets covers bridge, VLAN, MAC, firewall, rate; model/MTU/multiqueue/disconnect unverified |  |
-| GU-039 | Hardware: VM | Network device: remove | PUT qemu/{vmid}/config (delete=netN) | done | P0 | W-MACHINE | POST /api/guests/:id/nets/:key/delete |  |
-| GU-040 | Hardware: VM | EFI disk: add, remove | PUT qemu/{vmid}/config (efidisk0) | partial | P1 | W-MACHINE | added at creation for Windows 11 only |  |
-| GU-041 | Hardware: VM | TPM state: add, remove | PUT qemu/{vmid}/config (tpmstate0) | partial | P1 | W-MACHINE | added at creation for Windows 11 only |  |
-| GU-042 | Hardware: VM | PCI device passthrough (raw, mapped, PCIe, ROM-bar, primary GPU, mediated) | PUT qemu/{vmid}/config (hostpciN) | missing | P1 | W-MACHINE |  | 80 |
-| GU-043 | Hardware: VM | USB device passthrough (host, spice, mapped) | PUT qemu/{vmid}/config (usbN) | missing | P1 | W-MACHINE |  |  |
-| GU-044 | Hardware: VM | Serial port | PUT qemu/{vmid}/config (serialN) | missing | P1 | W-MACHINE |  |  |
-| GU-045 | Hardware: VM | Audio device | PUT qemu/{vmid}/config (audio0) | missing | P2 | W-MACHINE |  |  |
+| GU-038 | Hardware: VM | Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) | PUT qemu/{vmid}/config (netN) | done | P0 | W-MACHINE | Network card: model, bridge, VLAN, trunks, MAC, firewall, disconnect, rate, MTU, queues; POST /api/guests/:id/network (digest) |  |
+| GU-039 | Hardware: VM | Network device: remove | PUT qemu/{vmid}/config (delete=netN) | done | P0 | W-MACHINE | POST /api/guests/:id/network/:key/delete (digest, name typed) |  |
+| GU-040 | Hardware: VM | EFI disk: add, remove | PUT qemu/{vmid}/config (efidisk0) | done | P1 | W-MACHINE | Add and remove EFI disk (type, Secure Boot keys); POST .../items/efi, removal typed |  |
+| GU-041 | Hardware: VM | TPM state: add, remove | PUT qemu/{vmid}/config (tpmstate0) | done | P1 | W-MACHINE | Add and remove TPM (version); POST .../items/tpm, removal typed |  |
+| GU-042 | Hardware: VM | PCI device passthrough (raw, mapped, PCIe, ROM-bar, primary GPU, mediated) | PUT qemu/{vmid}/config (hostpciN) | partial | P1 | W-MACHINE | Configured PCI devices and the host list, read only (view); add and edit missing |  |
+| GU-043 | Hardware: VM | USB device passthrough (host, spice, mapped) | PUT qemu/{vmid}/config (usbN) | partial | P1 | W-MACHINE | Configured USB devices and the host list, read only (view); add and edit missing |  |
+| GU-044 | Hardware: VM | Serial port | PUT qemu/{vmid}/config (serialN) | done | P1 | W-MACHINE | Serial ports add and remove; POST .../items/serial |  |
+| GU-045 | Hardware: VM | Audio device | PUT qemu/{vmid}/config (audio0) | done | P2 | W-MACHINE | Audio device add, edit, remove; POST .../items/audio |  |
 | GU-046 | Hardware: VM | VirtIO RNG | PUT qemu/{vmid}/config (rng0) | missing | P2 | W-MACHINE |  |  |
 | GU-047 | Hardware: VM | VirtIO-FS directory share | PUT qemu/{vmid}/config (virtiofsN) | missing | P2 | W-MACHINE |  |  |
 | GU-048 | Hardware: VM | Watchdog, extra args, NUMA nodes, parallel ports | PUT qemu/{vmid}/config (watchdog, args, numaN, parallelN) | missing | P2 | W-MACHINE |  |  |
 | GU-049 | Hardware: Container | Memory and swap | PUT lxc/{vmid}/config (memory, swap) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
 | GU-050 | Hardware: Container | CPU cores | PUT lxc/{vmid}/config (cores) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
-| GU-051 | Hardware: Container | CPU limit and units | PUT lxc/{vmid}/config (cpulimit, cpuunits) | missing | P2 | W-MACHINE |  |  |
+| GU-051 | Hardware: Container | CPU limit and units | PUT lxc/{vmid}/config (cpulimit, cpuunits) | done | P2 | W-MACHINE | CPU limit and weight in Resources; POST /api/guests/:id/resources |  |
 | GU-052 | Hardware: Container | Root disk: resize | PUT lxc/{vmid}/resize | done | P0 | W-DISK | POST /api/guests/:id/resize |  |
 | GU-053 | Hardware: Container | Root disk: move volume to another storage | POST lxc/{vmid}/move_volume | done | P0 | W-DISK | POST /api/guests/:id/disks/rootfs/move |  |
 | GU-054 | Hardware: Container | Mount points: add, edit, resize, remove, move | PUT lxc/{vmid}/config (mpN); resize; move_volume | done | P0 | W-DISK | POST /api/guests/:id/disks/mount; .../mpN/edit, move, detach |  |
 | GU-055 | Hardware: Container | Bind mounts of host directories | PUT lxc/{vmid}/config (mpN, bind) | done | P1 | W-DISK | disksCheck.ts bindPath; disks/mount |  |
-| GU-056 | Hardware: Container | Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) | PUT lxc/{vmid}/config (netN) | partial | P0 | W-MACHINE | POST /api/guests/:id/nets |  |
-| GU-057 | Hardware: Container | DNS: nameserver and search domain | PUT lxc/{vmid}/config (nameserver, searchdomain) | missing | P0 | W-MACHINE |  | 32 |
-| GU-058 | Hardware: Container | Features: nesting, keyctl, fuse, mknod, mount types | PUT lxc/{vmid}/config (features) | missing | P0 | W-MACHINE |  | 33 |
-| GU-059 | Hardware: Container | Device passthrough | PUT lxc/{vmid}/config (devN) | missing | P1 | W-MACHINE |  |  |
+| GU-056 | Hardware: Container | Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) | PUT lxc/{vmid}/config (netN) | done | P0 | W-MACHINE | Container network: name, bridge, VLAN, MAC, IPv4 and IPv6 (DHCP, static, gateway), firewall, disconnect, rate, MTU; POST /api/guests/:id/network |  |
+| GU-057 | Hardware: Container | DNS: nameserver and search domain | PUT lxc/{vmid}/config (nameserver, searchdomain) | done | P0 | W-MACHINE | DNS card: servers and search domains, or the host's; POST /api/guests/:id/dns |  |
+| GU-058 | Hardware: Container | Features: nesting, keyctl, fuse, mknod, mount types | PUT lxc/{vmid}/config (features) | done | P0 | W-MACHINE | Features card: nesting, keyctl, FUSE, mknod, writable /sys, mount types; POST /api/guests/:id/features |  |
+| GU-059 | Hardware: Container | Device passthrough | PUT lxc/{vmid}/config (devN) | partial | P1 | W-MACHINE | Configured devices shown (view); add and edit missing |  |
 | GU-060 | Cloud-Init | Add and remove Cloud-Init drive | PUT qemu/{vmid}/config (ideN: cloudinit) | missing | P1 | W-MACHINE |  |  |
 | GU-061 | Cloud-Init | User, password, SSH public keys | PUT qemu/{vmid}/cloudinit (ciuser, cipassword, sshkeys) | missing | P1 | W-MACHINE |  |  |
 | GU-062 | Cloud-Init | IP config per NIC (static, DHCP, IPv6), DNS domain and servers | PUT qemu/{vmid}/config (ipconfigN, nameserver, searchdomain) | missing | P1 | W-MACHINE |  |  |
@@ -373,7 +368,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-084 | Snapshots | Delete snapshot | DELETE .../snapshot/{snapname} | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots/:name/delete |  |
 | GU-085 | Snapshots | Edit snapshot description | PUT .../snapshot/{snapname}/config | missing | P2 | W-MACHINE |  |  |
 | GU-086 | Firewall (per guest) | Rules, options, aliases, IP sets, log | GET/POST .../firewall/{rules,options,aliases,ipset,log} | done | P1 | W-NODE | /api/firewall/guest-<vmid>/*; MachineFirewall |  |
-| GU-087 | Permissions (per guest) | View and change who may use this guest | GET/PUT /access/acl (path /vms/{vmid}) | missing | P1 | W-ACCESS |  |  |
+| GU-087 | Permissions (per guest) | View and change who may use this guest | GET/PUT /access/acl (path /vms/{vmid}) | done | P1 | W-ACCESS | Permissions tab: list, grant, revoke (typed); GET/POST /api/guests/:id/permissions |  |
 | GU-088 | Migrate and clone | Migrate (online/offline, target node, local disks, target storage, preconditions) | GET/POST .../migrate | missing | P1 | W-CLUSTER |  |  |
 | GU-089 | Migrate and clone | Remote migrate to another cluster | POST .../remote_migrate | missing | P2 | W-CLUSTER |  |  |
 | GU-090 | Migrate and clone | Clone: name, target storage, full or linked (from template), pool | POST .../clone | done | P0 | W-MACHINE | POST /api/guests/:id/clone |  |

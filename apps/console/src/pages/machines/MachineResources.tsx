@@ -31,11 +31,11 @@ export function AmountField({ id, label, value, onChange, min, max, optional, pl
   return (
     <Field label={label} htmlFor={id} error={error} hint={error ? undefined : hint}>
       <div className="flex gap-2">
-        <Input id={id} type="number" inputMode="decimal" min={0} step="any" value={text} placeholder={placeholder} onChange={(e) => { setText(e.target.value); emit(e.target.value, unit); }} aria-invalid={!!error} />
-        <Select aria-label={`${label} unit`} className="w-24 shrink-0" value={unit} onChange={(e) => { const u = e.target.value as "MiB" | "GiB"; const n = Number(text); if (text.trim() !== "" && Number.isFinite(n)) { const next = String(Math.round((u === "GiB" ? n / 1024 : n * 1024) * 1e6) / 1e6); setText(next); setUnit(u); return emit(next, u); } setUnit(u); }}>
+        <div className="flex-1 min-w-0"><Input id={id} type="number" inputMode="decimal" min={0} step="any" value={text} placeholder={placeholder} onChange={(e) => { setText(e.target.value); emit(e.target.value, unit); }} aria-invalid={!!error} /></div>
+        <div className="w-28 shrink-0"><Select aria-label={`${label} unit`} value={unit} onChange={(e) => { const u = e.target.value as "MiB" | "GiB"; const n = Number(text); if (text.trim() !== "" && Number.isFinite(n)) { const next = String(Math.round((u === "GiB" ? n / 1024 : n * 1024) * 1e6) / 1e6); setText(next); setUnit(u); return emit(next, u); } setUnit(u); }}>
           <option>MiB</option>
           <option>GiB</option>
-        </Select>
+        </Select></div>
       </div>
     </Field>
   );
