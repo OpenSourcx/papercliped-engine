@@ -352,31 +352,31 @@ s_update_helper() {
   mkdir -p "$web/v1.1.0" "$H/pack"; rm -rf "$H/pack/epaperclip"; cp -a "$new" "$H/pack/epaperclip"
   tar -czf "$web/v1.1.0/epaperclip.tar.gz" -C "$H/pack" epaperclip
   (cd "$web/v1.1.0" && sha256sum epaperclip.tar.gz >epaperclip.tar.gz.sha256)
-  local run; run() { EPC_RELEASE_DOWNLOAD="file://$web" EPC_FAKE_ENGINE="$old/fake-engine.mjs" bash "$H/prefix/update/run.sh" >"$H/out" 2>&1; RC=$?; }
-  local ask; ask() { mkdir -p "$st"; printf '%s' "$1" >"$st/request"; }
-  local stat; stat() { sed -n "s/^$1=//p" "$st/status" 2>/dev/null; }
+  local urun; urun() { EPC_RELEASE_DOWNLOAD="file://$web" EPC_FAKE_ENGINE="$old/fake-engine.mjs" bash "$H/prefix/update/run.sh" >"$H/out" 2>&1; RC=$?; }
+  local uask; uask() { mkdir -p "$st"; printf '%s' "$1" >"$st/request"; }
+  local ustat; ustat() { sed -n "s/^$1=//p" "$st/status" 2>/dev/null; }
 
-  ask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; run
+  uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; urun
   check "an update request installs that release (exit 0)" [ "$RC" -eq 0 ]
-  check "now at 1.1.0, status done, request consumed, services healthy" eval '[ "$(version)" = 1.1.0 ] && [ "$(stat phase)" = done ] && [ ! -e "$st/request" ] && host_health && engine_health'
+  check "now at 1.1.0, status done, request consumed, services healthy" eval '[ "$(version)" = 1.1.0 ] && [ "$(ustat phase)" = done ] && [ ! -e "$st/request" ] && host_health && engine_health'
   check "the previous version is kept for rollback" [ "$(cat "$H/prefix.prev/VERSION")" = 1.0.0 ]
 
-  ask $'action=rollback\nversion=previous\nrequestedBy=sam@pve\nat=1\n'; run
-  check "a rollback request goes back to 1.0.0 and says done" eval '[ "$(version)" = 1.0.0 ] && [ "$(stat phase)" = done ] && host_health'
+  uask $'action=rollback\nversion=previous\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "a rollback request goes back to 1.0.0 and says done" eval '[ "$(version)" = 1.0.0 ] && [ "$(ustat phase)" = done ] && host_health'
 
   # A tampered download is refused before anything is changed.
   echo tampered >>"$web/v1.1.0/epaperclip.tar.gz"
-  ask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; run
-  check "a download that doesn't match its checksum is refused, nothing changed" eval '[ "$(stat phase)" = failed ] && stat message | grep -q checksum && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'
+  uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "a download that doesn't match its checksum is refused, nothing changed" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q checksum && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'
 
   # Bad requests are ignored, not run.
   for bad in $'action=update\nversion=1.1.0;touch /tmp/pwned\n' $'action=update\nversion=../../etc\n' $'action=reinstall\nversion=1.1.0\n' $'action=update\n'; do
-    ask "$bad"; run
-    check "a bad request is refused: $(printf %s "$bad" | tr '\n' ' ' | cut -c1-40)" eval '[ "$(stat phase)" = failed ] && [ "$(version)" = 1.0.0 ] && [ ! -e "$st/request" ] && [ ! -e /tmp/pwned ]'
+    uask "$bad"; urun
+    check "a bad request is refused: $(printf %s "$bad" | tr '\n' ' ' | cut -c1-40)" eval '[ "$(ustat phase)" = failed ] && [ "$(version)" = 1.0.0 ] && [ ! -e "$st/request" ] && [ ! -e /tmp/pwned ]'
   done
-  mkdir -p "$st"; ln -sf /etc/hostname "$st/request"; run
-  check "a request that is a link is ignored" eval '[ "$(stat phase)" = failed ] && [ ! -e "$st/request" ]'
-  check "no request, no change" eval 'run; [ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
+  mkdir -p "$st"; ln -sf /etc/hostname "$st/request"; urun
+  check "a request that is a link is ignored" eval '[ "$(ustat phase)" = failed ] && [ ! -e "$st/request" ]'
+  check "no request, no change" eval 'urun; [ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
 
   install --uninstall 2>/dev/null; R="$old" install --uninstall
   check "uninstall removes the helper's units" eval '[ ! -e "$H/units/epaperclip-update.path" ] && [ ! -e "$H/units/epaperclip-update.service" ]'
