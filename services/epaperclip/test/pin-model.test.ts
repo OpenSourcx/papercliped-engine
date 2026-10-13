@@ -70,7 +70,6 @@ describe("model and connector settings, end to end", () => {
     expect(sent).toMatchObject({ model: "m-1", max_tokens: 8 });
     expect(prov.asked.at(-1)!.headers["x-api-key"]).toBe(KEY);
 
-    h.rt.now = () => h.clock.t;
     h.clock.t += 5000;
     prov.set((_r, res) => (res.writeHead(404, { "Content-Type": "application/json" }), res.end(JSON.stringify({ error: { message: "model: m-1" } }))));
     const gone = await j(await h.call("POST", "/api/pin/settings/test", { cookie: sam }, {}));
