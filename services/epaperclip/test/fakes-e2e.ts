@@ -96,13 +96,31 @@ export function fakeE2ePve(opts: { clustered?: boolean } = {}) {
       return ok(Array.from({ length: 30 }, (_, i) => ({ time: now - (29 - i) * 60, cpu: 0.1 + 0.05 * Math.sin(i / 4), maxcpu: 8, mem: 4e9 + 1e8 * Math.sin(i / 5), maxmem: 16e9, memused: 4e9, memtotal: 16e9, netin: 2000 + 500 * i, netout: 1000 + 300 * i, diskread: 1e4, diskwrite: 2e4, loadavg: 0.4, iowait: 0.01 })));
     }
 
-    if (path === "/cluster/resources" && !q.get("type")) return pin.transport(req);
-    if (path === "/cluster/resources" && q.get("type") === "vm") {
+    // The wizard's fake knows only its own taken ids; the machine page's fake owns 300 to 303. New machines start at 400.
+    if (path === "/cluster/nextid") {
+      const want = q.get("vmid");
+      const taken = (n: number) => guest.guests.has(n) || pin.guests.has(n) || wizard.created.has(n) || [100, 101, 200, 201].includes(n);
+      if (want) return taken(Number(want)) ? { status: 400, body: JSON.stringify({ message: `Parameter verification failed.\nvmid: VM ${want} already exists\n` }) } : ok(want);
+      let n = 400;
+      while (taken(n)) n++;
+      return ok(String(n));
+    }
+    // ISO images and container templates are the wizard's; volumes, backups and images are the disks fake's.
+    if (m === "GET" && path === "/nodes/pve/storage") return wizard.transport(req);
+    if (m === "GET" && /^\/nodes\/pve\/storage\/[^/]+\/content$/.test(path) && ["iso", "vztmpl"].includes(q.get("content") ?? "")) return wizard.transport(req);
+
+    if (path === "/cluster/resources" && (!q.get("type") || q.get("type") === "vm")) {
       const mine = await pin.transport(req);
       if (mine.status !== 200) return mine;
       const rows = JSON.parse(mine.body).data as Record<string, unknown>[];
+      // What the person may audit, the way Proxmox decides it: on the machine, or on its pool.
+      const canAudit = async (at: string) => {
+        const r = await pin.transport({ ...req, method: "GET", url: `${u.origin}/api2/json/access/permissions?path=${encodeURIComponent(at)}`, body: undefined });
+        return r.status === 200 && JSON.parse(r.body).data?.[at]?.["VM.Audit"] === 1;
+      };
       for (const [vmid, g] of guest.guests) {
-        if (pinOwned.has(vmid) || vmid < 300 || [300, 301, 302, 303].includes(vmid)) continue;
+        if (pinOwned.has(vmid) || vmid < 300 || (vmid >= 300 && vmid <= 303)) continue;
+        if (!(await canAudit(g.pool ? `/pool/${g.pool}` : `/vms/${vmid}`)) && !(await canAudit(`/vms/${vmid}`))) continue;
         rows.push({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status, mem: 0, maxmem: Number(g.cfg.memory ?? 512) * 1048576, cpu: 0, maxcpu: Number(g.cfg.cores ?? 1), disk: 0, maxdisk: 8 * 1024 ** 3, tags: String(g.cfg.tags ?? ""), pool: g.pool });
       }
       return ok(rows);

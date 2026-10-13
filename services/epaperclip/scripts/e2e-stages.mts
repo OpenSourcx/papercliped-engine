@@ -134,6 +134,15 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await page.waitForSelector("text=THIS DEVICE", { timeout: 15000 });
     return page;
   };
+  const signedInAgain = async (user: string) => {
+    const { page } = await open(user);
+    await page.goto(c.base + "/");
+    await page.waitForSelector("text=/Sign in to ePaperclip|THIS DEVICE/", { timeout: 15000 });
+    if (await page.locator("text=Sign in to ePaperclip").count()) {
+      await signInUi(page, user);
+      await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
+    }
+  };
   /** The engine makes a Proxmox administrator an instance admin shortly after sign-in, in the background. */
   const engineAdmin = (user: string) => until(`${user} to be an engine instance admin`, async () => (await eng(user, "GET", "/api/companies")).status === 200 && (await eng(user, "GET", "/api/admin/users")).status === 200);
   /** The control inside the <label> whose first line is this text (the engine pages wrap their inputs in labels). */
@@ -663,6 +672,106 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await shot(page, "18-automation-history");
   });
 
+  await stage("machines: the wizard creates a container, and another inside the organization, in its pool", async () => {
+    const { page } = await open("sam");
+    const dialog = page.getByRole("dialog");
+    const steps = page.getByRole("navigation", { name: "Steps" });
+    const step = (name: RegExp) => steps.getByRole("button", { name }).click();
+    await page.goto(c.base + "/pve/machines?modal=new-machine");
+    await dialog.waitFor();
+    await page.getByLabel("Hostname").fill("ct-e2e");
+    await page.getByLabel("Root password").fill("correct-horse-battery");
+    await page.getByLabel("SSH public key").fill("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl me@laptop");
+    await step(/Confirm/);
+    await shot(page, "19-wizard-container-confirm");
+    expect(!(await dialog.innerText()).includes("correct-horse-battery"), "the password is never shown");
+    await page.getByRole("button", { name: "Create and start" }).click();
+    await page.waitForURL(/\/machines\/\d+$/, { timeout: 20000 });
+    const ct = [...c.pve.wizard.created.values()].find((m) => m.params.hostname === "ct-e2e");
+    expect(ct && ct.type === "lxc" && ct.params.unprivileged === "1", `the container was created unprivileged, got ${JSON.stringify(ct)}`);
+    await page.waitForSelector("text=ct-e2e", { timeout: 15000 });
+    await shot(page, "19-wizard-container-page");
+
+    await page.goto(c.base + "/pve/acm/machines");
+    await page.getByRole("button", { name: "New machine" }).first().click();
+    await dialog.waitFor();
+    await shot(page, "19-wizard-in-org");
+    const ownerField = page.getByLabel(/Belongs to|Owner/);
+    if (await ownerField.count()) console.log("       owner field value:", await ownerField.first().inputValue());
+    await page.getByLabel("Hostname").fill("ct-acme");
+    await page.getByLabel("Root password").fill("another-long-passphrase");
+    await step(/Confirm/);
+    await page.getByRole("button", { name: "Create and start" }).click();
+    await page.waitForURL(/\/machines\/\d+$/, { timeout: 20000 });
+    const acme = [...c.pve.wizard.created.entries()].find(([, m]) => m.params.hostname === "ct-acme");
+    expect(acme, "the organization's container was created");
+    expect(acme![1].params.pool === "epc-acme-labs", `it was created in the organization's pool, got pool=${acme![1].params.pool}`);
+    await page.goto(c.base + "/pve/acm/machines");
+    await page.waitForSelector("text=ct-acme", { timeout: 15000 });
+    await shot(page, "19-org-machines");
+    // The new container is reachable by the organization's members through the pool ACL, and by nobody else.
+    await signedIn("yuki");
+    const yuki = await call("yuki", "GET", "/api/host");
+    expect(yuki.status === 200 && !JSON.stringify(yuki.json?.resources ?? []).includes("ct-acme"), "a user with no access to the pool doesn't see its machines");
+    const sam = await call("sam", "GET", "/api/host");
+    expect(JSON.stringify(sam.json?.resources ?? []).includes("ct-acme"), "an administrator does");
+  });
+
+  const bearer = async (token: string | null, method: string, path: string, body?: unknown) => {
+    const r = await fetch(c.base + path, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await r.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch { /* not json */ }
+    return { status: r.status, json, text };
+  };
+  const makeToken = async (page: Page, name: string, readOnly: boolean): Promise<string> => {
+    await page.goto(c.base + "/pve/home?settings=access");
+    await tab(page, "API tokens").click();
+    await page.getByRole("button", { name: "New API token" }).click();
+    await page.getByRole("dialog").locator("input").first().fill(name);
+    if (readOnly) await page.getByRole("switch", { name: "Read-only" }).click();
+    await page.getByRole("button", { name: "Create token" }).click();
+    const token = await page.locator('[data-testid="secret-value"]').first().innerText({ timeout: 15000 });
+    expect(/^epc_/.test(token), `an ePaperclip token looks like epc_..., got ${token.slice(0, 8)}`);
+    await page.getByLabel("I've saved it").check();
+    await page.getByRole("button", { name: "Done" }).click();
+    return token;
+  };
+
+  await stage("api tokens: a Bearer token works without a browser, read-only can't write, none can approve or mint tokens", async () => {
+    const { page } = await open("sam");
+    const full = await makeToken(page, "e2e-full", false);
+    const ro = await makeToken(page, "e2e-readonly", true);
+    await shot(page, "24-api-tokens");
+    expect((await bearer(null, "GET", "/api/host")).status === 401, "no token, no access");
+    expect((await bearer("epc_notarealtoken0000000000000000", "GET", "/api/host")).status === 401, "a made-up token is refused");
+    const host = await bearer(full, "GET", "/api/host");
+    expect(host.status === 200 && Array.isArray(host.json.resources), `the token reads the host, got ${host.status} ${host.text.slice(0, 120)}`);
+    const orgs = await bearer(full, "GET", "/engine/api/companies");
+    expect(orgs.status === 200 && orgs.json.some((x: any) => x.id === S.org!.id), `the token reaches the engine as its owner, got ${orgs.status} ${orgs.text.slice(0, 160)}`);
+    const made = await bearer(full, "POST", `/engine/api/companies/${S.org!.id}/issues`, { title: "Created with a token" });
+    expect(made.status === 201 || made.status === 200, `a full token can create a task, got ${made.status} ${made.text.slice(0, 160)}`);
+    const readHost = await bearer(ro, "GET", "/api/host");
+    expect(readHost.status === 200, "a read-only token can read");
+    const refused = await bearer(ro, "POST", `/engine/api/companies/${S.org!.id}/issues`, { title: "Should not exist" });
+    expect(refused.status === 403, `a read-only token can't write to the engine, got ${refused.status}`);
+    const issues = (await eng("sam", "GET", `/api/companies/${S.org!.id}/issues`)).json;
+    expect(!issues.some((i: any) => i.title === "Should not exist") && issues.some((i: any) => i.title === "Created with a token"), "only the full token's task exists");
+    const approve = await bearer(full, "POST", "/api/pin/plans/0000000000000000/steps/00000000/approve", { confirm: "x" });
+    expect(approve.status === 403 && approve.json?.code === "ticket_only", `a token can't approve a plan, got ${approve.status} ${approve.text.slice(0, 120)}`);
+    const mint = await bearer(full, "POST", "/api/access/epc-tokens", { name: "child", expiresInDays: 7, readOnly: false, privsep: false });
+    expect(mint.status === 403, `a token can't make tokens, got ${mint.status}`);
+    const toTfa = await bearer(full, "PUT", "/api/iac/users/sam@pve/password", { password: "x".repeat(12), confirmationPassword: "right" });
+    expect(toTfa.status === 403, `a token can't change a password, got ${toTfa.status}`);
+    // Revoking in the console stops it at once.
+    await page.goto(c.base + "/pve/home?settings=access");
+    await tab(page, "API tokens").click();
+    await page.getByRole("button", { name: /Revoke/ }).first().click();
+    await page.getByRole("button", { name: "Revoke", exact: true }).last().click().catch(() => undefined);
+    await until("the first token to stop working", async () => (await bearer(full, "GET", "/api/host")).status === 401 || (await bearer(ro, "GET", "/api/host")).status === 401);
+    await shot(page, "24-api-tokens-revoked");
+  });
+
   // ---- Device pages against the fake Proxmox
   const crawl = async (user: string, routes: [string, RegExp][], label: string) => {
     const { page } = await open(user);
@@ -699,6 +808,48 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   await stage("datacenter and cluster: summary, options, notifications, metrics, mappings, tags, HA, replication, Ceph", async () => {
     await crawl("sam", [["datacenter/cluster", /lab|Cluster/], ["datacenter/summary", /pve2|Datacenter|Cluster/], ["datacenter/options", /keyboard|Keyboard|Options/], ["datacenter/notifications", /Notification/i], ["datacenter/metrics", /Metric/i],
       ["datacenter/mappings", /gpu0|Mapping/i], ["datacenter/tags", /Tag/i], ["datacenter/ha", /vm:103|High availability/], ["datacenter/replication", /101-0|Replication/], ["datacenter/ceph", /Ceph|vm-pool/], ["tasks/all", /Tasks|tasks/i]], "23-datacenter");
+  });
+
+  await stage("security headers: the console is served with its strict policy and signs cookies HttpOnly, SameSite=Strict", async () => {
+    const home = await fetch(c.base + "/");
+    const csp = home.headers.get("content-security-policy") ?? "";
+    expect(csp.includes("script-src 'self'") && csp.includes("style-src 'self'") && !/unsafe-(inline|eval)/.test(csp) && csp.includes("frame-ancestors 'none'"), `the console's CSP is strict, got ${csp}`);
+    const html = await home.text();
+    expect(!/<script(?![^>]*\bsrc=)[^>]*>[^<]/i.test(html) && !/\son\w+=/i.test(html), "the page has no inline script or handlers");
+    expect(!/https?:\/\/(?!127\.0\.0\.1|www\.w3\.org\/2000\/svg)/.test(html.replace(/<!--[\s\S]*?-->/g, "")), "the page loads nothing from other sites");
+    const login = await fetch(c.base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "lee", password: "right", realm: "pve" }) });
+    const cookie = login.headers.get("set-cookie") ?? "";
+    expect(/HttpOnly/i.test(cookie) && /SameSite=Strict/i.test(cookie), `the session cookie is HttpOnly and SameSite=Strict, got ${cookie.replace(/=[^;]+/, "=…")}`);
+    expect(!JSON.stringify(await login.json()).includes("PVE:"), "the login answer carries no Proxmox ticket");
+    const nohdr = await fetch(c.base + "/engine/api/companies", { method: "POST", headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json" }, body: JSON.stringify({ name: "csrf" }) });
+    expect(nohdr.status === 403, `a write without the request header is refused, got ${nohdr.status}`);
+    const wrongOrigin = await fetch(c.base + "/engine/api/companies", { method: "POST", headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json", "X-EPC-Request": "1", Origin: "https://evil.example" }, body: JSON.stringify({ name: "csrf" }) });
+    expect(wrongOrigin.status === 403, `a write from another origin is refused, got ${wrongOrigin.status}`);
+    const off = await fetch(c.base + "/engine/api/instance/settings/experimental", { method: "PATCH", headers: { Cookie: cookie.split(";")[0], "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ enableManagedSandboxOnly: false }) });
+    expect(off.status === 403, `turning the managed-sandbox-only policy off through the proxy is refused, got ${off.status}`);
+    expect((await eng("sam", "GET", "/api/instance/settings/experimental")).json.enableManagedSandboxOnly === true, "the policy is still on");
+  });
+
+  await stage("sign out, and a session that expires while a page is open", async () => {
+    const { page } = await open("lee");
+    await page.goto(c.base + "/pve/home?settings=general");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForSelector("text=Sign in to ePaperclip", { timeout: 15000 });
+    expect((await call("lee", "GET", "/api/host")).status === 401, "the session is gone on the host");
+    await shot(page, "25-signed-out");
+    // Signing back in lands on the console again, and an idle session expires after two hours.
+    await signInUi(page, "lee");
+    await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
+    c.clock.skew += 3 * 3600_000;
+    await page.goto(c.base + "/pve/machines");
+    await page.waitForSelector("text=Sign in to ePaperclip", { timeout: 15000 });
+    expect((await call("lee", "GET", "/api/host")).status === 401, "an idle session older than two hours is refused");
+    await shot(page, "25-session-expired");
+    c.clock.skew = 0;
+    await signInUi(page, "lee");
+    await page.waitForSelector("text=THIS DEVICE", { timeout: 20000 });
+    // The other people's sessions expired with the clock too; sign-in works for them again.
+    await signedInAgain("sam");
   });
 
   return results;
