@@ -66,7 +66,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
   // The attention feed names an approval only by its type ("hire agent"); the approval itself says who is being hired.
   const approvals = useApprovals(companyId);
   const approval = item.sourceKind === "approval" ? approvals.data?.find((a) => a.id === item.subject.id) : undefined;
-  const title = approval ? payloadTitle(approval.type, approval.payload ?? {}) : item.subject.title;
+  const title = approval ? payloadTitle(approval.type, approval.payload ?? {}) : (item.subject.title ?? "Request");
   const detail = item.detail;
   const excerpt = detail && "summaryExcerpt" in detail ? detail.summaryExcerpt : detail && "promptExcerpt" in detail ? detail.promptExcerpt : detail && "failureReasonExcerpt" in detail ? detail.failureReasonExcerpt : detail && "firstQuestionText" in detail ? detail.firstQuestionText : null;
   return (
