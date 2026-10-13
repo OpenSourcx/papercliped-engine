@@ -71,9 +71,26 @@ export function checkApiKey(v: unknown): string {
   return key;
 }
 
+/**
+ * Takes anything key-like out of text that came from a provider before it is shown or logged. Providers sometimes echo
+ * the key they rejected (often masked, but with its start or end): the exact key, the usual key shapes, bearer values
+ * and any long unbroken token all become "[key]".
+ */
+export function redact(text: string | undefined, key?: string | null): string | undefined {
+  if (!text) return text;
+  let t = text;
+  if (key && key.length >= 8) t = t.split(key).join("[key]");
+  return t
+    .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9*_-]{6,}/g, "[key]")
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}/g, "[key]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [key]")
+    .replace(/\b[A-Za-z0-9_-]{28,}\b/g, "[key]");
+}
+
 /** Turns a provider's HTTP status into words a person can act on. Never includes the key. */
-export function providerProblem(id: ProviderId, status: number, detail?: string): { code: string; message: string } {
+export function providerProblem(id: ProviderId, status: number, rawDetail?: string): { code: string; message: string } {
   const label = providerLabel(id);
+  const detail = redact(rawDetail);
   if (status === 401 || status === 403) return { code: "provider_auth", message: `${label} rejected the API key. An administrator can replace it in Connectors.` };
   if (status === 429) return { code: "provider_rate_limited", message: `${label} is rate-limiting this key, or its quota ran out. Try again shortly.` };
   if (status === 529 || status === 503 || status === 502) return { code: "provider_overloaded", message: `${label} is overloaded right now. Try again in a moment.` };
@@ -157,7 +174,7 @@ export class Connectors {
     try {
       const r = await this.fetch(url, { method: "GET", headers: { ...headers, Accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
       const text = await r.text();
-      result = r.ok ? { ok: true } : { ok: false, error: providerProblem(id, r.status, errorDetail(text)).message };
+      result = r.ok ? { ok: true } : { ok: false, error: providerProblem(id, r.status, redact(errorDetail(text), key)).message };
     } catch (e) {
       const name = (e as Error).name;
       result = { ok: false, error: name === "TimeoutError" || name === "AbortError" ? `${providerLabel(id)} didn't answer within 10 seconds.` : `Couldn't reach ${providerLabel(id)}.` };

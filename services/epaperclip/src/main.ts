@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import { TRUSTED_KEYS, trustedKey } from "@papercliped-engine/marketplace";
 import { createApp } from "./app.ts";
 import { TlsReloader } from "./features/nodeTls.ts";
+import { startPinRuntime } from "./features/pin-automations.ts";
 import { SessionStore } from "./sessions.ts";
 import { StateStore } from "./state.ts";
 
@@ -64,6 +65,9 @@ const handle = createApp({
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
+
+// Pin's runtime: the automation runner, and the paths its update check reads (EPC_VERSION_FILE, EPC_RELEASE_FEED).
+startPinRuntime(state, { pve: { baseUrl: env.EPC_PVE_URL ?? "https://127.0.0.1:8006", node: env.EPC_PVE_NODE ?? hostname().split(".")[0], caPem }, update: { versionFile: env.EPC_VERSION_FILE || undefined, feedUrl: env.EPC_RELEASE_FEED || undefined } });
 
 const server = devHttp
   ? createHttp(handle)

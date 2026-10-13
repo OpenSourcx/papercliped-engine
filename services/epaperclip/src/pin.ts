@@ -1,7 +1,9 @@
 import type { ServerResponse } from "node:http";
 import { ProxmoxError, type ClusterResource, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
-import { Connectors, errorDetail, isProvider, providerLabel, providerProblem, providerRequest, PROVIDERS, type HttpFetch, type ProviderId } from "./connectors.ts";
+import { Connectors, errorDetail, isProvider, providerLabel, providerProblem, providerRequest, PROVIDERS, redact, type HttpFetch, type ProviderId } from "./connectors.ts";
 import { HttpError } from "./http.ts";
+import { AGENT_TOOLS, proposeFromChat } from "./features/pin-agent.ts";
+import { runtimeFor } from "./features/pin-core.ts";
 import type { StateStore } from "./state.ts";
 
 /**
@@ -48,7 +50,7 @@ interface ToolCall {
 
 type Turn = { role: "user"; text: string } | { role: "assistant"; text: string; calls: ToolCall[] } | { role: "tool"; results: { id: string; name: string; content: string }[] };
 
-interface ToolDef {
+export interface ToolDef {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
@@ -167,7 +169,7 @@ async function post(fetchImpl: HttpFetch, provider: ProviderId, key: string, pat
     throw abortProblem(provider, e);
   }
   if (!r.ok) {
-    const p = providerProblem(provider, r.status, errorDetail(await r.text().catch(() => "")));
+    const p = providerProblem(provider, r.status, redact(errorDetail(await r.text().catch(() => "")), key));
     throw new PinError(p.code, p.message);
   }
   if (!r.body) throw new PinError("provider_error", `${providerLabel(provider)} sent an empty answer.`);
@@ -313,7 +315,7 @@ const vmidArg = (v: unknown) => {
   return v as number;
 };
 
-async function runTool(name: string, args: Record<string, unknown>, host: PinToolHost): Promise<unknown> {
+export async function runTool(name: string, args: Record<string, unknown>, host: PinToolHost): Promise<unknown> {
   const node = host.node;
   switch (name) {
     case "host_status": {
@@ -373,7 +375,7 @@ async function runTool(name: string, args: Record<string, unknown>, host: PinToo
   throw new PinError("unknown_tool", `There is no tool called ${name}.`);
 }
 
-function toolFailure(e: unknown): string {
+export function toolFailure(e: unknown): string {
   if (e instanceof PinError) return e.message;
   if (e instanceof ProxmoxError && e.status === 403) return "Proxmox says the person doesn't have permission for this.";
   if (e instanceof ProxmoxError) return `Proxmox couldn't answer${e.detail ? `: ${e.detail.slice(0, 200)}` : "."}`;
@@ -502,7 +504,7 @@ export class Pin {
       throw new HttpError(502, p.code, p.message);
     }
     if (!r.ok) {
-      const p = providerProblem(provider, r.status, errorDetail(text));
+      const p = providerProblem(provider, r.status, redact(errorDetail(text), key));
       throw new HttpError(502, p.code, p.message);
     }
     let j: Record<string, any>;
@@ -547,7 +549,7 @@ export class Pin {
     };
     const system = systemPrompt({ node: host.node, username: host.username, mode: p.settings.mode, context: p.context });
     const turns: Turn[] = p.messages.map((m) => (m.role === "user" ? { role: "user", text: m.content } : { role: "assistant", text: m.content, calls: [] }));
-    const tools = p.provider === "gemini" ? [] : TOOLS;
+    const tools: ToolDef[] = p.provider === "gemini" ? [] : p.settings.mode === "agent" ? [...TOOLS, ...AGENT_TOOLS] : TOOLS;
     try {
       for (let step = 0; step < MAX_STEPS; step++) {
         const signal = AbortSignal.any([clientGone, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
@@ -560,8 +562,21 @@ export class Pin {
         }
         const results: { id: string; name: string; content: string }[] = [];
         for (const call of r.calls) {
-          const def = TOOLS.find((d) => d.name === call.name);
-          const args = JSON.stringify(call.args).length <= 4096 ? call.args : {};
+          const def = tools.find((d) => d.name === call.name);
+          const args = JSON.stringify(call.args).length <= 6144 ? call.args : {};
+          if (def?.action && call.name === "propose_plan") {
+            // Agent mode: the plan is written down, never run. The person approves it step by step in the console.
+            try {
+              const plan = await proposeFromChat(runtimeFor(this.state), host.username, host.pve, args);
+              send("tool", { id: call.id, name: call.name, args: { planId: plan.id, title: plan.title, summary: plan.summary, steps: plan.steps.map((x) => ({ label: x.label, destructive: x.destructive })) }, status: "proposed" });
+              results.push({ id: call.id, name: call.name, content: `Plan "${plan.title}" was written down with ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} and shown to the person. NOTHING has run: they review and approve each step in the console, and steps that interrupt a machine need their typed confirmation.` });
+            } catch (e) {
+              const message = e instanceof Error && "code" in e ? e.message : toolFailure(e);
+              send("tool", { id: call.id, name: call.name, args, status: "error", error: message });
+              results.push({ id: call.id, name: call.name, content: cap({ error: message }) });
+            }
+            continue;
+          }
           if (def?.action) {
             send("tool", { id: call.id, name: call.name, args, status: "proposed" });
             results.push({ id: call.id, name: call.name, content: "Proposed to the person in the console. It has NOT been done; it happens only if they confirm." });

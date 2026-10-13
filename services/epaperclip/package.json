@@ -12,6 +12,7 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@papercliped-engine/automations": "workspace:*",
     "@papercliped-engine/proxmox-client": "workspace:*",
     "ws": "8.18.3",
     "@papercliped-engine/marketplace": "workspace:*",

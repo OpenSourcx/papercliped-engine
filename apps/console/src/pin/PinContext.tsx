@@ -4,6 +4,7 @@ import type { QuickAction, QuickActions } from "./quickActions.ts";
 import { useEngine } from "../data/store.tsx";
 import { think, type PinCard } from "./brain.ts";
 import { streamChat, type PinChatError, type PinSettings, type PinToolEvent } from "./live.ts";
+import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { demoSettingsSource, liveSettingsSource, type PinSettingsSource } from "./settings.ts";
 import { pageOf } from "./suggestions.ts";
 import { prefersReducedMotion } from "../ui/spring.ts";
@@ -143,6 +144,34 @@ export function PinProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, [settingsSource]);
+
+  // Live: the host's inbox feeds the island. Only notices it marks as worth a peek (warnings and failures, outside the
+  // person's quiet hours) are shown as new ones; everything else waits in the inbox. What was already there at load is not news.
+  const liveSeen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!engine.live) return;
+    let alive = true;
+    const poll = () =>
+      pinRt.inbox().then(
+        (r) => {
+          if (!alive) return;
+          const first = liveSeen.current === null;
+          const seenNow = (liveSeen.current ??= new Set());
+          for (const n of [...r.notifications].reverse()) {
+            if (seenNow.has(n.id)) continue;
+            seenNow.add(n.id);
+            if (!first && n.peek && !n.read) engineRef.current.notify({ kind: n.kind === "approval" ? "approval" : n.kind === "update" ? "update" : n.kind === "automation" || n.kind === "proposal" ? "automation" : "info", title: n.title, body: n.body });
+          }
+        },
+        () => undefined,
+      );
+    void poll();
+    const t = setInterval(poll, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [engine.live]);
 
   // A new notice briefly expands the island, like a live activity, then it settles back.
   useEffect(() => {

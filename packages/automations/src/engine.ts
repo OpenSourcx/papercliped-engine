@@ -95,7 +95,7 @@ function pointless(action: Action, status?: string): boolean {
 
 export class AutomationEngine {
   private mode: Mode;
-  private readonly protectedVmids: Set<number>;
+  private protectedVmids: Set<number>;
   private readonly since = new Map<string, number>(); // rule:vmid -> when the condition first held
   private readonly lastFired = new Map<string, number>(); // rule:vmid -> when it last fired
 
@@ -106,6 +106,11 @@ export class AutomationEngine {
 
   setMode(mode: Mode) {
     this.mode = mode;
+  }
+
+  /** Replaces the protected guests; they only ever produce notifications. Timers are kept. */
+  setProtected(vmids: Iterable<number>) {
+    this.protectedVmids = new Set(vmids);
   }
 
   get currentMode(): Mode {
@@ -152,3 +157,5 @@ export class AutomationEngine {
     return decisions;
   }
 }
+
+export { inScope, pointless };

@@ -16,7 +16,7 @@ Check it: `node scripts/parity.mjs` prints counts and exits non-zero while any P
 | P0 | 94 | 14 | 12 | 120 | 78% |
 | P1 | 29 | 17 | 77 | 123 | 24% |
 | P2 | 5 | 3 | 63 | 71 | 7% |
-| Beyond Proxmox | 11 | 2 | 3 | 16 | 69% |
+| Beyond Proxmox | 17 | 1 | 3 | 21 | 81% |
 
 By workstream (Proxmox rows only):
 
@@ -435,11 +435,15 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | BY-006 | ePaperclip only | Agent containers in unprivileged Proxmox containers | /api/agent-containers/* | done | - | W-ENGINE | AgentContainers.tsx; containers.ts |  |
 | BY-007 | ePaperclip only | Pin assistant (chat, quick actions, SOUL.md, MEMORY.md) | /api/pin/* | done | - | W-ENGINE | pin/ and PinPage.tsx |  |
 | BY-008 | ePaperclip only | Pin tools that operate the host (guests, storage, network, backups) | /api/pin/chat tool calls | partial | - | W-ENGINE | pin.ts tools; broader skills pending |  |
-| BY-009 | ePaperclip only | Automations (rules with plain-language read-back) | packages/automations | partial | - | W-ENGINE | Automations.tsx on demo data; runner pending |  |
+| BY-009 | ePaperclip only | Automations (rules and schedules with plain-language read-back) | packages/automations; /api/pin/automations/* | done | - | W-ENGINE | features/pin-automations.ts runner; pages/pin/runtime.tsx; docs/PIN.md |  |
 | BY-010 | ePaperclip only | Store: OS images, container apps, drivers, plugins, signed marketplace | /api/library/*, /api/marketplace | done | - | W-ENGINE | Store.tsx |  |
 | BY-011 | ePaperclip only | Integrated Access Control (IAC): organization members mapped to Proxmox users | /api/iac/* | done | - | W-ENGINE | iac.ts; LiveAccess.tsx |  |
 | BY-012 | ePaperclip only | Model provider connectors with sealed keys | /api/connectors/* | done | - | W-ENGINE | connectors.ts; vault.ts |  |
 | BY-013 | ePaperclip only | Connected apps (MCP) | planned Papercliped bridge | missing | - | W-ENGINE | Apps.tsx on demo data |  |
 | BY-014 | ePaperclip only | Chat, artifacts, workspaces, skills pages for organizations | engine | missing | - | W-ENGINE | ComingFromPaperclip placeholders in App.tsx |  |
 | BY-015 | ePaperclip only | Kill switch, vault unlock and recovery | none | missing | - | W-ENGINE | ROADMAP Phase 5 |  |
-
+| BY-016 | ePaperclip only | Pin notifications: task finished, backup failed, device events, approvals, with a quiet inbox and per-person preferences | /api/pin/notifications, /api/pin/notification-prefs | done | - | W-ENGINE | features/pin-notify.ts; Pin page Inbox |  |
+| BY-017 | ePaperclip only | Pin Agent mode plans: review, approve step by step, typed confirmation for destructive steps, audit trail | /api/pin/plans/* | done | - | W-ENGINE | features/pin-agent.ts; Pin page Plans |  |
+| BY-018 | ePaperclip only | Update awareness (installed vs latest, release notes) and a guided update with rollback through the installer | /api/pin/update, deploy/epaperclip-update.* | done | - | W-ENGINE | features/pin-update.ts; Pin page Updates |  |
+| BY-019 | ePaperclip only | Model connection test and secret-safe provider errors | /api/pin/settings/test | done | - | W-ENGINE | features/pin-settings.ts; connectors.ts redact |  |
+| BY-020 | ePaperclip only | Read-only MCP endpoint for outside AI apps, with Bearer API tokens | /api/mcp | done | - | W-ENGINE | features/pin-mcp.ts |  |

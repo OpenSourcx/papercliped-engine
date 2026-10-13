@@ -1,5 +1,6 @@
 import { readJson, writeJson } from "../lib/storage.ts";
 import type { useEngine } from "../data/store.tsx";
+import { pinRt, type ModelTest } from "../data/engine/pinRuntimeApi.ts";
 import { pinApi, type ConnectorInfo, type ModelInfo, type PinSettings } from "./live.ts";
 
 /**
@@ -12,6 +13,8 @@ export interface PinSettingsSource {
   load(): Promise<{ settings: PinSettings; connectors: ConnectorInfo[]; connectorsError?: string }>;
   models(provider: string): Promise<ModelInfo[]>;
   save(s: PinSettings): Promise<PinSettings>;
+  /** Makes one tiny real request with the saved key and this model. Live only; the demo has no provider behind it. */
+  test?(provider: string, model: string): Promise<ModelTest>;
 }
 
 export function liveSettingsSource(api = pinApi()): PinSettingsSource {
@@ -22,6 +25,7 @@ export function liveSettingsSource(api = pinApi()): PinSettingsSource {
     },
     models: (provider) => api.models(provider),
     save: (s) => api.saveSettings(s),
+    test: (provider, model) => pinRt.testModel(provider, model),
   };
 }
 

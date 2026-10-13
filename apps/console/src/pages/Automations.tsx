@@ -3,11 +3,21 @@ import { Sparkles, Trash2, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { usePin } from "../pin/PinContext.tsx";
 import { Button, Card, Chip, EmptyState, PageHeader, Toggle, PageFrame } from "../ui/primitives.tsx";
+import { AutomationsLive } from "./pin/runtime.tsx";
 
 export function Automations() {
-  const { data, setup, toggleRule, deleteRule } = useEngine();
+  const { data, setup, toggleRule, deleteRule, live } = useEngine();
   const pin = usePin();
   const mode = setup?.pinMode ?? "assistant";
+  // On a connected device automations run on the host; the rules below are the demo's, kept in the browser.
+  if (live) {
+    return (
+      <PageFrame width="4xl">
+        <PageHeader title="Automations" subtitle="Rules and schedules that run on this device, with their history. Tell Pin what you want, or build one here." actions={<Button onClick={() => pin.send("If a container uses more than 80% of its memory for 5 minutes, notify me")}><Sparkles className="h-4 w-4" />Ask Pin</Button>} />
+        <AutomationsLive />
+      </PageFrame>
+    );
+  }
   return (
     <PageFrame width="4xl">
       <PageHeader

@@ -72,7 +72,7 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs} "$R/deploy/"
+  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path} "$R/deploy/"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
   # The agent container provider, as the release carries it (built code and lockfile; packages are installed at install time).
@@ -341,7 +341,48 @@ s_real_engine() {
   check "installed paperclipai matches the lockfile" eval '[ "$(node -p "require(\"$H/prefix/engine/node_modules/paperclipai/package.json\").version")" = "$(node -p "require(\"$REPO/engine/package-lock.json\").packages[\"node_modules/paperclipai\"].version")" ]'
 }
 
-ALL=(fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+# The console's Update button: the host service leaves a request, the root helper downloads, checks and installs it.
+s_update_helper() {
+  new_host update-helper; make_release 1.0.0 2026.1005.0; install
+  check "installs with the update helper (run.sh, a copy of the installer, both units)" eval '[ -x "$H/prefix/update/run.sh" ] && [ -f "$H/prefix/update/install.sh" ] && [ -f "$H/units/epaperclip-update.path" ] && [ -f "$H/units/epaperclip-update.service" ]'
+  check "the helper is root's and the path unit watches the request file" eval '[ "$(stat -c %u "$H/prefix/update/run.sh")" = 0 ] && grep -q "^PathExists=/var/lib/epaperclip/update/request$" "$H/units/epaperclip-update.path"'
+  local old="$R" web="$H/web" st="$H/host-state/update"
+  # A release server: v1.1.0 as a tarball with its checksum, laid out like GitHub's release downloads.
+  make_release 1.1.0 2026.1005.0; local new="$R"
+  mkdir -p "$web/v1.1.0" "$H/pack"; rm -rf "$H/pack/epaperclip"; cp -a "$new" "$H/pack/epaperclip"
+  tar -czf "$web/v1.1.0/epaperclip.tar.gz" -C "$H/pack" epaperclip
+  (cd "$web/v1.1.0" && sha256sum epaperclip.tar.gz >epaperclip.tar.gz.sha256)
+  local urun; urun() { EPC_RELEASE_DOWNLOAD="file://$web" EPC_FAKE_ENGINE="$old/fake-engine.mjs" bash "$H/prefix/update/run.sh" >"$H/out" 2>&1; RC=$?; }
+  local uask; uask() { mkdir -p "$st"; printf '%s' "$1" >"$st/request"; }
+  local ustat; ustat() { sed -n "s/^$1=//p" "$st/status" 2>/dev/null; }
+
+  uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "an update request installs that release (exit 0)" [ "$RC" -eq 0 ]
+  check "now at 1.1.0, status done, request consumed, services healthy" eval '[ "$(version)" = 1.1.0 ] && [ "$(ustat phase)" = done ] && [ ! -e "$st/request" ] && host_health && engine_health'
+  check "the previous version is kept for rollback" [ "$(cat "$H/prefix.prev/VERSION")" = 1.0.0 ]
+
+  uask $'action=rollback\nversion=previous\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "a rollback request goes back to 1.0.0 and says done" eval '[ "$(version)" = 1.0.0 ] && [ "$(ustat phase)" = done ] && host_health'
+
+  # A tampered download is refused before anything is changed.
+  echo tampered >>"$web/v1.1.0/epaperclip.tar.gz"
+  uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; urun
+  check "a download that doesn't match its checksum is refused, nothing changed" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q checksum && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'
+
+  # Bad requests are ignored, not run.
+  for bad in $'action=update\nversion=1.1.0;touch /tmp/pwned\n' $'action=update\nversion=../../etc\n' $'action=reinstall\nversion=1.1.0\n' $'action=update\n'; do
+    uask "$bad"; urun
+    check "a bad request is refused: $(printf %s "$bad" | tr '\n' ' ' | cut -c1-40)" eval '[ "$(ustat phase)" = failed ] && [ "$(version)" = 1.0.0 ] && [ ! -e "$st/request" ] && [ ! -e /tmp/pwned ]'
+  done
+  mkdir -p "$st"; ln -sf /etc/hostname "$st/request"; urun
+  check "a request that is a link is ignored" eval '[ "$(ustat phase)" = failed ] && [ ! -e "$st/request" ]'
+  check "no request, no change" eval 'urun; [ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
+
+  install --uninstall 2>/dev/null; R="$old" install --uninstall
+  check "uninstall removes the helper's units" eval '[ ! -e "$H/units/epaperclip-update.path" ] && [ ! -e "$H/units/epaperclip-update.service" ]'
+}
+
+ALL=(update_helper fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"

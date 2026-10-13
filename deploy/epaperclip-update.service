@@ -1,0 +1,12 @@
+[Unit]
+Description=ePaperclip update helper (runs an update or rollback an administrator asked for)
+Documentation=https://github.com/OpenSourcx/papercliped-engine
+ConditionPathExists=/opt/epaperclip/update/run.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/epaperclip/update/run.sh
+TimeoutStartSec=1h
+Nice=10
+PrivateTmp=yes
+ProtectHome=yes
