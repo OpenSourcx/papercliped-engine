@@ -233,7 +233,7 @@ export function ipv6(s: string): boolean {
   const tail = s.match(/:(\d+\.\d+\.\d+\.\d+)$/);
   if (tail) {
     if (!ipv4(tail[1])) return false;
-    rest = s.slice(0, s.length - tail[1].length) + ":0:0";
+    rest = s.slice(0, s.length - tail[1].length) + "0:0";
   }
   const dbl = rest.split("::");
   if (dbl.length > 2) return false;
