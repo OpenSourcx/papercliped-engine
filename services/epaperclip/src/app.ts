@@ -704,10 +704,15 @@ export function createApp(d: AppDeps) {
       requireSameSite(req);
       const s = requireSession(req);
       const prepared = pin.prepare(s.username, await readJson(req, 512 * 1024));
+      const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
       const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p) };
-      return pin.chat(res, prepared, host, gone.signal);
+      try {
+        return await pin.chat(res, prepared, host, gone.signal);
+      } finally {
+        release();
+      }
     }
 
     if (method === "GET" && path === "/api/host") {

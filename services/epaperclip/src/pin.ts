@@ -67,6 +67,8 @@ const MAX_TOOL_RESULT = 12_000;
 const PROVIDER_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 15_000;
 const MODELS_TTL_MS = 5 * 60_000;
+export const CHATS_PER_MINUTE = 20;
+export const CHATS_AT_ONCE = 3;
 const ORG_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MODEL_ID = /^[\w.:/@+-]{1,200}$/;
 
@@ -527,6 +529,32 @@ export class Pin {
     for (const [k] of this.modelCache) if (k.startsWith(`${provider}:`)) this.modelCache.delete(k);
     this.modelCache.set(cacheKey, { at: this.now(), models });
     return models;
+  }
+
+  private readonly recentChats = new Map<string, number[]>();
+  private readonly openChats = new Map<string, number>();
+
+  /**
+   * Every chat spends the organization's model key and holds a connection open, and any signed-in Proxmox user may start
+   * one, so each person gets 20 a minute and 3 at a time. Returns what to call when the chat ends.
+   */
+  admit(username: string): () => void {
+    const t = this.now();
+    if (this.recentChats.size > 2000) for (const [k, v] of this.recentChats) if (v.every((x) => t - x >= 60_000)) this.recentChats.delete(k);
+    const recent = (this.recentChats.get(username) ?? []).filter((x) => t - x < 60_000);
+    if (recent.length >= CHATS_PER_MINUTE) throw new HttpError(429, "rate_limited", "Pin is getting a lot of questions from you at once. Wait a moment and ask again.");
+    if ((this.openChats.get(username) ?? 0) >= CHATS_AT_ONCE) throw new HttpError(429, "rate_limited", "Pin is still answering your other questions. Wait for them to finish.");
+    recent.push(t);
+    this.recentChats.set(username, recent);
+    this.openChats.set(username, (this.openChats.get(username) ?? 0) + 1);
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const n = (this.openChats.get(username) ?? 1) - 1;
+      if (n <= 0) this.openChats.delete(username);
+      else this.openChats.set(username, n);
+    };
   }
 
   /** Checks a chat request; errors here are answered as plain JSON, before the stream starts. */

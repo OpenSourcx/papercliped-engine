@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, userKey } from "../src/app.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
+import { generateSigningKey, signIndex, trustedKey } from "@papercliped-engine/marketplace";
 import { startAccessApp } from "./access-harness.ts";
 import { fakeAccessPve } from "./fakes-access.ts";
 
@@ -225,5 +226,85 @@ describe("session cookie", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("set-cookie")).not.toContain(planted);
     expect((await h.call("GET", "/api/me", { cookie: `epc_session=${planted}` })).status).toBe(401);
+  });
+});
+
+describe("the Store's signed catalog", () => {
+  const signer = generateSigningKey();
+  const other = generateSigningKey();
+  const catalog = (sequence: number, expires = new Date(Date.now() + 86_400_000).toISOString()) => JSON.stringify({ schema: 1, sequence, generatedAt: new Date().toISOString(), expires, entries: [{ id: "demo", kind: "skill", name: "Demo", vendor: "Acme", summary: "A demo", version: "1.0.0", source: { type: "builtin" }, permissions: [] }] });
+
+  async function boot(state: StateStore, served: () => { body: string; key: typeof signer }) {
+    const pve = fakeAccessPve();
+    const app = createApp({
+      pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport },
+      sessions: new SessionStore(),
+      staticDir: null,
+      secureCookies: false,
+      state,
+      marketplace: { url: "https://catalog.example/index.json", keys: [trustedKey(signer.publicKeyPem)] },
+      fetchText: async (u) => {
+        const { body, key } = served();
+        return u.endsWith(".sig") ? signIndex(Buffer.from(body), key.privateKeyPem, key.publicKeyPem) : body;
+      },
+    });
+    const server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const login = await fetch(base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "sam", realm: "pve", password: "right" }) });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    return { get: async () => (await (await fetch(base + "/api/marketplace", { headers: { Cookie: cookie } })).json()) as any, close: () => new Promise<void>((r) => (server.closeAllConnections(), server.close(() => r()))) };
+  }
+
+  it("won't go back to an older signed copy even after the service restarts", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "epc-market-"));
+    let body = catalog(5);
+    const a = await boot(new StateStore(dir), () => ({ body, key: signer }));
+    expect((await a.get()).sequence).toBe(5);
+    await a.close();
+    // A restart: new process, same state directory. An attacker replays the older (still valid, still unexpired) copy.
+    body = catalog(3);
+    const b = await boot(new StateStore(dir), () => ({ body, key: signer }));
+    const replay = await b.get();
+    expect(replay.entries).toEqual([]);
+    expect(replay.problem).toMatchObject({ code: "rollback" });
+    await b.close();
+  });
+
+  it("refuses a catalog signed by a key that isn't pinned, and an expired one", async () => {
+    let served = { body: catalog(7), key: other };
+    const a = await boot(new StateStore(null), () => served);
+    expect((await a.get()).problem).toMatchObject({ code: "unknown_key" });
+    await a.close();
+    served = { body: catalog(8, new Date(Date.now() - 1000).toISOString()), key: signer };
+    const b = await boot(new StateStore(null), () => served);
+    expect((await b.get()).problem).toMatchObject({ code: "expired" });
+    await b.close();
+  });
+
+  it("refuses a body that was changed after it was signed", async () => {
+    const signed = catalog(9);
+    const tampered = signed.replace('"Demo"', '"Demo (now with a different source)"');
+    const pve = fakeAccessPve();
+    const app = createApp({
+      pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport: pve.transport },
+      sessions: new SessionStore(),
+      staticDir: null,
+      secureCookies: false,
+      marketplace: { url: "https://catalog.example/index.json", keys: [trustedKey(signer.publicKeyPem)] },
+      fetchText: async (u) => (u.endsWith(".sig") ? signIndex(Buffer.from(signed), signer.privateKeyPem, signer.publicKeyPem) : tampered),
+    });
+    const server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const login = await fetch(base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "sam", realm: "pve", password: "right" }) });
+      const r = (await (await fetch(base + "/api/marketplace", { headers: { Cookie: login.headers.get("set-cookie")!.split(";")[0] } })).json()) as any;
+      expect(r.entries).toEqual([]);
+      expect(r.problem).toMatchObject({ code: "bad_signature" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });
