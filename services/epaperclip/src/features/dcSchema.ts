@@ -53,7 +53,18 @@ export const DC_SCHEMAS: Record<"backupJob" | "nodeConfig" | "sdnZone" | "sdnVne
   "fleecing": {
    "description": "Options for backup fleecing (VM only).",
    "type": "string",
-   "format": "backup-fleecing"
+   "props": {
+    "enabled": {
+     "description": "Enables fleecing: writes go to a temporary image while the backup reads, so a slow backup target doesn't slow the machine.",
+     "type": "boolean",
+     "defaultKey": true
+    },
+    "storage": {
+     "description": "Use this storage to storage fleecing images. For efficient space usage, it should be local thin-provisioned storage.",
+     "type": "string",
+     "format": "pve-storage-id"
+    }
+   }
   },
   "ionice": {
    "description": "Set IO priority when using the BFQ scheduler.",
@@ -110,7 +121,19 @@ export const DC_SCHEMAS: Record<"backupJob" | "nodeConfig" | "sdnZone" | "sdnVne
   "performance": {
    "description": "Other performance-related settings.",
    "type": "string",
-   "format": "backup-performance"
+   "props": {
+    "max-workers": {
+     "description": "Applies to VMs. Allow multiple workers (instead of 1) per disk for backup.",
+     "type": "integer",
+     "min": 1,
+     "max": 256
+    },
+    "pbs-entries-max": {
+     "description": "Applies to container backups sent to a Proxmox Backup Server. Maximum number of entries in the catalog.",
+     "type": "integer",
+     "min": 1
+    }
+   }
   },
   "pigz": {
    "description": "Use pigz instead of gzip when N>0.",
@@ -128,8 +151,42 @@ export const DC_SCHEMAS: Record<"backupJob" | "nodeConfig" | "sdnZone" | "sdnVne
   "prune-backups": {
    "description": "Use these retention options instead of those from the storage configuration.",
    "type": "string",
-   "default": "keep-all=1",
-   "format": "prune-backups"
+   "props": {
+    "keep-all": {
+     "description": "Keep all backups. Conflicts with the other options when true.",
+     "type": "boolean"
+    },
+    "keep-last": {
+     "description": "Keep the last <N> backups.",
+     "type": "integer",
+     "min": 0
+    },
+    "keep-hourly": {
+     "description": "Keep backups for the last <N> different hours.",
+     "type": "integer",
+     "min": 0
+    },
+    "keep-daily": {
+     "description": "Keep backups for the last <N> different days.",
+     "type": "integer",
+     "min": 0
+    },
+    "keep-weekly": {
+     "description": "Keep backups for the last <N> different weeks.",
+     "type": "integer",
+     "min": 0
+    },
+    "keep-monthly": {
+     "description": "Keep backups for the last <N> different months.",
+     "type": "integer",
+     "min": 0
+    },
+    "keep-yearly": {
+     "description": "Keep backups for the last <N> different years.",
+     "type": "integer",
+     "min": 0
+    }
+   }
   },
   "repeat-missed": {
    "description": "If true, the job will be run as soon as possible if it was missed while the scheduler was not running.",

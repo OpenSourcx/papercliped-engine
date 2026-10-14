@@ -34,6 +34,12 @@ function describeJob(raw: Raw) {
   return { id: String(raw.id ?? ""), values, nextRun: num(raw["next-run"]), type: typeof raw.type === "string" ? raw.type : "vzdump", digest: typeof raw.digest === "string" ? raw.digest : null };
 }
 
+/** "Keep everything" can't be combined with limits (Proxmox refuses it too; this says why before asking). */
+function checkRetention(p: Record<string, unknown>) {
+  const r = p["prune-backups"];
+  if (typeof r === "string" && /(^|,)keep-all=1(,|$)/.test(r) && /keep-(last|hourly|daily|weekly|monthly|yearly)=/.test(r)) bad("Keep everything can't be combined with the other keep settings; turn it off to limit how many backups are kept");
+}
+
 /** The guest selection is one of: everything, a list (with nothing else), or a pool. Proxmox's UI offers the same three. */
 function checkSelection(p: Record<string, unknown>, creating: boolean) {
   const picks = ["all", "vmid", "pool"].filter((k) => p[k] !== undefined && p[k] !== 0 && p[k] !== "");
@@ -103,6 +109,7 @@ export function backupRoutes(_d: Deps): Route[] {
         const values = (body.values ?? {}) as Record<string, unknown>;
         const checked = checkDc(DC_SCHEMAS.backupJob, values);
         checkSelection(checked.params, true);
+        checkRetention(checked.params);
         if (checked.params.schedule === undefined) bad("Set when the job runs");
         if (checked.params.storage === undefined) bad("Pick the storage to back up to");
         const id = body.id === undefined || body.id === "" ? undefined : JOB_ID.test(String(body.id)) ? String(body.id) : bad("A job name uses letters, numbers, - and _");
@@ -119,6 +126,7 @@ export function backupRoutes(_d: Deps): Route[] {
         noExtra(body, ["values", "digest"]);
         const checked = checkDc(DC_SCHEMAS.backupJob, (body.values ?? {}) as Record<string, unknown>);
         checkSelection(checked.params, false);
+        checkRetention(checked.params);
         if (!Object.keys(checked.params).length && !checked.remove.length) bad("Nothing to change");
         const digest = typeof body.digest === "string" && /^[0-9a-f]{20,64}$/i.test(body.digest) ? body.digest : undefined;
         // Picking one way to select machines clears the others, as Proxmox's own form does.
@@ -230,6 +238,7 @@ export function backupRoutes(_d: Deps): Route[] {
         let retention: string | number | string[] | undefined;
         if (body.retention !== undefined && body.retention !== null) {
           const checked = checkDc({ "prune-backups": DC_SCHEMAS.backupJob["prune-backups"] }, { "prune-backups": body.retention });
+          checkRetention(checked.params);
           retention = checked.params["prune-backups"];
         }
         const dry = body.dryRun !== false;

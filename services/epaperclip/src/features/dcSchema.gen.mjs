@@ -86,8 +86,39 @@ function group(path, method, { skip = [], keep } = {}) {
 }
 
 
+// The API viewer names these three property strings (format "prune-backups" and so on) without spelling out their
+// keys in the endpoint; the keys below follow the typetext Proxmox publishes for them.
+const keep = (what) => ({ description: `Keep backups for the last <N> different ${what}.`, type: "integer", min: 0 });
+const NAMED_PROPS = {
+  "prune-backups": {
+    "keep-all": { description: "Keep all backups. Conflicts with the other options when true.", type: "boolean" },
+    "keep-last": { description: "Keep the last <N> backups.", type: "integer", min: 0 },
+    "keep-hourly": keep("hours"),
+    "keep-daily": keep("days"),
+    "keep-weekly": keep("weeks"),
+    "keep-monthly": keep("months"),
+    "keep-yearly": keep("years"),
+  },
+  "backup-fleecing": {
+    enabled: { description: "Enables fleecing: writes go to a temporary image while the backup reads, so a slow backup target doesn't slow the machine.", type: "boolean", defaultKey: true },
+    storage: { description: "Use this storage to storage fleecing images. For efficient space usage, it should be local thin-provisioned storage.", type: "string", format: "pve-storage-id" },
+  },
+  "backup-performance": {
+    "max-workers": { description: "Applies to VMs. Allow multiple workers (instead of 1) per disk for backup.", type: "integer", min: 1, max: 256 },
+    "pbs-entries-max": { description: "Applies to container backups sent to a Proxmox Backup Server. Maximum number of entries in the catalog.", type: "integer", min: 1 },
+  },
+};
+function patchNamed(schema) {
+  for (const f of Object.values(schema)) if (typeof f.format === "string" && NAMED_PROPS[f.format]) {
+    f.props = structuredClone(NAMED_PROPS[f.format]);
+    delete f.format;
+    if (f.default !== undefined) delete f.default;
+  }
+  return schema;
+}
+
 const schemas = {
-  backupJob: group("/cluster/backup", "POST", { skip: ["id", "dow", "starttime", "script", "dumpdir", "tmpdir", "quiet", "stop", "mailnotification", "mailto", "stdout", "job-id", "remove"] }),
+  backupJob: patchNamed(group("/cluster/backup", "POST", { skip: ["id", "dow", "starttime", "script", "dumpdir", "tmpdir", "quiet", "stop", "mailnotification", "mailto", "stdout", "job-id", "remove"] })),
   nodeConfig: group("/nodes/{node}/config", "PUT", { skip: ["node", "acme", "acmedomain[n]"] }),
   sdnZone: group("/cluster/sdn/zones", "POST", { skip: ["dp-id", "secondary-controllers", "type", "zone"] }),
   sdnVnet: group("/cluster/sdn/vnets", "POST", { skip: ["type", "vnet"] }),

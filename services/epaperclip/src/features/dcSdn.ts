@@ -58,6 +58,21 @@ function describe(k: KindDef, raw: Raw) {
   return { id: String(x[k.idKey] ?? ""), type, state: typeof x.state === "string" ? x.state : null, digest: typeof x.digest === "string" ? x.digest : null, values: readGroup(typeSchema(k, type in k.types ? type : Object.keys(k.types)[0]), noPending(x)), secretsSet: Object.entries(k.schema).filter(([key, f]) => f.secret && x[key] !== undefined).map(([key]) => key) };
 }
 
+/** DHCP ranges are property strings in a list: start-address=10.0.0.10,end-address=10.0.0.50. */
+const RANGE = /^start-address=([0-9.]{7,15}),end-address=([0-9.]{7,15})$/;
+function checkRanges(values: Record<string, unknown>): { rest: Record<string, unknown>; ranges: string[] | null | undefined } {
+  const { "dhcp-range": raw, ...rest } = values;
+  if (raw === undefined) return { rest, ranges: undefined };
+  if (raw === null || (Array.isArray(raw) && raw.length === 0)) return { rest, ranges: null };
+  if (!Array.isArray(raw) || raw.length > 16) return bad("DHCP ranges are a list of start and end addresses");
+  const ranges = raw.map((r) => {
+    const m = typeof r === "string" ? r.match(RANGE) : null;
+    if (!m || !isIp(m[1]) || !isIp(m[2])) return bad("A DHCP range is a start and an end IPv4 address");
+    return m[0];
+  });
+  return { rest, ranges };
+}
+
 const SUBNET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,100}$/;
 
 export function sdnRoutes(_d: Deps): Route[] {
@@ -215,8 +230,9 @@ export function sdnRoutes(_d: Deps): Route[] {
         const body = await c.readJson(50_000);
         noExtra(body, ["cidr", "values"]);
         const cidr = typeof body.cidr === "string" && isCidr(body.cidr) ? body.cidr : bad("Use a network like 10.20.0.0/24");
-        const checked = checkDc(DC_SCHEMAS.sdnSubnet, (body.values ?? {}) as Record<string, unknown>);
-        await c.asUser((pve) => pve.call("POST", `/cluster/sdn/vnets/${seg(m[1])}/subnets`, { subnet: cidr, type: "subnet", ...checked.params } as Record<string, string | number | string[]>));
+        const { rest, ranges } = checkRanges((body.values ?? {}) as Record<string, unknown>);
+        const checked = checkDc(DC_SCHEMAS.sdnSubnet, rest);
+        await c.asUser((pve) => pve.call("POST", `/cluster/sdn/vnets/${seg(m[1])}/subnets`, { subnet: cidr, type: "subnet", ...checked.params, ...(ranges ? { "dhcp-range": ranges } : {}) } as Record<string, string | number | string[]>));
         c.json(201, { ok: true });
       },
     },
@@ -227,10 +243,12 @@ export function sdnRoutes(_d: Deps): Route[] {
         c.sameSite();
         const body = await c.readJson(50_000);
         noExtra(body, ["values", "digest"]);
-        const checked = checkDc(DC_SCHEMAS.sdnSubnet, (body.values ?? {}) as Record<string, unknown>);
-        if (!Object.keys(checked.params).length && !checked.remove.length) bad("Nothing to change");
+        const { rest, ranges } = checkRanges((body.values ?? {}) as Record<string, unknown>);
+        const checked = checkDc(DC_SCHEMAS.sdnSubnet, rest);
+        if (ranges === null) checked.remove.push("dhcp-range");
+        if (!Object.keys(checked.params).length && !checked.remove.length && !ranges) bad("Nothing to change");
         const digest = typeof body.digest === "string" && /^[0-9a-f]{20,64}$/i.test(body.digest) ? body.digest : undefined;
-        await c.asUser((pve) => pve.call("PUT", `/cluster/sdn/vnets/${seg(m[1])}/subnets/${seg(m[2])}`, withDelete(checked, { digest })));
+        await c.asUser((pve) => pve.call("PUT", `/cluster/sdn/vnets/${seg(m[1])}/subnets/${seg(m[2])}`, withDelete(checked, { digest, ...(ranges ? { "dhcp-range": ranges } : {}) })));
         c.json(200, { ok: true });
       },
     },
