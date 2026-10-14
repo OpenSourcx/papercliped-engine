@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MachineError, applyChange, planCpu, planCtOptions, planDevice, planMachine, planMemoryExtras, planNuma, planVmOptions, readSettings, type Cfg } from "../src/machine-schema.ts";
-import { checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, ipconfigString, planCloudInit, planCloudInitDrive, planMapping, planPassthrough, readCloudInit, spiceFile, nextIdString } from "../src/machine-extra.ts";
+import { checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, ipconfigString, planCloudInit, planCloudInitDrive, planMapping, planPassthrough, readCloudInit, spiceFile } from "../src/machine-extra.ts";
 
 const vm = (extra: Cfg = {}): Cfg => ({ name: "vm", cores: 4, sockets: 1, memory: 4096, bios: "ovmf", machine: "q35", net0: "virtio=BC:24:11:AA:BB:01,bridge=vmbr0", ...extra });
 const fails = (fn: () => unknown, re: RegExp) => expect(fn).toThrowError(re);
@@ -266,11 +266,8 @@ describe("clone, power, delete, agent, bulk", () => {
     fails(() => checkBulk({ action: "start", vms: [] }), /1 to 500/);
     fails(() => checkBulk({ action: "start", vms: [5] }), /machine number/);
   });
-  it("spice file and next id", () => {
+  it("spice file", () => {
     expect(spiceFile({ type: "spice", host: "pve", "tls-port": 61000, password: "p", proxy: "http://pve:3128", nested: {}, "bad key": 1 })).toBe("[virt-viewer]\ntype=spice\nhost=pve\ntls-port=61000\npassword=p\nproxy=http://pve:3128\n");
-    expect(nextIdString({ lower: 1000, upper: 2000 })).toBe("lower=1000,upper=2000");
-    expect(nextIdString({})).toBeNull();
-    fails(() => nextIdString({ lower: 2000, upper: 1000 }), /below/);
   });
   it("errors carry the field", () => {
     try {

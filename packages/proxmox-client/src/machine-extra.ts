@@ -655,17 +655,7 @@ export function checkBulk(b: Json): BulkRequest {
   };
 }
 
-// ---- Cluster options for machines
-
-/** `next-id` in the datacenter options: `lower=100,upper=999999` (the range Proxmox hands out machine numbers from). */
-export function nextIdString(b: Json): string | null {
-  only(b, ["lower", "upper"]);
-  const lower = present(b.lower) ? whole(b.lower, 100, 999_999_999, "The lowest machine number") : null;
-  const upper = present(b.upper) ? whole(b.upper, 100, 999_999_999, "The highest machine number") : null;
-  if (lower !== null && upper !== null && lower >= upper) bad("The lowest number must be below the highest", "lower");
-  const parts = [lower !== null ? `lower=${lower}` : "", upper !== null ? `upper=${upper}` : ""].filter(Boolean);
-  return parts.length ? parts.join(",") : null;
-}
+// ---- Custom CPU models (Datacenter)
 
 export const CPU_MODEL_REPORTED_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 
