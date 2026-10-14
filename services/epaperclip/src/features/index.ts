@@ -11,6 +11,9 @@ import { nodeFeature } from "./node.ts";
 import { access } from "./access.ts";
 import { handleWizard } from "./wizard.ts";
 import { handlePin } from "./pin.ts";
+import { handleStorageTools } from "./storageTools.ts";
+import { handleBackupTools } from "./backupTools.ts";
+import { handleDiskHealth } from "./diskHealth.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -55,4 +58,7 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "guest", handle: handleGuest },
   { name: "cluster", handle: handleCluster },
   { name: "pin", handle: handlePin },
+  { name: "storage-tools", handle: handleStorageTools },
+  { name: "backup-tools", handle: handleBackupTools },
+  { name: "disk-health", handle: handleDiskHealth },
 ];
