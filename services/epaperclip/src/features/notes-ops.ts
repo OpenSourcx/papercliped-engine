@@ -36,6 +36,9 @@ export class NotesRuntime {
   readonly opts: NotesRuntimeOpts;
   readonly now: () => number;
   private readonly drafts = new Map<string, Draft>();
+  /** Recent sort requests per person (for the rate limit) and who is sorting right now. */
+  readonly sortTimes = new Map<string, number[]>();
+  readonly sorting = new Set<string>();
   constructor(state: StateStore, opts: NotesRuntimeOpts = {}) {
     this.state = state;
     this.store = new NotesStore(state);

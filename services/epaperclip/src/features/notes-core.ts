@@ -115,7 +115,7 @@ export function cleanFolder(v: unknown): string {
 }
 
 export function cleanTag(v: unknown): string {
-  return (typeof v === "string" ? v : "").toLowerCase().replace(/^#+/, "").replace(/[^a-z0-9._/-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, LIMITS.tag);
+  return (typeof v === "string" ? v : "").toLowerCase().replace(/^#+/, "").replace(/[^a-z0-9._/-]+/g, "-").replace(/^[-/.]+|[-/.]+$/g, "").slice(0, LIMITS.tag);
 }
 
 export function cleanTags(v: unknown): string[] {

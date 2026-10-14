@@ -62,11 +62,11 @@ const RULES: { kind: SecretKind; re: RegExp; group?: number; label?: (m: RegExpE
   // key: value, key = value, "key": "value", export KEY=value
   { kind: "password", re: new RegExp(`(["']?\\b[\\w.-]*(?:${KEY_WORDS})[\\w.-]*["']?)\\s*[:=]\\s*(["']?)((?!\\s)[^\\s"',;]{3,})\\2`, "gi"), group: 3, label: (m) => m[1].replace(/["']/g, "").slice(0, 60) },
   // sentences: "the root password is hunter2", "password hunter2"
-  { kind: "password", re: /\b(?:password|passwd|passphrase|pw)\s+(?:is|was|=)\s+(["']?)([^\s"',;]{3,})\1/gi, group: 2, label: () => "password" },
+  { kind: "password", re: /\b(?:password|passwd|passphrase|pw)\s+(?:is|was|=)\s+(["']?)([^\s"',;:]{3,})(?=[\s"',;]|$)/gi, group: 2, label: () => "password" },
 ];
 
 const PLAIN_WORDS = /^(?:\d{1,7}|true|false|null|none|yes|no|empty|changeme|example|xxx+|\*+|<[^>]*>|\$\{?[A-Za-z_]+\}?|\[?redacted.*|⟦.*)$/i;
-const isPlaceholderValue = (v: string) => PLAIN_WORDS.test(v) || v.startsWith("⟦");
+const isPlaceholderValue = (v: string) => PLAIN_WORDS.test(v) || /^(?:⟦|<|\$\{|\{\{|%[\w(])/.test(v);
 
 function entropy(s: string): number {
   const counts = new Map<string, number>();
@@ -102,6 +102,9 @@ const lineOf = (text: string, index: number) => {
 /** `startAt` continues the numbering (s<startAt+1> ...) so new placeholders never collide with ones already in a text. */
 export function scanSecrets(text: string, startAt = 0): Scan {
   const ranges: Range[] = [];
+  // Placeholders from an earlier pass are not secrets, and their kind names ("token:") must not read as keys.
+  const taken = [...text.matchAll(PLACEHOLDER)].map((m) => [m.index!, m.index! + m[0].length] as const);
+  const clear = (a: number, b: number) => !taken.some(([x, y]) => a < y && b > x);
   for (const rule of RULES) {
     for (const m of text.matchAll(new RegExp(rule.re.source, rule.re.flags.includes("g") ? rule.re.flags : `${rule.re.flags}g`))) {
       const g = rule.group ?? 0;
@@ -109,10 +112,11 @@ export function scanSecrets(text: string, startAt = 0): Scan {
       if (!value || isPlaceholderValue(value)) continue;
       const offset = g === 0 ? 0 : m[0].lastIndexOf(value);
       const start = m.index! + offset;
+      if (!clear(m.index!, start + value.length)) continue;
       ranges.push({ start, end: start + value.length, kind: rule.kind, label: rule.label ? rule.label(m as RegExpExecArray) : rule.kind });
     }
   }
-  ranges.push(...entropyRanges(text));
+  ranges.push(...entropyRanges(text).filter((r) => clear(r.start, r.end)));
   // Overlaps: the earliest, then the longest, wins; the rest are covered by it.
   ranges.sort((a, b) => a.start - b.start || b.end - a.end);
   const merged: Range[] = [];

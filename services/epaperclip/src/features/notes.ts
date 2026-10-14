@@ -13,8 +13,6 @@ import type { Inventory } from "./notes-rules.ts";
 
 const ID = "[0-9a-f]{16}";
 const SORTS_PER_MINUTE = 6;
-const sortTimes = new Map<string, number[]>();
-const sorting = new Set<string>();
 
 async function readRaw(req: IncomingMessage, max: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -119,17 +117,17 @@ async function route(ctx: FeatureCtx, rt: ReturnType<typeof notesFor>, rest: str
     write();
     const b = await ctx.readJson(160 * 1024);
     const t = ctx.now();
-    const recent = (sortTimes.get(user) ?? []).filter((x) => t - x < 60_000);
+    const recent = (rt.sortTimes.get(user) ?? []).filter((x) => t - x < 60_000);
     if (recent.length >= SORTS_PER_MINUTE) throw new HttpError(429, "rate_limited", "That is a lot of sorting at once. Wait a moment and try again.");
-    if (sorting.has(user)) throw new HttpError(429, "rate_limited", "Pin is still sorting your last request.");
+    if (rt.sorting.has(user)) throw new HttpError(429, "rate_limited", "Pin is still sorting your last request.");
     recent.push(t);
-    sortTimes.set(user, recent);
-    sorting.add(user);
+    rt.sortTimes.set(user, recent);
+    rt.sorting.add(user);
     try {
       const inv = await inventoryFor(ctx, rt);
       return ctx.json(200, await startSort(rt, user, b, inv)), true;
     } finally {
-      sorting.delete(user);
+      rt.sorting.delete(user);
     }
   }
 
