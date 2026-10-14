@@ -53,7 +53,7 @@ export interface AppDeps {
   /** The service's state and vault. Without one, state lives in memory for this run only. */
   state?: StateStore;
   /** Where the engine is. Without it, the engine routes answer 503 and no engine accounts are made. */
-  engine?: { url: string; publicUrl?: string; installDir?: string; sleep?: (ms: number) => Promise<void> };
+  engine?: { url: string; publicUrl?: string; installDir?: string; sleep?: (ms: number) => Promise<void>; extraAllowed?: RegExp[] };
   /** Outbound HTTP to model providers (connector tests, Pin); tests inject a fake. */
   fetch?: HttpFetch;
   /** Agent containers: where the built provider plugin is installed, and how ssh runs. Tests inject fakes. */
