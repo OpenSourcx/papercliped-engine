@@ -1,5 +1,8 @@
 import { HttpError } from "../http.ts";
 import { clusterCephRoutes } from "./clusterCeph.ts";
+import { clusterCephWriteRoutes } from "./clusterCephWrite.ts";
+import { clusterExtraRoutes } from "./clusterExtra.ts";
+import { clusterSdnRoutes } from "./clusterSdn.ts";
 import { clusterConfigRoutes } from "./clusterConfig.ts";
 import { clusterHaRoutes } from "./clusterHa.ts";
 import { clusterMigrateRoutes } from "./clusterMigrate.ts";
@@ -13,7 +16,7 @@ import type { Route } from "./nodeCommon.ts";
  * (`clustered: false`), never errors. See docs/CLUSTER.md.
  */
 export function createClusterFeature(): FeatureHandler {
-  const routes: Route[] = [...clusterConfigRoutes(), ...clusterHaRoutes(), ...clusterReplRoutes(), ...clusterMigrateRoutes(), ...clusterCephRoutes()];
+  const routes: Route[] = [...clusterConfigRoutes(), ...clusterHaRoutes(), ...clusterReplRoutes(), ...clusterMigrateRoutes(), ...clusterCephRoutes(), ...clusterCephWriteRoutes(), ...clusterExtraRoutes(), ...clusterSdnRoutes()];
   return async (ctx) => {
     if (!ctx.path.startsWith("/api/cluster/")) return false;
     let known = false;
