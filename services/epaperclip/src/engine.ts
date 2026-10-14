@@ -560,6 +560,33 @@ export class EngineGateway {
     return this.userJson<BoardAccess>(s, "GET", "/api/cli-auth/me");
   }
 
+  /**
+   * Forwards a routine webhook to the engine's public trigger route, with no engine login (the engine authenticates the
+   * call itself). Used only by the routine ingress (src/routine-ingress.ts), which has already limited who may call it.
+   */
+  firePublicTrigger(publicId: string, headers: Record<string, string>, body: Buffer): Promise<{ status: number; text: string }> {
+    if (!/^[0-9a-f]{24}$/.test(publicId)) return Promise.reject(new HttpError(404, "not_found", "Not found"));
+    return new Promise((resolve, reject) => {
+      const up = this.open(
+        "POST",
+        `/api/routine-triggers/public/${publicId}/fire`,
+        { ...headers, "content-length": String(body.length) },
+        (res) => {
+          const parts: Buffer[] = [];
+          let size = 0;
+          res.on("data", (c: Buffer) => {
+            size += c.length;
+            if (size <= 64 * 1024) parts.push(c);
+          });
+          res.on("end", () => resolve({ status: res.statusCode ?? 502, text: Buffer.concat(parts).toString("utf8") }));
+          res.on("error", () => reject(engineUnavailable()));
+        },
+        (e) => reject(e instanceof EngineDown ? engineUnavailable() : e),
+      );
+      up.end(body);
+    });
+  }
+
   /** This person's active membership in an organization, or null. */
   async membership(s: Session, companyId: string): Promise<{ role: string } | null> {
     const me = await this.me(s);

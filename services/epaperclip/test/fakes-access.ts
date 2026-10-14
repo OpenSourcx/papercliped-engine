@@ -58,6 +58,8 @@ export function fakeAccessPve() {
     ["PVEAuditor", { privs: ["VM.Audit", "Sys.Audit", "Datastore.Audit", "Pool.Audit", "SDN.Audit", "Mapping.Audit"], special: true }],
     ["PVEVMAdmin", { privs: ALL_PRIVS.filter((p) => p.startsWith("VM.")), special: true }],
     ["PVEPoolAdmin", { privs: ["Pool.Allocate", "Pool.Audit"], special: true }],
+    ["PVEVMUser", { privs: ["VM.Audit", "VM.Console", "VM.PowerMgmt"], special: true }],
+    ["PVEDatastoreUser", { privs: ["Datastore.Audit", "Datastore.AllocateSpace"], special: true }],
   ]);
   const acl: FAcl[] = [
     { path: "/", ugid: "sam@pve", type: "user", roleid: "Administrator", propagate: 1 },
@@ -78,8 +80,14 @@ export function fakeAccessPve() {
   const tickets = new Map<string, string>();
   const calls: { method: string; path: string; body?: string; auth: "ticket" | "token" | "none" }[] = [];
   const st = { totpCode: "123456", failTfa: false, syncFails: false, n: 0 };
+  /** Datacenter options this fake knows: the sign-in ones (webauthn, u2f, consent-text). */
+  const options: Record<string, string> = {};
+  const jobs = new Map<string, Record<string, unknown>>();
+  /** OpenID Connect: codes the identity provider would hand back, by state, and who they sign in. */
+  const openid = { codes: new Map<string, string>(), states: new Set<string>(), user: "oidc-ann@sso" };
   /** Users that need a second factor at sign-in: "totp" or "webauthn" only. */
   const needTfa = new Map<string, "totp" | "webauthn">();
+  const webauthnPending = new Map<string, string>();
 
   const privsFor = (principal: { user: string; token?: string; privsep?: boolean }, path: string): Set<string> => {
     const out = new Set<string>();
@@ -136,6 +144,24 @@ export function fakeAccessPve() {
       return ok({ username: userid, ticket: t, CSRFPreventionToken: `c${st.n}` });
     }
 
+    if (path === "/access/openid/auth-url" && req.method === "POST") {
+      const g = new URLSearchParams(req.body);
+      const r = realms.get(g.get("realm") ?? "");
+      if (!r || r.type !== "openid") return err("authentication domain does not exist or is not an OpenID realm");
+      const state = `st${++st.n}`;
+      openid.states.add(state);
+      return ok(`${r["issuer-url"] ?? "https://idp.example/auth"}?client_id=${r["client-id"] ?? "epc"}&state=${state}&redirect_uri=${encodeURIComponent(g.get("redirect-url") ?? "")}`);
+    }
+    if (path === "/access/openid/login" && req.method === "POST") {
+      const g = new URLSearchParams(req.body);
+      if (!openid.states.delete(g.get("state") ?? "") || openid.codes.get(g.get("code") ?? "") === undefined) return err("openid login failed: invalid state or code", 401);
+      const userid = openid.codes.get(g.get("code")!)!;
+      if (!users.has(userid)) users.set(userid, { userid, enable: 1, groups: [] });
+      const t = `PVE:${userid}:${++st.n}`;
+      tickets.set(t, userid);
+      return ok({ username: userid, ticket: t, CSRFPreventionToken: `c${st.n}` });
+    }
+
     // Who is calling?
     let principal: { user: string; token?: string; privsep?: boolean } | null = null;
     if (auth === "token") {
@@ -157,11 +183,17 @@ export function fakeAccessPve() {
     if (path === "/version") return ok({ version: "8.4.1", release: "8.4" });
     if (path === "/access/permissions") {
       const target = f.get("userid") ?? me;
-      const p = f.get("path") ?? "/";
       if (target !== me && !privsFor(principal, "/access").has("Sys.Audit")) return err("Permission check failed (/access, Sys.Audit)", 403);
       const [uid, tid] = target.split("!");
-      const privs = privsFor({ user: uid, token: tid, privsep: tid ? tokens.get(uid)?.get(tid)?.privsep === 1 : false }, p);
-      return ok(privs.size ? { [p]: Object.fromEntries([...privs].map((k) => [k, 1])) } : {});
+      const subject = { user: uid, token: tid, privsep: tid ? tokens.get(uid)?.get(tid)?.privsep === 1 : false };
+      // Without a path Proxmox lists every path the person has anything on.
+      const wanted = f.has("path") ? [f.get("path")!] : [...new Set(["/", ...acl.map((a) => a.path)])];
+      const out: Record<string, Record<string, number>> = {};
+      for (const p of wanted) {
+        const privs = privsFor(subject, p);
+        if (privs.size) out[p] = Object.fromEntries([...privs].map((k) => [k, 1]));
+      }
+      return ok(out);
     }
 
     // ---- users
@@ -215,6 +247,7 @@ export function fakeAccessPve() {
       const set = tokens.get(uid) ?? new Map<string, FToken>();
       tokens.set(uid, set);
       if (req.method === "GET" && !tid) return ok([...set].map(([tokenid, t]) => ({ tokenid, comment: t.comment, expire: t.expire, privsep: t.privsep })));
+      if (req.method === "GET" && tid) return set.has(tid) ? ok({ comment: set.get(tid)!.comment, expire: set.get(tid)!.expire, privsep: set.get(tid)!.privsep }) : err("no such token");
       if (req.method === "POST" && tid) {
         if (set.has(tid)) return err(`Token already exists: ${tid}`);
         const secret = randomUUID();
@@ -310,6 +343,67 @@ export function fakeAccessPve() {
       return ok(null);
     }
 
+    // ---- passwords
+    if (path === "/access/password" && req.method === "PUT") {
+      const uid = f.get("userid")!;
+      const rec = users.get(uid);
+      if (!rec) return err(`no such user ('${uid}')`);
+      const type = realms.get(uid.split("@")[1])?.type;
+      if (type !== "pve" && type !== "pam") return err(`parameter verification failed: userid: can only change passwords of pve and pam users`, 400);
+      if (uid === me) {
+        if (f.get("confirmation-password") !== rec.password) return err("confirmation-password: Verification failed", 500);
+      } else {
+        const d = need("User.Modify", "/access/groups");
+        if (d) return d;
+        if (f.get("confirmation-password") !== users.get(me)?.password) return err("confirmation-password: Verification failed", 500);
+      }
+      rec.password = f.get("password")!;
+      return ok(null);
+    }
+
+    // ---- datacenter options (sign-in policy) and scheduled realm syncs
+    if (path === "/cluster/options" && req.method === "GET") return ok({ keyboard: "en-us", ...options });
+    if (path === "/cluster/options" && req.method === "PUT") {
+      const d = need("Sys.Modify", "/");
+      if (d) return d;
+      for (const [k, v] of f.entries()) if (k !== "delete") options[k] = v;
+      for (const k of csvOf(f.get("delete"))) delete options[k];
+      return ok(null);
+    }
+    if (path === "/cluster/jobs/schedule-analyze" && req.method === "GET") {
+      if (!/^[A-Za-z0-9 ,*:/.\-~]+$/.test(f.get("schedule") ?? "") || (f.get("schedule") ?? "").startsWith("bogus")) return err("parameter verification failed: schedule: invalid calendar event", 400);
+      return ok(Array.from({ length: Number(f.get("iterations") ?? 5) }, (_, i) => ({ timestamp: 1_800_000_000 + i * 86_400 })));
+    }
+    if (path === "/cluster/jobs/realm-sync" && req.method === "GET") {
+      const d = need("Sys.Audit", "/");
+      return d ?? ok([...jobs.values()]);
+    }
+    const pj = path.match(/^\/cluster\/jobs\/realm-sync\/([^/]+)$/);
+    if (pj) {
+      const id = pj[1];
+      if (req.method === "GET") return jobs.has(id) ? ok(jobs.get(id)) : err(`no such job '${id}'`);
+      const d = req.method === "DELETE" ? need("Sys.Modify", "/") : need("Realm.AllocateUser", `/access/realm/${f.get("realm") ?? jobs.get(id)?.realm ?? "x"}`);
+      if (d) return d;
+      if (req.method === "DELETE") return jobs.delete(id) ? ok(null) : err(`no such job '${id}'`);
+      if (req.method === "POST") {
+        if (jobs.has(id)) return err(`job '${id}' already exists`);
+        const r = realms.get(f.get("realm") ?? "");
+        if (!r || (r.type !== "ldap" && r.type !== "ad")) return err("parameter verification failed: realm: realm does not support syncing", 400);
+        const j: Record<string, unknown> = { id };
+        for (const [k, v] of f.entries()) j[k] = k === "enabled" || k === "enable-new" ? Number(v) : v;
+        j["next-run"] = 1_800_086_400;
+        jobs.set(id, j);
+        return ok(null);
+      }
+      if (req.method === "PUT") {
+        const j = jobs.get(id);
+        if (!j) return err(`no such job '${id}'`);
+        for (const [k, v] of f.entries()) if (k !== "delete") j[k] = k === "enabled" || k === "enable-new" ? Number(v) : v;
+        for (const k of csvOf(f.get("delete"))) delete j[k];
+        return ok(null);
+      }
+    }
+
     // ---- two-factor
     if (path === "/access/tfa" && req.method === "GET") return ok([...tfa].filter(([uid]) => uid === me || privsFor(principal!, "/access/groups").has("User.Modify")).map(([userid, entries]) => ({ userid, entries })));
     const pt = path.match(/^\/access\/tfa\/([^/]+)(?:\/([^/]+))?$/);
@@ -334,6 +428,25 @@ export function fakeAccessPve() {
         if (type === "recovery") {
           tfa.set(uid, [...list, entry]);
           return ok({ id: entry.id, recovery: ["1111-2222-3333", "4444-5555-6666", "7777-8888-9999"] });
+        }
+        if (type === "webauthn") {
+          if (uid === me && users.get(me)?.password && f.get("password") !== users.get(me)!.password) return err("parameter verification failed: password: invalid current password", 400);
+          if (!f.has("challenge")) {
+            const challenge = `chal${"A".repeat(20)}${++st.n}`;
+            webauthnPending.set(challenge, uid);
+            return ok({ challenge: JSON.stringify({ publicKey: { challenge, rp: { name: "Test", id: "pve.test" }, user: { id: "dXNlcg", name: uid, displayName: uid }, pubKeyCredParams: [{ type: "public-key", alg: -7 }], excludeCredentials: [] } }) });
+          }
+          if (webauthnPending.get(f.get("challenge")!) !== uid) return err("failed to verify webauthn registration: unknown challenge", 400);
+          let cred: { id?: string };
+          try {
+            cred = JSON.parse(f.get("value") ?? "");
+          } catch {
+            return err("failed to verify webauthn registration: bad response", 400);
+          }
+          if (!cred.id) return err("failed to verify webauthn registration: bad response", 400);
+          webauthnPending.delete(f.get("challenge")!);
+          tfa.set(uid, [...list, entry]);
+          return ok({ id: entry.id });
         }
         return err(`unsupported type ${type}`, 400);
       }
@@ -442,5 +555,5 @@ export function fakeAccessPve() {
     return err(`no such fake endpoint ${req.method} ${path}`, 501);
   };
 
-  return { transport, users, groups, roles, acl, tokens, tfa, realms, pools, calls, st, needTfa, tasks, tickets };
+  return { transport, users, groups, roles, acl, tokens, tfa, realms, pools, calls, st, needTfa, tasks, tickets, options, jobs, openid };
 }

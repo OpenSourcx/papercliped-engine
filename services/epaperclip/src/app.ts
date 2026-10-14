@@ -11,12 +11,13 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
-import { BearerAuth } from "./features/access-tokens.ts";
+import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
 import { NodeScope } from "./features/clusterNode.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
 import { StateStore } from "./state.ts";
+import { RoutineIngress } from "./routine-ingress.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
@@ -360,6 +361,16 @@ export function createApp(d: AppDeps) {
     return s;
   };
 
+  /** One line in the audit trail for a change made through the people routes; never breaks the request. */
+  const audit = (req: IncomingMessage, action: string, target?: string, detail?: string) => {
+    try {
+      const s = requireSession(req);
+      appendAudit(state, now, { actor: s.username, action, ip: req.socket.remoteAddress ?? "?", ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
+    } catch {
+      /* the audit trail must never break a request */
+    }
+  };
+
   /** Mutations must come from our own pages: a custom header (cross-site forms can't add one) and a matching Origin. */
   const requireSameSite = (req: IncomingMessage) => {
     // A request that proved an API token has no browser; cookies are never accepted as tokens, nor tokens as cookies.
@@ -404,6 +415,11 @@ export function createApp(d: AppDeps) {
   const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
   const bearer = new BearerAuth({ state, sessions: d.sessions, now, pve: (tokenId, tokenSecret) => new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret }) });
   const iac = new Iac({ gateway, state, sessions: d.sessions });
+  const routineIngress = new RoutineIngress({ state, gateway, now });
+  // OpenID Connect sign-in in flight: bound to the browser that started it by a short-lived cookie, used once.
+  const OIDC_COOKIE = `${d.secureCookies ? "__Host-" : ""}epc_oidc`;
+  const oidcPending = new Map<string, { state: string; realm: string; redirectUrl: string; exp: number }>();
+  const oidcStarts = new Map<string, { n: number; start: number }>();
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
   const pin = new Pin({ state, connectors, fetch: outbound, now });
@@ -426,9 +442,11 @@ export function createApp(d: AppDeps) {
     }
   };
 
-  const signIn = (res: ServerResponse, username: string, ticket: string, csrf: string) => {
-    const s = d.sessions.create(username, ticket, csrf);
-    sendJson(res, 200, { user: { username } }, { "Set-Cookie": cookie(s.id, 12 * 3600) });
+  const signIn = (req: IncomingMessage, res: ServerResponse, username: string, ticket: string, csrf: string, via: "password" | "openid" = "password", extraCookies: string[] = []) => {
+    const ua = req.headers["user-agent"];
+    const s = d.sessions.create(username, ticket, csrf, { ip: req.socket.remoteAddress ?? undefined, agent: typeof ua === "string" ? ua : undefined, via });
+    appendAudit(state, now, { actor: username, action: "session.sign-in", detail: via === "openid" ? "OpenID Connect" : "password", ip: req.socket.remoteAddress ?? "?" });
+    sendJson(res, 200, { user: { username } }, { "Set-Cookie": [cookie(s.id, 12 * 3600), ...extraCookies] });
     // Open (or create) the person's engine account in the background; sign-in to the console never waits on the engine.
     // Proxmox node administrators administer the engine too (they can create organizations); checked on every sign-in.
     gateway
@@ -467,7 +485,7 @@ export function createApp(d: AppDeps) {
           const p = d.sessions.startTfa(r.username, r.ticket);
           return sendJson(res, 200, { needTfa: true, challenge: p.id });
         }
-        return signIn(res, r.username, r.ticket, r.csrf!);
+        return signIn(req, res, r.username, r.ticket, r.csrf!);
       } catch (e) {
         if (e instanceof ProxmoxError && e.status === 401) {
           limiter.fail(keys);
@@ -497,11 +515,68 @@ export function createApp(d: AppDeps) {
         }
         d.sessions.endTfa(p.id);
         limiter.clear(keys);
-        return signIn(res, r.username, r.ticket, r.csrf);
+        return signIn(req, res, r.username, r.ticket, r.csrf);
       } catch (e) {
         if (e instanceof ProxmoxError && e.status === 401) {
           limiter.fail(keys);
           throw new HttpError(401, "bad_code", "That code didn't work");
+        }
+        throw e;
+      }
+    }
+
+    if (method === "POST" && path === "/api/login/openid/start") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const realm = str(b.realm, 32);
+      if (!realm || !/^[A-Za-z][A-Za-z0-9._-]{0,31}$/.test(realm)) throw new HttpError(400, "bad_request", "Pick a realm");
+      const t = now();
+      const hits = oidcStarts.get(ip);
+      if (!hits || t - hits.start > 60_000) oidcStarts.set(ip, { n: 1, start: t });
+      else if (++hits.n > 20) throw new HttpError(429, "too_many_attempts", "Too many sign-in attempts. Wait a minute.");
+      if (oidcStarts.size > 5000) oidcStarts.clear();
+      const known = (await ProxmoxClient.realms(pveOpts)).find((r) => r.realm === realm);
+      if (!known || known.type !== "openid") throw new HttpError(400, "bad_request", "That realm doesn't sign in with OpenID Connect");
+      // Where the provider sends the person back to: this site's own address, as Proxmox's own page does.
+      const host = req.headers.host;
+      if (!host || !/^[A-Za-z0-9.\-:[\]]{1,255}$/.test(host)) throw new HttpError(400, "bad_request", "Bad Host header");
+      const redirectUrl = `${d.secureCookies ? "https" : "http"}://${host}`;
+      let authUrl: string;
+      try {
+        authUrl = await ProxmoxClient.openidAuthUrl(pveOpts, { realm, redirectUrl });
+      } catch (e) {
+        if (e instanceof ProxmoxError && e.status >= 400 && e.status < 500) throw new HttpError(400, "openid_unavailable", `Proxmox couldn't start the sign-in: ${(e.detail ?? "check the realm's settings").slice(0, 200)}`);
+        throw e;
+      }
+      const providerState = new URL(authUrl).searchParams.get("state");
+      if (!providerState) throw new HttpError(502, "proxmox_error", "The identity provider's address has no state");
+      const nonce = randomBytes(24).toString("base64url");
+      for (const [k, v] of oidcPending) if (v.exp < t) oidcPending.delete(k);
+      if (oidcPending.size > 1000) oidcPending.clear();
+      oidcPending.set(nonce, { state: providerState, realm, redirectUrl, exp: t + 10 * 60_000 });
+      return sendJson(res, 200, { url: authUrl }, { "Set-Cookie": `${OIDC_COOKIE}=${nonce}; Path=/; HttpOnly; SameSite=Strict; Max-Age=600${d.secureCookies ? "; Secure" : ""}` });
+    }
+
+    if (method === "POST" && path === "/api/login/openid/finish") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const code = str(b.code, 2048);
+      const st = str(b.state, 1024);
+      const nonce = cookieValue(req, OIDC_COOKIE);
+      const pending = nonce ? oidcPending.get(nonce) : undefined;
+      const clear = `${OIDC_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${d.secureCookies ? "; Secure" : ""}`;
+      if (nonce) oidcPending.delete(nonce); // Single use, whatever happens next.
+      if (!code || !st || !pending || pending.exp < now() || pending.state !== st) throw new HttpError(401, "openid_expired", "That sign-in expired or didn't start here. Start again.");
+      const keys = [`ip:${ip}`];
+      if (limiter.blocked(keys)) throw new HttpError(429, "too_many_attempts", "Too many failed sign-ins. Wait 15 minutes and try again.");
+      try {
+        const r = await ProxmoxClient.openidLogin(pveOpts, { code, state: st, redirectUrl: pending.redirectUrl });
+        limiter.clear(keys);
+        return signIn(req, res, r.username, r.ticket, r.csrf!, "openid", [clear]);
+      } catch (e) {
+        if (e instanceof ProxmoxError && e.status >= 400 && e.status < 500) {
+          limiter.fail(keys);
+          throw new HttpError(401, "bad_credentials", "The identity provider's answer wasn't accepted. Start again.");
         }
         throw e;
       }
@@ -625,7 +700,9 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && path === "/api/iac/users") {
       requireSameSite(req);
       const spec = validateSpec(await readJson(req), true);
-      return sendJson(res, 200, await asUser(req, res, async (pve, s) => iac.createUser(pve, s, await isNodeAdmin(pve), spec)));
+      const made = await asUser(req, res, async (pve, s) => iac.createUser(pve, s, await isNodeAdmin(pve), spec));
+      audit(req, "user.create", made.userid, [spec.deviceRole ? `device role ${spec.deviceRole}` : "", spec.orgs?.length ? `${spec.orgs.length} organization${spec.orgs.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", "));
+      return sendJson(res, 200, made);
     }
     const iacUser = path.match(/^\/api\/iac\/users\/([^/]{3,100})(\/password)?$/);
     if (iacUser) {
@@ -635,15 +712,22 @@ export function createApp(d: AppDeps) {
         if (requireSession(req).apiToken) throw new HttpError(403, "ticket_only", "Changing a password needs a signed-in browser session; API tokens can't do it");
         const b = await readJson(req);
         await asUser(req, res, (pve) => iac.setPassword(pve, userid, b.password as string, b.confirmationPassword as string));
+        audit(req, "password.reset", userid);
         // Whoever knew the old password (or held a session opened with it) is signed out; the person making the change stays.
         d.sessions.destroyUserExcept(userid, cookieValue(req, COOKIE));
         return sendJson(res, 200, { ok: true });
       }
       if (!iacUser[2] && method === "PUT") {
         const spec = validateSpec(await readJson(req), false);
-        return sendJson(res, 200, await asUser(req, res, async (pve, s) => iac.updateUser(pve, s, await isNodeAdmin(pve), userid, spec)));
+        const done = await asUser(req, res, async (pve, s) => iac.updateUser(pve, s, await isNodeAdmin(pve), userid, spec));
+        audit(req, "user.update", userid, Object.keys(spec).filter((k) => k !== "userid").join(", "));
+        return sendJson(res, 200, done);
       }
-      if (!iacUser[2] && method === "DELETE") return sendJson(res, 200, await asUser(req, res, (pve, s) => iac.deleteUser(pve, s, userid)));
+      if (!iacUser[2] && method === "DELETE") {
+        const done = await asUser(req, res, (pve, s) => iac.deleteUser(pve, s, userid));
+        audit(req, "user.delete", userid);
+        return sendJson(res, 200, done);
+      }
     }
     const iacMember = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/members\/([^/]{3,100})$/);
     if (iacMember && (method === "PUT" || method === "DELETE")) {
@@ -651,18 +735,21 @@ export function createApp(d: AppDeps) {
       const role = method === "PUT" ? ((await readJson(req)).role as OrgRole) : null;
       const userid = decodeURIComponent(iacMember[2]);
       await asUser(req, res, async (pve, s) => iac.setOrgRole(pve, s, await isNodeAdmin(pve), iacMember[1], userid, role));
+      audit(req, "org-role.set", userid, `${iacMember[1]}: ${role ?? "removed"}`);
       return sendJson(res, 200, { ok: true });
     }
     if (method === "POST" && path === "/api/iac/groups") {
       requireSameSite(req);
       const b = await readJson(req);
       await asUser(req, res, (pve) => iac.createGroup(pve, String(b.groupid ?? ""), typeof b.comment === "string" ? b.comment : undefined));
+      audit(req, "group.create", String(b.groupid ?? ""));
       return sendJson(res, 200, { ok: true });
     }
     const iacGroup = path.match(/^\/api\/iac\/groups\/([A-Za-z0-9._-]{1,64})$/);
     if (iacGroup && method === "DELETE") {
       requireSameSite(req);
       await asUser(req, res, (pve) => iac.deleteGroup(pve, iacGroup[1]));
+      audit(req, "group.delete", iacGroup[1]);
       return sendJson(res, 200, { ok: true });
     }
 
@@ -1570,6 +1657,9 @@ export function createApp(d: AppDeps) {
         node: d.pve.node,
         state,
         gateway,
+        sessions: d.sessions,
+        iac,
+        cookieSessionId: () => (bearer.principal(req) ? undefined : d.sessions.get(cookieValue(req, COOKIE))?.id),
         session: () => requireSession(req),
         asUser: <T,>(fn: (pve: ProxmoxClient, s: Session) => Promise<T>) => asUser(req, res, fn),
         sameSite: () => requireSameSite(req),
@@ -1753,6 +1843,8 @@ export function createApp(d: AppDeps) {
       if (url.pathname.startsWith("/api/") && (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE")) requireSameSite(req);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);
+      // The one unauthenticated door (off unless an administrator opened an organization): routine webhooks.
+      if (url.pathname.startsWith("/hooks/")) return await routineIngress.handle(req, res, url);
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });
       return serveStatic(req, res, url);
     } catch (e) {

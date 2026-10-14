@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 /**
  * Signed-in sessions. The browser holds only an opaque, random session id in an HttpOnly cookie; the user's Proxmox
@@ -14,6 +14,11 @@ export interface Session {
   createdAt: number;
   renewedAt: number; // when the Proxmox ticket was last issued
   lastSeen: number;
+  /** Where and with what this session was opened (for the sessions list). Never a secret. */
+  ip?: string;
+  agent?: string;
+  /** How the person signed in: with a password (and code), or through an OpenID Connect realm. */
+  via?: "password" | "openid";
   /** The person's engine session (their managed engine account's cookie). Server-side only, never sent to the browser. */
   engine?: EngineLogin;
   /**
@@ -50,6 +55,9 @@ export interface PendingTfa {
   attempts: number;
 }
 
+/** A short public handle for a session, safe to show and to name in a revoke request (the session id itself is the secret). */
+export const sessionHandle = (id: string) => createHash("sha256").update("session\0").update(id).digest("hex").slice(0, 16);
+
 export const IDLE_MS = 2 * 3600_000;
 export const MAX_MS = 12 * 3600_000;
 export const RENEW_AFTER_MS = 15 * 60_000;
@@ -68,9 +76,9 @@ export class SessionStore {
     this.now = now;
   }
 
-  create(username: string, ticket: string, csrf: string): Session {
+  create(username: string, ticket: string, csrf: string, meta: { ip?: string; agent?: string; via?: "password" | "openid" } = {}): Session {
     const t = this.now();
-    const s: Session = { id: newId(), username, ticket, csrf, createdAt: t, renewedAt: t, lastSeen: t };
+    const s: Session = { id: newId(), username, ticket, csrf, createdAt: t, renewedAt: t, lastSeen: t, ...(meta.ip ? { ip: meta.ip } : {}), ...(meta.agent ? { agent: meta.agent.slice(0, 200) } : {}), ...(meta.via ? { via: meta.via } : {}) };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -117,6 +125,24 @@ export class SessionStore {
     let n = 0;
     for (const [id, s] of this.sessions) if (s.username === username) (this.sessions.delete(id), n++);
     return n;
+  }
+
+  /** Live sessions, optionally of one person, oldest first. */
+  list(username?: string): Session[] {
+    const t = this.now();
+    return [...this.sessions.values()].filter((s) => (!username || s.username === username) && t - s.lastSeen <= IDLE_MS && t - s.createdAt <= MAX_MS).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Ends one session by its public handle, if it belongs to `username` (or to anyone when `username` is null). Returns who it was. */
+  destroyByHandle(handle: string, username: string | null): string | null {
+    for (const [id, s] of this.sessions) {
+      if (sessionHandle(id) !== handle || (username !== null && s.username !== username)) continue;
+      this.sessions.delete(id);
+      // API tokens of that person are re-checked at once, as when all their sessions end.
+      this.epochs.set(s.username, (this.epochs.get(s.username) ?? 0) + 1);
+      return s.username;
+    }
+    return null;
   }
 
   /** Ends someone's other sessions, keeping one (the person changing their password stays signed in where they are). */

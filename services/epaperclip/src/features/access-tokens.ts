@@ -18,7 +18,7 @@ import type { FeatureCtx } from "./index.ts";
 export const TOKEN_RE = /^epc_([0-9a-f]{16})_([A-Za-z0-9_-]{43})$/;
 const SETTING = "apiTokens";
 const AUDIT = "audit";
-const AUDIT_MAX = 500;
+const AUDIT_MAX = 2000;
 const DAY = 86_400_000;
 export const MAX_LIFETIME_DAYS = 366;
 export const DEFAULT_LIFETIME_DAYS = 90;
@@ -85,6 +85,21 @@ export function storeToken(state: StateStore, now: () => number, p: { name: stri
     throw e;
   }
   return toPublic(rec);
+}
+
+/** Gives a token a new expiry and/or a new secret (its old secret stops working at once). Returns the record, or undefined if it is gone. */
+export function updateToken(state: StateStore, id: string, patch: { expiresAt?: number; secret?: string }): TokenRecord | undefined {
+  const all = records(state);
+  const rec = all[id];
+  if (!rec) return undefined;
+  const next: TokenRecord = { ...rec };
+  if (patch.expiresAt !== undefined) next.expiresAt = patch.expiresAt;
+  if (patch.secret !== undefined) {
+    next.salt = randomBytes(16).toString("hex");
+    next.hash = hashOf(next.salt, patch.secret);
+  }
+  state.setSetting(SETTING, { ...all, [id]: next });
+  return next;
 }
 
 export function removeToken(state: StateStore, id: string): TokenRecord | undefined {
@@ -315,6 +330,32 @@ export async function handleEpcTokens(ctx: FeatureCtx): Promise<boolean> {
     }
     appendAudit(ctx.state, ctx.now, { actor: s.username, action: "token.create", target: `token ${id}`, detail: `${name}${readOnly ? " (read-only)" : ""}`, ip: ctx.req.socket.remoteAddress ?? "?" });
     ctx.json(201, { token, record: pub, proxmoxTokenId: `${s.username}!${pveName}`, note: privsep ? "Privilege-separated: this token has no permissions until you give it ACLs in Roles & permissions." : "This token acts as you, with all your permissions." });
+    return true;
+  }
+  const renew = path.match(/^\/api\/access\/epc-tokens\/([0-9a-f]{16})\/(renew|rotate)$/);
+  if (renew && method === "POST") {
+    // Tokens live a finite time. Renewing gives the same token a new end date; rotating also gives it a new secret
+    // (the old one stops working at once), which is how an automation changes its key without a gap in its access.
+    ctx.sameSite();
+    const s = cookieOnly(ctx);
+    const rec = getToken(ctx.state, renew[1]);
+    if (!rec) throw new HttpError(404, "not_found", "No such API token");
+    if (rec.userid !== s.username) {
+      const admin = await ctx.asUser((pve) => ctx.isNodeAdmin(pve));
+      if (!admin) throw new HttpError(403, "forbidden", "Only the token's owner or a Proxmox administrator can renew it");
+    }
+    const b = await ctx.readJson();
+    const days = b.expiresInDays === undefined ? DEFAULT_LIFETIME_DAYS : b.expiresInDays;
+    if (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > MAX_LIFETIME_DAYS) throw new HttpError(400, "bad_request", `Expiry is between 1 and ${MAX_LIFETIME_DAYS} days from now`);
+    const expiresAt = ctx.now() + days * DAY;
+    // Proxmox's own token ends at the same time, so the two can't disagree.
+    await ctx.asUser((pve) => pve.call("PUT", `/access/users/${enc(rec.userid)}/token/${enc(rec.pveName)}`, { expire: Math.floor(expiresAt / 1000) }));
+    const rotate = renew[2] === "rotate";
+    const secret = rotate ? newTokenParts().secret : undefined;
+    const next = updateToken(ctx.state, rec.id, { expiresAt, ...(secret ? { secret } : {}) });
+    if (!next) throw new HttpError(404, "not_found", "No such API token");
+    appendAudit(ctx.state, ctx.now, { actor: s.username, action: rotate ? "token.rotate" : "token.renew", target: `token ${rec.id}`, detail: `${rec.name} (${rec.userid}) until ${new Date(expiresAt).toISOString().slice(0, 10)}`, ip: ctx.req.socket.remoteAddress ?? "?" });
+    ctx.json(200, { record: toPublic(next), ...(secret ? { token: `epc_${rec.id}_${secret}` } : {}) });
     return true;
   }
   const one = path.match(/^\/api\/access\/epc-tokens\/([0-9a-f]{16})$/);
