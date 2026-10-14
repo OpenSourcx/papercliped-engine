@@ -2,7 +2,7 @@ import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { extname, join, normalize, resolve, sep } from "node:path";
-import { ProxmoxClient, ProxmoxError, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
+import { ProxmoxClient, ProxmoxError, nodeTransport, type GuestType, type PowerAction, type RrdCf, type RrdTimeframe, type StreamTransport, type Transport } from "@papercliped-engine/proxmox-client";
 import { LIBRARY, isoEntries, pickLatest, type Latest } from "@papercliped-engine/os-library";
 import { DEFAULT_INDEX_URL, MarketplaceError, verifyIndex, type Index, type TrustedKey } from "@papercliped-engine/marketplace";
 import { fetchVendorText, type FetchText } from "./vendorFetch.ts";
@@ -12,6 +12,8 @@ import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
 import { BearerAuth } from "./features/access-tokens.ts";
+import { ConnectService, registerConnect } from "./features/connect-oauth.ts";
+import { connectRoot, isConnectRoot } from "./features/connect.ts";
 import { NodeScope } from "./features/clusterNode.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
@@ -58,6 +60,8 @@ export interface AppDeps {
   fetch?: HttpFetch;
   /** Agent containers: where the built provider plugin is installed, and how ssh runs. Tests inject fakes. */
   containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
+  /** The address people reach this device at (EPC_PUBLIC_URL), used in OAuth metadata. Without it, the request's Host header is used. */
+  publicUrl?: string;
 }
 
 const COOKIE_BASE = "epc_session";
@@ -403,6 +407,16 @@ export function createApp(d: AppDeps) {
   const state = d.state ?? new StateStore(null);
   const gateway = d.engine ? new EngineGateway({ ...d.engine, state, now }) : null;
   const bearer = new BearerAuth({ state, sessions: d.sessions, now, pve: (tokenId, tokenSecret) => new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret }) });
+  // The Papercliped bridge: OAuth for MCP apps and /mcp (docs/CONNECTORS.md). Read only apps get a Proxmox client that can only GET.
+  const readOnlyTransport = (t: Transport): Transport => (r) => (r.method === "GET" ? t(r) : Promise.reject(new Error("read-only connection")));
+  const connect = new ConnectService({
+    state, now, secure: d.secureCookies, publicUrl: d.publicUrl, epoch: (u) => d.sessions.epoch(u),
+    pve: (tokenId, tokenSecret, readOnly) => {
+      const t = d.pve.transport ?? nodeTransport(d.pve.caPem);
+      return new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret, ...(readOnly ? { transport: readOnlyTransport(t), streamTransport: () => Promise.reject(new Error("read-only connection")) } : {}) });
+    },
+  });
+  registerConnect(state, connect);
   const iac = new Iac({ gateway, state, sessions: d.sessions });
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
@@ -436,6 +450,21 @@ export function createApp(d: AppDeps) {
       .then(async () => gateway!.syncAdmin(s, await isNodeAdmin(await clientFor(s))))
       .catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
   };
+
+  const featureCtx = (req: IncomingMessage, res: ServerResponse, url: URL) => ({
+    req, res, url, method: req.method ?? "GET", path: url.pathname,
+    node: d.pve.node,
+    state,
+    gateway,
+    session: () => requireSession(req),
+    asUser: <T,>(fn: (pve: ProxmoxClient, s: Session) => Promise<T>) => asUser(req, res, fn),
+    sameSite: () => requireSameSite(req),
+    isNodeAdmin,
+    readJson: (max?: number) => readJson(req, max),
+    json: (status: number, body: unknown, headers?: Record<string, string | string[]>) => sendJson(res, status, body, headers),
+    now,
+    HttpError,
+  });
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
     const method = req.method ?? "GET";
@@ -1565,20 +1594,7 @@ export function createApp(d: AppDeps) {
 
     // Areas built as features (src/features/*): each answers its own routes or passes.
     if (FEATURES.length) {
-      const ctx = {
-        req, res, url, method, path,
-        node: d.pve.node,
-        state,
-        gateway,
-        session: () => requireSession(req),
-        asUser: <T,>(fn: (pve: ProxmoxClient, s: Session) => Promise<T>) => asUser(req, res, fn),
-        sameSite: () => requireSameSite(req),
-        isNodeAdmin,
-        readJson: (max?: number) => readJson(req, max),
-        json: (status: number, body: unknown, headers?: Record<string, string | string[]>) => sendJson(res, status, body, headers),
-        now,
-        HttpError,
-      };
+      const ctx = featureCtx(req, res, url);
       for (const f of FEATURES) if (await f.handle(ctx)) return;
     }
 
@@ -1752,6 +1768,8 @@ export function createApp(d: AppDeps) {
       // that forgets its own check can't be reached cross-site, and a read-only token can't reach it either.
       if (url.pathname.startsWith("/api/") && (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE")) requireSameSite(req);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
+      // OAuth for MCP apps and /mcp live at the root (docs/CONNECTORS.md); everything else there is the console.
+      if (isConnectRoot(url.pathname) && (await connectRoot(featureCtx(req, res, url)))) return;
       if (url.pathname === "/engine" || url.pathname.startsWith("/engine/")) return await engineProxy(req, res);
       if (req.method !== "GET" && req.method !== "HEAD") return sendJson(res, 405, { error: "Method not allowed", code: "method" });
       return serveStatic(req, res, url);

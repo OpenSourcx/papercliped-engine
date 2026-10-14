@@ -132,7 +132,7 @@ export interface Plan {
   title: string;
   summary: string;
   createdAt: number;
-  createdBy: "pin" | "automation";
+  createdBy: "pin" | "automation" | "app";
   /** The automation that proposed it, when it came from one. */
   automationId?: string;
   status: PlanStatus;

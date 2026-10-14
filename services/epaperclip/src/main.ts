@@ -23,6 +23,7 @@ import { StateStore } from "./state.ts";
  *   EPC_MAX_UPLOAD_GB  largest ISO or template upload    (default 64)
  *   EPC_MARKETPLACE_URL  where the Store's signed catalog is published (default the first-party catalog)
  *   EPC_MARKETPLACE_KEY  PEM public key to also trust for the catalog (for your own catalog or a fork)
+ *   EPC_PUBLIC_URL  the address people reach this device at, for OAuth metadata (default: taken from each request)
  *   EPC_DEV_HTTP   set to 1 to serve plain HTTP for local development only
  *   EPC_STATE_DIR  the service's state and vault (vault.key, state.json)   (default /var/lib/epaperclip)
  *   EPC_ENGINE_URL         where the engine listens                     (default http://127.0.0.1:3100)
@@ -61,6 +62,7 @@ const handle = createApp({
   secureCookies: !devHttp,
   maxUploadBytes: Number(env.EPC_MAX_UPLOAD_GB ?? 64) * 1024 ** 3,
   consolePort: port,
+  publicUrl: env.EPC_PUBLIC_URL || undefined,
   // The built Proxmox sandbox provider the installer puts beside the engine (agent containers).
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
