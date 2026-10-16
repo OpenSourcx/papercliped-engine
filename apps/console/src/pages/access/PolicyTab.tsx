@@ -55,7 +55,7 @@ function SigninPolicy() {
               <Field label="Origin" hint="https:// address people type."><Input value={wa.origin} onChange={(e) => setWa({ ...wa, origin: e.target.value.trim() })} disabled={!q.data.canManage} className="font-mono" placeholder={here.origin} spellCheck={false} /></Field>
             </div>
             <div className="flex items-center gap-3 mt-3"><Toggle checked={wa.allowSubdomains} onChange={(v) => setWa({ ...wa, allowSubdomains: v })} label="Allow subdomains" disabled={!q.data.canManage} /><span className="text-compact text-ink-2">Allow subdomains of the origin</span></div>
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <Button variant="primary" loading={save.isPending} disabled={!q.data.canManage || !wa.rp || !wa.id || !wa.origin} onClick={() => save.mutate({ webauthn: wa })}>Save security key settings</Button>
               <Button disabled={!q.data.canManage} onClick={() => setWa({ rp: "ePaperclip", id: here.hostname, origin: here.origin, allowSubdomains: false })}>Use this page's address</Button>
               {q.data.webauthn && <Button variant="ghost" disabled={!q.data.canManage} onClick={() => save.mutate({ webauthn: null })}>Clear</Button>}
@@ -67,7 +67,7 @@ function SigninPolicy() {
               <Field label="App id" hint="Defaults to the origin."><Input value={u2f.appid} onChange={(e) => setU2f({ ...u2f, appid: e.target.value.trim() })} disabled={!q.data.canManage} className="font-mono" spellCheck={false} /></Field>
               <Field label="Origin override"><Input value={u2f.origin} onChange={(e) => setU2f({ ...u2f, origin: e.target.value.trim() })} disabled={!q.data.canManage} className="font-mono" spellCheck={false} /></Field>
             </div>
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <Button disabled={!q.data.canManage || (!u2f.appid && !u2f.origin)} onClick={() => save.mutate({ u2f: { appid: u2f.appid || undefined, origin: u2f.origin || undefined } })}>Save U2F settings</Button>
               {q.data.u2f && <Button variant="ghost" disabled={!q.data.canManage} onClick={() => save.mutate({ u2f: null })}>Clear</Button>}
             </div>
