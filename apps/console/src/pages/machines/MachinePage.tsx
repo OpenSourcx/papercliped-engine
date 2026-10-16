@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Archive, Box, Camera, Copy, Shield, Cpu, ListChecks, Loader2, Lock, Monitor, Play, Power, RotateCw, Route, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
+import { Archive, Box, Camera, Cloud, Copy, Shield, Cpu, ListChecks, Pause, Stethoscope, Loader2, Lock, Monitor, Play, Power, RotateCw, Route, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
@@ -13,6 +13,10 @@ import { MachinePermissions } from "./MachinePermissions.tsx";
 import { Tag } from "../../ui/Tag.tsx";
 const Screen = lazy(() => import("./Screen.tsx"));
 import { Snapshots } from "./Snapshots.tsx";
+import { MachineCloudInit } from "./MachineCloudInit.tsx";
+import { MachineAgent } from "./MachineAgent.tsx";
+import { PowerOptionsModal } from "./MachinePower.tsx";
+import { ConsoleExtras } from "./MachineConsole.tsx";
 import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { cn, formatBytes } from "../../lib/storage.ts";
@@ -28,10 +32,12 @@ const TABS = [
   { id: "snapshots", label: "Snapshots", icon: <Camera className="h-4 w-4" /> },
   { id: "backups", label: "Backups", icon: <Archive className="h-4 w-4" /> },
   { id: "hardware", label: "Hardware", icon: <Cpu className="h-4 w-4" /> },
+  { id: "cloudinit", label: "Cloud-Init", icon: <Cloud className="h-4 w-4" />, vmOnly: true },
+  { id: "agent", label: "Guest agent", icon: <Stethoscope className="h-4 w-4" />, vmOnly: true },
   { id: "firewall", label: "Firewall", icon: <Shield className="h-4 w-4" /> },
   { id: "permissions", label: "Permissions", icon: <Users className="h-4 w-4" /> },
   { id: "tasks", label: "Tasks", icon: <ListChecks className="h-4 w-4" /> },
-] as const;
+] as { id: string; label: string; icon: ReactNode; vmOnly?: boolean }[];
 
 const ago = (iso: string) => {
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
@@ -73,6 +79,7 @@ export function MachinePage() {
   const running = g?.status === "running";
   const [acting, setActing] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [powerOpts, setPowerOpts] = useState(false);
   const act = (a: "start" | "shutdown") => {
     setActing(true);
     power(a);
@@ -91,6 +98,7 @@ export function MachinePage() {
       { id: "snapshot", label: "Snapshot", icon: <Camera className="h-4 w-4" />, run: () => setTab("snapshots", { new: "1" }) },
       { id: "clone", label: "Clone", icon: <Copy className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "clone"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "backup", label: "Back up now", icon: <Archive className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(g.vmid)); return n; }) },
+      { id: "power-options", label: "Power options…", icon: <Pause className="h-4 w-4" />, run: () => setPowerOpts(true), more: true, disabled: !!g.template, title: g.template ? "A template can't be started" : undefined },
       { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
       ...(g.type === "qemu" ? [{ id: "reset", label: "Reset", icon: <RotateCw className="h-4 w-4" />, run: () => power("reset"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Reset ${g.name}?`, body: "A reset restarts the VM instantly, like pressing the reset button. Unsaved work inside is lost. Reboot is the gentle option.", label: "Reset now" } }] : []),
@@ -154,11 +162,12 @@ export function MachinePage() {
             <Button variant="primary" onClick={() => act("start")} disabled={!!lock || acting} title={lock} loading={acting}><Play className="h-4 w-4" />Start</Button>
           )}
           <Button onClick={() => setTab("console")} disabled={!running} title={running ? undefined : "Start it to open its console"}><SquareTerminal className="h-4 w-4" />Console</Button>
+          {!g.template && <Button variant="ghost" onClick={() => setPowerOpts(true)} aria-label="Power options" title="Power options: pause, hibernate, reset, timeouts"><Pause className="h-4 w-4" /></Button>}
         </div>
       </div>
 
       <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto" role="tablist">
-        {TABS.map((t) => (
+        {TABS.filter((t) => !t.vmOnly || g.type === "qemu").map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-sm inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
             {t.icon}{t.label}
           </button>
@@ -209,6 +218,7 @@ export function MachinePage() {
             ) : (
               <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
             )}
+            {g.type === "qemu" && <ConsoleExtras vmid={g.vmid} name={g.name} />}
             {live && g.type === "qemu" && view === "serial" && (
               <p className="text-xs text-ink-3 mt-2">The serial console needs a serial port on the VM (<span className="font-mono">serial0: socket</span>, then a restart).</p>
             )}
@@ -220,6 +230,8 @@ export function MachinePage() {
         </div>
       )}
 
+      {tab === "cloudinit" && g.type === "qemu" && <MachineCloudInit vmid={g.vmid} name={g.name} />}
+      {tab === "agent" && g.type === "qemu" && <MachineAgent vmid={g.vmid} name={g.name} running={running} />}
       {tab === "backups" && <div className="fade-in"><MachineBackups vmid={g.vmid} name={g.name} /></div>}
       {tab === "snapshots" && <div className="fade-in"><Snapshots g={g} startOpen={params.get("new") === "1"} onOpened={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("new"); return n; }, { replace: true })} /></div>}
 
@@ -228,6 +240,7 @@ export function MachinePage() {
       {tab === "permissions" && <MachinePermissions vmid={g.vmid} name={g.name} />}
 
       {tab === "tasks" && <MachineTasks g={g} />}
+      {powerOpts && <PowerOptionsModal g={g} onClose={() => setPowerOpts(false)} />}
       {migrating && <MigrateModal vmid={g.vmid} onClose={() => setMigrating(false)} />}
     </PageFrame>
   );
