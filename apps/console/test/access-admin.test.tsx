@@ -9,6 +9,7 @@ vi.mock("../src/auth/session.tsx", () => ({
 
 import { LiveAccess } from "../src/pages/access/LiveAccess.tsx";
 import { deviceOf } from "../src/pages/access/SecurityTab.tsx";
+import { PathPermissions } from "../src/pages/access/PathPermissions.tsx";
 
 interface Call { method: string; path: string; body: any }
 let calls: Call[];
@@ -62,6 +63,10 @@ beforeEach(() => {
     if (p === "/api/access/epc-tokens" && method === "GET") return json({ tokens: [{ id: "aaaaaaaaaaaaaaaa", name: "nightly", userid: "sam@pve", createdAt: 1, expiresAt: Date.now() + 86_400_000 * 3, readOnly: false, privsep: false, pveName: "epc-aaaaaaaaaaaaaaaa", lastUsedAt: null }], scope: "all", maxDays: 366, defaultDays: 90 });
     if (p.endsWith("/renew")) return json({ record: { id: "aaaaaaaaaaaaaaaa", expiresAt: Date.now() + 86_400_000 * 90 } });
     if (p.endsWith("/rotate")) return json({ token: `epc_aaaaaaaaaaaaaaaa_${"N".repeat(43)}`, record: { id: "aaaaaaaaaaaaaaaa", name: "nightly", expiresAt: Date.now() + 86_400_000 * 90, privsep: false } });
+    if (p === "/api/access/acl" && method === "GET") return json({ acls: [{ path: "/storage/local", ugid: "ops", type: "group", roleid: "PVEDatastoreUser", propagate: true, preset: null }, { path: "/", ugid: "sam@pve", type: "user", roleid: "Administrator", propagate: true, preset: null }], canModify: true });
+    if (p === "/api/access/acl") return json({ ok: true });
+    if (p === "/api/access/roles") return json({ roles: [{ roleid: "PVEDatastoreUser", builtin: true, privileges: ["Datastore.Audit"] }, { roleid: "PVEAuditor", builtin: true, privileges: [] }], privileges: [], canManage: true });
+    if (p === "/api/access/paths") return json({ paths: [] });
     if (p.endsWith("/tokens")) return json({ tokens: [] });
     if (p.startsWith("/api/access/users/") || p === "/api/access/groups") return json(p === "/api/access/groups" ? { groups: [], canManage: true } : { tfa: [], tokens: 0, keys: "", expire: null, realmTfa: null });
     if (p.startsWith("/api/iac/users/")) return json({ userid: "lee@pve", warnings: [] });
@@ -271,5 +276,27 @@ describe("changing a person's access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(sent("PUT", "/api/iac/users/lee%40pve")).toHaveLength(1));
     expect(sent("POST", "/api/access/preview")).toHaveLength(0);
+  });
+});
+
+describe("who can use one thing", () => {
+  const view = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PathPermissions path="/storage/local" noun="storage" /></QueryClientProvider>);
+
+  it("lists what is granted on its own path only, and revokes after the role is typed", async () => {
+    view();
+    await screen.findByText("Group ops");
+    expect(screen.queryByText("sam@pve")).toBeNull(); // granted on /, not on this storage
+    fireEvent.click(screen.getByRole("button", { name: "Revoke PVEDatastoreUser from ops" }));
+    const go = screen.getByRole("button", { name: "Revoke" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Type the role to confirm"), { target: { value: "PVEDatastoreUser" } });
+    fireEvent.click(go);
+    await waitFor(() => expect(sent("POST", "/api/access/acl")[0]?.body).toEqual({ path: "/storage/local", roles: ["PVEDatastoreUser"], groups: ["ops"], remove: true }));
+  });
+
+  it("grants on that path", async () => {
+    view();
+    fireEvent.click(await screen.findByRole("button", { name: /Grant access/ }));
+    expect(((await screen.findByLabelText("Path")) as HTMLInputElement).value).toBe("/storage/local");
   });
 });

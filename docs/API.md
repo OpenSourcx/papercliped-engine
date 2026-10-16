@@ -80,7 +80,15 @@ Every route needs a session cookie (plus `X-EPC-Request: 1` for changes) or a Be
 | `GET /api/access/epc-tokens[?all=1]` | Your ePaperclip API tokens (`all=1` for administrators) |
 | `POST /api/access/epc-tokens` `{name, expiresInDays?, readOnly?, privsep?}` | Create; the answer carries the token once |
 | `DELETE /api/access/epc-tokens/:id` | Revoke (owner or administrator) |
-| `GET /api/access/audit` | Audit trail (administrators) |
+| `POST /api/access/epc-tokens/:id/renew` `{expiresInDays}` | A new end date for a token (also in Proxmox); owner or administrator, browser session only |
+| `POST /api/access/epc-tokens/:id/rotate` `{expiresInDays}` | A new end date and a new secret (shown once; the old one stops at once) |
+| `GET /api/access/audit?actor=&action=&q=&from=&to=&limit=&offset=` | Audit trail with filters (administrators); answers `{entries, total, kept, actors, actions}` |
+| `GET /api/access/audit/export?format=csv\|json&…` | The same filters, as a download |
+| `POST /api/login/openid/start` `{realm}`, `POST /api/login/openid/finish` `{code, state}` | OpenID Connect sign-in (browser): the first returns the provider's address and sets a one-use cookie |
+| `POST /api/login/tfa` `{challenge, kind: totp\|recovery\|webauthn, code\|response}` | Second step; `/api/login` answers `methods` (including the WebAuthn options) |
+| `GET /api/login/banner` | The login notice (public) |
+| `POST /api/access/password` `{currentPassword, password}` | Change your own password (browser session only) |
+| `GET /api/access/sessions[?all=1]`, `DELETE /api/access/sessions/:handle`, `POST /api/access/sessions/revoke-others`, `POST /api/access/sessions/revoke-user` `{userid}` | Your sessions; administrators see and end everyone's |
 
 ### Access control
 
@@ -93,7 +101,16 @@ Every route needs a session cookie (plus `X-EPC-Request: 1` for changes) or a Be
 | `GET/POST /api/access/groups`, `GET/PUT/DELETE /api/access/groups/:id`, `GET /api/access/groups/:id/permissions` | Groups |
 | `GET/POST /api/access/roles`, `PUT/DELETE /api/access/roles/:id` | Roles (built-ins are read-only; deleting a role in use needs `{removeAcls:true}`) |
 | `GET /api/access/acl`, `POST /api/access/acl` `{path, roles[], users[]\|groups[]\|tokens[], propagate?, remove?}` | Permissions |
-| `GET /api/access/permissions?userid=&path=` | Effective permissions |
+| `GET /api/access/permissions?userid=&path=` | Effective permissions (Proxmox's answer) |
+| `GET /api/access/explorer?userid=` | Entries, groups and per-path privileges with the role and source behind each |
+| `POST /api/access/preview` `{userid, deviceRole?, orgs?[{companyId, role\|null}], orgsMode?}` | What a change would add and remove in Proxmox and the engine; changes nothing |
+| `GET/POST /api/access/templates`, `PUT/DELETE /api/access/templates/:id`, `POST /api/access/templates/:id/apply` `{userids[], dryRun?}` | Organization-role templates |
+| `POST /api/access/import/preview`, `POST /api/access/import/apply` `{csv, existing?, createGroups?, defaultRealm?, template?, generatePasswords?}` | CSV import; apply answers each person's result (generated passwords once) |
+| `GET/PUT /api/access/group-map`, `POST /api/access/group-map/sync` `{dryRun}` | Group-to-organization mapping |
+| `GET/PUT /api/access/signin-policy` | Login notice, WebAuthn and U2F settings (`/cluster/options`) |
+| `POST /api/access/webauthn/:userid/begin\|finish` | Security key registration (browser session only) |
+| `GET/POST /api/access/sync-jobs`, `PUT/DELETE /api/access/sync-jobs/:id`, `GET /api/access/sync-jobs/preview?schedule=` | Scheduled realm syncs |
+| `GET /api/access/routine-ingress`, `PUT /api/access/routine-ingress/:companyId` `{enabled}` | Which organizations accept routine webhooks from outside (administrators) |
 | `GET /api/access/paths` | Paths to pick from |
 | `GET/POST /api/access/users/:userid/tokens`, `PUT/DELETE …/tokens/:tokenid`, `PUT /api/access/users/:userid/tfa-unlock` | Proxmox API tokens (the secret is returned once) |
 | `GET /api/access/tfa`, `GET/POST /api/access/tfa/:userid`, `PUT/DELETE /api/access/tfa/:userid/:id` | Two-factor (browser session only for changes) |
@@ -104,6 +121,10 @@ Every route needs a session cookie (plus `X-EPC-Request: 1` for changes) or a Be
 
 `GET /api/host`, `GET /api/stats/node`, `GET /api/stats/guests/:vmid`, `GET /api/machines/options`, `POST /api/vms`, `POST /api/guests/:vmid/power`, `GET /api/tasks`, `GET /api/tasks/:upid`, and the guests, storage, network, firewall and backup routes the console uses. The console's network tab in a browser's developer tools shows the exact calls for any screen.
 
+### Routine webhooks (no sign-in)
+
+`POST /hooks/routines/<24 hex>/fire` with a JSON body of up to 64 KiB, forwarded to the engine's public trigger route. Answers 404 for everything else and whenever the trigger's organization isn't open; 405 for other methods, 415 for other content types, 413 for larger bodies, 429 over the limits (60 a minute per address, 30 per trigger, 600 overall). The sender's signing headers (`Authorization`, `X-Paperclip-Signature`, `X-Paperclip-Timestamp`, `X-Hub-Signature-256`, `X-Hub-Signature`, `Idempotency-Key`, `X-GitHub-Delivery`) pass through unchanged.
+
 ### Engine
 
-`/engine/api/*` forwards to the engine as your managed engine account. The same rules apply: changes from a cookie session need `X-EPC-Request` and a same-site `Origin`; a Bearer token needs neither.
+`/engine/api/*` forwards to the engine as your managed engine account, but only the routes the console uses (an allow-list; anything else answers 404, whatever the engine offers). The same rules apply: changes from a cookie session need `X-EPC-Request` and a same-site `Origin`; a Bearer token needs neither.

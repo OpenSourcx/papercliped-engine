@@ -5,6 +5,7 @@ import { access, type Pool, type PoolOverview } from "../../data/engine/access.t
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Select } from "../../ui/primitives.tsx";
+import { PathPermissions } from "./PathPermissions.tsx";
 import { QueryState, ReadOnlyNote, Table, Td, Th, plural, AField as Field } from "./shared.tsx";
 
 const KEY = ["access", "pools"] as const;
@@ -91,6 +92,7 @@ function PoolModal({ pool, data, onClose }: { pool: Pool | null; data: PoolOverv
                 </Field>
               </div>
             )}
+            <PathPermissions path={`/pool/${live.poolid}`} noun="resource group" />
           </>
         )}
         {confirm && live && (

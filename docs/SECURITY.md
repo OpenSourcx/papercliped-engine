@@ -65,7 +65,7 @@ a shell on the host, or findings in Proxmox, the engine or Node.js themselves (r
 | Every change runs as the person against Proxmox, so Proxmox's permissions decide; inputs are checked against narrow patterns before they reach it (names, volume ids, file names, URLs, firewall fields, hardware strings) | `app.ts`, `features/*`, `firewall.ts`, `hardware.ts` | `app.test.ts` and each feature's tests |
 | Anything ePaperclip does with its own authority (engine service account, device-role side effects, organization membership) first checks the caller's own right: org owners/admins, or the Proxmox permission to hand out ACLs | `iac.ts`, `app.ts` | `iac.test.ts` |
 | API tokens: `epc_<id>_<secret>`, salted SHA-256 stored, constant-time compare, always hashed (no id oracle), 1 to 366 days, per-token rate limit, per-address failure lock, mapped to a real Proxmox token so Proxmox enforces expiry and removal; can't create tokens, change passwords or two-factor, mint Proxmox tokens, open consoles or approve plans; privilege-separated ones don't get the person's engine access | `features/access-tokens.ts`, `features/access.ts`, `engine.ts` | `access-tokens.test.ts`, `security.test.ts` |
-| `/engine/api` proxy: fixed header allow-list both ways (no cookies or Authorization through, no `Set-Cookie` back), dot segments / empty segments / encoded slashes refused, auth routes blocked, the managed-sandbox-only setting can't be turned off, replies can't run as a page of this origin (`sandbox` CSP, active types download) | `engine.ts`, `app.ts` (`engineGuard`) | `engine.test.ts`, `containers.test.ts` |
+| `/engine/api` proxy: **route allow-list** (only the engine routes the console's client uses, `engine-allow.ts`, kept equal to the client's list by a test and exercised against the real engine by the E2E harness), fixed header allow-list both ways (no cookies or Authorization through, no `Set-Cookie` back), dot segments / empty segments / encoded slashes refused, auth routes blocked, the managed-sandbox-only setting can't be turned off, replies can't run as a page of this origin (`sandbox` CSP, active types download) | `engine.ts`, `app.ts` (`engineGuard`) | `engine.test.ts`, `containers.test.ts` |
 | Content security policy on every response: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`, plus `nosniff`, `no-referrer`, `X-Frame-Options: DENY`, HSTS, `COOP/CORP: same-origin`. The console has no inline code, no HTML sinks, no third-party loads; links from outside data must be plain http(s) | `app.ts` (`baseHeaders`), `apps/console` | `app.test.ts`, `apps/console/test/security.test.ts`, `check:design` |
 | Secrets never leave: connector keys and token secrets are sealed, returned only as last four characters or once at creation, scrubbed from provider errors, job logs and Proxmox errors | `vault.ts`, `connectors.ts`, `containers.ts`, `features/nodeCerts.ts` | `pin.test.ts`, `containers.test.ts`, `access-tokens.test.ts` |
 | Outbound fetches (vendor checksum files, the catalog): https only, no addresses on this network by name or by DNS answer, 3 redirects, 2 MB, 15 s. Provider calls go to fixed hosts | `vendorFetch.ts`, `connectors.ts` | `vendorFetch.test.ts` |
@@ -120,6 +120,18 @@ checks; secrets in logs and errors; XSS sinks in the console (none: no `dangerou
 Pin's Markdown preview renders text only); file modes (state 0600 in a 0700 directory, vault key 0600 and re-tightened,
 engine settings 0600 root, installer secrets 0600).
 
+## The routine webhook door
+
+By default the host exposes nothing without a sign-in except the login page, its assets, the realm list, the login notice and the health check. A Proxmox administrator can open one more door per organization: `POST /hooks/routines/<id>/fire`, so a service on the internet (GitHub, a build server) can start a routine. The risk, in words:
+
+- **Anyone who can reach the host can send that request.** Whether it does anything is up to the engine: for a trigger with signing mode `none`, knowing the 24-hex address is the only secret, and a leaked address lets anyone start the routine (and so spend an agent's budget) until the trigger's address is rotated. Prefer the signed modes (GitHub or HMAC), which the engine verifies against the sender's signature headers; the host forwards those headers and the body byte for byte for that reason.
+- **What the door does not do.** It forwards to exactly the engine's public fire route; it has no other path or method, does not accept or forward cookies or other headers, and never reaches the rest of the engine. It cannot be used to read anything: the answer is the engine's status and JSON for that one call. It answers 404 for unknown triggers, closed organizations and wrong paths alike, so it doesn't reveal which triggers exist.
+- **Limits.** JSON only, 64 KiB, 15 s to send the body, 60 requests a minute per address, 30 per trigger, 600 overall. A flood costs a 429, not an engine call. Behind a shared proxy all callers share one address (see A-05).
+- **Exposure.** It is the same port as the console, so opening an organization makes this one path reachable wherever the console is. Putting the host on the internet at all is the administrator's decision; a reverse proxy that only forwards `/hooks/` is the way to expose just this door.
+- **Who decides.** Only Proxmox administrators, in a browser session; each change is in the audit log. Closing it again takes effect at once.
+
+Tests: `access-people.test.ts` (the door, with a stand-in engine) and the real-engine E2E stage "routine webhooks from outside".
+
 ## Accepted, with reasons
 
 | ID | Risk | Why it stays |
@@ -135,6 +147,8 @@ engine settings 0600 root, installer secrets 0600).
 | A-09 | A privilege-separated API token can still read the owner's Pin inbox, plans and automation list: ePaperclip's own per-person state, which Proxmox ACLs don't govern. | Read-only, and only the owner's own data; the token's reach into Proxmox and the engine is what separation limits. Revisit if tokens are ever handed to third parties. |
 | A-10 | The agent-container template is created with `nesting=1` (containers inside the container). It stays unprivileged, with no bind mounts or raw `lxc.*` settings (the provider refuses a template that has them). | Lets tools that use containers work inside an agent's sandbox. Drop it from `plugins/proxmox-sandbox/template/build-template.sh` if you don't need that. |
 | A-11 | GitHub Actions in `.github/workflows/release.yml` are pinned by major tag, not commit. | Common practice; pinning by SHA is a hardening step for the owner. |
+| A-12 | OpenID Connect sign-in relies on the identity provider and on Proxmox's check of `state` and `code`; the host adds a one-use, browser-bound nonce cookie (so a login link can't be planted in someone else's browser) and the sign-in limiter. | The provider's own security is outside ePaperclip. |
+| A-13 | WebAuthn keys are tied to the address Proxmox is configured with; an administrator who changes it can invalidate existing keys. The Sign-in policy screen says so and one factor of another kind is recommended. | Inherent to WebAuthn and to Proxmox keeping one address. |
 
 ## Needs the owner
 
@@ -143,13 +157,15 @@ engine settings 0600 root, installer secrets 0600).
    publish a release can have the root helper install it). The `.deb`/APT path is GPG-signed and the catalog is Ed25519-signed;
    the tarball should be too. Suggested: sign `epaperclip.tar.gz` with the same Ed25519 scheme as the catalog (key in CI,
    public key pinned in `install.sh` and the helper), and make `get.sh` and the helper verify the signature before extracting.
-2. **Engine API surface (Medium).** `/engine/api` forwards the person's whole engine API; only the managed-sandbox setting is
-   guarded, by a deny-list. Please confirm with the real engine that managed-sandbox-only blocks every adapter that would run
-   a command on the host (not just the local adapter), and consider replacing the deny-list with an allow-list of the routes
-   the console actually uses.
-3. **Automation tokens (Medium).** Automations create a Proxmox token with `expire: 0` and keep its secret in the vault until
-   deleted; in "act with all my permissions" mode that is a non-expiring credential with the owner's full rights. Consider a
-   finite lifetime with renewal, and listing them in the Access screen's token view with their owner.
+2. **Engine API surface (Medium, narrowed).** `/engine/api` now forwards only the routes the console uses (an allow-list),
+   so engine routes nobody listed, including future ones, are closed. Still to confirm with the real engine: that
+   managed-sandbox-only blocks every adapter that would run a command on the host (not just the local adapter), because
+   the listed agent routes remain open to the signed-in person.
+3. **Automation tokens (fixed).** Automation tokens now expire (90 days by default, up to 366, chosen when the automation is
+   made), the owner is told a week before, the automation stops cleanly when its token ends, and **Renew** (Pin >
+   Automations, or `POST /api/pin/automations/:id/renew`) extends the Proxmox token and the host's record together. They
+   appear in the Proxmox token list under the name `epcauto-<id>`. Automations made before this change have no end date
+   until they are renewed once. ePaperclip API tokens can be renewed and rotated the same way (Access control > API tokens).
 4. **A private way to report.** Enable GitHub private vulnerability reporting for the repository (and, if wanted, add a
    security mailbox); this page deliberately lists no address that doesn't exist yet.
 5. **Hardening not applied because it can't be tested without real systemd:** `SystemCallFilter` for the host service and

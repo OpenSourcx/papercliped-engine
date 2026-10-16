@@ -9,6 +9,7 @@ import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, EmptyState, Input, PageFrame, Segmented, Status } from "../../ui/primitives.tsx";
 import { tabsFor, volName } from "./content.ts";
+import { LivePathPermissions } from "../access/PathPermissions.tsx";
 import { StorageAdmin } from "./StorageAdmin.tsx";
 import { VolumeDetails } from "./VolumeDetails.tsx";
 
@@ -102,6 +103,8 @@ export function StorageDetail() {
       <Card className="p-5 mb-5">
         <BarMeter label={`${formatBytes(Math.max(0, s.total - s.used))} free`} pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />
       </Card>
+
+      <LivePathPermissions path={`/storage/${s.id}`} noun="storage" />
 
       {tabs.length === 0 ? (
         <Card><EmptyState icon={<Database className="h-5 w-5" />} title="No browsable content" body="This storage isn't set up to hold ISO images, templates, backups or disks." /></Card>

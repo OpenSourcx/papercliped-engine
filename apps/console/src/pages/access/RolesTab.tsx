@@ -99,11 +99,11 @@ function PathInput({ value, onChange, id }: { value: string; onChange: (v: strin
 const PATH_OK = /^\/([A-Za-z0-9._:-]+(\/[A-Za-z0-9._:-]+){0,5})?$/;
 const TOKEN_OK = /^[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*![A-Za-z][A-Za-z0-9._-]+$/;
 
-function AddAclModal({ roles, onClose, initial }: { roles: Role[]; onClose: () => void; initial?: { type?: "user" | "group" | "token"; ugid?: string } }) {
+function AddAclModal({ roles, onClose, initial }: { roles: Role[]; onClose: () => void; initial?: { type?: "user" | "group" | "token"; ugid?: string; path?: string } }) {
   const qc = useQueryClient();
   const iacQ = useIac();
   const groupsQ = useQuery({ queryKey: ["access", "groups"], queryFn: access.groups.list, retry: 0 });
-  const [path, setPath] = useState("/");
+  const [path, setPath] = useState(initial?.path ?? "/");
   const [type, setType] = useState<"user" | "group" | "token">(initial?.type ?? "user");
   const [ugid, setUgid] = useState(initial?.ugid ?? "");
   const [role, setRole] = useState("PVEAuditor");
