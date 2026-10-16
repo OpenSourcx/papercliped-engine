@@ -25,7 +25,7 @@ Nothing here needs a cluster. On a device that is not in one, the cluster screen
 - **Join information** is the same base64 JSON Proxmox's own screen produces (`ipAddress`, `fingerprint`, `peerLinks`, `ringAddress`, `totem`) from `GET /cluster/config/join`, so either screen can read the other's. It holds an address and a public fingerprint, no secrets.
 - **Join a cluster** reads that text (or takes the address and certificate fingerprint by hand), the root password of the peer (write-only), optional links and this device's name typed. It is refused before Proxmox is asked if the device is already in a cluster or has machines (Proxmox won't join a device that has any). After it succeeds Proxmox replaces this device's cluster state, so the person's sign-in ends and they sign in again.
 - **Remove node** works on a node that is **off** (an online node is refused, and so is the device you are signed in to). The dialog lists the machines, HA resources and replication jobs still tied to it, and the steps that follow: keep it off, never switch it on again with the same name and address, and delete its leftover folder under `/etc/pve/nodes/` if wanted. The node's name must be typed.
-- Links and the quorum device are **read only**: Proxmox has no API for editing `corosync.conf` or setting up a QDevice (`pvecm`).
+- Links and the quorum device are **read**; changing them has a guide (below), because Proxmox has no API for editing `corosync.conf` or setting up a QDevice (`pvecm`).
 
 ### High availability
 
@@ -53,7 +53,46 @@ The Cluster card on a machine reads where it runs, its HA state and its replicat
 
 Read first. The Overview shows health, each warning (with Mute for a day / Unmute), capacity, I/O and the cluster flags; Services lists monitors, managers, metadata servers and CephFS; OSDs show state, in/out, class, use and PGs; Pools show copies, minimum, PGs, autoscaling and use; Configuration shows `ceph.conf` (lines that look like keys are hidden), the placement rules and the log.
 
-Writes are limited to what is reversible and cannot lose data: OSD **in**, **out** (typed `osd.N`, because it starts moving data) and **scrub**; cluster **flags** (`pause` needs `pause` typed because it stops all I/O); health **mute**; pool **create** (at least 2 copies, minimum not above copies) and pool **tune** (autoscale mode, minimum copies, target ratio; changing the number of copies needs the pool name typed). Installing Ceph, creating or destroying monitors, managers, metadata servers, OSDs and pools, CephFS create/destroy, and starting or stopping services stay in `pveceph`, where long-running work and its prompts belong. A Proxmox that has no Ceph answers with a calm "isn't set up".
+Reversible writes sit on the other tabs: OSD **in**, **out** (typed `osd.N`, because it starts moving data) and **scrub**; cluster **flags** (`pause` needs `pause` typed because it stops all I/O); health **mute**; pool **create** and **tune** (changing the number of copies needs the pool name typed).
+
+The **Manage** tab holds what changes what the cluster stores. Each step asks Ceph first (`GET /nodes/{node}/ceph/cmd-safety`) and wants the name typed; where Ceph or arithmetic warns, a second switch is needed (`acknowledgeUnsafe` or `acknowledgeData`).
+
+| Step | Rules |
+| --- | --- |
+| Create OSD | The drive is picked from the unused ones, its name typed (it is erased), a drive in use (mounted, boot, LVM, ZFS, device mapper) is refused. Optional database drive, encryption, device class. |
+| Destroy OSD | Only when it is **out and down** (otherwise refused with what to do first), Ceph's safety check passes or is overridden, `osd.N` typed. Optionally wipes the drive's logical volumes. |
+| Delete pool | Name typed. A pool holding data (or one Ceph can't say about) needs a second yes. Can remove its storages. |
+| Monitors, managers, metadata servers | Create takes an optional name (and, for monitors, an address). Destroy needs `mon.<id>` etc. typed. A monitor is refused when the rest would not be a majority in quorum or it is the last; the only manager takes an override; Ceph's check covers monitors and metadata servers. |
+| CephFS | Create needs a metadata server first; optional placement groups and "add as storage". Destroy needs the name typed; taking the pools along needs a second yes. |
+| Services | Start is free. Stop and restart (`ceph.target`, `osd.N`, `mon.x`, `mgr.x`, `mds.x`) need the service typed and pass Ceph's check or an override. |
+| CRUSH map | Read only: its rules, bucket and device counts, and the text. |
+| First set-up | Releases this node can install, the `pveceph install` command (Proxmox's own screen runs it in a shell; there is no API), then **init** with the public network (and an optional cluster network, copies, minimum copies) with `ceph` typed. Turning authentication off also needs `disable cephx` typed. |
+
+A Proxmox that has no Ceph answers with a calm "isn't set up" and the set-up card.
+
+## Quorum device and corosync links
+
+Read: whether a quorum device is set up, the node count and whether it is even. Changes have **guides**, because there is no API: `GET /api/cluster/qdevice/guide?action=setup&address=...` (install `corosync-qnetd` on the outside machine, `corosync-qdevice` on every node, `pvecm qdevice setup <address>`), `?action=remove`, and `GET /api/cluster/corosync/guide?action=add-link|change-link|expected-votes`. Addresses and names are validated; the steps say where to run each command, work on a copy of `corosync.conf`, remind about `config_version`, and keep the old link until the new one works. `pvecm expected 1` is given only with a warning about two parts of a cluster both thinking they are the cluster.
+
+The Cluster screen also has a short guide for **adding and removing nodes**: same version, empty node, ports, join information, a second link, and for removing: move machines, think about quorum, keep the node off, remove, clean up `/etc/pve/nodes/`.
+
+## Moving a machine to another cluster
+
+`POST /api/cluster/remote-migrate/:vmid` (Proxmox marks it experimental). The other cluster's address, **certificate fingerprint** (required, so nothing can pose as it), API token ID and secret are checked and sent as `target-endpoint`; the secret is write-only (never returned, logged, or left in an error, and the console clears it after sending). Storage and bridge mappings (`source:target` or one for all), an optional new number, live move, speed limit (and, for containers, restart). Typed: the machine number; deleting the original afterwards also needs `delete` typed. Templates, HA machines and locked machines are refused with the reason.
+
+## Cluster resources
+
+`GET /api/cluster/resources[?type=vm|storage|node|sdn]`: every node, machine and storage with CPU, memory and disk, plus totals (shared storage counted once, only online nodes counted for processors and memory) and machine counts. The Resources screen filters by kind and by text (name, node, pool, tag).
+
+## Routed networks (SDN)
+
+Datacenter, Routed networks (`clusterSdn.ts`, `SdnRouted.tsx`). Checked against the API viewer tables for each kind; edits carry the digest, and an emptied field is sent as `delete`.
+
+- **Controllers**: EVPN (AS number, peers or a fabric, route maps in and out, multihop), BGP (node, AS, peers, loopback) and IS-IS. Removing one a zone uses is refused with the zone's name.
+- **EVPN zones**: controller, VRF VXLAN number, exit nodes (the primary must be one of them), advertise subnets, ARP/ND suppression, anycast MAC, route-target import. Removing a zone with VNets is refused. Simple, VLAN, QinQ and VXLAN zones, VNets and subnets stay under Network.
+- **Fabrics** (Proxmox 9 and later): OpenFabric, OSPF and BGP, with their redistribution sources (and route maps), a route filter (prefix list) and nodes with their interfaces. WireGuard fabrics are shown but not edited. On a Proxmox without them the screen says so.
+- **Prefix lists** and **route maps** (one entry at a time): permit or deny, prefix with `ge`/`le`, match and set keys from the viewer's lists. Removing something another object points at is refused with the object's name.
+- **Apply** is the same call as for the simpler zones; changes wait until applied.
 
 ## The node selector for existing screens
 
@@ -65,9 +104,11 @@ All need the Proxmox session; changes need `X-EPC-Request: 1`. Shapes are in `ap
 
 `GET /api/cluster/overview` · `GET /api/cluster/join-info`, `POST /api/cluster/join-info/parse` · `POST /api/cluster/create`, `POST /api/cluster/join` · `GET /api/cluster/nodes/:node/removal`, `POST /api/cluster/nodes/:node/remove` · `GET /api/cluster/log` · `GET /api/cluster/ha`, `GET /api/cluster/ha/guest/:vmid`, `POST|PUT|DELETE /api/cluster/ha/resources[/:sid]`, `POST …/resources/:sid/{migrate,relocate}`, `POST|PUT|DELETE /api/cluster/ha/groups[/:group]`, `POST|PUT|DELETE /api/cluster/ha/rules[/:rule]`, `POST /api/cluster/ha/arm` · `GET|POST /api/cluster/replication`, `PUT|DELETE /api/cluster/replication/:id`, `POST …/:id/run-now`, `GET …/:id/log` · `GET|POST /api/cluster/migrate/:vmid`, `GET …/storages` · `POST /api/cluster/backup/run` · `GET /api/cluster/ceph`, `GET …/ceph/config`, `POST …/ceph/osd/:id/{in,out,scrub}`, `PUT …/ceph/flags`, `PUT …/ceph/health-mute`, `POST|PUT /api/cluster/ceph/pools[/:name]`.
 
+Added: `GET …/ceph/setup`, `POST …/ceph/init`, `GET …/ceph/crush`, `POST …/ceph/osds`, `POST …/ceph/osd/:id/destroy`, `POST …/ceph/pools/:name/delete`, `POST …/ceph/{mon,mgr,mds}` and `POST …/ceph/{mon,mgr,mds}/:id/destroy`, `POST …/ceph/fs` and `…/fs/:name/destroy`, `POST …/ceph/service/{start,stop,restart}` · `GET /api/cluster/qdevice[/guide]`, `GET /api/cluster/corosync/guide` · `GET|POST /api/cluster/remote-migrate/:vmid` · `GET /api/cluster/resources` · `GET /api/cluster/sdn`, `POST|PUT|DELETE …/sdn/controllers[/:id]`, `…/sdn/evpn-zones[/:id]`, `…/sdn/fabrics[/:id]`, `POST|DELETE …/sdn/fabrics/:id/nodes/:node`, `POST|DELETE …/sdn/prefix-lists[/:id[/entries[/:seq]]]`, `POST|PUT|DELETE …/sdn/route-maps/:id/entries[/:order]`.
+
 ## Tests
 
-Host service: `services/epaperclip/test/cluster.test.ts` (every route: happy path, validation refusals, permission denials, typed confirmations, groups versus rules, single device, the node header, secrets never in answers) against `test/fakes-cluster.ts`. Console: `apps/console/test/cluster.test.tsx`. Screenshots: `services/epaperclip/scripts/cluster-shots.mts` (demo, live cluster with Ceph, live older Proxmox with groups, live single device; 1440 and 390 wide).
+Host service: `services/epaperclip/test/cluster-more.test.ts` (Ceph writes, guides, remote migration, resources, routed SDN, against `test/fakes-diskcluster.ts`) and `services/epaperclip/test/cluster.test.ts` (every route: happy path, validation refusals, permission denials, typed confirmations, groups versus rules, single device, the node header, secrets never in answers) against `test/fakes-cluster.ts`. Console: `apps/console/test/cluster.test.tsx`, `diskcluster.test.tsx`. Screenshots: `services/epaperclip/scripts/cluster-shots.mts` and `diskcluster-shots.mts` (demo, live cluster with Ceph, live older Proxmox with groups, live single device; 1440 and 390 wide).
 
 ## Not verified against a real Proxmox
 
@@ -79,3 +120,5 @@ Everything above was checked against the API viewer data and a fake Proxmox, not
 - Migration: preconditions for containers use hyphenated keys (`allowed-nodes`) and have no disk list; both spellings are read. HA machines are moved with `migrate` when running VMs stay online and `relocate` otherwise.
 - Ceph: the exact shape of `ceph status` and of the OSD tree on each Ceph release (read defensively), and which Proxmox errors mean "not set up" (matched by words: ceph, rados, not installed, binary).
 - The `X-EPC-Node` header on uploads and the machine creation wizard against a node that isn't the one signed in to.
+
+Also not yet seen on real hardware for the additions: the shape of `cmd-safety` answers (read defensively: `safe`, `ok` or `status`), how `ceph/osd` reports an OSD that is down and out, the format Proxmox wants for `target-endpoint` on every version (built from its documented `apitoken=...,host=...,fingerprint=...,port=...`), `remote_migrate` for containers, array-valued SDN parameters (`interfaces`, `redistribute`, `match`, `set`, sent as repeated keys), and the fabric and route-map endpoints on Proxmox 9 releases other than the one the viewer data came from.
