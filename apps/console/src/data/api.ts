@@ -393,10 +393,17 @@ export async function probe(): Promise<Probe> {
   }
 }
 
+/** The second factors a sign-in can be answered with; `webauthn` holds the options the browser needs for a security key. */
+export interface TfaMethods { totp: boolean; recovery: boolean; webauthn: Record<string, unknown> | null }
+
 export const api = {
   realms: () => request<{ realms: Realm[] }>("GET", "/api/realms").then((r) => r.realms),
-  login: (username: string, password: string, realm: string) => request<{ user: { username: string } } | { needTfa: true; challenge: string }>("POST", "/api/login", { username, password, realm }),
+  login: (username: string, password: string, realm: string) => request<{ user: { username: string } } | { needTfa: true; challenge: string; methods?: TfaMethods }>("POST", "/api/login", { username, password, realm }),
   tfa: (challenge: string, code: string, kind: "totp" | "recovery") => request<{ user: { username: string } }>("POST", "/api/login/tfa", { challenge, code, kind }),
+  tfaKey: (challenge: string, response: string) => request<{ user: { username: string } }>("POST", "/api/login/tfa", { challenge, kind: "webauthn", response }),
+  openidStart: (realm: string) => request<{ url: string }>("POST", "/api/login/openid/start", { realm }),
+  openidFinish: (code: string, state: string) => request<{ user: { username: string } }>("POST", "/api/login/openid/finish", { code, state }),
+  banner: () => request<{ text: string }>("GET", "/api/login/banner").then((r) => r.text, () => ""),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
   me: () => request<{ user: LiveUser }>("GET", "/api/me").then((r) => r.user),
   host: () => request<LiveHost>("GET", "/api/host"),

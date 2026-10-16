@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Loader2, Lock, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { access } from "../../data/engine/access.ts";
 import { GroupsTab, MemberPicker } from "./GroupsTab.tsx";
+import { AuditTab } from "./AuditTab.tsx";
+import { ExplorerTab } from "./ExplorerTab.tsx";
+import { PeopleToolsTab } from "./PeopleToolsTab.tsx";
+import { PolicyTab } from "./PolicyTab.tsx";
+import { PlanView } from "./ChangePreview.tsx";
 import { PoolsTab } from "./PoolsTab.tsx";
+import { SecurityTab } from "./SecurityTab.tsx";
+import { accessAdmin, type Plan } from "../../data/engine/accessAdmin.ts";
 import { RealmsTab } from "./RealmsTab.tsx";
 import { RolesTab } from "./RolesTab.tsx";
 import { TfaTab } from "./TfaTab.tsx";
@@ -77,6 +84,7 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [typed, setTyped] = useState("");
+  const [review, setReview] = useState<Plan | null>(null);
 
   const detail = useQuery({ queryKey: ["access", "user", user?.userid], queryFn: () => access.users.detail(user!.userid), enabled: !creating, retry: 0 });
   const realm = creating ? userid.slice(userid.lastIndexOf("@") + 1) : (user?.realm ?? "");
@@ -102,6 +110,21 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
       qc.invalidateQueries({ queryKey: ["access"] });
       onDone(r.warnings);
       onClose();
+    },
+    onError: (e) => setError(errorText(e)),
+  });
+  // Before a device role or organization role changes, show what it will do in Proxmox and in the engine.
+  const accessChanged = !creating && (deviceRole !== user.deviceRole || overview.orgs.some((o) => (orgRoles[o.companyId] ?? "") !== roleOf(user, o.companyId)));
+  const preview = useMutation({
+    mutationFn: () =>
+      accessAdmin.preview({
+        userid: user!.userid,
+        ...(deviceRole !== "custom" && deviceRole !== user!.deviceRole ? { deviceRole } : {}),
+        orgs: overview.orgs.map((o) => ({ companyId: o.companyId, role: orgRoles[o.companyId] || null })),
+      }),
+    onSuccess: (plan) => {
+      setReview(plan);
+      setError(null);
     },
     onError: (e) => setError(errorText(e)),
   });
@@ -131,11 +154,18 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
         <>
           {!creating && !confirmDelete && <Button variant="ghost" className="mr-auto text-critical" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" />Delete user</Button>}
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => save.mutate()} disabled={!canSave}>{save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}{creating ? "Create user" : "Save changes"}</Button>
+          {review && <Button variant="ghost" onClick={() => setReview(null)}>Back</Button>}
+          <Button variant="primary" onClick={() => (accessChanged && !review ? preview.mutate() : save.mutate())} disabled={!canSave || preview.isPending}>{(save.isPending || preview.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}{creating ? "Create user" : accessChanged && !review ? "Review changes" : review ? "Apply changes" : "Save changes"}</Button>
         </>
       }
     >
       <div className="space-y-5">
+        {review && (
+          <div className="rounded-lg border border-accent/40 bg-accent/5 p-3 space-y-2" aria-label="Review changes">
+            <div className="text-compact font-medium">This is what will change in Proxmox and the engine</div>
+            <PlanView plan={review} />
+          </div>
+        )}
         {creating && (
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="block"><span className="block text-compact text-ink-2 mb-2">User name</span><Input value={userid} onChange={(e) => setUserid(e.target.value.toLowerCase())} placeholder="sam@pve" autoFocus spellCheck={false} className="font-mono" /><span className="block text-xs text-ink-3 mt-1.5">name@realm. {overview.realms.length ? `Realms here: ${overview.realms.map((r) => r.realm).join(", ")}.` : ""}</span></label>
@@ -293,7 +323,7 @@ function UsersTab() {
   );
 }
 
-type TabId = "users" | "groups" | "tokens" | "tfa" | "roles" | "realms" | "pools";
+type TabId = "users" | "groups" | "tokens" | "tfa" | "roles" | "realms" | "pools" | "explorer" | "audit" | "people" | "policy" | "security";
 const TABS: { id: TabId; label: string }[] = [
   { id: "users", label: "Users" },
   { id: "groups", label: "Groups" },
@@ -302,6 +332,11 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "roles", label: "Roles & permissions" },
   { id: "realms", label: "Realms" },
   { id: "pools", label: "Resource groups" },
+  { id: "explorer", label: "Effective permissions" },
+  { id: "people", label: "Import & templates" },
+  { id: "audit", label: "Audit log" },
+  { id: "policy", label: "Sign-in policy" },
+  { id: "security", label: "My security" },
 ];
 
 /** Access control on a live device: people, groups, tokens, two-factor, roles, realms and resource groups. */
@@ -321,6 +356,11 @@ export function LiveAccess() {
       {tab === "roles" && <RolesTab />}
       {tab === "realms" && <RealmsTab />}
       {tab === "pools" && <PoolsTab />}
+      {tab === "explorer" && <ExplorerTab />}
+      {tab === "people" && <PeopleToolsTab />}
+      {tab === "audit" && <AuditTab />}
+      {tab === "policy" && <PolicyTab />}
+      {tab === "security" && <SecurityTab />}
     </PageFrame>
   );
 }

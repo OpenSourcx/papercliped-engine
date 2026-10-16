@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { access, type EpcToken, type PveToken } from "../../data/engine/access.ts";
+import { accessAdmin } from "../../data/engine/accessAdmin.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Select, Toggle } from "../../ui/primitives.tsx";
@@ -55,6 +56,17 @@ function EpcTokens() {
   const [shown, setShown] = useState<{ token: string; record: EpcToken; note: string } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const days = q.data?.defaultDays ?? 90;
+  const renew = useMutation({ mutationFn: (id: string) => accessAdmin.epcTokens.renew(id, days), onSuccess: () => qc.invalidateQueries({ queryKey: EPC_KEY }), onError: (e) => setError(errorText(e)) });
+  const rotate = useMutation({
+    mutationFn: (id: string) => accessAdmin.epcTokens.rotate(id, days),
+    onSuccess: (r, id) => {
+      qc.invalidateQueries({ queryKey: EPC_KEY });
+      const rec = q.data?.tokens.find((t) => t.id === id);
+      if (rec) setShown({ token: r.token, record: { ...rec, expiresAt: r.record.expiresAt }, note: "The old secret no longer works. Put this one in your automation now." });
+    },
+    onError: (e) => setError(errorText(e)),
+  });
   const revoke = useMutation({
     mutationFn: (id: string) => access.epcTokens.revoke(id),
     onSuccess: () => {
@@ -81,9 +93,10 @@ function EpcTokens() {
                     <Td><div className="font-medium">{t.name}</div><div className="text-xs text-ink-3 font-mono">epc_{t.id}_…</div></Td>
                     {q.data.scope === "all" && <Td className="font-mono text-compact">{t.userid}</Td>}
                     <Td><div className="flex flex-wrap gap-1.5"><Chip tone={t.readOnly ? "neutral" : "accent"}>{t.readOnly ? "Read-only" : "Full"}</Chip>{t.privsep && <Chip tone="warning">Separate privileges</Chip>}</div></Td>
-                    <Td className={t.expiresAt < Date.now() ? "text-critical" : "text-ink-2"}>{t.expiresAt < Date.now() ? "Expired " : ""}{dateOfMs(t.expiresAt)}</Td>
+                    <Td className={t.expiresAt < Date.now() ? "text-critical" : t.expiresAt - Date.now() < 7 * 86_400_000 ? "text-warning" : "text-ink-2"}>{t.expiresAt < Date.now() ? "Expired " : t.expiresAt - Date.now() < 7 * 86_400_000 ? "Expires soon: " : ""}{dateOfMs(t.expiresAt)}</Td>
                     <Td className="text-ink-2">{t.lastUsedAt ? dateOfMs(t.lastUsedAt) : "Never"}</Td>
-                    <Td className="text-right">
+                    <Td className="text-right whitespace-nowrap">
+                      {(t.userid === me || q.data.scope === "all") && <><Button size="sm" variant="ghost" loading={renew.isPending && renew.variables === t.id} onClick={() => renew.mutate(t.id)} title={`Extend for ${days} days from today`} aria-label={`Renew ${t.name}`}>Renew</Button><Button size="sm" variant="ghost" loading={rotate.isPending && rotate.variables === t.id} onClick={() => rotate.mutate(t.id)} title="New secret and a new end date; the old secret stops working" aria-label={`Rotate ${t.name}`}>Rotate</Button></>}
                       {t.userid === me || q.data.scope === "all" ? (revoking === t.id ? <Button size="sm" variant="danger" loading={revoke.isPending} onClick={() => revoke.mutate(t.id)}>Revoke</Button> : <Button size="sm" variant="ghost" aria-label={`Revoke ${t.name}`} onClick={() => setRevoking(t.id)}><Trash2 className="h-4 w-4" /></Button>) : null}
                     </Td>
                   </tr>
