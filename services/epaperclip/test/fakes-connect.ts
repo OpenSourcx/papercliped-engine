@@ -7,7 +7,12 @@ import { join } from "node:path";
 import { managedEmail } from "../src/engine.ts";
 import type { Transport } from "@papercliped-engine/proxmox-client";
 import { fakeEngine, until } from "./fakes.ts";
-import { startPinApp } from "./fakes-pin.ts";
+import { createApp } from "../src/app.ts";
+import { startPinRuntime } from "../src/features/pin-automations.ts";
+import { SessionStore } from "../src/sessions.ts";
+import { StateStore } from "../src/state.ts";
+import type { TrustedKey } from "@papercliped-engine/marketplace";
+import { fakePinPve } from "./fakes-pin.ts";
 
 /**
  * Test support for the connector features (docs/CONNECTORS.md): a running host service with Proxmox (guests, power,
@@ -24,6 +29,8 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   const approvals = new Map<string, Json>([["ap1", { id: "ap1", type: "hire_agent", status: "pending", companyId: "co_1" }], ["ap9", { id: "ap9", type: "hire_agent", status: "pending", companyId: "co_2" }]]);
   const seen: { method: string; url: string; body: Json }[] = [];
   const logins = new Map<string, Json>();
+  const adapters = new Map<string, Json>(["claude_local", "codex_local", "http", "process", "cursor", "opencode_local"].map((t) => [t, { type: t, disabled: false, builtin: true }]));
+  const adapterCalls: { method: string; url: string; body: Json }[] = [];
   const aiConnections: Json[] = [];
   const loginMode = { raw: null as null | ((id: string, polls: number) => Json) };
   const server: Server = createServer(async (req, res) => {
@@ -36,7 +43,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(body));
     };
-    const overlay = /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
+    const overlay = p.startsWith("/api/adapters") || /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
     if (!overlay) {
       // Everything else is the stock fake engine.
       const r = await fetch(eng.url + req.url, { method: req.method, headers: req.headers as Record<string, string>, body: ["GET", "HEAD"].includes(req.method!) ? undefined : raw });
@@ -65,6 +72,22 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       return send(200, [{ id: "g0", title: "Grow", name: "Site", level: "company", status: "active" }]);
     }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/costs\/summary$/))) return inCompany(m[1]) ? send(200, { spendCents: 1234, budgetCents: 50000 }) : send(403, { error: "Not a member" });
+    if (p === "/api/adapters" && req.method === "GET") return send(200, [...adapters.values()]);
+    if (p === "/api/adapters/install" && req.method === "POST") {
+      const b = body();
+      adapterCalls.push({ method: "POST", url: p, body: b });
+      const type = String(b.packageName).replace(/^.*\//, "").replace(/^epc-/, "").replace(/-adapter$/, "");
+      adapters.set(type, { type, disabled: false, packageName: b.packageName, version: b.version });
+      return send(201, { type });
+    }
+    if ((m = p.match(/^\/api\/adapters\/([\w-]+)$/))) {
+      const a = adapters.get(m[1]);
+      if (!a) return send(404, { error: "Adapter not found" });
+      adapterCalls.push({ method: req.method!, url: p, body: body() });
+      if (req.method === "PATCH") a.disabled = body().disabled === true;
+      if (req.method === "DELETE") adapters.delete(m[1]);
+      return send(200, a);
+    }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/ai-connections$/))) {
       if (!inCompany(m[1])) return send(403, { error: "Not a member" });
       if (req.method === "POST") {
@@ -125,7 +148,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, issues, agents, approvals, seen, logins, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+  return { url, issues, agents, approvals, seen, logins, adapters, adapterCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 export const pkce = () => {
@@ -133,7 +156,7 @@ export const pkce = () => {
   return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
 };
 
-export interface ConnectApp extends Awaited<ReturnType<typeof startPinApp>> {
+export interface ConnectApp extends Awaited<ReturnType<typeof buildApp>> {
   eng: Awaited<ReturnType<typeof fakeEngine>>;
   overlay: Awaited<ReturnType<typeof overlayEngine>>;
   sam: string;
@@ -149,7 +172,7 @@ export interface ConnectApp extends Awaited<ReturnType<typeof startPinApp>> {
   closeAll(): Promise<void>;
 }
 
-export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response> } = {}): Promise<ConnectApp> {
+export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string> } = {}): Promise<ConnectApp> {
   const eng = await fakeEngine();
   const overlay = await overlayEngine(eng);
   const installDir = mkdtempSync(join(tmpdir(), "epc-conn-inst-"));
@@ -164,7 +187,7 @@ export async function startConnectApp(o: { staticDir?: string | null; providers?
     if (path === "/cluster/status" && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: [{ type: "node", name: "pve", online: 1, local: 1, ip: "10.0.0.2" }] }) });
     return base(req);
   };
-  const app = await startPinApp({ engine: { url: overlay.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras });
+  const app = await buildApp({ engine: { url: overlay.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras, market: o.market, fetchText: o.fetchText });
   const sam = await app.signIn("sam");
   await until(() => eng.st.admins.size >= 1);
   const lee = await app.signIn("lee");
@@ -256,4 +279,38 @@ export async function fakeCompat(opts: { key?: string; models?: string[] } = {})
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
   return { base, st, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+}
+
+/** The host service on a fake Proxmox (guests, power, snapshots, tokens) with a clock the test controls: like fakes-pin's, plus the Store's signed catalog. */
+async function buildApp(o: { engine: NonNullable<Parameters<typeof createApp>[0]["engine"]>; staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; pveTransport?: (base: Transport) => Transport; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string> }) {
+  const pve = fakePinPve();
+  const clock = { t: new Date(2026, 9, 13, 12, 0, 0).getTime() };
+  const now = () => clock.t;
+  const state = new StateStore(mkdtempSync(join(tmpdir(), "epc-conn-state-")));
+  const outbound = async (url: string, init: RequestInit): Promise<Response> => (o.providers ? o.providers(url, init) : new Response("{}", { status: 404 }));
+  const transport = o.pveTransport ? o.pveTransport(pve.transport) : pve.transport;
+  const sessions = new SessionStore(now);
+  const app = createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport }, sessions, staticDir: o.staticDir ?? null, secureCookies: false, state, now, fetch: outbound, engine: o.engine, marketplace: o.market, fetchText: o.fetchText });
+  const { runner } = startPinRuntime(state, { pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport }, now, sleep: async () => {}, fetch: outbound }, { run: false });
+  const server: Server = createServer(app);
+  server.on("upgrade", app.upgrade);
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const signIn = async (username: string) => {
+    const r = await fetch(base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username, password: "right", realm: "pve" }) });
+    if (r.status !== 200) throw new Error(`sign-in failed ${r.status}`);
+    return r.headers.get("set-cookie")!.split(";")[0];
+  };
+  const call = (method: string, path: string, auth: { cookie?: string; bearer?: string } = {}, body?: unknown) =>
+    fetch(base + path, {
+      method,
+      headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(method !== "GET" && auth.cookie ? { "X-EPC-Request": "1" } : {}), ...(auth.cookie ? { Cookie: auth.cookie } : {}), ...(auth.bearer ? { Authorization: `Bearer ${auth.bearer}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  const close = async () => {
+    runner.stop();
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+  };
+  return { pve, state, base, clock, signIn, call, close };
 }

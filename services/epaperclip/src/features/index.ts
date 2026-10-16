@@ -14,6 +14,7 @@ import { handlePin } from "./pin.ts";
 import { connectApi } from "./connect.ts";
 import { connectionRoutes } from "./connect-connections.ts";
 import { loginRoutes } from "./connect-login.ts";
+import { adapterRoutes } from "./connect-adapters.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -61,4 +62,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "connect", handle: connectApi },
   { name: "connections", handle: connectionRoutes },
   { name: "connect-login", handle: loginRoutes },
+  { name: "connect-adapters", handle: adapterRoutes },
 ];

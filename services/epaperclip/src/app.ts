@@ -14,6 +14,7 @@ import { FEATURES } from "./features/index.ts";
 import { BearerAuth } from "./features/access-tokens.ts";
 import { ConnectService, registerConnect } from "./features/connect-oauth.ts";
 import { connectRoot, isConnectRoot } from "./features/connect.ts";
+import { registerMarket } from "./features/connect-adapters.ts";
 import { NodeScope } from "./features/clusterNode.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
@@ -453,6 +454,37 @@ export function createApp(d: AppDeps) {
       .then(async () => gateway!.syncAdmin(s, await isNodeAdmin(await clientFor(s))))
       .catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
   };
+
+  /** The Store's signed catalog, fetched and checked at most once an hour. Shared by the Store route and the adapter installer. */
+  const loadMarket = async (): Promise<{ enabled: boolean; index: Index | null; problem: { code: string; message: string } | null }> => {
+      const keys = d.marketplace?.keys ?? [];
+      if (!keys.length) return { enabled: false, index: null, problem: null };
+      if (now() - marketCache.at >= 3600_000 || (!marketCache.index && !marketCache.problem)) {
+        const url = d.marketplace?.url ?? DEFAULT_INDEX_URL;
+        marketCache.at = now();
+        try {
+          const [body, sig] = await Promise.all([fetchText(url), fetchText(`${url}.sig`)]);
+          const index = verifyIndex(Buffer.from(body, "utf8"), sig, { keys, now: now(), lastSequence: marketSequence < 0 ? undefined : marketSequence });
+          if (index.sequence > marketSequence) {
+            marketSequence = index.sequence;
+            // Kept across restarts, so an older (still unexpired) signed copy can't be replayed after one.
+            try {
+              state.setSetting("marketplace.sequence", marketSequence);
+            } catch {
+              /* the in-memory floor still holds */
+            }
+          }
+          marketCache.index = index;
+          marketCache.problem = null;
+        } catch (e) {
+          marketCache.problem = e instanceof MarketplaceError ? { code: e.code, message: e.message } : { code: "unreachable", message: `Couldn't read the catalog (${(e as Error).message}).` };
+          // A catalog that failed its checks is never shown; one that merely couldn't be fetched keeps the last good copy.
+          if (e instanceof MarketplaceError) marketCache.index = null;
+        }
+      }
+    return { enabled: true, index: marketCache.index, problem: marketCache.problem };
+  };
+  registerMarket(state, loadMarket, outbound);
 
   const featureCtx = (req: IncomingMessage, res: ServerResponse, url: URL) => ({
     req, res, url, method: req.method ?? "GET", path: url.pathname,
@@ -1549,32 +1581,9 @@ export function createApp(d: AppDeps) {
 
     if (method === "GET" && path === "/api/marketplace") {
       requireSession(req);
-      const keys = d.marketplace?.keys ?? [];
-      if (!keys.length) return sendJson(res, 200, { enabled: false, entries: [] });
-      if (now() - marketCache.at >= 3600_000 || (!marketCache.index && !marketCache.problem)) {
-        const url = d.marketplace?.url ?? DEFAULT_INDEX_URL;
-        marketCache.at = now();
-        try {
-          const [body, sig] = await Promise.all([fetchText(url), fetchText(`${url}.sig`)]);
-          const index = verifyIndex(Buffer.from(body, "utf8"), sig, { keys, now: now(), lastSequence: marketSequence < 0 ? undefined : marketSequence });
-          if (index.sequence > marketSequence) {
-            marketSequence = index.sequence;
-            // Kept across restarts, so an older (still unexpired) signed copy can't be replayed after one.
-            try {
-              state.setSetting("marketplace.sequence", marketSequence);
-            } catch {
-              /* the in-memory floor still holds */
-            }
-          }
-          marketCache.index = index;
-          marketCache.problem = null;
-        } catch (e) {
-          marketCache.problem = e instanceof MarketplaceError ? { code: e.code, message: e.message } : { code: "unreachable", message: `Couldn't read the catalog (${(e as Error).message}).` };
-          // A catalog that failed its checks is never shown; one that merely couldn't be fetched keeps the last good copy.
-          if (e instanceof MarketplaceError) marketCache.index = null;
-        }
-      }
-      return sendJson(res, 200, { enabled: true, entries: marketCache.index?.entries ?? [], sequence: marketCache.index?.sequence ?? null, problem: marketCache.problem });
+      const m = await loadMarket();
+      if (!m.enabled) return sendJson(res, 200, { enabled: false, entries: [] });
+      return sendJson(res, 200, { enabled: true, entries: m.index?.entries ?? [], sequence: m.index?.sequence ?? null, problem: m.problem });
     }
 
     const power = path.match(/^\/api\/guests\/(\d+)\/power$/);
