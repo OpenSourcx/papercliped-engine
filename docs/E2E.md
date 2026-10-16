@@ -9,7 +9,7 @@ Run it: `node --experimental-strip-types services/epaperclip/scripts/e2e-real-en
 Files: `services/epaperclip/scripts/e2e-real-engine.mts` (harness), `e2e-stages.mts` (stages),
 `services/epaperclip/test/fakes-e2e.ts` (one router over the area fakes, plus a scripted model provider).
 
-## What it proves (last full run on the merged completion push: 38 passed, 0 failed)
+## What it proves (last full run on the merged completion push: 40 passed, 0 failed)
 
 Sign-in for an admin and a non-admin; organization creation (engine UUID, `epc-<name>` pool, creator is pool admin,
 non-members refused); access control moving Proxmox ACLs and engine memberships together, sessions ending on removal;
@@ -35,9 +35,9 @@ policy off; sign-out and idle session expiry; no sideways scrolling at 390px on 
 ## Open
 
 - (Fixed) The "reject and request a revision" stage clicked a card that had not yet left the list; it now waits for the list to settle. The console was right.
-- After a chat message to an agent that cannot run, the thread shows "Runner is writing" indefinitely.
+- (Fixed) After a chat message to an agent that cannot run, the thread showed "Runner is writing" indefinitely; it now says why, links to Agent containers or the agent, and offers Try again (stage "chat: an agent that cannot run says why").
 - The Inbox badge counts 1 where "Needs you" lists 3 (the engine's own counts differ). Cosmetic.
-- The Access settings tab strip clips "Resource groups" at 1440px. Cosmetic.
+- (Fixed) The Access settings tab strip clipped "Resource groups" at 1440px; it now wraps (stage "access: the settings tab strip shows every tab").
 - A fresh admin who creates an organization within about a second of signing in can get "Instance admin required",
   because promotion runs in the background.
 

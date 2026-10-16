@@ -1143,6 +1143,25 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     if (wide.length) throw new Error(wide.join("\n"));
   });
 
+  await stage("access: the settings tab strip shows every tab at 1440 and 390 wide, wrapping instead of clipping", async () => {
+    const { ctx } = await open("sam");
+    for (const width of [1440, 390]) {
+      const page = await ctx.newPage();
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(c.base + "/pve/home?settings=access");
+      await page.waitForSelector('role=tab[name="Resource groups"]', { timeout: 15000 });
+      const clipped = await page.evaluate(() => {
+        const list = document.querySelector('[role="tablist"]') as HTMLElement | null;
+        if (!list) return ["no tab strip"];
+        const box = list.getBoundingClientRect();
+        return [...list.querySelectorAll('[role="tab"]')].filter((t) => { const r = t.getBoundingClientRect(); return r.right > box.right + 1 || r.left < box.left - 1; }).map((t) => t.textContent ?? "");
+      });
+      expect(clipped.length === 0, `at ${width}px these tabs are cut off: ${clipped.join(", ")}`);
+      await shot(page, `31-access-tabs-${width}`);
+      await page.close();
+    }
+  });
+
   await stage("security headers: the console is served with its strict policy and signs cookies HttpOnly, SameSite=Strict", async () => {
     const home = await fetch(c.base + "/");
     const csp = home.headers.get("content-security-policy") ?? "";
