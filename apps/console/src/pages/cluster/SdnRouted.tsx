@@ -5,6 +5,7 @@ import { clusterMoreApi, type SdnOverview } from "../../data/engine/w3Api.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Select, Tabs, Toggle } from "../../ui/primitives.tsx";
+import { useEngine } from "../../data/store.tsx";
 import { Async, LiveOnly, TypedConfirm, useNodes, useTaskRunner } from "../node/common.tsx";
 import { numOrUndef } from "../disks/w3Common.tsx";
 
@@ -208,8 +209,9 @@ function Apply() {
 }
 
 export function SdnRoutedPage() {
+  const { live } = useEngine();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["cluster", "sdn-routed"], queryFn: clusterMoreApi.sdn, retry: 1 });
+  const q = useQuery({ enabled: live, queryKey: ["cluster", "sdn-routed"], queryFn: clusterMoreApi.sdn, retry: 1 });
   const [tab, setTab] = useState<Tab>("controllers");
   const refresh = () => void qc.invalidateQueries({ queryKey: ["cluster", "sdn-routed"] });
   return (

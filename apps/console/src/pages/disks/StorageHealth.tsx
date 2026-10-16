@@ -7,6 +7,7 @@ import { formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Select, Status } from "../../ui/primitives.tsx";
+import { useEngine } from "../../data/store.tsx";
 import { Async, LiveOnly } from "../node/common.tsx";
 import { Guide, LEVEL, Section } from "./w3Common.tsx";
 
@@ -180,7 +181,8 @@ function Body({ d }: { d: DiskHealth }) {
 }
 
 export function StorageHealthPage() {
-  const q = useQuery({ queryKey: ["disk-health", "summary"], queryFn: diskHealthApi.summary, refetchInterval: 60_000, retry: 1 });
+  const { live } = useEngine();
+  const q = useQuery({ enabled: live, queryKey: ["disk-health", "summary"], queryFn: diskHealthApi.summary, refetchInterval: 60_000, retry: 1 });
   return (
     <PageFrame width="6xl">
       <PageHeader title="Storage health" subtitle="Every disk, ZFS pool, thin pool and storage in one place, with alerts before something fills up or wears out." eyebrow={<HeartPulse className="h-4 w-4" />} />

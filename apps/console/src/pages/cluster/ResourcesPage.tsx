@@ -5,6 +5,7 @@ import { clusterMoreApi, type ResourceRow } from "../../data/engine/w3Api.ts";
 import { formatBytes } from "../../lib/storage.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Card, Chip, Input, PageFrame, PageHeader, Segmented, Status } from "../../ui/primitives.tsx";
+import { useEngine } from "../../data/store.tsx";
 import { Async, LiveOnly } from "../node/common.tsx";
 
 type Kind = "all" | "node" | "vm" | "storage";
@@ -18,7 +19,8 @@ function kindOf(r: ResourceRow): Kind | "other" {
 }
 
 export function ClusterResourcesPage() {
-  const q = useQuery({ queryKey: ["cluster", "resources"], queryFn: () => clusterMoreApi.resources(), refetchInterval: 15_000, retry: 1 });
+  const { live } = useEngine();
+  const q = useQuery({ enabled: live, queryKey: ["cluster", "resources"], queryFn: () => clusterMoreApi.resources(), refetchInterval: 15_000, retry: 1 });
   const [kind, setKind] = useState<Kind>("all");
   const [needle, setNeedle] = useState("");
   const rows = useMemo(() => {
