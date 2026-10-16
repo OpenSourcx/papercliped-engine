@@ -37,7 +37,7 @@ curl -fsSL --retry 3 -o "$tmp/epaperclip.manifest.sig" "$BASE/epaperclip.manifes
 
 # Never go backwards by accident: refuse a release older than the one installed (set EPC_ALLOW_DOWNGRADE=1 to mean it).
 have=""
-if [ "${EPC_ALLOW_DOWNGRADE:-}" != 1 ]; then have="$(tr -d '[:space:]' <"${EPC_PREFIX:-/opt/epaperclip}/VERSION" 2>/dev/null || true)"; have="${have#v}"; fi
+if [ "${EPC_ALLOW_DOWNGRADE:-}" != 1 ]; then have="$({ tr -d '[:space:]' <"${EPC_PREFIX:-/opt/epaperclip}/VERSION"; } 2>/dev/null || true)"; have="${have#v}"; fi
 epc_verify_release "$tmp/epaperclip.tar.gz" "$tmp/epaperclip.manifest.json" "$tmp/epaperclip.manifest.sig" "$tmp/release-signing.pub" "" "$have" \
   || die "the release was not installed: $EPC_VERIFY_ERROR"
 echo "epaperclip: signature and checksum verified (version $EPC_VERIFIED_VERSION)"

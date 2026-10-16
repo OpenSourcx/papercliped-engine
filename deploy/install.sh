@@ -151,7 +151,7 @@ if [ "${1:-}" = "--tarball" ]; then
   KEY="${EPC_SIGNING_KEY:-$ROOT/deploy/release-signing.pub}"; [ -z "${EPC_SIGNING_KEY:-}" ] && [ -s "$PREFIX/update/release-signing.pub" ] && KEY="$PREFIX/update/release-signing.pub"
   # shellcheck disable=SC1090
   . "$VLIB"
-  cur="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null || true)"; cur="${cur#v}"
+  cur="$({ tr -d '[:space:]' <"$PREFIX/VERSION"; } 2>/dev/null || true)"; cur="${cur#v}"
   [[ "$cur" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || cur=""
   epc_verify_release "$TB" "$TBDIR/epaperclip.manifest.json" "$TBDIR/epaperclip.manifest.sig" "$KEY" "" "$cur" || die "$TB was not installed: $EPC_VERIFY_ERROR"
   say "signature and checksum verified (version $EPC_VERIFIED_VERSION)"

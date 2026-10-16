@@ -81,7 +81,7 @@ fi
 
 # Never install an older release than the one running: a request (or a replayed one) for an old, vulnerable version
 # must not downgrade the host. Going back is what "rollback" is for, and it only goes to the version this one replaced.
-cur="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null)"; cur="${cur#v}"
+cur="$({ tr -d '[:space:]' <"$PREFIX/VERSION"; } 2>/dev/null)"; cur="${cur#v}"
 # The verifier and the pinned public key are the ones installed with the running version (root's, in $PREFIX/update), never
 # anything from the download or the request folder. A version installed before signing existed has neither and can't update itself.
 if [ ! -f "$PREFIX/update/verify-release.sh" ]; then
@@ -99,7 +99,7 @@ url="$BASE/v$version"
 if ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 900 -o "$WORK/epaperclip.tar.gz" "$url/epaperclip.tar.gz" \
   || ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 60 -o "$WORK/epaperclip.manifest.json" "$url/epaperclip.manifest.json" \
   || ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 60 -o "$WORK/epaperclip.manifest.sig" "$url/epaperclip.manifest.sig"; then
-  status failed "Couldn't download release $version (or its signature). Nothing was changed." "$version"; exit 0
+  status failed "Couldn't download release $version with its signed manifest and signature, so nothing was installed or changed." "$version"; exit 0
 fi
 status verifying "Checking the download's signature, checksum and version." "$version"
 # Fail closed: the signature over the manifest, the manifest's SHA-256 against the file, the manifest's version against the

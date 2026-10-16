@@ -31,6 +31,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Fixture signing keys, made fresh for every run in the work folder (which is deleted afterwards): "fx" is the project's key as
+# the simulated releases pin it, "other" is somebody else's. No private key is ever kept in the repository.
+KEYS="$WORK/keys"; mkdir -p "$KEYS"
+node --input-type=module -e '
+import { generateReleaseKey } from "'"$REPO"'/scripts/release-lib.mjs";
+import { writeFileSync } from "node:fs";
+for (const n of ["fx", "other"]) { const k = generateReleaseKey(); writeFileSync(process.argv[1] + "/" + n + ".pem", k.privatePem); writeFileSync(process.argv[1] + "/" + n + ".pub", k.publicPem); }
+' "$KEYS" || { echo "run.sh: couldn't make the fixture signing keys" >&2; exit 1; }
+
 ok()  { pass=$((pass + 1)); echo "  ok   $1"; }
 bad() { fail=$((fail + 1)); failed+=("$SCEN: $1"); echo "  FAIL $1"; [ -f "$H/out" ] && sed 's/^/       | /' "$H/out" | tail -n 25; }
 check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d"; fi; }
@@ -72,7 +81,8 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path} "$R/deploy/"
+  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh} "$R/deploy/"
+  cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
   # The agent container provider, as the release carries it (built code and lockfile; packages are installed at install time).
@@ -110,6 +120,15 @@ EOF
     engine-fails-as-service) sed -i 's/^const failUnderSystemd = false;/const failUnderSystemd = true;/' "$R/fake-engine.mjs" ;;
     broken-engine) echo 'process.exit(1);' >"$R/fake-engine.mjs" ;;
   esac
+}
+# publish_release <release folder> <web folder> [signing key name]: lays the release out the way GitHub serves it:
+# the tarball, its checksum, and the manifest and signature the real scripts/sign-release.mjs makes (default key: fx).
+publish_release() {
+  local src="$1" out="$2" key="${3:-fx}" pk="$H/pack-$$"
+  rm -rf "$pk"; mkdir -p "$out" "$pk"; cp -a "$src" "$pk/epaperclip"
+  tar -czf "$out/epaperclip.tar.gz" --owner=0 --group=0 -C "$pk" epaperclip; rm -rf "$pk"
+  (cd "$out" && sha256sum epaperclip.tar.gz >epaperclip.tar.gz.sha256)
+  RELEASE_SIGNING_KEY="$(cat "$KEYS/$key.pem")" node "$REPO/scripts/sign-release.mjs" --dir "$out" --public "$KEYS/$key.pub" >"$H/sign.out" 2>&1 || { echo "run.sh: sign-release failed: $(cat "$H/sign.out")" >&2; return 1; }
 }
 # install [option]: runs the release in $R; the output lands in $H/out and the exit code in $RC.
 install() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" bash "$R/deploy/install.sh" "$@" >"$H/out" 2>&1; RC=$?; }
@@ -293,13 +312,30 @@ s_deb() {
 s_npm() {
   # The npm package's command (npm/epaperclip/bin/epaperclip.js) with a release as its payload, the way it is packed.
   new_host npm; make_release 1.0.0 2026.1005.0
-  local N="$H/npm"; mkdir -p "$N/bin" "$N/payload"; cp "$REPO/npm/epaperclip/bin/epaperclip.js" "$N/bin/"; cp -r "$R" "$N/payload/epaperclip"
+  local N="$H/npm"; mkdir -p "$N/bin" "$N/payload"; cp "$REPO/npm/epaperclip/bin/epaperclip.js" "$N/bin/"
+  # The payload as prepack.mjs makes it: the signed tarball, its manifest and signature, and the pinned public key.
+  publish_release "$R" "$H/npmrel"; cp "$H"/npmrel/epaperclip.{tar.gz,manifest.json,manifest.sig} "$N/payload/"; cp "$KEYS/fx.pub" "$N/payload/release-signing.pub"
   epc() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" node "$N/bin/epaperclip.js" "$@" >"$H/out" 2>&1; RC=$?; }
   if [ "$(/usr/bin/id -u)" -ne 0 ]; then
     # The command checks for root itself (the id stand-in doesn't reach Node.js): all that can be tested is the refusal.
     epc status; check "refuses to run when not root" eval '[ "$RC" -ne 0 ] && has "run as root"'
     echo "  skip the rest (run as root, as CI does)"; return 0
   fi
+  # Fail closed: a payload that doesn't verify installs nothing.
+  local P="$N/payload"
+  echo tampered >>"$P/epaperclip.tar.gz"; epc install
+  check "a tampered payload is refused, nothing installed" eval '[ "$RC" -ne 0 ] && has "doesn.t match its signed checksum" && [ ! -e "$H/prefix" ]'
+  cp "$H/npmrel/epaperclip.tar.gz" "$P/"
+  mv "$P/epaperclip.manifest.sig" "$P/sig.bak"; epc install
+  check "a payload with no signature is refused" eval '[ "$RC" -ne 0 ] && has "incomplete or unsigned" && [ ! -e "$H/prefix" ]'
+  mv "$P/sig.bak" "$P/epaperclip.manifest.sig"
+  cp "$KEYS/other.pub" "$P/release-signing.pub"; epc install
+  check "a payload signed by another key is refused" eval '[ "$RC" -ne 0 ] && has "signature is not valid" && [ ! -e "$H/prefix" ]'
+  rm "$P/release-signing.pub"; epc install
+  check "a payload with no pinned key says to run release-keygen" eval '[ "$RC" -ne 0 ] && has "release-keygen" && [ ! -e "$H/prefix" ]'
+  cp "$KEYS/fx.pub" "$P/release-signing.pub"
+  epc version
+  check "epaperclip version reads the signed manifest" eval '[ "$RC" -eq 0 ] && has "^1.0.0$"'
   epc install
   check "epaperclip install (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ] && host_health && engine_health'
   epc status
@@ -349,9 +385,7 @@ s_update_helper() {
   local old="$R" web="$H/web" st="$H/host-state/update"
   # A release server: v1.1.0 as a tarball with its checksum, laid out like GitHub's release downloads.
   make_release 1.1.0 2026.1005.0; local new="$R"
-  mkdir -p "$web/v1.1.0" "$H/pack"; rm -rf "$H/pack/epaperclip"; cp -a "$new" "$H/pack/epaperclip"
-  tar -czf "$web/v1.1.0/epaperclip.tar.gz" -C "$H/pack" epaperclip
-  (cd "$web/v1.1.0" && sha256sum epaperclip.tar.gz >epaperclip.tar.gz.sha256)
+  publish_release "$new" "$web/v1.1.0"
   local urun; urun() { EPC_RELEASE_DOWNLOAD="file://$web" EPC_FAKE_ENGINE="$old/fake-engine.mjs" bash "$H/prefix/update/run.sh" >"$H/out" 2>&1; RC=$?; }
   local uask; uask() { mkdir -p "$st"; printf '%s' "$1" >"$st/request"; }
   local ustat; ustat() { sed -n "s/^$1=//p" "$st/status" 2>/dev/null; }
@@ -367,7 +401,7 @@ s_update_helper() {
   # A tampered download is refused before anything is changed.
   echo tampered >>"$web/v1.1.0/epaperclip.tar.gz"
   uask $'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n'; urun
-  check "a download that doesn't match its checksum is refused, nothing changed" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q checksum && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'
+  check "a download that doesn't match the signed manifest's checksum is refused, nothing changed" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q checksum && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'
 
   # Bad requests are ignored, not run.
   for bad in $'action=update\nversion=1.1.0;touch /tmp/pwned\n' $'action=update\nversion=../../etc\n' $'action=reinstall\nversion=1.1.0\n' $'action=update\n'; do
@@ -404,7 +438,112 @@ s_update_helper() {
   check "uninstall removes the helper's units" eval '[ ! -e "$H/units/epaperclip-update.path" ] && [ ! -e "$H/units/epaperclip-update.service" ]'
 }
 
-ALL=(update_helper fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+# What the update helper (root) does with a release that isn't properly signed: every case ends with nothing changed.
+s_signing() {
+  new_host signing; make_release 1.0.0 2026.1005.0; install
+  local old="$R" web="$H/web" st="$H/host-state/update"
+  make_release 1.1.0 2026.1005.0; local r11="$R"; make_release 1.2.0 2026.1005.0; local r12="$R"; make_release 0.9.0 2026.1005.0; local r09="$R"
+  local urun; urun() { EPC_RELEASE_DOWNLOAD="file://$web" EPC_FAKE_ENGINE="$old/fake-engine.mjs" bash "$H/prefix/update/run.sh" >"$H/out" 2>&1; RC=$?; }
+  local ustat; ustat() { sed -n "s/^$1=//p" "$st/status" 2>/dev/null; }
+  local ask11; ask11() { mkdir -p "$st"; printf 'action=update\nversion=1.1.0\nrequestedBy=sam@pve\nat=1\n' >"$st/request"; urun; }
+  local refused; refused() { WANT="$2"; check "$1" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q -- "$WANT" && [ "$(version)" = 1.0.0 ] && ! leftovers && host_health'; }
+  check "the install pinned the release key and the verifier for the helper" eval '[ -f "$H/prefix/update/release-signing.pub" ] && [ -f "$H/prefix/update/verify-release.sh" ] && cmp "$H/prefix/update/release-signing.pub" "$KEYS/fx.pub"'
+
+  publish_release "$r11" "$web/v1.1.0" other; ask11
+  refused "a release signed by a different key is refused" "not valid for the pinned key"
+  publish_release "$r11" "$web/v1.1.0"; rm "$web/v1.1.0/epaperclip.manifest.sig"; ask11
+  refused "a release with no signature is refused" "signature"
+  publish_release "$r11" "$web/v1.1.0"; rm "$web/v1.1.0/epaperclip.manifest.json"; ask11
+  refused "a release with no manifest is refused" "manifest"
+  publish_release "$r11" "$web/v1.1.0"; echo "not a signature" >"$web/v1.1.0/epaperclip.manifest.sig"; ask11
+  refused "a signature that isn't one is refused" "not a valid Ed25519 signature"
+  publish_release "$r11" "$web/v1.1.0"; sed -i 's/"version": "1.1.0"/"version": "1.1.1"/' "$web/v1.1.0/epaperclip.manifest.json"; ask11
+  refused "an edited manifest no longer verifies" "not valid for the pinned key"
+  publish_release "$r11" "$web/v1.1.0"; echo tampered >>"$web/v1.1.0/epaperclip.tar.gz"; ask11
+  refused "a tampered tarball (signature intact) is refused" "checksum"
+  publish_release "$r11" "$web/v1.1.0"; publish_release "$r12" "$H/web-12"; cp "$H"/web-12/epaperclip.manifest.{json,sig} "$web/v1.1.0/"; ask11
+  refused "another release's signed manifest swapped in is refused" "checksum"
+  rm -rf "$web/v1.1.0"; publish_release "$r12" "$web/v1.1.0"; ask11
+  refused "a whole different signed release served under this version's address is refused" "not the 1.1.0"
+  rm -rf "$web/v1.1.0"; publish_release "$r09" "$web/v1.1.0"; ask11
+  refused "an older signed release replayed under a newer address is refused" "not the 1.1.0"
+  publish_release "$r11" "$web/v1.1.0"; mv "$H/prefix/update/release-signing.pub" "$H/pub.bak"; ask11
+  refused "an installation with no pinned key refuses, and says to run release-keygen" "release-keygen"
+  mv "$H/pub.bak" "$H/prefix/update/release-signing.pub"
+  mv "$H/prefix/update/verify-release.sh" "$H/vr.bak"; ask11
+  refused "an installation from before signing can't update itself, and says how to reinstall" "predates signed releases"
+  mv "$H/vr.bak" "$H/prefix/update/verify-release.sh"
+  # Good path, and then the key rotation story: a release signed by the old key may carry a new key; the next one needs the new key.
+  ask11
+  check "the properly signed release installs (exit 0, done)" eval '[ "$RC" -eq 0 ] && [ "$(ustat phase)" = done ] && [ "$(version)" = 1.1.0 ] && host_health && engine_health'
+  cp "$KEYS/other.pub" "$r12/deploy/release-signing.pub"; rm -rf "$web/v1.2.0"; publish_release "$r12" "$web/v1.2.0"
+  mkdir -p "$st"; printf 'action=update\nversion=1.2.0\nrequestedBy=sam@pve\nat=1\n' >"$st/request"; urun
+  check "rotation: a release signed by the old key installs and brings the new key" eval '[ "$(version)" = 1.2.0 ] && cmp "$H/prefix/update/release-signing.pub" "$KEYS/other.pub"'
+  make_release 1.3.0 2026.1005.0; cp "$KEYS/other.pub" "$R/deploy/release-signing.pub"; publish_release "$R" "$web/v1.3.0" fx
+  printf 'action=update\nversion=1.3.0\nrequestedBy=sam@pve\nat=1\n' >"$st/request"; urun
+  check "rotation: after it, a release signed only by the old key is refused" eval '[ "$(ustat phase)" = failed ] && ustat message | grep -q "not valid for the pinned key" && [ "$(version)" = 1.2.0 ]'
+  publish_release "$R" "$web/v1.3.0" other
+  printf 'action=update\nversion=1.3.0\nrequestedBy=sam@pve\nat=1\n' >"$st/request"; urun
+  check "rotation: and one signed by the new key installs" eval '[ "$(ustat phase)" = done ] && [ "$(version)" = 1.3.0 ]'
+  R="$old" install --uninstall >/dev/null 2>&1
+}
+
+# get.sh (the one a release carries) and install.sh --tarball: signature, checksum and version before anything is unpacked.
+s_get() {
+  new_host get; make_release 1.1.0 2026.1005.0; local r11="$R" web="$H/web" fe="$R/fake-engine.mjs"
+  make_release 1.0.0 2026.1005.0; local r10="$R"
+  build_get() { node --input-type=module -e 'import { buildGetSh } from "'"$REPO"'/scripts/release-lib.mjs"; import { readFileSync } from "node:fs"; process.stdout.write(buildGetSh("'"$REPO"'/", process.argv[1] ? readFileSync(process.argv[1], "utf8") : ""));' "$1"; }
+  build_get "$KEYS/fx.pub" >"$H/get.sh"; build_get "" >"$H/get-nokey.sh"
+  local gget; gget() { EPC_RELEASE_BASE="file://$web" EPC_FAKE_ENGINE="$fe" bash "${1:-$H/get.sh}" >"$H/out" 2>&1; RC=$?; }
+  local refused; refused() { WANT="$2"; check "$1" eval '[ "$RC" -ne 0 ] && has "$WANT" && [ ! -e "$H/prefix/VERSION" ] && ! leftovers'; }
+  check "get.sh built for a release parses and carries the verifier and the key" eval 'bash -n "$H/get.sh" && grep -q "epc_verify_release()" "$H/get.sh" && grep -q "BEGIN PUBLIC KEY" "$H/get.sh"'
+  check "the verifier in get.sh is deploy/verify-release.sh itself" eval 'grep -qF -f <(grep -v "^#" "$REPO/deploy/verify-release.sh" | grep -v "^$") "$H/get.sh"'
+
+  gget "$REPO/deploy/get.sh"
+  refused "the unsigned template get.sh refuses and points to the release's copy" "unsigned template"
+  publish_release "$r11" "$web"; gget "$H/get-nokey.sh"
+  refused "a get.sh built with no key refuses and says to run release-keygen" "release-keygen"
+  publish_release "$r11" "$web" other; gget
+  refused "a release signed by a different key is refused" "not valid for the pinned key"
+  publish_release "$r11" "$web"; rm "$web/epaperclip.manifest.sig"; gget
+  refused "a release with no signature is refused" "signature"
+  publish_release "$r11" "$web"; echo tampered >>"$web/epaperclip.tar.gz"; gget
+  refused "a tampered tarball is refused" "checksum"
+  publish_release "$r11" "$web"; publish_release "$r10" "$H/web-10"; cp "$H"/web-10/epaperclip.manifest.{json,sig} "$web/"; gget
+  refused "a swapped (validly signed) manifest is refused" "checksum"
+  publish_release "$r11" "$web"; gget
+  check "a properly signed release installs (exit 0)" eval '[ "$RC" -eq 0 ] && has "signature and checksum verified (version 1.1.0)" && [ "$(version)" = 1.1.0 ] && host_health'
+  publish_release "$r10" "$web"; gget
+  check "an older signed release than the installed one is refused (replay)" eval '[ "$RC" -ne 0 ] && has "older than the 1.1.0" && [ "$(version)" = 1.1.0 ]'
+  EPC_ALLOW_DOWNGRADE=1 gget
+  check "...unless the person says so with EPC_ALLOW_DOWNGRADE=1" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ]'
+
+  # install.sh --tarball (key: the installed one, else EPC_SIGNING_KEY or the one beside the script)
+  install --uninstall >/dev/null 2>&1; rm -rf "$H/prefix.prev"
+  local tb; tb() { EPC_SIGNING_KEY="$KEYS/${2:-fx}.pub" EPC_FAKE_ENGINE="$fe" bash "$r11/deploy/install.sh" --tarball "$1" >"$H/out" 2>&1; RC=$?; }
+  publish_release "$r11" "$web"; tb "$web/epaperclip.tar.gz" other
+  refused "install.sh --tarball with a different key is refused" "not valid for the pinned key"
+  rm "$web/epaperclip.manifest.json"; tb "$web/epaperclip.tar.gz"
+  refused "install.sh --tarball with no manifest is refused" "manifest"
+  publish_release "$r11" "$web"; echo tampered >>"$web/epaperclip.tar.gz"; tb "$web/epaperclip.tar.gz"
+  refused "install.sh --tarball with a tampered file is refused" "checksum"
+  publish_release "$r11" "$web"; tb "$web/epaperclip.tar.gz"
+  check "install.sh --tarball installs a verified release" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.1.0 ] && host_health'
+  publish_release "$r10" "$web"; tb "$web/epaperclip.tar.gz"
+  check "install.sh --tarball refuses an older release than the installed one" eval '[ "$RC" -ne 0 ] && has "older than the 1.1.0" && [ "$(version)" = 1.1.0 ]'
+
+  # Versions: a release candidate is older than its release; the comparison the helper and get.sh share.
+  local ok=1 a b exp
+  for t in "1.0.0-rc1 1.0.0 lt" "1.0.0 1.0.0-rc1 ge" "1.0.0-rc1 1.0.0-rc2 lt" "1.0.0-rc2 1.0.0-rc10 lt" "0.9.9 1.0.0-rc1 lt" "1.0.0-rc1 0.9.9 ge" "1.2.0 1.10.0 lt" "1.0.0 1.0.0 ge"; do
+    set -- $t; a=$1; b=$2; exp=$3
+    got=$(bash -c '. "$1"; if epc_ver_lt "$2" "$3"; then echo lt; else echo ge; fi' _ "$REPO/deploy/verify-release.sh" "$a" "$b")
+    [ "$got" = "$exp" ] || { ok=0; echo "       $a vs $b: got $got, wanted $exp"; }
+  done
+  check "version order: release candidates sort before their release, numbers numerically" [ "$ok" = 1 ]
+  install --uninstall >/dev/null 2>&1
+}
+
+ALL=(update_helper signing get fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"
