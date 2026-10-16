@@ -91,7 +91,7 @@ export function LiveApps() {
                       <div className="text-xs text-ink-3 truncate">{a.clientHost} · {a.userid}</div>
                     </div>
                   </div>
-                  <div className="mt-3 text-compact text-ink-2">{a.orgs === null ? "All organizations" : a.orgs.length ? `${a.orgs.length} organization${a.orgs.length === 1 ? "" : "s"}` : "This host only"}{a.direct ? " · acts directly" : ""}</div>
+                  <div className="mt-3 text-compact text-ink-2">{a.orgs === null ? "All organizations" : a.orgs.length ? `${a.orgs.length} organization${a.orgs.length === 1 ? "" : "s"}` : "This host only"}{a.direct ? " · starts and snapshots run at once" : ""}</div>
                   <div className="mt-3 pt-3 border-t border-line flex justify-between text-xs text-ink-3 tabular-nums"><span>{a.lastUsedAt ? `Used ${ago(new Date(a.lastUsedAt))}` : "Not used yet"}</span><span>Ends {new Date(a.expiresAt).toLocaleDateString()}</span></div>
                 </Card>
               </button>
@@ -154,7 +154,7 @@ function AppPanel({ app, orgs: list, onClose, onChanged }: { app: ConnectedApp; 
         {app.scope === "paperclip:control" && (
           <div className="flex items-start gap-3">
             <Toggle checked={app.direct} label="Act without asking" onChange={(direct) => patch.mutate({ direct })} />
-            <div><div className="text-sm">Act without asking</div><p className="text-xs text-ink-3">Off: host changes become plans you approve. On: starts and snapshots run at once; stopping or deleting needs a typed phrase and never touches machines tagged protected.</p></div>
+            <div><div className="text-sm">Act without asking</div><p className="text-xs text-ink-3">Off: every host change becomes a plan you approve. On: only starts and snapshots run at once. Stopping, rebooting, deleting and rolling back are always plans you approve yourself with the typed phrase in the console (the app cannot type it), and machines tagged protected are never touched.</p></div>
           </div>
         )}
         {list.length > 0 && (

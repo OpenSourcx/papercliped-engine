@@ -125,7 +125,7 @@ export function ConsentPage() {
           <Toggle checked={direct} onChange={setDirect} label="Let it act without asking me" />
           <div>
             <div className="text-sm">Let it act without asking me</div>
-            <p className="text-xs text-ink-3">Off (recommended): changes to your machines become plans you approve in the console, step by step. On: starts, snapshots and, with a typed phrase, stops run at once. Machines tagged <span className="font-mono">protected</span> are never touched this way.</p>
+            <p className="text-xs text-ink-3">Off (recommended): every change to your machines becomes a plan you approve in the console, step by step. On: only starts and snapshots run at once. Stopping, shutting down, rebooting, deleting and rolling back are still plans that you approve yourself by typing the confirmation phrase here; the app can never type it for you. Machines tagged <span className="font-mono">protected</span> are never touched this way.</p>
           </div>
         </div>
       )}

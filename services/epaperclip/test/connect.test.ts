@@ -397,25 +397,37 @@ describe("what Full control may do", () => {
     expect((await h.tool(t.access, "snapshot_machine", { vmid: 101, name: "bad name!" })).isError).toBe(true);
   });
 
-  it("runs host changes directly only when the person allowed it, with a typed phrase for the destructive ones", async () => {
+  it("with 'act without asking' on, only non-destructive changes run at once; destructive ones are always a plan, whatever phrase the app sends", async () => {
     const t = await h.connect({ scope: "paperclip:control", direct: true });
     const apps = await j(await h.call("GET", "/api/connect/apps", { cookie: h.sam }));
     expect(apps.apps[0]).toMatchObject({ direct: true, scope: "paperclip:control" });
-    // A destructive step without the phrase is refused and explains what to send.
+    // A destructive step without the phrase becomes a plan, not an action or an error asking for the phrase.
     const noConfirm = await h.tool(t.access, "power_machine", { vmid: 101, action: "stop" });
-    expect(noConfirm.isError).toBe(true);
-    expect(noConfirm.text).toContain('"stop 101"');
+    expect(noConfirm.isError).toBeFalsy();
+    expect(noConfirm.data.status).toBe("proposed");
     expect(h.pve.guests.get(101)!.status).toBe("running");
-    // A protected machine can't be stopped by an app directly, even with the phrase.
+    // An app that sends the exact phrase still gets a plan: it cannot confirm for the person.
+    const withPhrase = await h.tool(t.access, "power_machine", { vmid: 101, action: "stop", confirm: "stop 101" });
+    expect(withPhrase.data.status).toBe("proposed");
+    expect(withPhrase.data.note).toContain("ignored");
+    expect(h.pve.guests.get(101)!.status).toBe("running");
+    for (const [tool, args] of [["power_machine", { vmid: 101, action: "shutdown", confirm: "shutdown 101" }], ["power_machine", { vmid: 101, action: "reboot", confirm: "reboot 101" }], ["delete_snapshot", { vmid: 101, name: "snap1", confirm: "delete 101" }], ["rollback_snapshot", { vmid: 101, name: "snap1", confirm: "rollback 101" }]] as const)
+      expect((await h.tool(t.access, tool, args)).data.status, tool).toBe("proposed");
+    expect(h.pve.guests.get(101)!.status).toBe("running");
+    // The plans wait for the person; only the signed-in person's own typed phrase runs them.
+    const plans = await j(await h.call("GET", "/api/pin/plans", { cookie: h.sam }));
+    const stop = plans.plans.find((p: any) => p.steps[0].confirmPhrase === "stop 101");
+    expect(stop.steps[0]).toMatchObject({ destructive: true, state: "pending" });
+    expect((await h.call("POST", `/api/pin/plans/${stop.id}/steps/${stop.steps[0].id}/approve`, { cookie: h.sam }, {})).status).toBe(409);
+    expect(h.pve.guests.get(101)!.status).toBe("running");
+    expect((await h.call("POST", `/api/pin/plans/${stop.id}/steps/${stop.steps[0].id}/approve`, { cookie: h.sam }, { confirm: "stop 101" })).status).toBe(200);
+    expect(h.pve.guests.get(101)!.status).toBe("stopped");
+    // A protected machine is refused outright, with or without the phrase.
     const prot = await h.tool(t.access, "power_machine", { vmid: 102, action: "stop", confirm: "stop 102" });
     expect(prot.isError).toBe(true);
     expect(prot.text).toContain("protected");
     expect(h.pve.guests.get(102)!.status).toBe("running");
-    // With the phrase on an ordinary machine it runs, as sam.
-    const done = await h.tool(t.access, "power_machine", { vmid: 101, action: "stop", confirm: "stop 101" });
-    expect(done.data.status).toBe("started");
-    expect(h.pve.guests.get(101)!.status).toBe("stopped");
-    // Starting needs no phrase.
+    // Starting and snapshots still run at once, as sam.
     expect((await h.tool(t.access, "power_machine", { vmid: 200, action: "start" })).data.status).toBe("started");
     expect((await h.tool(t.access, "snapshot_machine", { vmid: 200, name: "snap1" })).data.status).toBe("started");
     // Proxmox still decides: lee can't manage machine 200.
