@@ -99,3 +99,12 @@ Each phase ends with something that runs on a real Proxmox host.
 - [ ] Installer ISO on top of upstream Proxmox VE packages, with our own name and branding (the APT repository for ePaperclip itself exists)
 - [ ] Vault root key, unlock and recovery
 - [ ] Kill switch and emergency console documentation
+
+## v2 goals (deferred on purpose; v1 is the main engine working and the UI correct)
+
+- Machine page: AMD SEV and Intel TDX options; OCI image pull; whole-OVA or ESXi import.
+- Single-file restore from a backup (needs a binary-capable download in the shared Proxmox client).
+- SPICE viewer handoff polish and Open vSwitch interfaces.
+- ZFS maintenance (scrub, trim, replace) and Ceph install through the API where Proxmox gains one; until then guided commands.
+- GlusterFS storage, if it returns to Proxmox's API.
+- Per-machine "backup jobs covering this machine" card; a screen for experimental volume copy; browser file picker for import upload; WireGuard SDN fabrics.

@@ -9,7 +9,7 @@ Run it: `node --experimental-strip-types services/epaperclip/scripts/e2e-real-en
 Files: `services/epaperclip/scripts/e2e-real-engine.mts` (harness), `e2e-stages.mts` (stages),
 `services/epaperclip/test/fakes-e2e.ts` (one router over the area fakes, plus a scripted model provider).
 
-## What it proves (last full run: 36 passed, 1 failed)
+## What it proves (last full run on the merged completion push: 38 passed, 0 failed)
 
 Sign-in for an admin and a non-admin; organization creation (engine UUID, `epc-<name>` pool, creator is pool admin,
 non-members refused); access control moving Proxmox ACLs and engine memberships together, sessions ending on removal;
@@ -34,8 +34,7 @@ policy off; sign-out and idle session expiry; no sideways scrolling at 390px on 
 
 ## Open
 
-- Stage "decisions: reject and request a revision" fails: the clicks hit different cards than the stage expects. The
-  engine accepts request-revision when called directly, so this is probably the stage's card targeting, unconfirmed.
+- (Fixed) The "reject and request a revision" stage clicked a card that had not yet left the list; it now waits for the list to settle. The console was right.
 - After a chat message to an agent that cannot run, the thread shows "Runner is writing" indefinitely.
 - The Inbox badge counts 1 where "Needs you" lists 3 (the engine's own counts differ). Cosmetic.
 - The Access settings tab strip clips "Resource groups" at 1440px. Cosmetic.
@@ -56,3 +55,11 @@ policy off; sign-out and idle session expiry; no sideways scrolling at 390px on 
 
 Everything that depends on a real Proxmox: access-control, containers and template build, disks, cluster, the update
 helper on real systemd, and Pin against a real model provider.
+
+## After the completion push
+
+The merged branch first ran 32 passed, 6 failed. Four Pin/automation stages failed only because the stages looked for
+old wording ("The key works.", the first "Set key" button, which now belongs to another provider in a longer list);
+the product was fine and the stages now target the Anthropic row and the new "Works. N models available" text. One
+failure was a real console bug: on a phone the machine page's Cluster section pushed its two buttons 47px wide
+(fixed by letting them wrap). One was the stage race above.

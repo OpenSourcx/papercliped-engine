@@ -528,12 +528,13 @@ export async function runStages(c: Ctx): Promise<Result[]> {
   await stage("pin: set the model connector and Pin's model in the console", async () => {
     const { page } = await open("sam");
     await page.goto(c.base + "/pve/home?settings=connectors");
-    await page.click("button:has-text('Set key')");
+    const row = page.locator("div.px-5.py-4").filter({ has: page.getByText("Anthropic", { exact: true }) }).first();
+    await row.locator("button:has-text('Set key')").click();
     await page.fill('input[aria-label="Anthropic key"]', "sk-ant-e2e-0123456789abcdefWXYZ");
-    await page.click("button:has-text('Save')");
+    await row.locator("button:has-text('Save')").click();
     await page.waitForSelector("text=WXYZ");
-    await page.click("button:has-text('Test')");
-    await page.waitForSelector("text=The key works.");
+    await page.getByRole("button", { name: "Test", exact: true }).first().click();
+    try { await page.waitForSelector("text=/Works\\. \\d+ models? available/", { timeout: 8000 }); } catch (e) { throw new Error("connector test showed: " + JSON.stringify(await page.locator("[role=status],[role=alert]").allInnerTexts()) + " api: " + JSON.stringify((await call("sam", "POST", "/api/connectors/anthropic/test")).text).slice(0, 300)); }
     const asked = c.provider.asked.find((a) => a.method === "GET");
     expect(asked?.headers["x-api-key"] === "sk-ant-e2e-0123456789abcdefWXYZ", "the saved key was used to call the provider");
     const listed = await call("sam", "GET", "/api/connectors");
@@ -1059,6 +1060,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await shot(page, "35-decisions-two");
     await page.getByRole("button", { name: "Reject", exact: true }).first().click();
     await until("a rejected approval", async () => ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).some((a) => a.status === "rejected"));
+    await page.waitForFunction(() => document.querySelectorAll("button").length > 0 && [...document.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Request revision").length === 1, undefined, { timeout: 15000 });
     await page.getByRole("button", { name: "Request revision" }).first().click();
     await until("a revision request", async () => ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).some((a) => a.status === "revision_requested"))
       .catch(async (e) => { const left = ((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals?status=pending`)).json as any[])[0]; console.log("       request-revision with no note:", JSON.stringify(await eng("sam", "POST", `/api/approvals/${left.id}/request-revision`, {})).slice(0, 300)); console.log("       approvals:", JSON.stringify(((await eng("sam", "GET", `/api/companies/${S.org!.id}/approvals`)).json as any[]).map((a) => [a.payload?.name, a.status]))); throw e; });
@@ -1110,7 +1112,10 @@ export async function runStages(c: Ctx): Promise<Result[]> {
       await small.waitForSelector("h1", { timeout: 15000 }).catch(() => undefined);
       await small.waitForTimeout(900);
       const over = await small.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      if (over > 0) wide.push(`${r} scrolls sideways by ${over}px`);
+      if (over > 0) {
+        const who = await small.evaluate(() => [...document.querySelectorAll("body *")].filter((e) => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).slice(0, 6).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 70)} right=${Math.round(e.getBoundingClientRect().right)} text="${(e.textContent ?? "").trim().slice(0, 40)}"`));
+        wide.push(`${r} scrolls sideways by ${over}px: ${who.join(" | ")}`);
+      }
       await shot(small, `30-phone-${r.replace(/\W+/g, "_")}`);
     }
     for (const modal of ["/pve/home?settings=access", "/pve/home?modal=new-org", "/pve/machines?modal=new-machine"]) {
