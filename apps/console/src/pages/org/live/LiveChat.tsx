@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, Send } from "lucide-react";
 import type { Agent } from "@papercliped-engine/engine-client";
-import { chatDisabled, useSendChat } from "../../../data/engine/chat.ts";
+import { Link } from "react-router-dom";
+import { useAgentsCanRun } from "../../containers/Banner.tsx";
+import { chatBlock, chatDisabled, useSendChat, type ChatBlock } from "../../../data/engine/chat.ts";
 import { ago } from "../../../data/engine/map.ts";
 import { agentStatusOf } from "../../../data/engine/labels.tsx";
-import { useAgents, useComments, useMe } from "../../../data/engine/queries.ts";
+import { useAgentAction, useAgentContainers, useAgents, useComments, useMe, useRuns } from "../../../data/engine/queries.ts";
+import { useEngine } from "../../../data/store.tsx";
+import { settingsHref } from "../../../modals/useModals.ts";
 import { useChats, useChatWrites } from "../../../data/engine/more.ts";
 import { Avatar, Button, Card, EmptyState, Notice, PageFrame, PageHeader, Spinner, Status, Textarea } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
@@ -19,6 +23,7 @@ export function LiveChat() {
   const w = useChatWrites(companyId);
   const [selected, setSelected] = useState<string | null>(null);
   const disabled = chatDisabled(chats.error);
+  const canRun = useAgentsCanRun();
   const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
   const byAgent = new Map((chats.data ?? []).map((c) => [c.conversationAgentId, c]));
   const current = list.find((a) => a.id === selected) ?? null;
@@ -50,12 +55,12 @@ export function LiveChat() {
               <button key={a.id} onClick={() => setSelected(a.id)} aria-current={a.id === selected ? "true" : undefined} className={`w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 ${a.id === selected ? "bg-surface-3" : ""}`}>
                 <Avatar name={a.name} hue={org.hue + 40} size={32} />
                 <span className="flex-1 min-w-0"><span className="block text-sm font-medium truncate">{a.name}</span><span className="block text-xs text-ink-3">{c ? `Updated ${ago(c.updatedAt)}` : "Start a chat"}</span></span>
-                {c?.conversationState === "active" && <Spinner label="Writing" className="[&>span]:sr-only" />}
+                {c?.conversationState === "active" && canRun && a.status !== "error" && a.status !== "paused" && a.status !== "pending_approval" && <Spinner label="Writing" className="[&>span]:sr-only" />}
               </button>
             );
           })}
         </Card>
-        {current ? <Thread key={current.id} agent={current} conversationId={conv?.id ?? null} working={conv?.conversationState === "active"} /> : (
+        {current ? <Thread key={current.id} agent={current} conversationId={conv?.id ?? null} startedAt={conv?.createdAt ?? null} working={conv?.conversationState === "active"} /> : (
           <Card><EmptyState icon={<MessageCircle className="h-5 w-5" />} title="Pick an agent" body="Choose someone on the left to open a chat. New chats start when you send the first message." /></Card>
         )}
       </div>
@@ -63,7 +68,7 @@ export function LiveChat() {
   );
 }
 
-function Thread({ agent, conversationId, working }: { agent: Agent; conversationId: string | null; working: boolean }) {
+function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; conversationId: string | null; startedAt: string | Date | null; working: boolean }) {
   const { companyId, org } = useLiveOrg();
   const names = useNames(companyId);
   const w = useChatWrites(companyId);
@@ -73,8 +78,34 @@ function Thread({ agent, conversationId, working }: { agent: Agent; conversation
   const [error, setError] = useState<unknown>(null);
   const end = useRef<HTMLDivElement>(null);
   const messages = conversationId ? comments.data ?? [] : [];
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [messages.length, working]);
   const [kind, label] = agentStatusOf(agent.status);
+  const containers = useAgentContainers();
+  const runs = useRuns(conversationId ? companyId : null, agent.id);
+  const act = useAgentAction(companyId);
+  const { setup } = useEngine();
+  const block: ChatBlock | null = chatBlock({
+    agent,
+    run: runs.data?.[0] ?? null,
+    conversationStartedAt: startedAt,
+    containersReady: containers.data ? containers.data.state === "ready" : undefined,
+    canManageContainers: containers.data?.canManage,
+  });
+  const writing = working && !block;
+  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [messages.length, writing, block?.code]);
+  const base = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
+  const [checking, setChecking] = useState(false);
+  const retrying = act.isPending || checking;
+  /** Looks again, and once nothing blocks the agent any more, wakes it so it reads the thread. */
+  const retry = async () => {
+    setChecking(true);
+    try {
+      const [c] = await Promise.all([containers.refetch(), runs.refetch()]);
+      const still = chatBlock({ agent, run: null, containersReady: c.data ? c.data.state === "ready" : undefined, canManageContainers: c.data?.canManage });
+      if (!still) act.mutate({ id: agent.id, action: "wakeup" });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const submit = async () => {
     const body = text.trim();
@@ -110,14 +141,23 @@ function Thread({ agent, conversationId, working }: { agent: Agent; conversation
             </div>
           );
         })}
-        {working && <Spinner label={`${agent.name} is writing`} />}
+        {writing && <Spinner label={`${agent.name} is writing`} />}
         <div ref={end} />
       </div>
       <div className="p-4 border-t border-line space-y-2">
         <Textarea aria-label={`Message ${agent.name}`} rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }} placeholder={`Message ${agent.name}. Enter sends, Shift+Enter adds a line.`} className="min-h-16" />
         <div className="flex items-center justify-between gap-3"><ActionError error={error} /><Button className="ml-auto" variant="primary" size="sm" disabled={!text.trim()} loading={w.open.isPending || send.isPending} onClick={() => void submit()}><Send className="h-3.5 w-3.5" />Send</Button></div>
       </div>
-      {agent.status === "paused" && <Notice tone="warning" className="m-4 mt-0">{agent.name} is paused, so it won't reply until it is resumed.</Notice>}
+      {block && (
+        <Notice tone="warning" className="m-4 mt-0" title={block.reason}
+          action={<div className="flex flex-wrap gap-2">
+            {block.fix === "agent-containers" && <Link to={settingsHref("agent-containers")} className="text-accent hover:underline text-compact self-center">Open Agent containers</Link>}
+            {block.fix === "agent" && <Link to={`${base}/agents/${agent.id}`} className="text-accent hover:underline text-compact self-center">Open {agent.name}</Link>}
+            <Button size="sm" loading={retrying} onClick={() => void retry()}>Try again</Button>
+          </div>}>
+          {block.todo}
+        </Notice>
+      )}
     </Card>
   );
 }
