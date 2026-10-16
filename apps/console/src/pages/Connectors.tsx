@@ -8,6 +8,7 @@ import { HostError, type ConnectorState } from "../data/engine/host.ts";
 import { errorText, useConnectorAction, useConnectors } from "../data/engine/queries.ts";
 import { ago } from "../data/engine/map.ts";
 import { PinOrb } from "../pin/PinIsland.tsx";
+import { LiveConnections } from "./connect/LiveConnections.tsx";
 
 const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 w-4" />, code: <Code2 className="h-4 w-4" />, chat: <MessageSquare className="h-4 w-4" />, mail: <Mail className="h-4 w-4" />, storage: <Cable className="h-4 w-4" />, network: <Network className="h-4 w-4" /> };
 
@@ -54,7 +55,7 @@ function DemoConnectors() {
 }
 
 export function Connectors() {
-  return useEngine().live ? <LiveConnectors /> : <DemoConnectors />;
+  return useEngine().live ? <LiveConnections /> : <DemoConnectors />;
 }
 
 const KNOWN: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", github: "GitHub", slack: "Slack", gmail: "Gmail", google: "Google", gemini: "Gemini", openrouter: "OpenRouter", mistral: "Mistral", groq: "Groq", xai: "xAI" };

@@ -286,7 +286,7 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     const origin = svc.origin(ctx.req);
     svc.sweepExpired();
     return ctx.json(200, {
-      mcpUrl: `${origin}/mcp`, issuer: origin, scopes: SCOPES, user: s.username, canManageAll: admin,
+      mcpUrl: `${origin}/mcp`, issuer: origin, scopes: SCOPES, user: s.username, canManageAll: admin, orgs: (await companiesOf(ctx)) ?? [],
       fetchUrl: ctx.state.getSetting<boolean>("connect.fetchUrl") === true,
       tools: MCP_TOOLS.map((t) => ({ name: t.name, title: t.title, access: t.access, destructive: t.destructive === true })),
       grantDays: Math.round(GRANT_TTL_MS / 86_400_000),

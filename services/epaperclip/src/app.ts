@@ -732,7 +732,9 @@ export function createApp(d: AppDeps) {
 
     if (method === "GET" && path === "/api/connectors") {
       const canManage = await asUser(req, res, (pve) => isNodeAdmin(pve));
-      return sendJson(res, 200, { connectors: connectors.list(), canManage });
+      // Connections added in Connectors (local models, other hosted providers) are offered to Pin beside the built-in four.
+      const added = connections.forPin().usable().map((u) => ({ id: u.id, kind: "model" as const, label: u.label, configured: true }));
+      return sendJson(res, 200, { connectors: [...connectors.list(), ...added], canManage });
     }
 
     const conn = path.match(/^\/api\/connectors\/([a-z]{1,32})\/(credential|test)$/);

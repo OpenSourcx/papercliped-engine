@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { demoBackend } from "../src/data/backend.ts";
 import { demoData } from "../src/data/demo.ts";
 
@@ -312,11 +313,18 @@ describe("settings that no longer describe the demo as the device (QA-10, QA-11)
     render(<MemoryRouter><Settings /></MemoryRouter>);
     expect(screen.getByRole("button", { name: "Start over" })).toBeTruthy();
   });
-  it("Connected apps on a live device has no address, no sessions and no access switch", () => {
+  it("Connected apps on a live device shows the device's own address and its real apps, not demo sessions", async () => {
     live = true;
-    render(<MemoryRouter><Apps /></MemoryRouter>);
-    expect(screen.getByText("Not available on this device yet")).toBeTruthy();
-    expect(screen.queryByText(/\/mcp/)).toBeNull();
-    expect(screen.queryByRole("radio")).toBeNull();
+    vi.stubGlobal("fetch", async (input: string) => {
+      const path = new URL(input, "http://pve.lan").pathname;
+      const body = path === "/api/connect/overview" ? { mcpUrl: "https://pve.lan/mcp", issuer: "https://pve.lan", scopes: [{ id: "paperclip:read", label: "Read only", description: "Look." }, { id: "paperclip:control", label: "Full control", description: "Act." }], user: "sam@pve", canManageAll: false, orgs: [], fetchUrl: false, tools: [], grantDays: 90 } : path === "/api/connect/apps" ? { apps: [], scope: "mine" } : path === "/api/connect/activity" ? { calls: [], events: [] } : {};
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const qc = new QueryClient();
+    render(<QueryClientProvider client={qc}><MemoryRouter><Apps /></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByText("https://pve.lan/mcp")).toBeTruthy();
+    expect(await screen.findByText("No apps connected")).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull(); // no demo "API only / Full / Agent only" switch
+    vi.unstubAllGlobals();
   });
 });

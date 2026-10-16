@@ -1,9 +1,12 @@
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Box, Check, Download, ExternalLink, FileUp, Loader2, Package, Puzzle, Search, Store as StoreIcon, Trash2 } from "lucide-react";
 import { BRAND_ICONS } from "../../data/brandIcons.ts";
 import { ApiError } from "../../data/api.ts";
+import { connectApi } from "../../data/engine/connectApi.ts";
+import { errorText } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
@@ -147,6 +150,23 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
   const installable = needsStorage && (it.status === "available" || it.status === "update");
   const plugin = it.plugin;
   const installed = it.status === "installed" || it.status === "update";
+  // A device switches adapters on in the engine: a built-in one with the switch, a signed-catalog one by installing its package.
+  const liveAdapter = engine.live && plugin?.kind === "adapter";
+  const qc = useQueryClient();
+  const setAdapter = async (on: boolean) => {
+    if (!plugin) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const fromCatalog = plugin.version !== undefined;
+      if (on && fromCatalog) await connectApi.installAdapter(plugin.id);
+      else await connectApi.setAdapter(plugin.id, on);
+      await qc.invalidateQueries({ queryKey: ["connect", "adapters"] });
+    } catch (e) {
+      setError(errorText(e));
+    }
+    setBusy(false);
+  };
   const canCreate = (it.kind === "iso" || it.kind === "template" || it.kind === "fixed") && it.volid && it.kind !== "fixed";
 
   return (
@@ -159,7 +179,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          {plugin && (it.status === "installed" ? <Button variant="danger" onClick={() => engine.uninstallPlugin(plugin.id, plugin)}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" onClick={() => engine.installPlugin(plugin.id, plugin)}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
+          {plugin && (it.status === "installed" ? <Button variant="danger" loading={busy} onClick={() => (liveAdapter ? setAdapter(false) : engine.uninstallPlugin(plugin.id, plugin))}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" loading={busy} onClick={() => (liveAdapter ? setAdapter(true) : engine.installPlugin(plugin.id, plugin))}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
           {it.kind === "manual" && it.lib?.kind === "manual" && (
             <>
               <Button onClick={() => nav("?modal=upload&content=iso", { replace: true })}><FileUp className="h-4 w-4" />Upload ISO</Button>
@@ -182,7 +202,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {it.kind === "template" && it.template?.infopage && <p className="text-compact text-ink-3">A container system from Proxmox's template list.</p>}
         {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-compact text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
         {plugin && plugin.kind === "connector" && <p className="text-compact text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
-        {plugin && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device." : "Pin can use this once the Pin runtime is on this device."} Your choice is saved now.</p>}
+        {plugin && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{liveAdapter ? (plugin.version !== undefined ? "From the signed catalog. It is installed by the engine after this device checked that the npm package is exactly the one the catalog was signed for." : "Built into Paperclip and verified against its adapter list, so there is nothing to download. Enabling it switches it on in the engine.") : plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device. Your choice is saved now." : "Pin can use this once the Pin runtime is on this device. Your choice is saved now."}</p>}
         {needsStorage && installable && (
           storages.length ? (
             <label className="block"><span className="block text-compact text-ink-2 mb-2">Install to</span>

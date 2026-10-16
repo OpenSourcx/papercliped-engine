@@ -14,6 +14,7 @@ import { NetworkPage } from "./pages/network/Network.tsx";
 import { FirewallPage } from "./pages/firewall/Firewall.tsx";
 import { FEATURES } from "./features/registry.ts";
 import { Store } from "./pages/store/Store.tsx";
+import { ConsentPage } from "./pages/connect/Consent.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
@@ -111,6 +112,7 @@ export function App() {
           </Route>
         </Route>
       </Route>
+      <Route path="/oauth/authorize" element={<ConsentPage />} />
       <Route path="*" element={<Root />} />
     </Routes>
   );

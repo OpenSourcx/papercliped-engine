@@ -1,3 +1,4 @@
+import { AgentAccounts } from "../connect/AgentAccounts.tsx";
 import { useState, type ReactNode } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, CircleDollarSign, FolderOpen, Inbox as InboxIcon, Plus, Repeat, Target, X } from "lucide-react";
@@ -312,7 +313,12 @@ export function OrgConnectors() {
   const { data, setConnectorAccess } = useEngine();
   return (
     <OrgGate>
-      {(org) => (
+      {(org) => org.engine ? (
+        <PageFrame width="4xl">
+          <PageHeader title="Connectors" subtitle={`The AI accounts ${org.name}'s agents use. Providers and keys are set up once in Settings, Connectors.`} />
+          <AgentAccounts companyId={org.engine.companyId} orgName={org.name} />
+        </PageFrame>
+      ) : (
         <PageFrame width="4xl">
           <PageHeader title="Connectors" subtitle={`System-wide connectors ${org.name}'s agents may use. Set up new ones in Settings → Connectors.`} />
           <Card className="divide-y divide-line">

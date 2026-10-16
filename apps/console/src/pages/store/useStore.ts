@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { connectApi } from "../../data/engine/connectApi.ts";
 import { isoEntries, type Latest } from "@papercliped-engine/os-library";
 import type { CatalogTemplate } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
-import { DEFAULT_PLUGINS, fromMarket, type PluginEntry } from "../../data/storePlugins.ts";
+import { DEFAULT_PLUGINS, PLUGINS, fromMarket, type PluginEntry } from "../../data/storePlugins.ts";
 import { storagesWith } from "../storage/content.ts";
 import { buildStoreItems, type FilesByStorage, type StoreItem } from "./catalog.ts";
 
@@ -59,7 +61,17 @@ export function useStoreItems() {
     return () => { gone = true; };
   }, [backend]);
 
-  const installedPlugins = useMemo(() => new Set([...(data.plugins ?? DEFAULT_PLUGINS), ...data.connectors.map((c) => c.id)]), [data.plugins, data.connectors]);
+  // On a device, adapters are really switched on in the engine (docs/CONNECTORS.md); the engine's answer replaces the saved choice.
+  const adapters = useQuery({ queryKey: ["connect", "adapters"], queryFn: connectApi.adapters, enabled: engine.live, retry: 1 });
+  const installedPlugins = useMemo(() => {
+    const base = new Set([...(data.plugins ?? DEFAULT_PLUGINS), ...data.connectors.map((c) => c.id)]);
+    if (engine.live && adapters.data) {
+      for (const p of PLUGINS) if (p.kind === "adapter") base.delete(p.id);
+      for (const a of adapters.data.adapters) if (a.enabled) base.add(a.type);
+      for (const a of adapters.data.adapters) if (a.source === "external" && a.verified && a.enabled) base.add(a.type);
+    }
+    return base;
+  }, [data.plugins, data.connectors, engine.live, adapters.data]);
   const items: StoreItem[] = useMemo(() => buildStoreItems({ catalog, isoFiles, tplFiles, latest, installedPlugins, market }), [catalog, isoFiles, tplFiles, latest, installedPlugins, market]);
   return { items, loading, problems: catalogProblem ? [...problems, catalogProblem] : problems, latest };
 }
