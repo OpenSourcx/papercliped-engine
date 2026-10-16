@@ -1,6 +1,6 @@
 import { ProxmoxError, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { MachineError, planCpu, planCtOptions, planDevice, planMachine, planMemoryExtras, planNuma, planVmOptions, readSettings, type Cfg, type Change, type DeviceKind, type Json, type PlanContext } from "@papercliped-engine/proxmox-client/machine-schema";
-import { planPassthrough } from "@papercliped-engine/proxmox-client/machine-extra";
+import { planPassthrough, readPassthrough } from "@papercliped-engine/proxmox-client/machine-extra";
 import type { FeatureCtx, FeatureHandler } from "./index.ts";
 import { asBadRequest, findGuest, guardedConfig, guestUrl, isRoot, seg, soft, writeChange, type Found } from "./machineCommon.ts";
 
@@ -95,6 +95,7 @@ async function settings(ctx: FeatureCtx, pve: ProxmoxClient, g: Found, vmid: num
   const [admin] = await Promise.all([ctx.isNodeAdmin(pve)]);
   return {
     ...readSettings(g.type, cfg),
+    passthrough: readPassthrough(g.type, cfg),
     status: g.status,
     name: g.name,
     template: g.template,

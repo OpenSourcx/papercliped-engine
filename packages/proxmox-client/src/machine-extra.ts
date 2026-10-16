@@ -691,3 +691,34 @@ export function planCustomCpu(b: Json, creating: boolean): { cputype: string; pa
 }
 
 export { readSettings };
+
+export interface PassthroughItem {
+  key: string;
+  kind: "pci" | "usb" | "dev";
+  /** The PCI address(es), USB id or port, mapping id or device path. */
+  target: string;
+  mapped: boolean;
+  options: string[];
+  raw: string;
+}
+
+/** hostpciN, usbN (VM) and devN (container) entries as they are configured. */
+export function readPassthrough(type: "qemu" | "lxc", cfg: Cfg): PassthroughItem[] {
+  const out: PassthroughItem[] = [];
+  const lead = (p: Props, k: string) => getProp(p, k) ?? (p[0] && p[0][1] === null ? p[0][0] : undefined);
+  for (const [key, value] of Object.entries(cfg)) {
+    const raw = str(value);
+    const p = parseProps(raw);
+    if (type === "qemu" && /^hostpci\d+$/.test(key)) {
+      const mapping = getProp(p, "mapping");
+      const options = [getProp(p, "pcie") === "1" && "PCI Express", getProp(p, "x-vga") === "1" && "Primary GPU", getProp(p, "rombar") === "0" && "ROM-BAR off", getProp(p, "mdev") && `Mediated ${getProp(p, "mdev")}`, getProp(p, "romfile") && `ROM file ${getProp(p, "romfile")}`, getProp(p, "legacy-igd") === "1" && "Legacy IGD"].filter(Boolean) as string[];
+      out.push({ key, kind: "pci", target: mapping ?? lead(p, "host") ?? raw, mapped: !!mapping, options, raw });
+    } else if (type === "qemu" && /^usb\d+$/.test(key)) {
+      const mapping = getProp(p, "mapping");
+      out.push({ key, kind: "usb", target: mapping ?? lead(p, "host") ?? raw, mapped: !!mapping, options: [getProp(p, "usb3") === "1" && "USB 3"].filter(Boolean) as string[], raw });
+    } else if (type === "lxc" && /^dev\d+$/.test(key)) {
+      out.push({ key, kind: "dev", target: lead(p, "path") ?? raw, mapped: false, options: [getProp(p, "mode") && `Mode ${getProp(p, "mode")}`, getProp(p, "uid") && `uid ${getProp(p, "uid")}`, getProp(p, "gid") && `gid ${getProp(p, "gid")}`, getProp(p, "deny-write") === "1" && "Read only"].filter(Boolean) as string[], raw });
+    }
+  }
+  return out.sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key, undefined, { numeric: true }));
+}

@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AudioLines, Cpu, HardDrive, Monitor, Pencil, Plus, Plug, ShieldCheck, SquareTerminal, Trash2, Usb } from "lucide-react";
+import { AudioLines, Cpu, HardDrive, Monitor, Pencil, Plus, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react";
 import type { MachineOptions } from "../../data/api.ts";
-import { useGuestApi, type GuestDevices, type HostDevices, type ItemName } from "../../data/engine/guestApi.ts";
+import { useGuestApi, type ItemName } from "../../data/engine/guestApi.ts";
 import { useEngine } from "../../data/store.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Field, Input, Notice, SectionTitle, Segmented, Select } from "../../ui/primitives.tsx";
-import { Check, ConfirmTypeModal, useLoad } from "../disks/common.tsx";
+import { Button, Card, Field, Input, Notice, SectionTitle, Segmented, Select } from "../../ui/primitives.tsx";
+import { Check, ConfirmTypeModal } from "../disks/common.tsx";
 import { busyNotice, PendingChip, Row, useSave, type DevCtx } from "./MachineKit.tsx";
 
 /** A VM's firmware and extra devices (BIOS, display, serial ports, audio, EFI disk, TPM), and the host devices handed to a machine. */
@@ -204,114 +204,3 @@ function TpmModal({ ctx, onClose }: { ctx: DevCtx; onClose: () => void }) {
   );
 }
 
-/* ── Host devices ───────────────────────────────────────────────────────────────── */
-
-function resolve(kind: "pci" | "usb" | "dev", target: string, mapped: boolean, host: HostDevices | null): string | null {
-  if (!host) return null;
-  if (mapped) {
-    const m = (kind === "pci" ? host.mappings.pci : host.mappings.usb).find((x) => x.id === target);
-    return m ? m.description || null : null;
-  }
-  if (kind === "pci") {
-    const names = target.split(";").map((t) => {
-      const id = t.split(".").length > 1 && t.split(":").length === 2 ? `0000:${t}` : t;
-      const dev = host.pci.find((p) => p.id === id || p.id.startsWith(`${id}.`));
-      return dev ? [dev.vendor, dev.device].filter(Boolean).join(" ") : null;
-    });
-    return names.filter(Boolean).join(", ") || null;
-  }
-  if (kind === "usb") return host.usb.find((u) => u.id.toLowerCase() === target.replace(/^0x/i, "").toLowerCase() || u.port === target)?.name ?? null;
-  return null;
-}
-
-export function PassthroughCard({ ctx }: { ctx: DevCtx }) {
-  const { d } = ctx;
-  const api = useGuestApi();
-  const host = useLoad(() => (d.passthrough.length ? api.hostDevices(ctx.vmid) : Promise.resolve(null)), [api, ctx.vmid, d.digest]);
-  const [browse, setBrowse] = useState(false);
-  const vm = d.type === "qemu";
-  const KIND = { pci: "PCI device", usb: "USB device", dev: "Device" } as const;
-  return (
-    <Card className="p-5">
-      <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setBrowse(true)}><Plug className="h-3.5 w-3.5" />Host devices</Button>}>{vm ? "PCI and USB passthrough" : "Device passthrough"}</SectionTitle>
-      {d.passthrough.length === 0 ? (
-        <p className="text-sm text-ink-3">{vm ? "No PCI or USB devices from the host are handed to this VM." : "No host devices are handed to this container."}</p>
-      ) : (
-        <div className="divide-y divide-line">
-          {d.passthrough.map((p) => {
-            const name = resolve(p.kind, p.target, p.mapped, host.data);
-            return (
-              <Row key={p.key}>
-                <span className="text-ink-3 shrink-0">{p.kind === "usb" ? <Usb className="h-4 w-4" /> : <Cpu className="h-4 w-4" />}</span>
-                <div className="flex-1 min-w-0 basis-44">
-                  <div className="text-sm flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-mono">{p.key}</span><span className="text-ink-3">{KIND[p.kind]}</span>{p.mapped && <Chip>Mapped</Chip>}{d.pendingKeys.includes(p.key) && <PendingChip />}</div>
-                  <div className="text-xs text-ink-3 truncate"><span className="font-mono">{p.target}</span>{name ? ` · ${name}` : ""}{p.options.length ? ` · ${p.options.join(", ")}` : ""}</div>
-                </div>
-              </Row>
-            );
-          })}
-        </div>
-      )}
-      <p className="text-xs text-ink-3 mt-3">A machine with a host device can't be live-migrated. Adding and removing host devices isn't available here yet; this is what is set today.</p>
-      {browse && <HostDevicesModal vmid={ctx.vmid} d={d} onClose={() => setBrowse(false)} />}
-    </Card>
-  );
-}
-
-function HostDevicesModal({ vmid, d, onClose }: { vmid: number; d: GuestDevices; onClose: () => void }) {
-  const api = useGuestApi();
-  const host = useLoad(() => api.hostDevices(vmid), [api, vmid]);
-  const h = host.data;
-  const used = new Set(d.passthrough.flatMap((p) => p.target.split(";")));
-  return (
-    <Modal size="lg" icon={<Plug className="h-5 w-5" />} title="Host devices" subtitle="What this device offers for passthrough. Read only." onClose={onClose}>
-      {host.error && <p role="alert" className="text-compact text-critical">{host.error}</p>}
-      {!h && !host.error && <p className="text-sm text-ink-3">Reading host devices…</p>}
-      {h && (
-        <div className="space-y-5">
-          <section>
-            <h3 className="text-micro font-semibold uppercase tracking-label text-ink-3 mb-2">PCI devices</h3>
-            {h.notes.pci ? <Notice>{h.notes.pci}</Notice> : h.pci.length === 0 ? <p className="text-sm text-ink-3">None listed.</p> : (
-              <div className="divide-y divide-line rounded-lg border border-line">
-                {h.pci.map((p) => (
-                  <div key={p.id} className="px-3 py-2.5 text-compact flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="font-mono text-ink">{p.id}</span>
-                    <span className="flex-1 min-w-0 basis-48 text-ink-2 truncate">{[p.vendor, p.device].filter(Boolean).join(" ") || "Unknown device"}</span>
-                    <span className="text-xs text-ink-3">{p.iommuGroup >= 0 ? `IOMMU group ${p.iommuGroup}` : "No IOMMU group"}</span>
-                    {p.mdev && <Chip>Mediated</Chip>}
-                    {used.has(p.id) && <Chip tone="accent">In use here</Chip>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          <section>
-            <h3 className="text-micro font-semibold uppercase tracking-label text-ink-3 mb-2">USB devices</h3>
-            {h.notes.usb ? <Notice>{h.notes.usb}</Notice> : h.usb.length === 0 ? <p className="text-sm text-ink-3">None listed.</p> : (
-              <div className="divide-y divide-line rounded-lg border border-line">
-                {h.usb.map((u) => (
-                  <div key={u.port} className="px-3 py-2.5 text-compact flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="font-mono text-ink">{u.id}</span>
-                    <span className="flex-1 min-w-0 basis-48 text-ink-2 truncate">{u.name}</span>
-                    <span className="text-xs text-ink-3 font-mono">port {u.port}</span>
-                    {(used.has(u.id) || used.has(u.port)) && <Chip tone="accent">In use here</Chip>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          {(h.mappings.pci.length > 0 || h.mappings.usb.length > 0) && (
-            <section>
-              <h3 className="text-micro font-semibold uppercase tracking-label text-ink-3 mb-2">Resource mappings</h3>
-              <div className="divide-y divide-line rounded-lg border border-line">
-                {[...h.mappings.pci.map((m) => ({ ...m, kind: "PCI" })), ...h.mappings.usb.map((m) => ({ ...m, kind: "USB" }))].map((m) => (
-                  <div key={`${m.kind}-${m.id}`} className="px-3 py-2.5 text-compact flex flex-wrap items-center gap-x-3 gap-y-1"><span className="font-mono text-ink">{m.id}</span><Chip>{m.kind}</Chip><span className="flex-1 text-ink-2 truncate">{m.description}</span>{used.has(m.id) && <Chip tone="accent">In use here</Chip>}</div>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
-}

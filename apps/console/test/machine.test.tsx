@@ -271,12 +271,20 @@ describe("hardware: firmware and devices", () => {
     await waitFor(() => expect(within(card).queryByRole("button", { name: "Remove the TPM" })).toBeNull());
   });
 
-  it("shows host devices read only", async () => {
+  it("adds a host device from a saved mapping, and explains why a raw device needs root@pam", async () => {
     const g = guests.find((x) => x.type === "qemu")!;
     at(`/pve/machines/${g.vmid}`, <Hardware g={g} />);
-    fireEvent.click(await screen.findByRole("button", { name: /Host devices/ }));
-    expect(await screen.findByText(/GA104/)).toBeTruthy();
-    expect(screen.getByText(/YubiKey/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Add device/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Device on the host" }));
+    expect((await within(dialog).findAllByText(/Only root@pam can do this/)).length).toBeGreaterThan(0);
+    expect((await within(dialog).findAllByText(/GA104/)).length).toBe(2);
+    expect((within(dialog).getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Saved mapping" }));
+    fireEvent.change(await within(dialog).findByLabelText("Mapping"), { target: { value: "gpu0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    expect(await screen.findByText("hostpci0")).toBeTruthy();
+    expect(screen.getAllByText(/Render GPU/).length).toBeGreaterThan(0);
   });
 });
 
