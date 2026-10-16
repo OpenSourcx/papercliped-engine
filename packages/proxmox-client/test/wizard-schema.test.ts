@@ -94,3 +94,48 @@ describe("OS defaults", () => {
     expect(storageFormats("lvmthin")).toEqual(["raw"]);
   });
 });
+
+describe("importing a disk image (WZ-017)", () => {
+  const base = { ...minimalVm, disks: [{ bus: "scsi", storage: "local-lvm", importFrom: "local:import/ubuntu.qcow2" }] };
+  it("builds a disk from an image, with no size", () => {
+    const b = buildVm(base, 105);
+    expect(b.params.scsi0).toBe("local-lvm:0,import-from=local:import/ubuntu.qcow2");
+  });
+  it("accepts an OVA and an ESXi machine, and refuses anything else", () => {
+    expect(buildVm({ ...base, disks: [{ ...base.disks[0], importFrom: "local:import/app.ova" }] }, 105).params.scsi0).toContain("import-from=local:import/app.ova");
+    expect(buildVm({ ...base, disks: [{ ...base.disks[0], importFrom: "esxi:ha-datacenter/web/web.vmx" }] }, 105).params.scsi0).toContain("esxi:ha-datacenter/web/web.vmx");
+    fails(() => buildVm({ ...base, disks: [{ ...base.disks[0], importFrom: "../etc/passwd" }] }, 105), /image to import/);
+    fails(() => buildVm({ ...base, disks: [{ ...base.disks[0], importFrom: "local:import/../../x" }] }, 105), /image to import/);
+  });
+  it("checks the image against the ones the account can read, and doesn't warn about the size", () => {
+    fails(() => buildVm(base, 105, { imports: ["local:import/other.raw"] }), /import storage/);
+    expect(buildVm({ ...base, os: { media: "none", ostype: "win11" } }, 105, { imports: ["local:import/ubuntu.qcow2"] }).warnings.join(" ")).not.toMatch(/64 GB/);
+  });
+});
+
+describe("container mount points and devices at creation", () => {
+  it("builds volume mount points and host directories", () => {
+    const b = buildCt({ ...minimalCt, mounts: [{ path: "/data", storage: "s", sizeGb: 10, backup: false }, { path: "/media", hostPath: "/srv/media", readOnly: true }] }, 200, { root: true });
+    expect(b.params.mp0).toBe("s:10,mp=/data,backup=0");
+    expect(b.params.mp1).toBe("/srv/media,mp=/media,ro=1");
+  });
+  it("a host directory is root only, and says what to use instead", () => {
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/media", hostPath: "/srv/media" }] }, 200, { root: false }), /only root@pam[\s\S]*new volume/);
+    expect(buildCt({ ...minimalCt, mounts: [{ path: "/data", storage: "s", sizeGb: 1 }] }, 200, { root: false }).params.mp0).toBe("s:1,mp=/data");
+  });
+  it("refuses bad paths, duplicates and mixed mount kinds", () => {
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/", storage: "s", sizeGb: 1 }] }, 200), /mount path/);
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/a", storage: "s", sizeGb: 1 }, { path: "/a", storage: "s", sizeGb: 1 }] }, 200), /two mount points/);
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/a", hostPath: "/x", storage: "s" }] }, 200, { root: true }), /no storage or size/);
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/a", hostPath: "/x/../etc" }] }, 200, { root: true }), /\.\./);
+    fails(() => buildCt({ ...minimalCt, mounts: [{ path: "/a", storage: "s" }] }, 200), /Mount point size/);
+  });
+  it("device passthrough is root only and a /dev path", () => {
+    const b = buildCt({ ...minimalCt, devices: [{ path: "/dev/dri/renderD128", mode: "0660", gid: 44 }] }, 200, { root: true });
+    expect(b.params.dev0).toBe("path=/dev/dri/renderD128,mode=0660,gid=44");
+    expect(b.warnings.join(" ")).toMatch(/live-migrated/);
+    fails(() => buildCt({ ...minimalCt, devices: [{ path: "/dev/dri/renderD128" }] }, 200, { root: false }), /only root@pam/);
+    fails(() => buildCt({ ...minimalCt, devices: [{ path: "/etc/passwd" }] }, 200, { root: true }), /device path/);
+    fails(() => buildCt({ ...minimalCt, devices: [{ path: "/dev/x", mode: "999" }] }, 200, { root: true }), /octal/);
+  });
+});

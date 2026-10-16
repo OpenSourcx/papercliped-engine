@@ -121,8 +121,21 @@ export function checkQemu(p: Record<string, string>): string | null {
 /** The lxc create schema, from apidoc. */
 export function checkLxc(p: Record<string, string>): string | null {
   const names = ["vmid", "ostemplate", "hostname", "password", "ssh-public-keys", "unprivileged", "pool", "start", "onboot", "startup", "tags", "description", "cores", "cpulimit", "cpuunits", "memory", "swap", "rootfs", "nameserver", "searchdomain", "features"];
-  const unknown = checkKeys(p, names, [/^net\d+$/]);
+  const unknown = checkKeys(p, names, [/^net\d+$/, /^mp\d+$/, /^dev\d+$/]);
   if (unknown) return unknown;
+  for (const [k, v] of Object.entries(p)) {
+    if (/^mp\d+$/.test(k)) {
+      const m = props(v);
+      if (!m.mp) return `${k}: mp is missing`;
+      if (Object.keys(m).some((x) => !["_", "mp", "ro", "backup", "size", "acl", "quota", "replicate", "shared", "mountoptions", "keepattrs", "idmap"].includes(x))) return `${k}: invalid format`;
+      if (!(/^[\w.-]+:\d+$/.test(m._ ?? "") || /^\//.test(m._ ?? ""))) return `${k}: invalid volume '${m._}'`;
+    }
+    if (/^dev\d+$/.test(k)) {
+      const m = props(v);
+      if (Object.keys(m).some((x) => !["_", "path", "mode", "uid", "gid", "deny-write"].includes(x))) return `${k}: invalid format`;
+      if (!(m.path ?? m._)?.startsWith("/dev/")) return `${k}: invalid device path`;
+    }
+  }
   if (!p.vmid || Number(p.vmid) < 100) return "vmid: value must be at least 100";
   if (!p.ostemplate) return "ostemplate: property is missing and it is not optional";
   if (p.hostname && !/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(p.hostname)) return "hostname: invalid format - value does not look like a valid DNS name";
@@ -160,7 +173,7 @@ export function fakeWizard(base: Transport, opts: { admin?: boolean } = {}) {
   let hideHardware = false;
 
   const storages = [
-    { storage: "local", type: "dir", content: "iso,vztmpl,backup", active: 1, enabled: 1, avail: 200e9 },
+    { storage: "local", type: "dir", content: "iso,vztmpl,backup,import", active: 1, enabled: 1, avail: 200e9 },
     { storage: "local-lvm", type: "lvmthin", content: "images,rootdir", active: 1, enabled: 1, avail: 400e9 },
     { storage: "tank", type: "zfspool", content: "images,rootdir", active: 1, enabled: 1, avail: 1e12 },
     { storage: "nas", type: "nfs", content: "images,iso", active: 1, enabled: 1, avail: 2e12 },
@@ -172,6 +185,8 @@ export function fakeWizard(base: Transport, opts: { admin?: boolean } = {}) {
       { volid: "local:iso/win11.iso", size: 5e9, content: "iso" },
       { volid: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst", size: 120e6, content: "vztmpl" },
       { volid: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst", size: 130e6, content: "vztmpl" },
+      { volid: "local:import/ubuntu-24.04.qcow2", size: 2e9, content: "import" },
+      { volid: "local:import/appliance.ova", size: 3e9, content: "import" },
     ],
     nas: [{ volid: "nas:iso/alpine.iso", size: 100e6, content: "iso" }],
   };

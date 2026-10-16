@@ -20,6 +20,8 @@ export interface WizardOptions {
   node: string;
   templates: { volid: string; name: string; size: number | null }[];
   isos: { volid: string; name: string; size: number | null }[];
+  /** Images on import storages: disk images, OVA/OVF, ESXi machines. */
+  imports: { volid: string; name: string; size: number | null }[];
   vmStorages: DiskStorageOption[];
   ctStorages: DiskStorageOption[];
   pools: string[];
@@ -85,6 +87,8 @@ export function contextOf(o: WizardOptions, kind: WizardKind): WizardContext {
     bridges: o.bridges.map((b) => b.id),
     cpuModels: kind === "vm" ? [...o.cpuTypes.common, ...o.cpuTypes.custom] : undefined,
     pools: o.pools.length ? o.pools : undefined,
+    imports: kind === "vm" && o.imports ? o.imports.map((i) => i.volid) : undefined,
+    root: o.rawPassthrough,
   };
 }
 
@@ -118,6 +122,7 @@ export function useWizardApi(): WizardApi {
         node: "pve",
         templates: o.templates,
         isos: o.isos,
+        imports: [{ volid: "local:import/ubuntu-24.04.qcow2", name: "ubuntu-24.04.qcow2", size: 2e9 }, { volid: "local:import/appliance.ova", name: "appliance.ova", size: 3e9 }],
         vmStorages: disk(o.vmStorages),
         ctStorages: disk(o.storages),
         pools: o.pools,

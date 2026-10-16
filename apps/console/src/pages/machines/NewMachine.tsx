@@ -9,7 +9,7 @@ import { cn, formatBytes } from "../../lib/storage.ts";
 import { Button, Notice, Segmented, Skeleton } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { ConfirmStep } from "./wizard/Confirm.tsx";
-import { CtCpuStep, CtDiskStep, CtMemoryStep, TemplateStep } from "./wizard/CtSteps.tsx";
+import { CtCpuStep, CtDiskStep, CtExtrasStep, CtMemoryStep, TemplateStep } from "./wizard/CtSteps.tsx";
 import { GeneralStep } from "./wizard/GeneralStep.tsx";
 import { HardwareStep } from "./wizard/HardwareStep.tsx";
 import { CloudInitStep, CtDnsStep, CtNetworkStep, VmNetworkStep } from "./wizard/NetSteps.tsx";
@@ -195,6 +195,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
           {step.id === "cpu" && <CtCpuStep f={ct} set={setCtForm} {...common} />}
           {step.id === "memory" && <CtMemoryStep f={ct} set={setCtForm} {...common} />}
           {step.id === "network" && <CtNetworkStep f={ct} set={setCtForm} {...common} />}
+          {step.id === "extras" && <CtExtrasStep f={ct} set={setCtForm} {...common} />}
           {step.id === "dns" && <CtDnsStep f={ct} set={setCtForm} {...common} />}
         </>
       )}

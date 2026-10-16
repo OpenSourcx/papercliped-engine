@@ -30,6 +30,10 @@ export interface WizardContext {
   bridges?: string[];
   cpuModels?: string[];
   pools?: string[];
+  /** The signed-in account is root@pam (host directories and device nodes for containers are root-only). */
+  root?: boolean;
+  /** Import images the account can read (volids), when known. */
+  imports?: string[];
 }
 
 // ---- Vocabulary (apidoc enums)
@@ -99,13 +103,15 @@ export interface IpV6 {
 export interface VmDiskSpec {
   bus: DiskBus;
   storage: string;
-  sizeGb: number;
+  sizeGb?: number;
   format?: (typeof DISK_FORMATS)[number];
   cache?: (typeof CACHE_MODES)[number];
   discard?: boolean;
   ssd?: boolean;
   iothread?: boolean;
   backup?: boolean;
+  /** Create the disk from an image on an import storage (qcow2, raw, vmdk, OVA/OVF disk, ESXi VM). The size comes from the image. */
+  importFrom?: string;
 }
 export interface VmNicSpec {
   model: (typeof NIC_MODELS)[number];
@@ -164,6 +170,25 @@ export interface CtWizardSpec {
   network: CtNicSpec[];
   dns?: { nameserver?: string[]; searchdomain?: string };
   features?: { nesting?: boolean; keyctl?: boolean; fuse?: boolean };
+  /** Extra mount points: a new volume on a storage, or (root@pam only) a host directory. */
+  mounts?: CtMountSpec[];
+  /** Host device nodes passed through (root@pam only). */
+  devices?: CtDeviceSpec[];
+}
+export interface CtMountSpec {
+  path: string;
+  storage?: string;
+  sizeGb?: number;
+  hostPath?: string;
+  readOnly?: boolean;
+  backup?: boolean;
+}
+export interface CtDeviceSpec {
+  path: string;
+  mode?: string;
+  uid?: number;
+  gid?: number;
+  denyWrite?: boolean;
 }
 
 // ---- Small checkers
@@ -210,6 +235,8 @@ function text(v: unknown, re: RegExp, max: number, msg: string, field: string): 
 }
 
 const STORAGE_RE = /^[A-Za-z][\w.-]{0,63}$/;
+/** An image on an import storage (`local:import/vm.ova`), or a VM on an ESXi storage (`esxi:ha-datacenter/vm/vm.vmx`). */
+const IMPORT_RE = /^[A-Za-z][\w.-]{0,63}:[\w][\w. +\/-]{0,300}$/;
 const POOL_RE = /^[A-Za-z0-9][\w.-]{0,63}$/;
 const BRIDGE_RE = /^[A-Za-z][\w.-]{0,14}$/;
 const LABEL = "(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)";
@@ -402,11 +429,14 @@ export function buildVm(raw: unknown, vmid: number | null, ctx: WizardContext = 
   const nextIdx: Record<DiskBus, number> = { ide: 0, sata: 0, scsi: 0, virtio: 0 };
   const diskSpecs = disks.map((d, i) => {
     const f = `disks.${i}`;
-    const o = obj(d, ["bus", "storage", "sizeGb", "format", "cache", "discard", "ssd", "iothread", "backup"], f);
+    const o = obj(d, ["bus", "storage", "sizeGb", "format", "cache", "discard", "ssd", "iothread", "backup", "importFrom"], f);
     const bus = oneOf(o.bus, DISK_BUSES, "That bus", `${f}.bus`);
     const storage = text(o.storage, STORAGE_RE, 64, "Pick a storage for the disk", `${f}.storage`);
     diskStorage(storage, ctx, `${f}.storage`);
-    const size = int(o.sizeGb, 1, 131072, "Disk size", `${f}.sizeGb`);
+    const importFrom = present(o.importFrom) ? text(o.importFrom, IMPORT_RE, 400, "Pick an image to import from the list", `${f}.importFrom`) : undefined;
+    if (importFrom && importFrom.includes("..")) bad("Pick an image to import from the list", `${f}.importFrom`);
+    if (importFrom && ctx.imports && !ctx.imports.includes(importFrom)) bad("That image isn't on an import storage you can read", `${f}.importFrom`);
+    const size = importFrom ? 0 : int(o.sizeGb, 1, 131072, "Disk size", `${f}.sizeGb`);
     const format = present(o.format) ? oneOf(o.format, DISK_FORMATS, "That format", `${f}.format`) : undefined;
     const type = ctx.diskStorages?.[storage]?.type;
     if (format && format !== "raw" && type && !FILE_STORAGE.includes(type)) bad(`${storage} keeps raw disks only`, `${f}.format`);
@@ -417,7 +447,7 @@ export function buildVm(raw: unknown, vmid: number | null, ctx: WizardContext = 
     const backup = flag(o.backup, `${f}.backup`, true);
     if (ssd && bus === "virtio") bad("SSD emulation isn't available on a VirtIO block disk", `${f}.ssd`);
     if (iothread && !(bus === "virtio" || (bus === "scsi" && scsihw === "virtio-scsi-single"))) bad("An IO thread needs a VirtIO block disk, or a SCSI disk with the VirtIO SCSI single controller", `${f}.iothread`);
-    return { bus, storage, size, format, cache, discard, ssd, iothread, backup };
+    return { bus, storage, size, format, cache, discard, ssd, iothread, backup, importFrom };
   });
   for (const d of diskSpecs) {
     let idx = nextIdx[d.bus];
@@ -427,7 +457,7 @@ export function buildVm(raw: unknown, vmid: number | null, ctx: WizardContext = 
     const key = `${d.bus}${idx}`;
     reserve(key);
     keys.push(key);
-    const opts = prop([["format", d.format], ["cache", d.cache && d.cache !== "none" ? d.cache : undefined], ["discard", d.discard ? "on" : undefined], ["ssd", d.ssd ? 1 : undefined], ["iothread", d.iothread ? 1 : undefined], ["backup", d.backup ? undefined : 0]]);
+    const opts = prop([["format", d.format], ["cache", d.cache && d.cache !== "none" ? d.cache : undefined], ["discard", d.discard ? "on" : undefined], ["ssd", d.ssd ? 1 : undefined], ["iothread", d.iothread ? 1 : undefined], ["backup", d.backup ? undefined : 0], ["import-from", d.importFrom]]);
     out[key] = `${d.storage}:${d.size}${opts ? "," + opts : ""}`;
   }
   if (media === "iso") out.ide2 = `${iso},media=cdrom`;
@@ -518,7 +548,7 @@ export function buildVm(raw: unknown, vmid: number | null, ctx: WizardContext = 
 
   if (ostype === "win11") {
     const first = diskSpecs.find((d) => d.bus !== undefined);
-    if (first && first.size < 64) warnings.push("Windows 11 needs at least 64 GB of disk.");
+    if (first && !first.importFrom && first.size < 64) warnings.push("Windows 11 needs at least 64 GB of disk.");
     if (memory < 4096) warnings.push("Windows 11 needs at least 4 GB of memory.");
   }
 
@@ -593,7 +623,7 @@ function ipConfig(v4: unknown, v6: unknown, field: string, cloudInit: boolean): 
 
 // ---- Container
 
-export const CT_KEYS = ["general", "template", "disk", "cpu", "memory", "network", "dns", "features"] as const;
+export const CT_KEYS = ["general", "template", "disk", "cpu", "memory", "network", "dns", "features", "mounts", "devices"] as const;
 
 export function buildCt(raw: unknown, vmid: number | null, ctx: WizardContext = {}): Built {
   const warnings: string[] = [];
@@ -624,6 +654,46 @@ export function buildCt(raw: unknown, vmid: number | null, ctx: WizardContext = 
   const features = prop([["nesting", flag(f.nesting, "features.nesting") ? 1 : undefined], ["keyctl", keyctl ? 1 : undefined], ["fuse", flag(f.fuse, "features.fuse") ? 1 : undefined]]);
 
   const out: Params = {};
+  // Extra mount points: a new volume on a storage, or a host directory (root@pam only).
+  const mounts = arr(s.mounts, 10, "mounts");
+  const mountPaths = new Set<string>();
+  mounts.forEach((mt, i) => {
+    const fld = `mounts.${i}`;
+    const o = obj(mt, ["path", "storage", "sizeGb", "hostPath", "readOnly", "backup"], fld);
+    const path = text(o.path, /^\/[^\0,;=]{1,200}$/, 200, "A mount path is where it appears inside the container, like /data", `${fld}.path`);
+    if (path.split("/").includes("..") || path === "/") bad("A mount path can't be / or contain ..", `${fld}.path`);
+    if (mountPaths.has(path)) bad(`${path} is used by two mount points`, `${fld}.path`);
+    mountPaths.add(path);
+    const ro = flag(o.readOnly, `${fld}.readOnly`);
+    const backup = flag(o.backup, `${fld}.backup`, true);
+    if (present(o.hostPath)) {
+      if (present(o.storage) || present(o.sizeGb)) bad("A host directory has no storage or size", fld);
+      const hp = text(o.hostPath, /^\/[^\0,;=]{1,300}$/, 300, "A host directory is an absolute path like /srv/media", `${fld}.hostPath`);
+      if (hp.split("/").includes("..")) bad("A host directory can't contain ..", `${fld}.hostPath`);
+      if (ctx.root === false) bad("Proxmox lets only root@pam mount a directory from the host. Use a new volume instead, or a directory mapping on a VM.", `${fld}.hostPath`);
+      out[`mp${i}`] = `${hp},mp=${path}${ro ? ",ro=1" : ""}`;
+      void backup;
+    } else {
+      const st = text(o.storage, STORAGE_RE, 64, "Pick a storage for the mount point", `${fld}.storage`);
+      diskStorage(st, ctx, `${fld}.storage`);
+      const size = int(o.sizeGb, 1, 131072, "Mount point size", `${fld}.sizeGb`);
+      out[`mp${i}`] = `${st}:${size},mp=${path}${ro ? ",ro=1" : ""}${backup ? "" : ",backup=0"}`;
+    }
+  });
+  const devs = arr(s.devices, 16, "devices");
+  if (devs.length && ctx.root === false) bad("Proxmox lets only root@pam pass a host device through to a container.", "devices");
+  const devPaths = new Set<string>();
+  devs.forEach((dv, i) => {
+    const fld = `devices.${i}`;
+    const o = obj(dv, ["path", "mode", "uid", "gid", "denyWrite"], fld);
+    const path = text(o.path, /^\/dev\/[A-Za-z0-9_./-]{1,100}$/, 120, "A device path looks like /dev/dri/renderD128", `${fld}.path`);
+    if (path.includes("..") || path.endsWith("/")) bad("A device path looks like /dev/dri/renderD128", `${fld}.path`);
+    if (devPaths.has(path)) bad(`${path} is passed through twice`, `${fld}.path`);
+    devPaths.add(path);
+    const mode = present(o.mode) ? text(o.mode, /^0[0-7]{3}$/, 4, "The access mode is octal, like 0660", `${fld}.mode`) : undefined;
+    out[`dev${i}`] = `path=${path}${mode ? `,mode=${mode}` : ""}${present(o.uid) ? `,uid=${int(o.uid, 0, 4_294_967_295, "The user ID", `${fld}.uid`)}` : ""}${present(o.gid) ? `,gid=${int(o.gid, 0, 4_294_967_295, "The group ID", `${fld}.gid`)}` : ""}${flag(o.denyWrite, `${fld}.denyWrite`) ? ",deny-write=1" : ""}`;
+  });
+  if (devs.length) warnings.push("Device nodes are passed through when the container starts. A container with a host device can't be live-migrated.");
   const nics = arr(s.network, 32, "network");
   const taken = new Set<string>();
   nics.forEach((n, i) => {

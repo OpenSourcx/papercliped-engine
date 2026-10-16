@@ -73,6 +73,7 @@ describe("wizard options", () => {
     expect(o.usb).toEqual([{ host: "0bda:0041", port: "1-2", name: "Realtek Zigbee dongle" }]);
     expect(o.pciMappings).toEqual([{ id: "gpu0", description: "Main GPU" }]);
     expect(o.pools).toContain("existing");
+    expect(o.imports.map((i: any) => i.volid)).toEqual(["local:import/ubuntu-24.04.qcow2", "local:import/appliance.ova"]);
   });
 
   it("only offers raw passthrough to root@pam and says when hardware can't be listed", async () => {
@@ -274,7 +275,34 @@ describe("Create virtual machine", () => {
   });
 });
 
+describe("importing a disk image (WZ-017)", () => {
+  it("creates a VM whose disk comes from an image on an import storage", async () => {
+    const c = await signIn();
+    const r = await create(c, "vm", vm({ disks: [{ bus: "scsi", storage: "local-lvm", importFrom: "local:import/ubuntu-24.04.qcow2" }] }));
+    expect(r.status, JSON.stringify(await r.clone().json())).toBe(202);
+    expect(pve.created.get(300)!.params.scsi0).toBe("local-lvm:0,import-from=local:import/ubuntu-24.04.qcow2");
+  });
+  it("refuses an image the account can't see", async () => {
+    const c = await signIn();
+    const r = await create(c, "vm", vm({ disks: [{ bus: "scsi", storage: "local-lvm", importFrom: "local:import/secret.qcow2" }] }));
+    expect(r.status).toBe(400);
+    expect((await j(r)).error).toMatch(/import storage/);
+  });
+});
+
 describe("Create container", () => {
+  it("adds a mount point on a new volume and refuses a host directory and devices for an account that isn't root@pam", async () => {
+    const c = await signIn();
+    const ok = await create(c, "ct", ct({ mounts: [{ path: "/data", storage: "local-lvm", sizeGb: 20, backup: false }] }));
+    expect(ok.status, JSON.stringify(await ok.clone().json())).toBe(202);
+    expect(pve.created.get(300)!.params.mp0).toBe("local-lvm:20,mp=/data,backup=0");
+    const dir = await create(c, "ct", ct({ mounts: [{ path: "/media", hostPath: "/srv/media" }] }));
+    expect(dir.status).toBe(400);
+    expect((await j(dir)).error).toMatch(/only root@pam/);
+    const dev = await create(c, "ct", ct({ devices: [{ path: "/dev/dri/renderD128" }] }));
+    expect((await j(dev)).error).toMatch(/only root@pam/);
+  });
+
   it("creates an unprivileged container with the parameters Proxmox expects", async () => {
     const c = await signIn();
     const r = await create(c, "ct", ct({

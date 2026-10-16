@@ -47,8 +47,8 @@ async function route(ctx: FeatureCtx): Promise<boolean> {
     const kind = body.kind === "vm" || body.kind === "ct" ? body.kind : null;
     if (!kind) throw new ctx.HttpError(400, "bad_request", "Choose container or virtual machine");
     const create = path === "/api/wizard/create";
-    const out = await ctx.asUser(async (pve) => {
-      const known = await context(ctx, pve, kind);
+    const out = await ctx.asUser(async (pve, sess) => {
+      const known = await context(ctx, pve, kind, sess.username);
       // Check the request first with no machine number; the number is chosen below.
       const first = build(kind, body.spec, null, known);
       let vmid = first.vmid;
@@ -83,7 +83,7 @@ async function vmidFree(pve: ProxmoxClient, vmid: number): Promise<{ free: boole
 }
 
 /** What the node says is valid, so the shared checks can be exact. Parts that can't be read are left unchecked. */
-async function context(ctx: FeatureCtx, pve: ProxmoxClient, kind: "vm" | "ct"): Promise<WizardContext> {
+async function context(ctx: FeatureCtx, pve: ProxmoxClient, kind: "vm" | "ct", username: string): Promise<WizardContext> {
   const node = ctx.node;
   const [stores, bridges, models, pools] = await Promise.all([
     soft(pve.nodeStorages(node, storageKind(kind))),
@@ -91,12 +91,23 @@ async function context(ctx: FeatureCtx, pve: ProxmoxClient, kind: "vm" | "ct"): 
     kind === "vm" ? soft(pve.call<{ name: string }[]>("GET", `/nodes/${seg(node)}/capabilities/qemu/cpu`)) : Promise.resolve({ data: null, denied: false, error: null }),
     soft(pve.pools()),
   ]);
+  const imgs = kind === "vm" ? await importImages(pve, node) : null;
   return {
+    imports: imgs ? imgs.map((i) => i.volid) : undefined,
     diskStorages: stores.data ? Object.fromEntries(stores.data.filter((s) => s.active !== 0).map((s) => [s.storage, { type: s.type }])) : undefined,
     bridges: bridges.data?.map((b) => b.id),
     cpuModels: models.data ? models.data.map((m) => m.name) : undefined,
     pools: pools.data && pools.data.length ? pools.data.map((p) => p.poolid) : undefined,
+    root: username === "root@pam",
   };
+}
+
+/** Images on storages that hold import content (disk images, OVA/OVF, ESXi machines). Null when they can't be listed. */
+async function importImages(pve: ProxmoxClient, node: string): Promise<{ volid: string; size?: number }[] | null> {
+  const stores = await soft(pve.nodeStorages(node, "import"));
+  if (!stores.data) return null;
+  const lists = await Promise.all(stores.data.filter((s) => s.active !== 0).map((s) => soft(pve.storageContent(node, s.storage, "import")).then((r) => (r.data ?? []) as { volid: string; size?: number }[])));
+  return lists.flat();
 }
 
 async function listBridges(pve: ProxmoxClient, node: string): Promise<{ id: string; kind: "bridge" | "vnet" }[]> {
@@ -133,6 +144,7 @@ async function options(ctx: FeatureCtx, pve: ProxmoxClient, username: string) {
     soft(pve.call<{ id: string; description?: string }[]>("GET", "/cluster/mapping/usb")),
     ctx.isNodeAdmin(pve),
   ]);
+  const imports = (await importImages(pve, node)) ?? [];
   const templates = (await Promise.all(active(tplStores.data ?? []).map((s) => soft(pve.storageContent(node, s.storage, "vztmpl")).then((r) => r.data ?? [])))).flat();
   const isos = (await Promise.all(active(isoStores.data ?? []).map((s) => soft(pve.storageContent(node, s.storage, "iso")).then((r) => r.data ?? [])))).flat();
   const disk = (l: RawStorage[] | null) => active(l ?? []).map((s) => ({ storage: s.storage, type: s.type, avail: s.avail ?? null, formats: storageFormats(s.type) }));
@@ -143,6 +155,7 @@ async function options(ctx: FeatureCtx, pve: ProxmoxClient, username: string) {
     nextid,
     node,
     templates: (templates as { volid: string; size?: number }[]).map((t) => ({ volid: t.volid, name: t.volid.split("/").pop() ?? t.volid, size: t.size ?? null })),
+    imports: imports.slice(0, 500).map((t) => ({ volid: t.volid, name: t.volid.split("/").pop() ?? t.volid, size: t.size ?? null })),
     isos: (isos as { volid: string; size?: number }[]).map((t) => ({ volid: t.volid, name: t.volid.split("/").pop() ?? t.volid, size: t.size ?? null })),
     vmStorages: disk(vmStores.data),
     ctStorages: disk(ctStores.data),

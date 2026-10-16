@@ -13,7 +13,7 @@ Steps are tabs, not a one-way march: click any step, or press Review to jump to 
 | General | Name, machine number (checked for use as you type), owner (the device, or an organization, which puts it in that organization's resource group and checks it fits), resource group, start at boot, start order, start delay, shutdown timeout, tags, note |
 | OS | Install media: ISO image from any storage, the device's physical drive, or none. Guest OS type and version (Linux 6.x and 2.4, Windows 11 down to 2000, Solaris, Other). Picking one applies its usual hardware; a Windows ISO's name moves a Linux default to Windows 11 |
 | System | Graphic card (std, VirtIO-GPU, VirGL, SPICE qxl 1-4, VMware, Cirrus, serial terminal, none) and video memory, machine type (default, q35, versioned), BIOS (SeaBIOS or UEFI), SCSI controller, QEMU guest agent, EFI disk and pre-enrolled keys, TPM 1.2 or 2.0 |
-| Disks | Any number: bus (SCSI, VirtIO block, SATA, IDE) and the next free slot, storage, size, format (only on file storage), cache, discard, SSD emulation, IO thread, include in backups. Options a bus can't do are switched off with the reason |
+| Disks | Any number: bus (SCSI, VirtIO block, SATA, IDE) and the next free slot, storage, size, format (only on file storage), cache, discard, SSD emulation, IO thread, include in backups. Options a bus can't do are switched off with the reason. **Start from** an image on an import storage (disk image, OVA or ESXi machine) instead of an empty disk; the size then comes from the image |
 | CPU | Sockets, cores, type (common types, custom models and every model the device lists), active CPUs, CPU limit, CPU weight, NUMA |
 | Memory | Fixed or ballooning (minimum, shares) |
 | Network | Any number of devices: bridge or SDN vnet, model, VLAN tag, MAC, firewall, disconnected, rate limit, MTU and multiqueue (VirtIO) |
@@ -29,6 +29,7 @@ Steps are tabs, not a one-way march: click any step, or press Review to jump to 
 | CPU | Cores, CPU limit, CPU weight |
 | Memory | Memory and swap |
 | Network | Any number of devices: name, bridge, VLAN, MAC, firewall, disconnected, rate, MTU, IPv4 (DHCP, static with gateway, manual, none) and IPv6 (SLAAC, DHCP, static with gateway, manual, none) |
+| Mounts and devices | Up to ten extra mount points (a new volume on a storage, or a host folder), read only, include in backups; device nodes passed through (path, mode, group ID). Host folders and devices are root@pam only |
 | DNS and features | DNS servers and domain; nesting, keyctl (unprivileged only), FUSE |
 | Confirm | As above |
 
@@ -38,7 +39,7 @@ All need the Proxmox session; writes need `X-EPC-Request: 1`. The body of a writ
 
 | Route | What |
 | --- | --- |
-| `GET /api/wizard/options` | What the node offers: `nextid`, `templates`, `isos`, `vmStorages` and `ctStorages` (with `type`, `avail`, allowed `formats`), `pools`, `bridges` (bridges and SDN vnets), `cpuTypes` (`common`, `custom`, device models), `machines`, `rawPassthrough` (true for root@pam only), `pci`, `usb`, `pciMappings`, `usbMappings`, `isAdmin`, `notes`. A list the person may not read comes back empty with a note, never an error |
+| `GET /api/wizard/options` | What the node offers: `nextid`, `templates`, `isos`, `imports` (images on import storages), `vmStorages` and `ctStorages` (with `type`, `avail`, allowed `formats`), `pools`, `bridges` (bridges and SDN vnets), `cpuTypes` (`common`, `custom`, device models), `machines`, `rawPassthrough` (true for root@pam only), `pci`, `usb`, `pciMappings`, `usbMappings`, `isAdmin`, `notes`. A list the person may not read comes back empty with a note, never an error |
 | `GET /api/wizard/vmid?vmid=N` | `{ free, message }` |
 | `POST /api/wizard/preview` | `{ kind: "vm" \| "ct", spec }` returns `{ vmid, params, warnings }`: exactly what would be sent, secrets replaced by `(set, hidden)`. Creates nothing |
 | `POST /api/wizard/create` | The same body; returns `202 { vmid, task, warnings }`. A chosen machine number that is taken is `409 vmid_taken`; an invalid request is `400 invalid` with the reason; Proxmox's own refusal comes back as `400 proxmox_rejected` with its words, scrubbed of any secret the request carried |
@@ -56,9 +57,10 @@ Names, enums and ranges were checked against the API viewer (`apidoc.js`) for `P
 | Network | `netN` as `model,macaddr,bridge,firewall=1,link_down=1,mtu,queues,rate,tag` |
 | Cloud-init | `ide0` (else `sata5`, `scsi30`) as `storage:cloudinit`; `citype ciuser cipassword sshkeys` (URL-encoded) `ciupgrade nameserver searchdomain ipconfigN` (`ip`, `gw`, `ip6`, `gw6`) |
 | Hardware | `hostpciN` (`host` or `mapping`, `pcie`, `x-vga`, `rombar`), `usbN` (`host`, `mapping` or `spice`, `usb3`), `serialN=socket`, `audio0` (`device`, `driver`) |
-| Container | `vmid ostemplate hostname password ssh-public-keys unprivileged pool start onboot startup tags description cores cpulimit cpuunits memory swap rootfs nameserver searchdomain features` |
+| Container | `vmid ostemplate hostname password ssh-public-keys unprivileged pool start onboot startup tags description cores cpulimit cpuunits memory swap rootfs mpN devN nameserver searchdomain features` |
+| Disk from an image | `scsiN` (or another bus) as `storage:0,import-from=<volid>` for a volume on an import storage |
 | Container network | `netN` as `name,bridge,hwaddr,firewall=1,link_down=1,mtu,rate,tag,ip,gw,ip6,gw6` |
-| Options read | `GET /nodes/{node}/storage` (content `images`, `rootdir`, `iso`, `vztmpl`), `.../storage/{id}/content`, `.../network?type=any_bridge`, `/cluster/sdn/vnets`, `.../capabilities/qemu/cpu`, `.../capabilities/qemu/machines`, `.../hardware/pci`, `.../hardware/usb`, `/cluster/mapping/pci`, `/cluster/mapping/usb`, `/pools`, `/cluster/nextid` |
+| Options read | `GET /nodes/{node}/storage` (content `images`, `rootdir`, `iso`, `vztmpl`, `import`), `.../storage/{id}/content`, `.../network?type=any_bridge`, `/cluster/sdn/vnets`, `.../capabilities/qemu/cpu`, `.../capabilities/qemu/machines`, `.../hardware/pci`, `.../hardware/usb`, `/cluster/mapping/pci`, `/cluster/mapping/usb`, `/pools`, `/cluster/nextid` |
 
 ## What is checked
 
@@ -108,6 +110,10 @@ Everything above was built from the API description and exercised against a stan
 - `startup` values (`order`, `up`, `down`) and `tags` separators on 8 and 9.
 - Which storages report `rootdir` and `images` content to a non-administrator.
 
+## Clone to Cloud-Init and importing
+
+Cloning a template (or any VM) into a ready machine (WZ-016) is in the **Clone** dialog on the machine page (`docs/MACHINE.md`): name, storage, linked or full, machine number, node, format, snapshot, speed limit, resource group, and a Cloud-Init section (user, password, SSH keys, first address, grow the disk, start when ready). Importing (WZ-017) is the disk choice above. An OVA or OVF is not imported as a whole machine and the ESXi import wizard is not rebuilt, because Proxmox does those through its own tools rather than the API: create the VM here with its disk taken from the image, then adjust the hardware on the machine page.
+
 ## Not built
 
-Cloning a template into a cloud-init machine (WZ-016), importing from ESXi or OVA (WZ-017), several root-mounted container mount points at creation (add them from the machine's Disks card), container device passthrough, and custom cloud-init snippets (`cicustom`).
+Container OCI image pulls (ND-060), importing an OVA or OVF's machine settings, and the ESXi wizard.

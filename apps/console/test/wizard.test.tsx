@@ -60,7 +60,7 @@ afterEach(() => {
 
 describe("the wizards' forms", () => {
   const options: WizardOptions = {
-    nextid: 300, node: "pve", templates: [{ volid: "local:vztmpl/d.tar.zst", name: "d", size: null }], isos: [{ volid: "local:iso/a.iso", name: "a.iso", size: null }],
+    nextid: 300, node: "pve", templates: [{ volid: "local:vztmpl/d.tar.zst", name: "d", size: null }], imports: [], isos: [{ volid: "local:iso/a.iso", name: "a.iso", size: null }],
     vmStorages: [{ storage: "local-lvm", type: "lvmthin", avail: null, formats: ["raw"] }], ctStorages: [{ storage: "local-lvm", type: "lvmthin", avail: null, formats: ["raw"] }],
     pools: [], bridges: [{ id: "vmbr0", kind: "bridge" }], cpuTypes: { common: ["x86-64-v2-AES", "host"], custom: [], host: [] }, machines: [], rawPassthrough: true, pci: [], usb: [], pciMappings: [], usbMappings: [], isAdmin: true, notes: [],
   };
@@ -90,10 +90,10 @@ describe("the wizards' forms", () => {
 });
 
 describe("Create container (demo)", () => {
-  it("starts with the container wizard, its eight steps and sensible defaults", async () => {
+  it("starts with the container wizard, its nine steps and sensible defaults", async () => {
     open();
     await ready();
-    expect(steps().getAllByRole("button").map((b) => b.textContent!.replace(/^\d+/, "").trim())).toEqual(["General", "Template", "Disk", "CPU", "Memory", "Network", "DNS and features", "Confirm"]);
+    expect(steps().getAllByRole("button").map((b) => b.textContent!.replace(/^\d+/, "").trim())).toEqual(["General", "Template", "Disk", "CPU", "Memory", "Network", "Mounts and devices", "DNS and features", "Confirm"]);
     expect(field("Hostname").value).toBe("quick-1");
   });
 
