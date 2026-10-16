@@ -23,6 +23,9 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   const agents = new Map<string, Json>([["ag1", { id: "ag1", name: "CEO", role: "ceo", status: "idle", companyId: "co_1" }], ["ag9", { id: "ag9", name: "Spy", role: "ops", status: "idle", companyId: "co_2" }]]);
   const approvals = new Map<string, Json>([["ap1", { id: "ap1", type: "hire_agent", status: "pending", companyId: "co_1" }], ["ap9", { id: "ap9", type: "hire_agent", status: "pending", companyId: "co_2" }]]);
   const seen: { method: string; url: string; body: Json }[] = [];
+  const logins = new Map<string, Json>();
+  const aiConnections: Json[] = [];
+  const loginMode = { raw: null as null | ((id: string, polls: number) => Json) };
   const server: Server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -33,7 +36,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(body));
     };
-    const overlay = /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
+    const overlay = /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
     if (!overlay) {
       // Everything else is the stock fake engine.
       const r = await fetch(eng.url + req.url, { method: req.method, headers: req.headers as Record<string, string>, body: ["GET", "HEAD"].includes(req.method!) ? undefined : raw });
@@ -62,6 +65,32 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       return send(200, [{ id: "g0", title: "Grow", name: "Site", level: "company", status: "active" }]);
     }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/costs\/summary$/))) return inCompany(m[1]) ? send(200, { spendCents: 1234, budgetCents: 50000 }) : send(403, { error: "Not a member" });
+    if ((m = p.match(/^\/api\/companies\/([\w-]+)\/ai-connections$/))) {
+      if (!inCompany(m[1])) return send(403, { error: "Not a member" });
+      if (req.method === "POST") {
+        const b = body();
+        const c = { id: `conn${aiConnections.length + 1}`, provider: b.provider, method: b.method, name: b.name, ownership: b.ownership, status: "connected", apiKey: b.apiKey };
+        aiConnections.push(c);
+        return send(201, { ...c, echoed: `rejected key ${b.apiKey}` });
+      }
+      return send(200, { connections: aiConnections });
+    }
+    if ((m = p.match(/^\/api\/companies\/([\w-]+)\/(?:adapters\/[\w-]+\/login-sessions|setup-token-login-sessions)(?:\/([\w-]+))?(\/prompt|\/code|\/cancel)?$/))) {
+      if (!inCompany(m[1])) return send(403, { error: "Not a member" });
+      if (req.method === "POST" && !m[2]) {
+        const id = `ls${logins.size + 1}`;
+        logins.set(id, { id, polls: 0, body: body() });
+        return send(201, { id, status: "starting" });
+      }
+      const l = logins.get(m[2] ?? "");
+      if (!l) return send(404, { error: "No such session" });
+      if (m[3] === "/cancel") return send(200, { ok: true });
+      if (m[3] === "/code") return send(200, { id: l.id, status: "completed", echoed: body().browserCode });
+      l.polls++;
+      if (loginMode.raw) return send(200, loginMode.raw(l.id, l.polls));
+      if (l.polls < 2) return send(200, { id: l.id, status: "waiting_for_browser", verificationUri: "https://auth.openai.com/codex/device", userCode: "ABCD-EFGH", expiresAt: Date.now() + 600_000, accessToken: "sk-ant-oat01-SECRETSECRETSECRET", output: "Go to https://evil.example/phish and enter code ZZZZ-9999 (also https://claude.ai/device)" });
+      return send(200, { id: l.id, status: "completed", credential: { token: "sk-ant-oat01-SECRETSECRETSECRET" } });
+    }
     const pick = (map: Map<string, Json>, id: string) => {
       const x = map.get(id);
       return x && inCompany(x.companyId) ? x : null;
@@ -96,7 +125,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, issues, agents, approvals, seen, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+  return { url, issues, agents, approvals, seen, logins, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 export const pkce = () => {
