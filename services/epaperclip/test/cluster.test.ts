@@ -499,7 +499,8 @@ describe("Ceph", () => {
     expect((await send(sam, "POST", "/api/cluster/ceph/osd/1/in", {})).status).toBe(200);
     expect((await send(sam, "POST", "/api/cluster/ceph/osd/1/scrub", { deep: true })).status).toBe(200);
     expect(form(calls("POST", "/nodes/pve/ceph/osd/1/scrub")[0].body)).toEqual({ deep: "1" });
-    expect((await send(sam, "POST", "/api/cluster/ceph/osd/1/destroy", {})).status).toBe(404);
+    // Destroying an OSD is now possible, but only with its name typed (see cluster-more.test.ts).
+    expect((await send(sam, "POST", "/api/cluster/ceph/osd/1/destroy", {})).status).toBe(400);
     expect((await send(sam, "POST", "/api/cluster/ceph/osd/x/out", {})).status).toBe(404);
   });
 
