@@ -126,7 +126,8 @@ export function fakeAccessPve() {
       const user = users.get(userid);
       const viaTicket = tickets.get(pass) === userid;
       if (g.get("tfa-challenge")) {
-        if (tickets.get(g.get("tfa-challenge")!) !== userid || st.failTfa || !/^totp:\d{6}$/.test(pass) || pass !== `totp:${st.totpCode}`) return { status: 401, body: "" };
+        const webauthnOk = needTfa.get(userid) === "webauthn" && pass.startsWith("webauthn:") && (() => { try { return Boolean(JSON.parse(pass.slice(9)).id); } catch { return false; } })();
+        if (tickets.get(g.get("tfa-challenge")!) !== userid || st.failTfa || (!webauthnOk && (!/^totp:\d{6}$/.test(pass) || pass !== `totp:${st.totpCode}`))) return { status: 401, body: "" };
         const t = `PVE:${userid}:${++st.n}`;
         tickets.set(t, userid);
         return ok({ username: userid, ticket: t, CSRFPreventionToken: `c${st.n}` });
@@ -134,7 +135,7 @@ export function fakeAccessPve() {
       if (!user || user.enable === 0 || (pass !== user.password && !viaTicket)) return { status: 401, body: "" };
       const second = needTfa.get(userid);
       if (second && !viaTicket) {
-        const challenge = second === "totp" ? { totp: true, recovery: "available" } : { webauthn: { challenge: "abc" } };
+        const challenge = second === "totp" ? { totp: true, recovery: "available" } : { webauthn: { publicKey: { challenge: "YWJj", timeout: 60000, rpId: "pve.test", allowCredentials: [{ type: "public-key", id: "Y3JlZA" }], userVerification: "preferred" } } };
         const partial = `PVE:!tfa!${encodeURIComponent(JSON.stringify(challenge))}:00AA::sig`;
         tickets.set(partial, userid);
         return ok({ username: userid, ticket: partial, NeedTFA: 1 });
