@@ -429,7 +429,7 @@ export class ProxmoxClient {
   }
 
   /** Has Proxmox download a file from a URL straight into a storage. */
-  downloadUrl(node: string, storage: string, p: { url: string; content: "iso" | "vztmpl"; filename: string; checksum?: string; algorithm?: string; verifyCertificates?: boolean }) {
+  downloadUrl(node: string, storage: string, p: { url: string; content: "iso" | "vztmpl" | "import"; filename: string; checksum?: string; algorithm?: string; verifyCertificates?: boolean }) {
     return this.call<string>("POST", `/nodes/${seg(node)}/storage/${seg(storage)}/download-url`, { url: p.url, content: p.content, filename: p.filename, checksum: p.checksum, "checksum-algorithm": p.checksum ? p.algorithm : undefined, "verify-certificates": p.verifyCertificates ?? true });
   }
 
@@ -437,7 +437,7 @@ export class ProxmoxClient {
    * Uploads an ISO image or container template, streaming it as multipart/form-data the way Proxmox's UI does.
    * `size` must be the exact byte count of `file`.
    */
-  async upload(node: string, storage: string, p: { content: "iso" | "vztmpl"; filename: string; size: number; file: AsyncIterable<Uint8Array | string>; checksum?: string; algorithm?: string }): Promise<string> {
+  async upload(node: string, storage: string, p: { content: "iso" | "vztmpl" | "import"; filename: string; size: number; file: AsyncIterable<Uint8Array | string>; checksum?: string; algorithm?: string }): Promise<string> {
     const boundary = `----epaperclip${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
     const field = (name: string, value: string) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
     let head = field("content", p.content);

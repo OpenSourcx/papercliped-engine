@@ -11,6 +11,7 @@ import { Button, Card, EmptyState, Input, PageFrame, Segmented, Status } from ".
 import { tabsFor, volName } from "./content.ts";
 import { LivePathPermissions } from "../access/PathPermissions.tsx";
 import { StorageAdmin } from "./StorageAdmin.tsx";
+import { StorageToolsButton } from "./StorageTools.tsx";
 import { VolumeDetails } from "./VolumeDetails.tsx";
 
 const ICON: Partial<Record<ContentKind, React.ReactNode>> = { iso: <Disc3 className="h-4 w-4" />, vztmpl: <Package className="h-4 w-4" />, backup: <Database className="h-4 w-4" />, images: <Monitor className="h-4 w-4" />, rootdir: <Box className="h-4 w-4" /> };
@@ -99,6 +100,7 @@ export function StorageDetail() {
         </div>
         {s.active === false ? <Status kind="off" label="Unavailable" /> : <Status kind="good" label="Active" />}
         <StorageAdmin id={s.id} />
+        {engine.live && <StorageToolsButton id={s.id} backup={has("backup")} />}
       </div>
       <Card className="p-5 mb-5">
         <BarMeter label={`${formatBytes(Math.max(0, s.total - s.used))} free`} pct={s.total ? (s.used / s.total) * 100 : 0} value={`${formatBytes(s.used)} of ${formatBytes(s.total)}`} />

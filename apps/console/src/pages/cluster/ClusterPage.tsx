@@ -4,6 +4,7 @@ import { ClipboardCopy, Cpu, LogIn, Plus, Trash2 } from "lucide-react";
 import { clusterApi, type ClusterOverview, type LinkInput } from "../../data/engine/clusterApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
+import { QdeviceCard, NodeLifecycleGuide } from "./ClusterTools.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Status } from "../../ui/primitives.tsx";
 import { Async, LiveOnly, NodeSwitcher, TaskModal, TasksLink, TypedConfirm, useSelectedNode } from "../node/common.tsx";
 import { useOverview, when } from "./common.tsx";
@@ -210,7 +211,7 @@ function Body({ o }: { o: ClusterOverview }) {
                 <dt className="text-ink-3">Config version</dt><dd className="tabular-nums">{o.configVersion ?? "Unknown"}</dd>
                 <dt className="text-ink-3">Quorum device</dt><dd>{o.qdevice?.configured ? "Set up" : "None"}</dd>
               </dl>
-              <p className="text-xs text-ink-3 mt-3">Links and the quorum device are read here. They are changed from a node's shell with pvecm, because Proxmox has no API for editing the corosync configuration.</p>
+              <p className="text-xs text-ink-3 mt-3">Shown here as Proxmox reports them. To change them, use the guide beside this card.</p>
             </Card>
             <Card className="p-5">
               <div className="font-medium mb-2">Recent cluster log</div>
@@ -220,6 +221,10 @@ function Body({ o }: { o: ClusterOverview }) {
                 </ul>
               ) : <p className="text-compact text-ink-3">{log.isPending ? "Loading…" : "Nothing logged yet."}</p>}
             </Card>
+          </section>
+          <section className="grid md:grid-cols-2 gap-4">
+            <QdeviceCard />
+            <NodeLifecycleGuide />
           </section>
         </>
       )}

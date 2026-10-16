@@ -2,7 +2,11 @@ import { HttpError } from "../http.ts";
 import type { FeatureHandler } from "./index.ts";
 import { certRoutes } from "./nodeCerts.ts";
 import type { Deps, Route } from "./nodeCommon.ts";
+import { backupRoutes } from "./dcBackup.ts";
+import { mappingRoutes } from "./dcMapping.ts";
+import { sdnRoutes } from "./dcSdn.ts";
 import { datacenterRoutes } from "./nodeDatacenter.ts";
+import { nodeHardwareRoutes } from "./nodeHardware.ts";
 import { systemRoutes } from "./nodeSystem.ts";
 import { serverOf, TlsReloader } from "./nodeTls.ts";
 
@@ -14,7 +18,7 @@ import { serverOf, TlsReloader } from "./nodeTls.ts";
  */
 export function createNodeFeature(opts: { tls?: TlsReloader; pollMs?: number } = {}): FeatureHandler {
   const deps: Deps = { tls: opts.tls ?? new TlsReloader(), pollMs: opts.pollMs ?? 3000 };
-  const routes: Route[] = [...systemRoutes(deps), ...certRoutes(deps), ...datacenterRoutes(deps)];
+  const routes: Route[] = [...systemRoutes(deps), ...certRoutes(deps), ...datacenterRoutes(deps), ...nodeHardwareRoutes(deps), ...backupRoutes(deps), ...sdnRoutes(deps), ...mappingRoutes(deps)];
   return async (ctx) => {
     if (!ctx.path.startsWith("/api/node/")) return false;
     // Learn which TLS server we are on so a changed node certificate can be swapped in (see nodeTls.ts).

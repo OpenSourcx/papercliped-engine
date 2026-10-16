@@ -105,7 +105,7 @@ export interface Prefs {
 
 export const DEFAULT_PREFS: Prefs = { muted: [], quiet: ["task_finished", "automation", "update"], quietHours: { enabled: false, from: "22:00", to: "07:00" } };
 
-export type StepKind = "power" | "snapshot" | "snapshot_delete" | "snapshot_rollback" | "create_task";
+export type StepKind = "power" | "snapshot" | "snapshot_delete" | "snapshot_rollback" | "create_task" | "note_create" | "notes_file";
 export type StepState = "pending" | "running" | "done" | "failed" | "skipped" | "rejected";
 
 export interface PlanStep {
