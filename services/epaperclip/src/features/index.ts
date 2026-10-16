@@ -17,6 +17,10 @@ import { connectApi } from "./connect.ts";
 import { connectionRoutes } from "./connect-connections.ts";
 import { loginRoutes } from "./connect-login.ts";
 import { adapterRoutes } from "./connect-adapters.ts";
+import { handleMachineSettings } from "./machineSettings.ts";
+import { handleMachineCloud } from "./machineCloud.ts";
+import { handleMachineRun } from "./machineRun.ts";
+import { handleMachineDc } from "./machineDc.ts";
 import { handleNotes } from "./notes.ts";
 import { handleStorageTools } from "./storageTools.ts";
 import { handleBackupTools } from "./backupTools.ts";
@@ -75,6 +79,10 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "connections", handle: connectionRoutes },
   { name: "connect-login", handle: loginRoutes },
   { name: "connect-adapters", handle: adapterRoutes },
+  { name: "machine-settings", handle: handleMachineSettings },
+  { name: "machine-cloud", handle: handleMachineCloud },
+  { name: "machine-run", handle: handleMachineRun },
+  { name: "machine-dc", handle: handleMachineDc },
   { name: "notes", handle: handleNotes },
   { name: "storage-tools", handle: handleStorageTools },
   { name: "backup-tools", handle: handleBackupTools },

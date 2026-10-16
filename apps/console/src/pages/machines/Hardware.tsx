@@ -8,7 +8,11 @@ import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Input, SectionTitle, Toggle, selectClass } from "../../ui/primitives.tsx";
 import { useLoad } from "../disks/common.tsx";
 import { DisksCard } from "./HardwareDisks.tsx";
-import { VmItemsCard, PassthroughCard } from "./MachineItems.tsx";
+import { VmItemsCard } from "./MachineItems.tsx";
+import { CtOptionsCard, ProcessorCard, SmallDevicesCard, SystemCard, VmOptionsCard } from "./MachineAdvanced.tsx";
+import { HostDevicesCard, PendingBanner } from "./MachineDevices.tsx";
+import type { SCtx } from "./MachineSettingsKit.tsx";
+import { useMachineApi } from "../../data/engine/machineApi.ts";
 import { DnsCard, FeaturesCard, NetworkCard } from "./MachineNetwork.tsx";
 import { ResourcesCard } from "./MachineResources.tsx";
 import type { DevCtx } from "./MachineKit.tsx";
@@ -25,6 +29,8 @@ export function Hardware({ g }: { g: Guest }) {
   const [grow, setGrow] = useState<{ key: string; size: number | null } | null>(null);
   const [opts, setOpts] = useState(false);
   const dev = useLoad(() => guestApi.devices(g.vmid), [guestApi, g.vmid, tick, engine.contentVersion]);
+  const machineApi = useMachineApi();
+  const set = useLoad(() => machineApi.settings(g.vmid), [machineApi, g.vmid, tick, engine.contentVersion]);
 
   useEffect(() => {
     let alive = true;
@@ -47,9 +53,11 @@ export function Hardware({ g }: { g: Guest }) {
   const running = hw.status === "running";
   const d = dev.data;
   const ctx: DevCtx | null = d ? { vmid: g.vmid, d, reload: () => setTick((n) => n + 1) } : null;
+  const sctx: SCtx | null = set.data ? { vmid: g.vmid, s: set.data, api: machineApi, reload: () => setTick((n) => n + 1) } : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 fade-in">
+      {sctx && <PendingBanner ctx={sctx} />}
       {ctx ? <ResourcesCard key={`res-${d!.digest}`} ctx={ctx} /> : <Card className="p-5"><SectionTitle>Processor and memory</SectionTitle>{dev.error ? <p role="alert" className="text-compact text-critical">{dev.error}</p> : <p className="text-sm text-ink-3">Reading…</p>}</Card>}
 
       <Card className="p-5">
@@ -73,7 +81,12 @@ export function Hardware({ g }: { g: Guest }) {
       {ctx && <NetworkCard ctx={ctx} />}
       {ctx && d?.dns && <DnsCard ctx={ctx} />}
       {ctx && d?.features && <FeaturesCard key={`feat-${d.digest}`} ctx={ctx} />}
-      {ctx && <PassthroughCard ctx={ctx} />}
+      {sctx && <HostDevicesCard ctx={sctx} />}
+      {sctx?.s.vm && <ProcessorCard ctx={sctx} />}
+      {sctx?.s.vm && <SystemCard ctx={sctx} />}
+      {sctx?.s.vm && <SmallDevicesCard ctx={sctx} />}
+      {sctx?.s.vm && <VmOptionsCard ctx={sctx} />}
+      {sctx?.s.ct && <CtOptionsCard ctx={sctx} />}
 
       {grow && <GrowModal vmid={g.vmid} disk={grow.key} size={grow.size} onClose={() => setGrow(null)} onDone={() => setTick((n) => n + 1)} />}
       {opts && <OptionsModal g={g} hw={hw} onClose={() => setOpts(false)} onDone={() => setTick((n) => n + 1)} />}

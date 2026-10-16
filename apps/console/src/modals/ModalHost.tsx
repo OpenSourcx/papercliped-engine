@@ -10,7 +10,7 @@ import { QuickCreateModal } from "../pages/org/QuickCreate.tsx";
 import { DownloadUrlModal, TemplatesModal, UploadModal } from "../pages/storage/StorageModals.tsx";
 import { TaskLogModal } from "../pages/Tasks.tsx";
 import { IfaceModal } from "../pages/network/Network.tsx";
-import { CloneModal } from "../pages/machines/Snapshots.tsx";
+import { CloneModal } from "../pages/machines/MachineClone.tsx";
 import { MachineActionModal } from "../pages/machines/MachineActions.tsx";
 import { BackupJobModal, BackupNowModal, RestoreModal } from "../pages/backups/Backups.tsx";
 import { StoreItemModal } from "../pages/store/Store.tsx";

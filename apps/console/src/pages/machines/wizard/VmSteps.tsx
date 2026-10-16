@@ -151,9 +151,16 @@ export function DisksStep({ f, set, o, err }: P) {
               <Field label="Storage" htmlFor={`wz-store-${d.id}`} error={e("storage")}>
                 <Pick id={`wz-store-${d.id}`} value={d.storage} onChange={(storage) => setDisk(d.id, { storage, format: storageById(o.vmStorages, storage)?.formats.includes(d.format) ? d.format : "" })} options={o.vmStorages.map((s) => ({ value: s.storage, label: `${s.storage}${s.avail !== null ? ` · ${formatBytes(s.avail)} free` : ""}` }))} />
               </Field>
-              <Field label="Disk size" htmlFor={`wz-size-${d.id}`} error={e("sizeGb")}>
-                <Num id={`wz-size-${d.id}`} value={d.sizeGb} onChange={(sizeGb) => setDisk(d.id, { sizeGb })} suffix="GiB" />
-              </Field>
+              {(o.imports ?? []).length > 0 && (
+                <Field label="Start from" htmlFor={`wz-imp-${d.id}`} error={e("importFrom")} hint={d.importFrom ? "The disk is created from this image; its size comes from the image." : "A new empty disk, or an image to copy in."}>
+                  <Pick id={`wz-imp-${d.id}`} value={d.importFrom} onChange={(importFrom) => setDisk(d.id, { importFrom })} options={[{ value: "", label: "An empty disk" }, ...(o.imports ?? []).map((i) => ({ value: i.volid, label: `Image: ${i.name}${i.size ? ` · ${formatBytes(i.size)}` : ""}` }))]} />
+                </Field>
+              )}
+              {!d.importFrom && (
+                <Field label="Disk size" htmlFor={`wz-size-${d.id}`} error={e("sizeGb")}>
+                  <Num id={`wz-size-${d.id}`} value={d.sizeGb} onChange={(sizeGb) => setDisk(d.id, { sizeGb })} suffix="GiB" />
+                </Field>
+              )}
               {formats.length > 1 && (
                 <Field label="Format" htmlFor={`wz-fmt-${d.id}`} error={e("format")}>
                   <Pick id={`wz-fmt-${d.id}`} value={d.format} onChange={(format) => setDisk(d.id, { format })} options={[{ value: "", label: "Default" }, ...formats.map((x) => ({ value: x, label: x === "raw" ? "Raw" : x === "qcow2" ? "QCOW2" : "VMDK" }))]} />

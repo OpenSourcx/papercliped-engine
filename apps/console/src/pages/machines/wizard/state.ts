@@ -32,6 +32,8 @@ export interface DiskForm {
   ssd: boolean;
   iothread: boolean;
   backup: boolean;
+  /** An image on an import storage to create the disk from; empty makes a new empty disk. */
+  importFrom: string;
 }
 export interface VmNicForm {
   id: number;
@@ -141,6 +143,24 @@ export interface VmForm extends GeneralForm {
   audioDriver: string;
 }
 
+export interface MountForm {
+  id: number;
+  path: string;
+  kind: "volume" | "host";
+  storage: string;
+  sizeGb: string;
+  hostPath: string;
+  readOnly: boolean;
+  backup: boolean;
+}
+export interface DeviceForm {
+  id: number;
+  path: string;
+  mode: string;
+  gid: string;
+  denyWrite: boolean;
+}
+
 export interface CtForm extends GeneralForm {
   password: string;
   sshKeys: string;
@@ -159,6 +179,8 @@ export interface CtForm extends GeneralForm {
   nesting: boolean;
   keyctl: boolean;
   fuse: boolean;
+  mounts: MountForm[];
+  devices: DeviceForm[];
 }
 
 let seq = 1;
@@ -168,7 +190,7 @@ const general = (name: string): GeneralForm => ({ name, vmid: "", pool: "", star
 export const emptyIp = (): IpForm => ({ v4: "dhcp", v4cidr: "", v4gw: "", v6: "none", v6cidr: "", v6gw: "" });
 
 export function defaultDisk(o: WizardOptions | null, bus: DiskBus, sizeGb: number, flags: Partial<DiskForm> = {}): DiskForm {
-  return { id: nextKey(), bus, storage: o?.vmStorages[0]?.storage ?? "", sizeGb: String(sizeGb), format: "", cache: "", discard: false, ssd: false, iothread: false, backup: true, ...flags };
+  return { id: nextKey(), bus, storage: o?.vmStorages[0]?.storage ?? "", sizeGb: String(sizeGb), format: "", cache: "", discard: false, ssd: false, iothread: false, backup: true, importFrom: "", ...flags };
 }
 
 export function defaultVm(o: WizardOptions | null, name: string, sizeId: string): VmForm {
@@ -248,6 +270,8 @@ export function defaultCt(o: WizardOptions | null, name: string, sizeId: string,
     nesting: true,
     keyctl: false,
     fuse: false,
+    mounts: [],
+    devices: [],
   };
 }
 
@@ -294,7 +318,7 @@ export function vmSpec(f: VmForm): VmWizardSpec {
       efi: f.bios === "ovmf" && f.efi ? { storage: f.efiStorage, preEnrolledKeys: f.preEnrolled } : undefined,
       tpm: f.tpm ? { storage: f.tpmStorage, version: f.tpmVersion } : undefined,
     },
-    disks: f.disks.map((d) => ({ bus: d.bus, storage: d.storage, sizeGb: n(d.sizeGb) as number, format: (s(d.format) as never) ?? undefined, cache: (s(d.cache) as never) ?? undefined, discard: d.discard, ssd: d.ssd, iothread: d.iothread, backup: d.backup })),
+    disks: f.disks.map((d) => ({ bus: d.bus, storage: d.storage, sizeGb: d.importFrom ? undefined : (n(d.sizeGb) as number), importFrom: s(d.importFrom), format: (s(d.format) as never) ?? undefined, cache: (s(d.cache) as never) ?? undefined, discard: d.discard, ssd: d.ssd, iothread: d.iothread, backup: d.backup })),
     cpu: { sockets: n(f.sockets), cores: n(f.cores) as number, type: s(f.cpuType), vcpus: n(f.vcpus), limit: n(f.cpuLimit), units: n(f.cpuUnits), numa: f.numa },
     memory: { mb: n(f.memoryMb) as number, balloonMinMb: f.balloon ? n(f.balloonMin) : undefined, shares: f.balloon ? n(f.shares) : undefined },
     network: f.nics.map((x) => ({ model: x.model as never, bridge: x.bridge, vlan: n(x.vlan), mac: s(x.mac), firewall: x.firewall, disconnected: x.disconnected, rateMbps: n(x.rate), mtu: n(x.mtu), queues: n(x.queues) })),
@@ -333,6 +357,8 @@ export function ctSpec(f: CtForm): CtWizardSpec {
     network: f.nics.map((x) => ({ name: s(x.name), bridge: x.bridge, vlan: n(x.vlan), mac: s(x.mac), firewall: x.firewall, disconnected: x.disconnected, rateMbps: n(x.rate), mtu: n(x.mtu), ipv4: ip4(x.v4, x.v4cidr, x.v4gw), ipv6: ip6(x.v6, x.v6cidr, x.v6gw) })),
     dns: { nameserver: list(f.nameserver), searchdomain: s(f.searchdomain) },
     features: { nesting: f.nesting, keyctl: f.keyctl && f.unprivileged, fuse: f.fuse },
+    mounts: f.mounts.map((m) => (m.kind === "host" ? { path: m.path, hostPath: m.hostPath, readOnly: m.readOnly } : { path: m.path, storage: m.storage, sizeGb: n(m.sizeGb), readOnly: m.readOnly, backup: m.backup })),
+    devices: f.devices.map((d) => ({ path: d.path, mode: s(d.mode), gid: n(d.gid), denyWrite: d.denyWrite })),
   };
 }
 
@@ -364,6 +390,7 @@ export const CT_STEPS: StepDef[] = [
   { id: "cpu", label: "CPU", fields: ["cpu"] },
   { id: "memory", label: "Memory", fields: ["memory"] },
   { id: "network", label: "Network", fields: ["network"] },
+  { id: "extras", label: "Mounts and devices", fields: ["mounts", "devices"], optional: true },
   { id: "dns", label: "DNS and features", fields: ["dns", "features"], optional: true },
   { id: "confirm", label: "Confirm", fields: [] },
 ];

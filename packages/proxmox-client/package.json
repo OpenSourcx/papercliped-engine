@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./storage-schema": "./src/storage-schema.ts",
-    "./wizard-schema": "./src/wizard-schema.ts"
+    "./wizard-schema": "./src/wizard-schema.ts",
+    "./machine-schema": "./src/machine-schema.ts",
+    "./machine-extra": "./src/machine-extra.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

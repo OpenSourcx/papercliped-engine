@@ -47,13 +47,7 @@ Every P0 row that is not done, in the order a person setting up a new host would
 
 **W-DISK** (0)
 
-**W-MACHINE** (5)
-
-- `GU-005` Guest IP addresses and hostname (missing) - Summary
-- `GU-057` DNS: nameserver and search domain (missing) - Hardware: Container
-- `GU-058` Features: nesting, keyctl, fuse, mknod, mount types (missing) - Hardware: Container
-- `GU-038` Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) (partial) - Hardware: VM
-- `GU-056` Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) (partial) - Hardware: Container
+**W-MACHINE** (0)
 
 **W-ACCESS** (0)
 
@@ -98,7 +92,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-025 | Options | WebAuthn and U2F settings | PUT /cluster/options (webauthn, u2f) | done | P1 | W-ACCESS | Sign-in policy tab (PolicyTab.tsx); GET/PUT /api/access/signin-policy |  |
 | DC-026 | Options | Cluster resource scheduling and HA settings | PUT /cluster/options (crs, ha) | done | P2 | W-CLUSTER | Datacenter Options, HA settings and resource scheduling (schema form) |  |
 | DC-027 | Options | Login consent banner | PUT /cluster/options (consent-text) | done | P2 | W-ACCESS | Sign-in policy tab login notice; shown on the sign-in page (GET /api/login/banner) |  |
-| DC-028 | Options | Custom CPU models | GET/POST /cluster/qemu/custom-cpu-models; GET /cluster/qemu/cpu-flags | missing | P2 | W-MACHINE |  |  |
+| DC-028 | Options | Custom CPU models | GET/POST /cluster/qemu/custom-cpu-models; GET /cluster/qemu/cpu-flags | done | P2 | W-MACHINE | Datacenter, CPU models; /api/cpu-models (custom CPU models); machineDc.ts |  |
 | DC-029 | Storage | List storage definitions | GET /storage | done | P0 | W-DISK | GET /api/storage-config; StorageAdmin.tsx |  |
 | DC-030 | Storage | Add Directory storage | POST /storage (type=dir) | done | P0 | W-DISK | POST /api/storage-config (storage-schema.ts dir) |  |
 | DC-031 | Storage | Add LVM storage | POST /storage (type=lvm) | done | P1 | W-DISK | POST /api/storage-config (lvm) |  |
@@ -260,7 +254,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-056 | Power | Bulk start all / stop all / suspend all / migrate all | POST /nodes/{node}/startall; stopall; suspendall; migrateall | done | P1 | W-MACHINE | Host, All machines (bulk start, stop, suspend, move) |  |
 | ND-057 | Hardware and capabilities | List PCI devices, IOMMU groups, mediated types | GET /nodes/{node}/hardware/pci; .../{id}/mdev | done | P1 | W-MACHINE | Hardware, PCI and USB: IOMMU groups, mediated device types |  |
 | ND-058 | Hardware and capabilities | List USB devices | GET /nodes/{node}/hardware/usb | done | P1 | W-MACHINE | Hardware, PCI and USB: USB devices |  |
-| ND-059 | Hardware and capabilities | QEMU CPU models, flags, machine types, migration capabilities | GET /nodes/{node}/capabilities/qemu/{cpu,cpu-flags,machines,migration} | missing | P1 | W-MACHINE |  |  |
+| ND-059 | Hardware and capabilities | QEMU CPU models, flags, machine types, migration capabilities | GET /nodes/{node}/capabilities/qemu/{cpu,cpu-flags,machines,migration} | done | P1 | W-MACHINE | Datacenter, CPU models, What this device supports; GET /api/capabilities/qemu |  |
 | ND-060 | Hardware and capabilities | OCI image pull and tag lookup (container from registry image) | POST /nodes/{node}/storage/{storage}/oci-registry-pull; GET /nodes/{node}/query-oci-repo-tags | missing | P2 | W-MACHINE |  |  |
 | ND-061 | Hardware and capabilities | URL metadata lookup before download | GET /nodes/{node}/query-url-metadata | done | P2 | W-DISK | GET /api/storage-tools/url-metadata; StorageTools, Import |  |
 
@@ -274,27 +268,27 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-004 | Summary | Tags (edit, colors) | PUT .../config (tags) | done | P1 | W-MACHINE | Notes and tags card on the Overview; POST /api/guests/:id/notes (digest) |  |
 | GU-005 | Summary | Guest IP addresses and hostname | GET .../agent/network-get-interfaces; GET lxc/{vmid}/interfaces | done | P0 | W-MACHINE | GET /api/guests/:id/addresses (agent, container interfaces, configured fallback); Overview Details; features/guest.ts |  |
 | GU-006 | Summary | HA state of the guest | GET /cluster/ha/status/current | done | P2 | W-CLUSTER | Machine overview, Cluster card; GET /api/cluster/ha/guest/:vmid |  |
-| GU-007 | Summary | Pending configuration changes (shown, revert) | GET .../pending | partial | P1 | W-MACHINE | pending read in /api/guests/:id/config; no revert |  |
+| GU-007 | Summary | Pending configuration changes (shown, revert) | GET .../pending | done | P1 | W-MACHINE | Hardware, pending banner with Review; GET /api/guests/:id/pending, POST .../pending/revert (revert); machineSettings.ts |  |
 | GU-008 | Power | Start | POST .../status/start | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
 | GU-009 | Power | Shutdown (graceful) | POST .../status/shutdown | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
 | GU-010 | Power | Stop (hard) | POST .../status/stop | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
 | GU-011 | Power | Reboot | POST .../status/reboot | done | P0 | W-MACHINE | POST /api/guests/:id/power |  |
 | GU-012 | Power | Reset (VM) | POST qemu/{vmid}/status/reset | done | P1 | W-MACHINE | POST /api/guests/:id/power |  |
-| GU-013 | Power | Suspend to RAM, resume | POST .../status/suspend; .../status/resume | missing | P1 | W-MACHINE | POWER list lacks suspend and resume |  |
-| GU-014 | Power | Hibernate (suspend to disk) | POST qemu/{vmid}/status/suspend (todisk=1) | missing | P1 | W-MACHINE |  |  |
-| GU-015 | Power | Shutdown timeout, force stop, skip lock | POST .../status/shutdown (timeout, forceStop) | missing | P2 | W-MACHINE |  |  |
+| GU-013 | Power | Suspend to RAM, resume | POST .../status/suspend; .../status/resume | done | P1 | W-MACHINE | Power options, Pause and Resume; POST /api/guests/:id/status; machineRun.ts |  |
+| GU-014 | Power | Hibernate (suspend to disk) | POST qemu/{vmid}/status/suspend (todisk=1) | done | P1 | W-MACHINE | Power options, Hibernate (todisk, state storage); POST /api/guests/:id/status |  |
+| GU-015 | Power | Shutdown timeout, force stop, skip lock | POST .../status/shutdown (timeout, forceStop) | done | P2 | W-MACHINE | Power options: wait time, force stop, ignore lock; POST /api/guests/:id/status |  |
 | GU-016 | Console | VM graphical console (noVNC) with Ctrl+Alt+Del | POST qemu/{vmid}/vncproxy; vncwebsocket; PUT .../sendkey | done | P0 | W-MACHINE | POST /api/guests/:id/vnc; WebSocket /api/vnc/:id |  |
 | GU-017 | Console | Container and VM serial text console | POST .../termproxy; vncwebsocket | done | P0 | W-MACHINE | WebSocket /api/console/guests/:id |  |
-| GU-018 | Console | SPICE console file | POST .../spiceproxy | missing | P2 | W-MACHINE |  |  |
-| GU-019 | Console | QEMU monitor | POST qemu/{vmid}/monitor | missing | P2 | W-MACHINE |  |  |
+| GU-018 | Console | SPICE console file | POST .../spiceproxy | done | P2 | W-MACHINE | Console, SPICE viewer file; POST /api/guests/:id/spice (.vv built from spiceproxy) |  |
+| GU-019 | Console | QEMU monitor | POST qemu/{vmid}/monitor | done | P2 | W-MACHINE | Console, QEMU monitor; POST /api/guests/:id/monitor |  |
 | GU-020 | Hardware: VM | Memory: fixed amount | PUT qemu/{vmid}/config (memory) | done | P0 | W-MACHINE | POST /api/guests/:id/config; Hardware.tsx |  |
-| GU-021 | Hardware: VM | Memory: ballooning minimum, shares, hugepages | PUT qemu/{vmid}/config (balloon, shares, hugepages) | partial | P1 | W-MACHINE | minimum memory (balloon) in Resources; shares and hugepages missing |  |
+| GU-021 | Hardware: VM | Memory: ballooning minimum, shares, hugepages | PUT qemu/{vmid}/config (balloon, shares, hugepages) | done | P1 | W-MACHINE | Processor and memory (minimum) and Machine type and memory details (shares, huge pages); settings/memory |  |
 | GU-022 | Hardware: VM | Processors: sockets and cores | PUT qemu/{vmid}/config (sockets, cores) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
-| GU-023 | Hardware: VM | Processors: type, flags, vCPUs, limit, units, affinity, NUMA | PUT qemu/{vmid}/config (cpu, vcpus, cpulimit, cpuunits, affinity, numa) | partial | P1 | W-MACHINE | CPU limit and weight in Resources; type, flags, vCPUs, affinity, NUMA missing |  |
+| GU-023 | Hardware: VM | Processors: type, flags, vCPUs, limit, units, affinity, NUMA | PUT qemu/{vmid}/config (cpu, vcpus, cpulimit, cpuunits, affinity, numa) | done | P1 | W-MACHINE | Processor details: type, flags, hidden, active CPUs, affinity, NUMA nodes; settings/cpu, settings/numa |  |
 | GU-024 | Hardware: VM | BIOS (SeaBIOS/OVMF) | PUT qemu/{vmid}/config (bios) | done | P1 | W-MACHINE | BIOS change in Firmware and devices; POST .../items/bios |  |
 | GU-025 | Hardware: VM | Display (VGA type, memory, clipboard) | PUT qemu/{vmid}/config (vga) | done | P1 | W-MACHINE | Display type, video memory, VNC clipboard; POST .../items/display |  |
-| GU-026 | Hardware: VM | Machine type (i440fx, q35), version, vIOMMU | PUT qemu/{vmid}/config (machine) | missing | P1 | W-MACHINE |  |  |
-| GU-027 | Hardware: VM | SCSI controller type | PUT qemu/{vmid}/config (scsihw) | missing | P1 | W-MACHINE |  |  |
+| GU-026 | Hardware: VM | Machine type (i440fx, q35), version, vIOMMU | PUT qemu/{vmid}/config (machine) | done | P1 | W-MACHINE | Machine type and memory details: type, version, virtual IOMMU, sleep states; settings/machine |  |
+| GU-027 | Hardware: VM | SCSI controller type | PUT qemu/{vmid}/config (scsihw) | done | P1 | W-MACHINE | Machine type and memory details: SCSI controller; settings/machine |  |
 | GU-028 | Hardware: VM | Hard disk: list with storage, size, format | GET qemu/{vmid}/config (scsiN, sataN, ideN, virtioN) | done | P0 | W-DISK | Hardware.tsx via normalizeConfig |  |
 | GU-029 | Hardware: VM | Hard disk: add (bus, storage, size, format, cache, discard, SSD, iothread, async IO, backup flag, limits) | PUT qemu/{vmid}/config (scsiN, ...) | done | P0 | W-DISK | POST /api/guests/:id/disks/add; disksGuest.ts, HardwareDiskModals.tsx |  |
 | GU-030 | Hardware: VM | Hard disk: edit options | PUT qemu/{vmid}/config | done | P1 | W-DISK | POST /api/guests/:id/disks/:key/edit |  |
@@ -309,13 +303,13 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-039 | Hardware: VM | Network device: remove | PUT qemu/{vmid}/config (delete=netN) | done | P0 | W-MACHINE | POST /api/guests/:id/network/:key/delete (digest, name typed) |  |
 | GU-040 | Hardware: VM | EFI disk: add, remove | PUT qemu/{vmid}/config (efidisk0) | done | P1 | W-MACHINE | Add and remove EFI disk (type, Secure Boot keys); POST .../items/efi, removal typed |  |
 | GU-041 | Hardware: VM | TPM state: add, remove | PUT qemu/{vmid}/config (tpmstate0) | done | P1 | W-MACHINE | Add and remove TPM (version); POST .../items/tpm, removal typed |  |
-| GU-042 | Hardware: VM | PCI device passthrough (raw, mapped, PCIe, ROM-bar, primary GPU, mediated) | PUT qemu/{vmid}/config (hostpciN) | partial | P1 | W-MACHINE | Configured PCI devices and the host list, read only (view); add and edit missing |  |
-| GU-043 | Hardware: VM | USB device passthrough (host, spice, mapped) | PUT qemu/{vmid}/config (usbN) | partial | P1 | W-MACHINE | Configured USB devices and the host list, read only (view); add and edit missing |  |
+| GU-042 | Hardware: VM | PCI device passthrough (raw, mapped, PCIe, ROM-bar, primary GPU, mediated) | PUT qemu/{vmid}/config (hostpciN) | done | P1 | W-MACHINE | Host devices card: add and remove raw (root@pam), mapped, PCIe, ROM-BAR, primary GPU, vGPU; POST /api/guests/:id/host-devices |  |
+| GU-043 | Hardware: VM | USB device passthrough (host, spice, mapped) | PUT qemu/{vmid}/config (usbN) | done | P1 | W-MACHINE | Host devices card: add and remove device, port, mapping, SPICE, USB 3; POST /api/guests/:id/host-devices |  |
 | GU-044 | Hardware: VM | Serial port | PUT qemu/{vmid}/config (serialN) | done | P1 | W-MACHINE | Serial ports add and remove; POST .../items/serial |  |
 | GU-045 | Hardware: VM | Audio device | PUT qemu/{vmid}/config (audio0) | done | P2 | W-MACHINE | Audio device add, edit, remove; POST .../items/audio |  |
-| GU-046 | Hardware: VM | VirtIO RNG | PUT qemu/{vmid}/config (rng0) | missing | P2 | W-MACHINE |  |  |
-| GU-047 | Hardware: VM | VirtIO-FS directory share | PUT qemu/{vmid}/config (virtiofsN) | missing | P2 | W-MACHINE |  |  |
-| GU-048 | Hardware: VM | Watchdog, extra args, NUMA nodes, parallel ports | PUT qemu/{vmid}/config (watchdog, args, numaN, parallelN) | missing | P2 | W-MACHINE |  |  |
+| GU-046 | Hardware: VM | VirtIO RNG | PUT qemu/{vmid}/config (rng0) | done | P2 | W-MACHINE | Other devices card, random number generator; settings/rng |  |
+| GU-047 | Hardware: VM | VirtIO-FS directory share | PUT qemu/{vmid}/config (virtiofsN) | done | P2 | W-MACHINE | Other devices card, shared folders from directory mappings; settings/virtiofs |  |
+| GU-048 | Hardware: VM | Watchdog, extra args, NUMA nodes, parallel ports | PUT qemu/{vmid}/config (watchdog, args, numaN, parallelN) | done | P2 | W-MACHINE | Other devices (watchdog, parallel ports), More options (extra arguments), Processor details (NUMA nodes) |  |
 | GU-049 | Hardware: Container | Memory and swap | PUT lxc/{vmid}/config (memory, swap) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
 | GU-050 | Hardware: Container | CPU cores | PUT lxc/{vmid}/config (cores) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
 | GU-051 | Hardware: Container | CPU limit and units | PUT lxc/{vmid}/config (cpulimit, cpuunits) | done | P2 | W-MACHINE | CPU limit and weight in Resources; POST /api/guests/:id/resources |  |
@@ -326,23 +320,23 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-056 | Hardware: Container | Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) | PUT lxc/{vmid}/config (netN) | done | P0 | W-MACHINE | Container network: name, bridge, VLAN, MAC, IPv4 and IPv6 (DHCP, static, gateway), firewall, disconnect, rate, MTU; POST /api/guests/:id/network |  |
 | GU-057 | Hardware: Container | DNS: nameserver and search domain | PUT lxc/{vmid}/config (nameserver, searchdomain) | done | P0 | W-MACHINE | DNS card: servers and search domains, or the host's; POST /api/guests/:id/dns |  |
 | GU-058 | Hardware: Container | Features: nesting, keyctl, fuse, mknod, mount types | PUT lxc/{vmid}/config (features) | done | P0 | W-MACHINE | Features card: nesting, keyctl, FUSE, mknod, writable /sys, mount types; POST /api/guests/:id/features |  |
-| GU-059 | Hardware: Container | Device passthrough | PUT lxc/{vmid}/config (devN) | partial | P1 | W-MACHINE | Configured devices shown (view); add and edit missing |  |
-| GU-060 | Cloud-Init | Add and remove Cloud-Init drive | PUT qemu/{vmid}/config (ideN: cloudinit) | missing | P1 | W-MACHINE |  |  |
-| GU-061 | Cloud-Init | User, password, SSH public keys | PUT qemu/{vmid}/cloudinit (ciuser, cipassword, sshkeys) | missing | P1 | W-MACHINE |  |  |
-| GU-062 | Cloud-Init | IP config per NIC (static, DHCP, IPv6), DNS domain and servers | PUT qemu/{vmid}/config (ipconfigN, nameserver, searchdomain) | missing | P1 | W-MACHINE |  |  |
-| GU-063 | Cloud-Init | Upgrade packages, custom user/network/meta snippets | PUT qemu/{vmid}/config (ciupgrade, cicustom) | missing | P2 | W-MACHINE |  |  |
-| GU-064 | Cloud-Init | Regenerate image; dump generated config | PUT qemu/{vmid}/cloudinit; GET .../cloudinit/dump | missing | P1 | W-MACHINE |  |  |
+| GU-059 | Hardware: Container | Device passthrough | PUT lxc/{vmid}/config (devN) | done | P1 | W-MACHINE | Host devices card for containers: device nodes with mode and group; POST /api/guests/:id/host-devices |  |
+| GU-060 | Cloud-Init | Add and remove Cloud-Init drive | PUT qemu/{vmid}/config (ideN: cloudinit) | done | P1 | W-MACHINE | Cloud-Init tab: add and remove the drive; POST /api/guests/:id/cloudinit, .../cloudinit/drive/remove |  |
+| GU-061 | Cloud-Init | User, password, SSH public keys | PUT qemu/{vmid}/cloudinit (ciuser, cipassword, sshkeys) | done | P1 | W-MACHINE | Cloud-Init tab: user, write-only password, SSH keys |  |
+| GU-062 | Cloud-Init | IP config per NIC (static, DHCP, IPv6), DNS domain and servers | PUT qemu/{vmid}/config (ipconfigN, nameserver, searchdomain) | done | P1 | W-MACHINE | Cloud-Init tab: DHCP, static and IPv6 addresses per network device, DNS and domain |  |
+| GU-063 | Cloud-Init | Upgrade packages, custom user/network/meta snippets | PUT qemu/{vmid}/config (ciupgrade, cicustom) | done | P2 | W-MACHINE | Cloud-Init tab: upgrade packages, format, custom user, network, meta and vendor snippets |  |
+| GU-064 | Cloud-Init | Regenerate image; dump generated config | PUT qemu/{vmid}/cloudinit; GET .../cloudinit/dump | done | P1 | W-MACHINE | Cloud-Init tab: Regenerate image, Generated files; POST .../cloudinit/regenerate, GET .../cloudinit/dump |  |
 | GU-065 | Options | Name or hostname | PUT .../config (name, hostname) | done | P0 | W-MACHINE | POST /api/guests/:id/config; MachineActions.tsx |  |
 | GU-066 | Options | Start at boot | PUT .../config (onboot) | done | P0 | W-MACHINE | POST /api/guests/:id/config |  |
 | GU-067 | Options | Start/shutdown order and delays | PUT .../config (startup) | done | P1 | W-MACHINE | checkMachineOptions in hardware.ts |  |
 | GU-068 | Options | Boot order | PUT qemu/{vmid}/config (boot) | done | P1 | W-MACHINE | checkMachineOptions |  |
 | GU-069 | Options | QEMU guest agent: enable | PUT qemu/{vmid}/config (agent) | done | P0 | W-MACHINE | checkMachineOptions |  |
-| GU-070 | Options | QEMU guest agent: fstrim, freeze, type | PUT qemu/{vmid}/config (agent=enabled=1,fstrim_cloned_disks=1,type) | missing | P2 | W-MACHINE |  |  |
+| GU-070 | Options | QEMU guest agent: fstrim, freeze, type | PUT qemu/{vmid}/config (agent=enabled=1,fstrim_cloned_disks=1,type) | done | P2 | W-MACHINE | More options: agent channel, freeze for backups, trim cloned disks; Guest agent tab, Trim now |  |
 | GU-071 | Options | OS type | PUT .../config (ostype) | done | P1 | W-MACHINE | checkMachineOptions |  |
 | GU-072 | Options | Protection against removal | PUT .../config (protection) | done | P0 | W-MACHINE | checkMachineOptions |  |
-| GU-073 | Options | Use tablet, ACPI, KVM, freeze at startup, local time, RTC start date | PUT qemu/{vmid}/config (tablet, acpi, kvm, freeze, localtime, startdate) | missing | P2 | W-MACHINE |  |  |
-| GU-074 | Options | Hotplug, SMBIOS, Spectre/Meltdown, VM state storage, AMD SEV | PUT qemu/{vmid}/config (hotplug, smbios1, spectre, vmstatestorage, amd-sev) | missing | P2 | W-MACHINE |  |  |
-| GU-075 | Options | Container console mode, TTY count, architecture, hookscript | PUT lxc/{vmid}/config (cmode, tty, console, arch, hookscript) | missing | P2 | W-MACHINE |  |  |
+| GU-073 | Options | Use tablet, ACPI, KVM, freeze at startup, local time, RTC start date | PUT qemu/{vmid}/config (tablet, acpi, kvm, freeze, localtime, startdate) | done | P2 | W-MACHINE | More options: tablet, ACPI, KVM, freeze, clock, start date, time drift fix; settings/vmoptions |  |
+| GU-074 | Options | Hotplug, SMBIOS, Spectre/Meltdown, VM state storage, AMD SEV | PUT qemu/{vmid}/config (hotplug, smbios1, spectre, vmstatestorage, amd-sev) | partial | P2 | W-MACHINE | More options: hotplug, SMBIOS, state storage, Spectre and Meltdown as CPU flags, SPICE; AMD SEV and Intel TDX not offered |  |
+| GU-075 | Options | Container console mode, TTY count, architecture, hookscript | PUT lxc/{vmid}/config (cmode, tty, console, arch, hookscript) | done | P2 | W-MACHINE | Container options: console mode, terminals, console device, time zone, architecture, OS type, hook script, debug; settings/ctoptions |  |
 | GU-076 | Task History | Per-guest task list and log | GET /nodes/{node}/tasks (vmid) | done | P0 | W-MACHINE | MachineTasks.tsx; GET /api/tasks?vmid= |  |
 | GU-077 | Backup (per guest) | Back up now (mode, compression, storage, notes) | POST /nodes/{node}/vzdump | done | P0 | W-DISK | modal backup-now; POST /api/backups/run |  |
 | GU-078 | Backup (per guest) | List backups of this guest and restore | GET /nodes/{node}/storage/{storage}/content (backup, vmid) | done | P0 | W-DISK | MachineBackups in MachinePage.tsx |  |
@@ -352,18 +346,18 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-082 | Snapshots | Take snapshot (name, description, include RAM) | POST .../snapshot | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots |  |
 | GU-083 | Snapshots | Roll back | POST .../snapshot/{snapname}/rollback | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots/:name/rollback |  |
 | GU-084 | Snapshots | Delete snapshot | DELETE .../snapshot/{snapname} | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots/:name/delete |  |
-| GU-085 | Snapshots | Edit snapshot description | PUT .../snapshot/{snapname}/config | missing | P2 | W-MACHINE |  |  |
+| GU-085 | Snapshots | Edit snapshot description | PUT .../snapshot/{snapname}/config | done | P2 | W-MACHINE | Snapshots: edit description; POST .../snapshots/:name/describe |  |
 | GU-086 | Firewall (per guest) | Rules, options, aliases, IP sets, log | GET/POST .../firewall/{rules,options,aliases,ipset,log} | done | P1 | W-NODE | /api/firewall/guest-<vmid>/*; MachineFirewall |  |
 | GU-087 | Permissions (per guest) | View and change who may use this guest | GET/PUT /access/acl (path /vms/{vmid}) | done | P1 | W-ACCESS | Permissions tab: list, grant, revoke (typed); GET/POST /api/guests/:id/permissions |  |
 | GU-088 | Migrate and clone | Migrate (online/offline, target node, local disks, target storage, preconditions) | GET/POST .../migrate | done | P1 | W-CLUSTER | Machine, Migrate (online, offline, restart, target node, local disks and storage, HA aware, watched task); /api/cluster/migrate/:vmid |  |
 | GU-089 | Migrate and clone | Remote migrate to another cluster | POST .../remote_migrate | done | P2 | W-CLUSTER | RemoteMigrateButton on the machine page; POST /api/cluster/remote-migrate/:vmid (token write-only, fingerprint required) |  |
 | GU-090 | Migrate and clone | Clone: name, target storage, full or linked (from template), pool | POST .../clone | done | P0 | W-MACHINE | POST /api/guests/:id/clone |  |
-| GU-091 | Migrate and clone | Clone: target node, VMID choice, format, from a snapshot, bandwidth limit | POST .../clone (target, newid, format, snapname, bwlimit) | missing | P1 | W-MACHINE |  |  |
+| GU-091 | Migrate and clone | Clone: target node, VMID choice, format, from a snapshot, bandwidth limit | POST .../clone (target, newid, format, snapname, bwlimit) | done | P1 | W-MACHINE | Clone dialog, More options: number, node, format, snapshot, speed limit, resource group; POST .../clone-options |  |
 | GU-092 | Migrate and clone | Convert to template | POST .../template | done | P0 | W-MACHINE | POST /api/guests/:id/template |  |
 | GU-093 | Migrate and clone | Delete guest (purge from jobs, destroy unreferenced disks) | DELETE .../{vmid} | done | P0 | W-MACHINE | POST /api/guests/:id/destroy (name typed, protection honored) |  |
-| GU-094 | Migrate and clone | Delete guest: purge job configs and destroy unreferenced disks options | DELETE .../{vmid} (purge, destroy-unreferenced-disks) | missing | P2 | W-MACHINE |  |  |
-| GU-095 | Guest agent | Agent info, OS info, filesystem info, users, time | GET qemu/{vmid}/agent/{info,get-osinfo,get-fsinfo,get-users,get-time} | missing | P2 | W-MACHINE |  |  |
-| GU-096 | Guest agent | Agent actions: set user password, fstrim, freeze/thaw, exec | POST qemu/{vmid}/agent/{set-user-password,fstrim,fsfreeze-freeze,exec} | missing | P2 | W-MACHINE |  |  |
+| GU-094 | Migrate and clone | Delete guest: purge job configs and destroy unreferenced disks options | DELETE .../{vmid} (purge, destroy-unreferenced-disks) | done | P2 | W-MACHINE | Delete dialog, Options: remove from jobs, destroy unreferenced disks; POST .../delete |  |
+| GU-095 | Guest agent | Agent info, OS info, filesystem info, users, time | GET qemu/{vmid}/agent/{info,get-osinfo,get-fsinfo,get-users,get-time} | done | P2 | W-MACHINE | Guest agent tab: system, kernel, file systems, users, time zone, CPUs, agent commands; GET .../agent/* |  |
+| GU-096 | Guest agent | Agent actions: set user password, fstrim, freeze/thaw, exec | POST qemu/{vmid}/agent/{set-user-password,fstrim,fsfreeze-freeze,exec} | done | P2 | W-MACHINE | Guest agent tab: trim, freeze and thaw, set password, run a command, read a file; POST .../agent |  |
 
 ### Storage
 
@@ -408,8 +402,8 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | WZ-013 | Create VM | CPU: sockets, cores, type, vCPUs, limit, NUMA | POST /nodes/{node}/qemu (sockets, cores, cpu) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 | WZ-014 | Create VM | Memory: fixed or ballooning | POST /nodes/{node}/qemu (memory, balloon) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 | WZ-015 | Create VM | Network: bridge, VLAN, model, MAC, firewall, disconnect | POST /nodes/{node}/qemu (net0) | done | P0 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
-| WZ-016 | Create VM | Create from template: cloud-init VM (clone, set user, keys, IP) | POST .../clone; PUT .../cloudinit | partial | P1 | W-MACHINE | Create VM wizard adds a cloud-init drive with user, password, keys, IP, DNS; cloning a template into a cloud-init VM is not built |  |
-| WZ-017 | Create VM | Import from ESXi or OVA | POST /nodes/{node}/qemu (import-from) | missing | P2 | W-MACHINE |  |  |
+| WZ-016 | Create VM | Create from template: cloud-init VM (clone, set user, keys, IP) | POST .../clone; PUT .../cloudinit | done | P1 | W-MACHINE | Clone dialog, Cloud-Init section: user, keys, address, grow disk, start; POST .../clone-options |  |
+| WZ-017 | Create VM | Import from ESXi or OVA | POST /nodes/{node}/qemu (import-from) | partial | P2 | W-MACHINE | Create VM, Disks, Start from an image on an import storage (disk image, OVA disk, ESXi machine); whole-OVF and ESXi import wizards need Proxmox's own tools |  |
 | WZ-018 | Create VM | Create from backup (restore) | POST /nodes/{node}/qemu (archive) | done | P0 | W-DISK | POST /api/backups/restore |  |
 | WZ-019 | Create VM | Create VM: cloud-init drive, user, password, SSH keys, IP per NIC, DNS | POST /nodes/{node}/qemu (ideN: cloudinit, ciuser, cipassword, sshkeys, ipconfigN, nameserver, searchdomain) | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |
 | WZ-020 | Create VM | Create VM: PCI and USB passthrough (raw, mapped, PCIe, primary GPU, ROM-bar, SPICE) | POST /nodes/{node}/qemu (hostpciN, usbN); GET /nodes/{node}/hardware/pci, usb; GET /cluster/mapping/pci, usb | done | P1 | W-MACHINE | features/wizard.ts /api/wizard/*; wizard-schema; pages/machines/NewMachine.tsx; docs/WIZARDS.md |  |

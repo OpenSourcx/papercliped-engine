@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Copy, Loader2, Lock, Trash2 } from "lucide-react";
 import { type GuestHardware } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
+import { errorText } from "../../data/engine/guestApi.ts";
+import { useMachineApi } from "../../data/engine/machineApi.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Input } from "../../ui/primitives.tsx";
+import { Button, Input, Toggle } from "../../ui/primitives.tsx";
 
 /** Delete or convert to template. Both are permanent, so the machine's name has to be typed. ?modal=machine-action&action=...&vmid=... */
 export function MachineActionModal({ onClose }: { onClose: () => void }) {
@@ -19,6 +21,9 @@ export function MachineActionModal({ onClose }: { onClose: () => void }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const api = useMachineApi();
+  const [purge, setPurge] = useState(true);
+  const [unref, setUnref] = useState(true);
 
   useEffect(() => {
     if (g) engine.backend.hardware(g.vmid).then(setHw, () => setHw(null));
@@ -33,6 +38,20 @@ export function MachineActionModal({ onClose }: { onClose: () => void }) {
   const go = async () => {
     setBusy(true);
     setError(null);
+    // Choosing different delete options goes through the options route; the default path is unchanged.
+    if (action === "destroy" && engine.live && (!purge || !unref)) {
+      try {
+        const t = await api.remove(g.vmid, { confirm: typed, purge, destroyUnreferenced: unref });
+        engine.watchTask(t.task, `Delete ${g.name}`);
+        setBusy(false);
+        onClose();
+        nav(g.org ? `/${device}/${g.org}/machines` : `/${device}/machines`, { replace: true });
+      } catch (e) {
+        setError(errorText(e, "Proxmox refused that"));
+        setBusy(false);
+      }
+      return;
+    }
     const r = action === "destroy" ? await engine.destroyMachine(g.vmid, typed) : await engine.convertToTemplate(g.vmid, typed);
     setBusy(false);
     if (!r.ok) return setError(r.error);
@@ -60,6 +79,15 @@ export function MachineActionModal({ onClose }: { onClose: () => void }) {
                 <li>It's taken off backup schedules. <span className="text-ink-3">Backups already taken stay on their storage.</span></li>
                 <li>Snapshots go with it.</li>
               </ul>
+            )}
+            {action === "destroy" && (
+              <details>
+                <summary className="cursor-pointer text-compact text-ink-2">Options</summary>
+                <div className="space-y-3 mt-3">
+                  <div className="flex items-center justify-between gap-3"><div><div className="text-sm">Remove from backup and replication jobs</div><div className="text-xs text-ink-3">Otherwise the jobs keep listing a machine that no longer exists.</div></div><Toggle checked={purge} onChange={setPurge} label="Remove from backup and replication jobs" /></div>
+                  <div className="flex items-center justify-between gap-3"><div><div className="text-sm">Destroy unreferenced disks</div><div className="text-xs text-ink-3">Also deletes disks of this machine on any storage that the configuration no longer mentions.</div></div><Toggle checked={unref} onChange={setUnref} label="Destroy unreferenced disks" /></div>
+                </div>
+              </details>
             )}
             {action === "template" && <p className="text-compact text-ink-2">Use Clone on a template to make new machines quickly, as linked clones that share its disk.</p>}
             <label className="block"><span className="block text-xs text-ink-3 mb-1.5">Type <span className="font-mono text-ink-2">{g.name}</span> to confirm</span><Input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && typed === g.name && go()} spellCheck={false} className="font-mono" /></label>
