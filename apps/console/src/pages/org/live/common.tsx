@@ -69,8 +69,8 @@ export function ActionError({ error }: { error: unknown }) {
   return <p className="text-compact text-critical mt-2" role="alert">{errorText(error)}</p>;
 }
 
-/** Pages under an organization that the engine doesn't back yet. Live, they redirect to the dashboard rather than show made-up data. */
-export const LIVE_HIDDEN = new Set(["connectors"]);
+/** Pages under an organization that the engine does not back yet (none now: Connectors shows its AI accounts). Live, they redirect to the dashboard rather than show made-up data. */
+export const LIVE_HIDDEN = new Set<string>();
 
 /**
  * Everything under /<device>/<org>. Live, it waits for the engine and the organization list, explains calmly when the

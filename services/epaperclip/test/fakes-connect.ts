@@ -46,7 +46,10 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
     const overlay = p.startsWith("/api/adapters") || /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
     if (!overlay) {
       // Everything else is the stock fake engine.
-      const r = await fetch(eng.url + req.url, { method: req.method, headers: req.headers as Record<string, string>, body: ["GET", "HEAD"].includes(req.method!) ? undefined : raw });
+      const hop = new Set(["connection", "keep-alive", "upgrade", "host", "content-length", "transfer-encoding", "te", "trailer", "proxy-connection"]);
+      const fwd = Object.fromEntries(Object.entries(req.headers).filter(([k, v]) => !hop.has(k) && typeof v === "string")) as Record<string, string>;
+      const r = await fetch(eng.url + req.url, { method: req.method, headers: fwd, body: ["GET", "HEAD"].includes(req.method!) ? undefined : raw }).catch(() => null);
+      if (!r) return send(502, { error: "overlay could not reach the engine" });
       res.writeHead(r.status, Object.fromEntries([...r.headers].filter(([k]) => !["content-encoding", "content-length", "transfer-encoding"].includes(k)).map(([k, v]) => [k, v])));
       res.end(Buffer.from(await r.arrayBuffer()));
       return;
@@ -187,7 +190,7 @@ export async function startConnectApp(o: { staticDir?: string | null; providers?
     if (path === "/cluster/status" && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: [{ type: "node", name: "pve", online: 1, local: 1, ip: "10.0.0.2" }] }) });
     return base(req);
   };
-  const app = await buildApp({ engine: { url: overlay.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras, market: o.market, fetchText: o.fetchText });
+  const app = await buildApp({ engine: { url: overlay.url, publicUrl: eng.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras, market: o.market, fetchText: o.fetchText });
   const sam = await app.signIn("sam");
   await until(() => eng.st.admins.size >= 1);
   const lee = await app.signIn("lee");
