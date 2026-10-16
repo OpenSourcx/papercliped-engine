@@ -313,18 +313,29 @@ export const poolSlug = (name: string) =>
     .replace(/-+$/, "") || "org";
 
 /**
- * Proxmox's partial (two-factor) ticket carries the challenge as `!tfa!<url-encoded JSON>`. True when it offers a
- * security key and nothing we can ask for (no authenticator app, recovery keys or Yubico). Unreadable means false.
+ * What a partial Proxmox ticket (the one that means "second factor still owed") says can be answered: an authenticator
+ * code, recovery keys, a security key (with the options the browser needs). Unreadable means "ask for a code", the
+ * long-standing default. Legacy U2F and Yubico OTP are listed so the console can say why they can't be answered here.
  */
-export function webauthnOnly(ticket: string): boolean {
+export interface TfaMethods {
+  totp: boolean;
+  recovery: boolean;
+  webauthn: Record<string, unknown> | null;
+  unsupported: boolean;
+}
+export function tfaMethods(ticket: string): TfaMethods {
+  const fallback: TfaMethods = { totp: true, recovery: true, webauthn: null, unsupported: false };
   try {
     const seg = ticket.split(":").find((x) => x.startsWith("!tfa!"));
-    if (!seg) return false;
+    if (!seg) return fallback;
     const c = JSON.parse(decodeURIComponent(seg.slice(5))) as Record<string, unknown>;
     const has = (k: string) => c[k] !== undefined && c[k] !== false && c[k] !== null;
-    return (has("webauthn") || has("u2f")) && !has("totp") && !has("recovery") && !has("yubico");
+    const w = c.webauthn && typeof c.webauthn === "object" ? (c.webauthn as Record<string, unknown>) : null;
+    const totp = has("totp");
+    const recovery = has("recovery");
+    return { totp, recovery, webauthn: w, unsupported: !totp && !recovery && !w && (has("u2f") || has("yubico")) };
   } catch {
-    return false;
+    return fallback;
   }
 }
 
@@ -481,9 +492,10 @@ export function createApp(d: AppDeps) {
         // A password that is right but still owes a second factor doesn't wipe the record: guessing codes counts too.
         if (!r.needTfa) limiter.clear(keys);
         if (r.needTfa) {
-          if (webauthnOnly(r.ticket)) throw new HttpError(403, "tfa_webauthn_only", "This account's only second factor is a security key (WebAuthn), which ePaperclip can't ask for yet. Add an authenticator app or recovery keys from another session, or sign in with Proxmox's own page.");
+          const methods = tfaMethods(r.ticket);
+          if (methods.unsupported) throw new HttpError(403, "tfa_unsupported", "This account's only second factor is a legacy U2F key or a Yubico OTP, which ePaperclip can't ask for. Add a security key (WebAuthn), an authenticator app or recovery keys from another session, or sign in with Proxmox's own page.");
           const p = d.sessions.startTfa(r.username, r.ticket);
-          return sendJson(res, 200, { needTfa: true, challenge: p.id });
+          return sendJson(res, 200, { needTfa: true, challenge: p.id, methods: { totp: methods.totp, recovery: methods.recovery, webauthn: methods.webauthn } });
         }
         return signIn(req, res, r.username, r.ticket, r.csrf!);
       } catch (e) {
@@ -500,9 +512,19 @@ export function createApp(d: AppDeps) {
       const b = await readJson(req);
       const p = d.sessions.getTfa(str(b.challenge, 128) ?? undefined);
       if (!p) throw new HttpError(401, "tfa_expired", "That sign-in expired. Start again.");
-      const kind = b.kind === "recovery" ? "recovery" : "totp";
-      const code = str(b.code, 128);
-      if (!code || (kind === "totp" && !/^\d{6,8}$/.test(code))) throw new HttpError(400, "bad_code", "Enter the code from your authenticator app");
+      const kind = b.kind === "recovery" ? "recovery" : b.kind === "webauthn" ? "webauthn" : "totp";
+      // A security key answers with the browser's signed response (JSON); the others with a short code.
+      const code = kind === "webauthn" ? str(b.response, 16 * 1024) : str(b.code, 128);
+      if (kind === "webauthn") {
+        let ok = false;
+        try {
+          const v = JSON.parse(code ?? "") as { id?: unknown; type?: unknown };
+          ok = typeof v.id === "string" && v.type === "public-key";
+        } catch {
+          ok = false;
+        }
+        if (!ok) throw new HttpError(400, "bad_code", "The security key's answer isn't valid. Try again.");
+      } else if (!code || (kind === "totp" && !/^\d{6,8}$/.test(code))) throw new HttpError(400, "bad_code", "Enter the code from your authenticator app");
       // Wrong codes count against the person and the address across sign-ins, so starting over (password again) doesn't reset them.
       const keys = [`ip:${ip}`, userKey(p.username)];
       if (limiter.blocked(keys)) throw new HttpError(429, "too_many_attempts", "Too many failed sign-ins. Wait 15 minutes and try again.");
