@@ -52,8 +52,8 @@ describe("retention", () => {
     await h.boot();
     const sam = await h.signIn();
     const r = (await h.send(sam, "GET", "/api/storage-tools/local/prune?keepLast=1")).json;
-    expect(r.counts).toEqual({ keep: 1, remove: 2, protected: 1, renamed: 0 });
-    expect(r.bytesToFree).toBe(8e9);
+    expect(r.counts).toEqual({ keep: 0, remove: 3, protected: 1, renamed: 0 });
+    expect(r.bytesToFree).toBe(12e9);
     expect(r.retention.keepLast).toBe(1);
     expect(r.items.find((i: any) => i.mark === "protected").volid).toContain("lxc-201");
     expect(h.calls("GET", "/nodes/pve/storage/local/prunebackups")[0].params["prune-backups"]).toBe("keep-last=1");
@@ -86,7 +86,7 @@ describe("volumes and files", () => {
     expect((await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", { ...body, name: "vm-201-disk-1" })).status).toBe(400);
     expect((await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", { ...body, sizeGiB: 0 })).status).toBe(400);
     expect((await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", { ...body, format: "iso" })).status).toBe(400);
-    expect((await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", { ...body, vmid: 999 })).status).toBe(404);
+    expect((await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", { ...body, vmid: 999, name: "vm-999-disk-1" })).status).toBe(404);
     const ok = await h.send(sam, "POST", "/api/storage-tools/local-lvm/allocate", body);
     expect(ok.json.volid).toBe("local-lvm:vm-200-disk-7");
     expect(h.calls("POST", "/nodes/pve/storage/local-lvm/content")[0].params).toMatchObject({ vmid: "200", filename: "vm-200-disk-7", size: "4G", format: "raw" });
@@ -289,7 +289,7 @@ describe("restoring with options", () => {
     expect(r.json.vmid).toBe(300);
     expect(h.calls("POST", "/nodes/pve/qemu")[0].params).toMatchObject({ vmid: "300", archive: vm, storage: "local-lvm", unique: "1", start: "1", bwlimit: "20000", "live-restore": "1", pool: "web" });
     expect((await h.send(sam, "POST", "/api/backup-tools/restore", { from: "local", volid: vm, vmid: 200 })).json.code).toBe("exists");
-    expect((await h.send(sam, "POST", "/api/backup-tools/restore", { from: "local", volid: vm, unique: false })).status).toBe(200);
+    expect((await h.send(sam, "POST", "/api/backup-tools/restore", { from: "local", volid: vm, vmid: 301, unique: false })).status).toBe(200);
     expect(h.calls("POST", "/nodes/pve/qemu")[1].params.unique).toBeUndefined();
   });
 

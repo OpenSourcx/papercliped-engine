@@ -187,7 +187,7 @@ function record(ctx: FeatureCtx, node: string, disks: ReturnType<typeof summariz
 // ---- ZFS commands
 
 const POOL_NAME = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
-const VDEV = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9/_.:+-]{0,200}$/;
+const VDEV = /^(?!.*\.\.)\/?[A-Za-z0-9][A-Za-z0-9/_.:+-]{0,200}$/;
 const RESERVED_POOL = /^(mirror|raidz[123]?|draid\d*|spare|log|cache|special|dedup)(-\d+)?$/;
 
 export interface ZfsStep {
