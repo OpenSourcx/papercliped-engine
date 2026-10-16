@@ -3,7 +3,7 @@ import { Check, ShieldAlert, X } from "lucide-react";
 import { useSession } from "../../auth/session.tsx";
 import { connectApi, type AuthRequestInfo, type Level } from "../../data/engine/connectApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
-import { httpUrl } from "../../lib/safeUrl.ts";
+import { returnUrl } from "../../lib/safeUrl.ts";
 import { cn } from "../../lib/storage.ts";
 import { PinOrb } from "../../pin/PinOrb.tsx";
 import { Button, Card, Notice, Segmented, Spinner, Toggle } from "../../ui/primitives.tsx";
@@ -44,8 +44,8 @@ export function ConsentPage() {
     }
     try {
       const r = await connectApi.consent(body);
-      const to = httpUrl(r.redirect);
-      if (!to) throw new Error("The app's return address isn't a web address.");
+      const to = returnUrl(r.redirect, info.client.redirectUri);
+      if (!to) throw new Error("The app's return address isn't one this page can send you to.");
       window.location.assign(to);
     } catch (e) {
       setError(errorText(e));
@@ -84,8 +84,14 @@ export function ConsentPage() {
       </div>
 
       <div className="rounded-lg bg-surface-2 border border-line px-4 py-3 text-compact text-ink-2">
-        After you decide, you'll be sent back to <span className="font-mono text-ink">{info.client.redirectHost}</span>
-        {info.client.loopback ? " (an app on this computer)" : ""}. If you don't recognise that address, choose Deny.
+        <p>
+          <span className="text-ink font-medium">{info.client.name}</span> is asking. After you decide, you'll be sent back to{" "}
+          <span className="font-mono text-ink">{info.client.redirectHost}</span>
+          {info.client.loopback ? " (an app on this computer)" : info.client.customScheme ? " (an app on this computer, opened by its own address)" : ""}. If you don't recognise that address, choose Deny.
+        </p>
+        <p className="mt-2 text-xs text-ink-3">Full return address</p>
+        <p className="font-mono text-xs text-ink break-all" data-testid="redirect-uri">{info.client.redirectUri}</p>
+        {info.client.customScheme && <p className="mt-2 text-xs text-ink-3">An administrator of this device allowed this kind of address. Anything installed on your computer could claim it, so only continue if you started this connection yourself.</p>}
       </div>
 
       <div>

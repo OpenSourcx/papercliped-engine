@@ -648,11 +648,11 @@ describe("custom-scheme redirect addresses an administrator allows", () => {
     const consent = await j(await h.call("POST", "/api/connect/oauth/consent", { cookie: h.sam }, { ...Object.fromEntries(q), approve: false }));
     expect(consent.redirect.startsWith("cursor://anysphere.cursor-mcp/oauth/callback?")).toBe(true);
     // Removing it closes the door again, for apps that already registered too.
-    const gone = await h.call("DELETE", "/api/connect/redirect-allow", { cookie: h.sam }, { uri: cursor, kind: "exact" });
+    const gone = await h.call("DELETE", `/api/connect/redirect-allow?${new URLSearchParams({ uri: cursor, kind: "exact" })}`, { cookie: h.sam });
     expect(gone.status).toBe(200);
     expect((await h.call("GET", `/api/connect/oauth/request?${q}`, { cookie: h.sam })).status).toBe(400);
     expect((await register(cursor)).status).toBe(400);
-    expect((await h.call("DELETE", "/api/connect/redirect-allow", { cookie: h.sam }, { uri: cursor, kind: "exact" })).status).toBe(404);
+    expect((await h.call("DELETE", `/api/connect/redirect-allow?${new URLSearchParams({ uri: cursor, kind: "exact" })}`, { cookie: h.sam })).status).toBe(404);
     // The audit trail records who allowed and removed it.
     const audit = JSON.stringify(await j(await h.call("GET", "/api/access/audit", { cookie: h.sam })));
     expect(audit).toContain("oauth.redirect_allow");

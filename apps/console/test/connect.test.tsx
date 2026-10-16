@@ -38,7 +38,7 @@ afterEach(() => {
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
 
 describe("the consent page", () => {
-  const info = (scope: string) => ({ client: { id: "c1", name: "Claude", redirectHost: "claude.ai", loopback: false }, scope, scopes, user: "sam@pve", orgs: [{ id: "co_1", name: "Northwind" }, { id: "co_2", name: "Secret Ops" }], lifetimeDays: 90 });
+  const info = (scope: string) => ({ client: { id: "c1", name: "Claude", redirectHost: "claude.ai", redirectUri: "https://claude.ai/cb", loopback: false, customScheme: false }, scope, scopes, user: "sam@pve", orgs: [{ id: "co_1", name: "Northwind" }, { id: "co_2", name: "Secret Ops" }], lifetimeDays: 90 });
   let assigned: string | null;
   beforeEach(() => {
     assigned = null;
@@ -98,7 +98,38 @@ describe("the consent page", () => {
     wrap(<ConsentPage />);
     await screen.findByText("Connect Claude to ePaperclip?");
     fireEvent.click(screen.getByRole("button", { name: /Allow Read only/ }));
-    expect((await screen.findByRole("alert")).textContent).toContain("web address");
+    expect((await screen.findByRole("alert")).textContent).toContain("can send you to");
+    expect(assigned).toBeNull();
+  });
+
+  it("shows the app's name and its full return address, and in the copy says an app can never confirm for the person", async () => {
+    routes["GET /api/connect/oauth/request"] = () => [200, info("paperclip:control")];
+    wrap(<ConsentPage />);
+    await screen.findByText("Connect Claude to ePaperclip?");
+    expect(screen.getByTestId("redirect-uri").textContent).toBe("https://claude.ai/cb");
+    expect(document.body.textContent).toContain("the app can never type it for you");
+    expect(document.body.textContent).toContain("only starts and snapshots run at once");
+  });
+
+  it("sends the person back to an allowed custom-scheme address, and only to the one it showed", async () => {
+    const cursor = "cursor://anysphere.cursor-mcp/oauth/callback";
+    routes["GET /api/connect/oauth/request"] = () => [200, { ...info("paperclip:read"), client: { id: "c2", name: "Cursor IDE", redirectHost: "anysphere.cursor-mcp", redirectUri: cursor, loopback: false, customScheme: true } }];
+    wrap(<ConsentPage />);
+    expect(await screen.findByText("Connect Cursor IDE to ePaperclip?")).toBeTruthy();
+    expect(screen.getByTestId("redirect-uri").textContent).toBe(cursor);
+    expect(document.body.textContent).toContain("An administrator of this device allowed this kind of address");
+    routes["POST /api/connect/oauth/consent"] = () => [200, { redirect: `${cursor}?code=XYZ&state=s1` }];
+    fireEvent.click(screen.getByRole("button", { name: /Allow Read only/ }));
+    await waitFor(() => expect(assigned).toBe(`${cursor}?code=XYZ&state=s1`));
+  });
+
+  it("refuses a custom-scheme redirect that is not the address it showed", async () => {
+    routes["GET /api/connect/oauth/request"] = () => [200, { ...info("paperclip:read"), client: { id: "c2", name: "Cursor IDE", redirectHost: "anysphere.cursor-mcp", redirectUri: "cursor://anysphere.cursor-mcp/oauth/callback", loopback: false, customScheme: true } }];
+    routes["POST /api/connect/oauth/consent"] = () => [200, { redirect: "vscode://evil/steal?code=XYZ" }];
+    wrap(<ConsentPage />);
+    await screen.findByText("Connect Cursor IDE to ePaperclip?");
+    fireEvent.click(screen.getByRole("button", { name: /Allow Read only/ }));
+    expect((await screen.findByRole("alert")).textContent).toContain("can send you to");
     expect(assigned).toBeNull();
   });
 });
@@ -128,6 +159,49 @@ describe("connected apps", () => {
     expect(calls.some((c) => c.method === "DELETE")).toBe(false); // asks first
     fireEvent.click(screen.getByRole("button", { name: /End the connection/ }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+  });
+});
+
+describe("app return addresses (administrators)", () => {
+  const overview = { mcpUrl: "https://pve.lan/mcp", issuer: "https://pve.lan", scopes, user: "sam@pve", canManageAll: true, orgs: [], fetchUrl: false, tools: [], grantDays: 90 };
+  let entries: { uri: string; kind: string; addedBy: string; addedAt: number }[];
+  beforeEach(() => {
+    entries = [];
+    routes["GET /api/connect/overview"] = () => [200, overview];
+    routes["GET /api/connect/apps"] = () => [200, { apps: [], scope: "all" }];
+    routes["GET /api/connect/activity"] = () => [200, { calls: [], events: [] }];
+    routes["GET /api/connect/redirect-allow"] = () => [200, { entries, deniedSchemes: ["javascript"] }];
+  });
+  it("lists nothing by default, and adding one needs the scheme typed back", async () => {
+    routes["POST /api/connect/redirect-allow"] = (b) => { entries = [{ uri: b.uri, kind: b.kind, addedBy: "sam@pve", addedAt: Date.now() }]; return [200, { entries }]; };
+    wrap(<LiveApps />);
+    expect(await screen.findByText(/None allowed/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Allow an address/ }));
+    fireEvent.change(screen.getByLabelText("Address"), { target: { value: "cursor://anysphere.cursor-mcp/oauth/callback" } });
+    const go = screen.getByRole("button", { name: "Allow this address" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: "allow vscode" } });
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: "allow cursor" } });
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ uri: "cursor://anysphere.cursor-mcp/oauth/callback", kind: "exact", confirm: "allow cursor" }));
+    expect(await screen.findByText("cursor://anysphere.cursor-mcp/oauth/callback")).toBeTruthy();
+  });
+  it("removes an address without a phrase", async () => {
+    entries = [{ uri: "vscode://vscode.github-authentication/", kind: "prefix", addedBy: "sam@pve", addedAt: Date.now() }];
+    routes["DELETE /api/connect/redirect-allow"] = () => { entries = []; return [200, { entries }]; };
+    wrap(<LiveApps />);
+    fireEvent.click(await screen.findByRole("button", { name: "Stop allowing vscode://vscode.github-authentication/" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === "/api/connect/redirect-allow")).toBe(true));
+    expect(await screen.findByText(/None allowed/)).toBeTruthy();
+  });
+  it("is not shown to people who are not administrators", async () => {
+    routes["GET /api/connect/overview"] = () => [200, { ...overview, canManageAll: false }];
+    wrap(<LiveApps />);
+    await screen.findByText("https://pve.lan/mcp");
+    expect(screen.queryByText(/App return addresses/)).toBeNull();
+    expect(calls.some((c) => c.path === "/api/connect/redirect-allow")).toBe(false);
   });
 });
 

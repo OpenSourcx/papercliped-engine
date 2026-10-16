@@ -84,3 +84,20 @@ describe("no way to put markup or code in the page", () => {
     expect(code).not.toMatch(/localStorage\.(set|get)Item\([^)]*(token|password|secret|ticket)/i);
   });
 });
+
+import { returnUrl } from "../src/lib/safeUrl.ts";
+describe("returnUrl", () => {
+  const cursor = "cursor://anysphere.cursor-mcp/oauth/callback";
+  it("sends people to web addresses and to the one custom-scheme address the page showed", () => {
+    expect(returnUrl("https://claude.ai/cb?code=1", "https://claude.ai/cb")).toBe("https://claude.ai/cb?code=1");
+    expect(returnUrl(`${cursor}?code=1`, cursor)).toBe(`${cursor}?code=1`);
+  });
+  it("never to another app, another scheme, or a scheme that runs code or reads files", () => {
+    expect(returnUrl("vscode://anysphere.cursor-mcp/oauth/callback?code=1", cursor)).toBeNull();
+    expect(returnUrl("cursor://other/oauth/callback?code=1", cursor)).toBeNull();
+    for (const bad of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "blob:https://x/y", "about:blank", "ws://x/", "vbscript:x"]) expect(returnUrl(bad, bad), bad).toBeNull();
+    expect(returnUrl(cursor, "https://claude.ai/cb")).toBeNull();
+    expect(returnUrl("", cursor)).toBeNull();
+    expect(returnUrl(5, cursor)).toBeNull();
+  });
+});

@@ -420,8 +420,8 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     }
     if (method === "DELETE") {
       ctx.sameSite();
-      const b = await ctx.readJson();
-      if (typeof b.uri !== "string" || !svc.removeRedirectAllow(b.uri, b.kind, who, ctx.req.socket.remoteAddress ?? undefined)) throw new E(404, "not_found", "That address is not on the list.");
+      const uri = ctx.url.searchParams.get("uri");
+      if (uri === null || !svc.removeRedirectAllow(uri, ctx.url.searchParams.get("kind"), who, ctx.req.socket.remoteAddress ?? undefined)) throw new E(404, "not_found", "That address is not on the list.");
       return ctx.json(200, { entries: svc.redirectAllow() }), true;
     }
   }

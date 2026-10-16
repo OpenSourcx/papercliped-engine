@@ -6,6 +6,7 @@ import { ago } from "../../data/engine/map.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
+import { RedirectAllowCard } from "./RedirectAllow.tsx";
 import { Avatar, Button, Card, Chip, EmptyState, Notice, PageFrame, PageHeader, SectionTitle, Segmented, Spinner, Status, Toggle } from "../../ui/primitives.tsx";
 
 const LEVEL: Record<Level, string> = { "paperclip:read": "Read only", "paperclip:control": "Full control" };
@@ -124,6 +125,7 @@ export function LiveApps() {
             <Toggle checked={overview.data.fetchUrl} label="Let Full control apps fetch web pages" onChange={(v) => connectApi.setFetchUrl(v).then(refresh)} />
             <div><div className="text-sm">Let Full control apps fetch web pages</div><p className="text-xs text-ink-3">Adds one tool that reads public https pages from this host. Off by default; it never reaches addresses on your network.</p></div>
           </Card>
+          <RedirectAllowCard />
         </section>
       )}
       {selected && <AppPanel app={selected} orgs={overview.data.orgs} onClose={() => setOpen(null)} onChanged={refresh} />}
