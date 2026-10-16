@@ -66,14 +66,25 @@ interface Trigger {
   archived?: boolean;
 }
 
-/** The webhook triggers of one organization, read from the engine as its administrator. */
-export async function hooksOf(gateway: EngineGateway, companyId: string): Promise<Hook[]> {
-  const list = (await gateway.serviceJson<Routine[] | { routines?: Routine[] }>("GET", `/api/companies/${encodeURIComponent(companyId)}/routines`)) ?? [];
+/**
+ * The webhook triggers of one organization. Read as the engine's service account when it may see the organization,
+ * otherwise as the managed engine account of the administrator who opened it (the engine only lets members and its own
+ * administrators read an organization's routines). If neither can, the answer is an error and the door stays shut.
+ */
+export async function hooksOf(gateway: EngineGateway, companyId: string, openedBy?: string): Promise<Hook[]> {
+  const read = async <T,>(path: string): Promise<T> => {
+    const viaService = await gateway.serviceJson<T>("GET", path).catch(() => null);
+    if (viaService !== null) return viaService;
+    if (!openedBy) throw new HttpError(403, "forbidden", "The engine doesn't let this host read that organization's routines");
+    return gateway.accountJson<T>(openedBy, "GET", path);
+  };
+  const list = await read<Routine[] | { routines?: Routine[] }>(`/api/companies/${encodeURIComponent(companyId)}/routines`);
   const routines = Array.isArray(list) ? list : (list.routines ?? []);
   const out: Hook[] = [];
   for (const r of routines.slice(0, 500)) {
     // The list may leave triggers out; the detail always has them.
-    const full = Array.isArray(r.triggers) ? r : ((await gateway.serviceJson<Routine>("GET", `/api/routines/${encodeURIComponent(r.id)}`).catch(() => null)) ?? r);
+    const complete = Array.isArray(r.triggers) && r.triggers.every((t) => t.kind !== "webhook" || typeof t.publicId === "string");
+    const full = complete ? r : ((await read<Routine>(`/api/routines/${encodeURIComponent(r.id)}`).catch(() => null)) ?? r);
     for (const t of full.triggers ?? []) {
       if (t.kind !== "webhook" || !t.publicId || !/^[0-9a-f]{24}$/.test(t.publicId) || t.archived) continue;
       out.push({ routineId: r.id, routine: r.title ?? "Routine", triggerId: t.id, label: t.label ?? null, publicId: t.publicId, signingMode: t.signingMode ?? "none", enabled: t.enabled !== false });
@@ -89,7 +100,7 @@ export async function listIngress(state: StateStore, gateway: EngineGateway | nu
     const e = on[o.companyId];
     let hooks: Hook[] = [];
     let error: string | null = null;
-    if (e && gateway) hooks = await hooksOf(gateway, o.companyId).catch((x: Error) => ((error = x.message), []));
+    if (e && gateway) hooks = await hooksOf(gateway, o.companyId, e.by).catch((x: Error) => ((error = x.message), []));
     out.push({ companyId: o.companyId, name: o.name, enabled: Boolean(e), enabledAt: e?.enabledAt ?? null, by: e?.by ?? null, hooks, error });
   }
   return { organizations: out, path: "/hooks/routines/{id}/fire", maxBodyBytes: INGRESS_MAX_BODY, limits: { perAddressPerMinute: LIMITS.perAddress, perTriggerPerMinute: LIMITS.perTrigger, overallPerMinute: LIMITS.overall }, engineReady: gateway !== null };
@@ -134,7 +145,8 @@ export class RoutineIngress {
   private async refresh(open: string[]) {
     this.refreshedAt = this.now();
     const next = new Map<string, string>();
-    for (const companyId of open) for (const h of await hooksOf(this.gateway!, companyId).catch(() => [] as Hook[])) next.set(h.publicId, companyId);
+    const settings = ingressSettings(this.state);
+    for (const companyId of open) for (const h of await hooksOf(this.gateway!, companyId, settings[companyId]?.by).catch(() => [] as Hook[])) next.set(h.publicId, companyId);
     this.cache = next;
   }
 
