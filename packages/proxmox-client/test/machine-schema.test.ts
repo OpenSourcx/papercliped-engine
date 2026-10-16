@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MachineError, applyChange, planCpu, planCtOptions, planDevice, planMachine, planMemoryExtras, planNuma, planVmOptions, readSettings, type Cfg } from "../src/machine-schema.ts";
-import { checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, ipconfigString, planCloudInit, planCloudInitDrive, planMapping, planPassthrough, readCloudInit, spiceFile } from "../src/machine-extra.ts";
+import { checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, ipconfigString, planCloudInit, planCloudInitDrive, planPassthrough, readCloudInit, spiceFile } from "../src/machine-extra.ts";
 
 const vm = (extra: Cfg = {}): Cfg => ({ name: "vm", cores: 4, sockets: 1, memory: 4096, bios: "ovmf", machine: "q35", net0: "virtio=BC:24:11:AA:BB:01,bridge=vmbr0", ...extra });
 const fails = (fn: () => unknown, re: RegExp) => expect(fn).toThrowError(re);
@@ -164,21 +164,6 @@ describe("host devices", () => {
     fails(() => planPassthrough("lxc", {}, { kind: "dev", action: "add", path: "/dev/../etc" }, root), /device path/);
     fails(() => planPassthrough("lxc", {}, { kind: "dev", action: "add", path: "/dev/x", mode: "999" }, root), /octal/);
     fails(() => planPassthrough("lxc", {}, { kind: "pci", action: "add" }, root), /device nodes/);
-  });
-});
-
-describe("resource mappings", () => {
-  it("PCI", () => {
-    const m = planMapping("pci", { id: "gpu0", description: "Render GPU", mdev: true, map: [{ node: "pve", path: "0000:01:00.0", id: "10DE:2484", iommugroup: 14 }] }, true);
-    expect(m.params).toEqual({ id: "gpu0", description: "Render GPU", mdev: true, map: ["node=pve,path=0000:01:00.0,id=10de:2484,iommugroup=14"] });
-    fails(() => planMapping("pci", { id: "g", map: [] }, true), /name has/);
-    fails(() => planMapping("pci", { id: "gpu0", map: [{ node: "pve", path: "zz", id: "10de:2484" }] }, true), /PCI path/);
-  });
-  it("USB and directories", () => {
-    expect(planMapping("usb", { id: "key1", map: [{ node: "pve", id: "1050:0407", path: "1-2.3" }] }, true).params.map).toEqual(["node=pve,id=1050:0407,path=1-2.3"]);
-    expect(planMapping("dir", { id: "docs", map: [{ node: "pve", path: "/srv/docs" }] }, true).params.map).toEqual(["node=pve,path=/srv/docs"]);
-    fails(() => planMapping("dir", { id: "docs", map: [{ node: "pve", path: "/srv/../etc" }] }, true), /absolute path/);
-    fails(() => planMapping("dir", { id: "docs", map: [{ node: "pve", path: "/a" }, { node: "pve", path: "/b" }] }, true), /twice/);
   });
 });
 

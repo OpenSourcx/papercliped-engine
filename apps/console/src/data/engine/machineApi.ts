@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { readPassthrough, type PassthroughItem, checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, checkSnapshotDescription, planCloudInit, planCloudInitDrive, planMapping, planPassthrough, planCustomCpu, readCloudInit, spiceFile, type CloudInitView, type MappingEntry } from "@papercliped-engine/proxmox-client/machine-extra";
+import { readPassthrough, type PassthroughItem, checkAgentAction, checkBulk, checkClone, checkDelete, checkPower, checkSnapshotDescription, planCloudInit, planCloudInitDrive, planPassthrough, planCustomCpu, readCloudInit, spiceFile, type CloudInitView } from "@papercliped-engine/proxmox-client/machine-extra";
 import { MachineError, applyChange, planCpu, planCtOptions, planDevice, planMachine, planMemoryExtras, planNuma, planVmOptions, readSettings, type Cfg, type DeviceKind, type MachineSettings } from "@papercliped-engine/proxmox-client/machine-schema";
 import { ApiError, SIGNED_OUT } from "../api.ts";
 import type { Backend } from "../backend.ts";
@@ -87,50 +87,12 @@ export interface AgentResult {
   file?: string;
 }
 
-export interface PciRow {
-  id: string;
-  vendor: string | null;
-  device: string | null;
-  vendorId: string | null;
-  deviceId: string | null;
-  subsystem: string | null;
-  class: string | null;
-  iommuGroup: number;
-  mdev: boolean;
-  mappings: string[];
-}
-export interface UsbRow {
-  id: string;
-  bus: number;
-  port: string;
-  level: number;
-  name: string;
-  serial: string | null;
-  speed: string | null;
-  hub: boolean;
-}
 export interface Capabilities {
   node: string;
   cpu: { name: string; vendor: string | null; custom: boolean }[];
   flags: { name: string; description: string; supported: boolean | null }[];
   machines: { id: string; type: string | null; version: string | null; changes: string | null }[];
   migration: { cpu: string | null; hasDirtyBitmaps: boolean } | null;
-}
-export type MappingKind = "pci" | "usb" | "dir";
-export interface MappingRow {
-  id: string;
-  description: string;
-  mdev: boolean;
-  map: MappingEntry[];
-  checks: { severity: string; message: string }[];
-  digest: string | null;
-}
-export interface MappingList {
-  kind: MappingKind;
-  visible: boolean;
-  canModify: boolean;
-  nodes: string[];
-  mappings: MappingRow[];
 }
 export interface CpuModelRow {
   cputype: string;
@@ -168,13 +130,8 @@ export interface MachineApi {
   monitor(vmid: number, command: string): Promise<{ command: string; output: string }>;
   agentRead(vmid: number, what: string): Promise<{ what: string; result: unknown }>;
   agent(vmid: number, body: Body): Promise<AgentResult>;
-  pciDevices(all: boolean): Promise<{ node: string; note: string | null; devices: PciRow[] }>;
   mdevTypes(id: string): Promise<{ id: string; types: { type: string; name: string | null; description: string; available: number }[] }>;
-  usbDevices(): Promise<{ node: string; note: string | null; devices: UsbRow[] }>;
   capabilities(): Promise<Capabilities>;
-  mappings(kind: MappingKind): Promise<MappingList>;
-  saveMapping(kind: MappingKind, id: string | null, body: Body): Promise<{ ok: true }>;
-  deleteMapping(kind: MappingKind, id: string, confirm: string): Promise<{ ok: true }>;
   cpuModels(): Promise<{ visible: boolean; canModify: boolean; models: CpuModelRow[] }>;
   saveCpuModel(name: string | null, body: Body): Promise<{ ok: true }>;
   deleteCpuModel(name: string, confirm: string): Promise<{ ok: true }>;
@@ -225,13 +182,8 @@ export const liveMachineApi: MachineApi = {
   monitor: (v, command) => request("POST", g(v, "monitor"), { command }),
   agentRead: (v, what) => request("GET", g(v, `agent/${what}`)),
   agent: (v, b) => request("POST", g(v, "agent"), b),
-  pciDevices: (all) => request("GET", `/api/hardware/pci${all ? "?all=1" : ""}`),
   mdevTypes: (id) => request("GET", `/api/hardware/pci/mdev?id=${enc(id)}`),
-  usbDevices: () => request("GET", "/api/hardware/usb"),
   capabilities: () => request("GET", "/api/capabilities/qemu"),
-  mappings: (k) => request("GET", `/api/mappings/${k}`),
-  saveMapping: (k, id, b) => request("POST", id ? `/api/mappings/${k}/${enc(id)}` : `/api/mappings/${k}`, b),
-  deleteMapping: (k, id, confirm) => request("POST", `/api/mappings/${k}/${enc(id)}/delete`, { confirm }),
   cpuModels: () => request("GET", "/api/cpu-models"),
   saveCpuModel: (name, b) => request("POST", name ? `/api/cpu-models/${enc(name)}` : "/api/cpu-models", b),
   deleteCpuModel: (name, confirm) => request("POST", `/api/cpu-models/${enc(name)}/delete`, { confirm }),
@@ -263,17 +215,18 @@ interface Demo {
   snaps: Record<string, string>;
 }
 const demos = new WeakMap<Backend, Map<number, Demo>>();
-const mappingStore = new WeakMap<Backend, Record<MappingKind, MappingRow[]>>();
 const cpuStore = new WeakMap<Backend, CpuModelRow[]>();
 
-const DEMO_PCI: PciRow[] = [
-  { id: "0000:01:00.0", vendor: "NVIDIA Corporation", device: "GA104 [GeForce RTX 3070]", vendorId: "0x10de", deviceId: "0x2484", subsystem: null, class: "0x030000", iommuGroup: 14, mdev: false, mappings: [] },
-  { id: "0000:01:00.1", vendor: "NVIDIA Corporation", device: "GA104 High Definition Audio", vendorId: "0x10de", deviceId: "0x228b", subsystem: null, class: "0x040300", iommuGroup: 14, mdev: false, mappings: [] },
-  { id: "0000:03:00.0", vendor: "Intel Corporation", device: "Ethernet Controller X550", vendorId: "0x8086", deviceId: "0x1563", subsystem: null, class: "0x020000", iommuGroup: 20, mdev: false, mappings: [] },
+const DEMO_MAPS = { pci: [{ id: "gpu0", description: "Render GPU", mdev: false, map: [{ path: "0000:01:00.0" }] }], usb: [] as { id: string; description: string; mdev: boolean; map: { path: string }[] }[], dir: [{ id: "docs", description: "Shared documents" }] };
+
+const DEMO_PCI: { id: string; vendor: string | null; device: string | null; class: string | null; iommuGroup: number; mdev: boolean }[] = [
+  { id: "0000:01:00.0", vendor: "NVIDIA Corporation", device: "GA104 [GeForce RTX 3070]", class: "0x030000", iommuGroup: 14, mdev: false },
+  { id: "0000:01:00.1", vendor: "NVIDIA Corporation", device: "GA104 High Definition Audio", class: "0x040300", iommuGroup: 14, mdev: false },
+  { id: "0000:03:00.0", vendor: "Intel Corporation", device: "Ethernet Controller X550", class: "0x020000", iommuGroup: 20, mdev: false },
 ];
-const DEMO_USB: UsbRow[] = [
-  { id: "1050:0407", bus: 1, port: "1-2", level: 1, name: "Yubico YubiKey", serial: null, speed: "12", hub: false },
-  { id: "0781:5583", bus: 2, port: "2-1", level: 1, name: "SanDisk Ultra Fit", serial: null, speed: "5000", hub: false },
+const DEMO_USB: { id: string; port: string; name: string; speed: string | null }[] = [
+  { id: "1050:0407", port: "1-2", name: "Yubico YubiKey", speed: "12" },
+  { id: "0781:5583", port: "2-1", name: "SanDisk Ultra Fit", speed: "5000" },
 ];
 const DEMO_FLAGS = ["aes", "pcid", "spec-ctrl", "ssbd", "ibpb", "md-clear", "virt-ssbd", "amd-ssbd", "hv-tlbflush", "hv-evmcs"].map((name) => ({ name, description: name === "aes" ? "Hardware AES encryption" : name === "spec-ctrl" ? "Spectre v1/v2 protection (indirect branch controls)" : name === "pcid" ? "Process-context IDs: makes the Meltdown fix much cheaper" : "", supported: true }));
 const DEMO_CPUS = ["host", "kvm64", "x86-64-v2-AES", "x86-64-v3", "Skylake-Server", "Cascadelake-Server", "EPYC"].map((name) => ({ name, vendor: null, custom: false }));
@@ -282,9 +235,8 @@ const DEMO_MACHINES = [{ id: "pc-i440fx-9.0", type: "i440fx", version: "9.0", ch
 export function demoMachineApi(backend: Backend): MachineApi {
   if (!demos.has(backend)) demos.set(backend, new Map());
   const all = demos.get(backend)!;
-  if (!mappingStore.has(backend)) mappingStore.set(backend, { pci: [{ id: "gpu0", description: "Render GPU", mdev: false, map: [{ node: "pve", path: "0000:01:00.0", id: "10de:2484", iommugroup: 14, subsystemId: null, description: null }], checks: [], digest: newDigest() }], usb: [], dir: [{ id: "docs", description: "Shared documents", mdev: false, map: [{ node: "pve", path: "/srv/docs", id: "", iommugroup: null, subsystemId: null, description: null }], checks: [], digest: newDigest() }] });
   if (!cpuStore.has(backend)) cpuStore.set(backend, []);
-  const maps = mappingStore.get(backend)!;
+  const maps = DEMO_MAPS;
   const models = cpuStore.get(backend)!;
 
   async function demo(vmid: number): Promise<Demo> {
@@ -483,38 +435,11 @@ export function demoMachineApi(backend: Backend): MachineApi {
       if (b.confirm !== "run") fail(409, "confirm", "Type run to confirm. The command runs inside the machine as the agent's user (usually root).");
       return wait({ ok: true, finished: true, exitcode: 0, out: `ran ${req.command!.join(" ")}\n`, err: "" });
     },
-    async pciDevices(allDevices) {
-      return wait({ node: "pve", note: null, devices: DEMO_PCI.map((d) => ({ ...d, mappings: maps.pci.filter((m) => m.map.some((e) => e.path === d.id)).map((m) => m.id) })).concat(allDevices ? [{ id: "0000:00:00.0", vendor: "Intel Corporation", device: "Host bridge", vendorId: "0x8086", deviceId: "0x3e0f", subsystem: null, class: "0x060000", iommuGroup: 0, mdev: false, mappings: [] }] : []) });
-    },
     async mdevTypes(id) {
       return wait({ id, types: [] });
     },
-    async usbDevices() {
-      return wait({ node: "pve", note: null, devices: DEMO_USB });
-    },
     async capabilities() {
       return wait({ node: "pve", cpu: [...DEMO_CPUS, ...models.map((m) => ({ name: `custom-${m.cputype}`, vendor: null, custom: true }))], flags: DEMO_FLAGS, machines: DEMO_MACHINES, migration: { cpu: "Skylake-Server", hasDirtyBitmaps: true } });
-    },
-    async mappings(kind) {
-      return wait({ kind, visible: true, canModify: true, nodes: ["pve"], mappings: maps[kind] });
-    },
-    async saveMapping(kind, id, b) {
-      const body = { ...b, id: id ?? b.id };
-      delete (body as Body).digest;
-      const plan = guard(() => planMapping(kind, body, id === null));
-      const list = maps[kind];
-      if (!id && list.some((m) => m.id === plan.id)) fail(409, "exists", `A mapping called ${plan.id} already exists`);
-      const row: MappingRow = { id: plan.id, description: String(plan.params.description ?? ""), mdev: plan.params.mdev === true, map: (plan.params.map as string[]).map((line) => parseLine(line)), checks: [], digest: newDigest() };
-      const i = list.findIndex((m) => m.id === plan.id);
-      if (i >= 0) list[i] = row;
-      else list.push(row);
-      return wait({ ok: true as const });
-    },
-    async deleteMapping(kind, id, confirm) {
-      if (confirm !== id) fail(409, "confirm", `Type ${id} to confirm.`);
-      maps[kind] = maps[kind].filter((m) => m.id !== id);
-      mappingStore.get(backend)![kind] = maps[kind];
-      return wait({ ok: true as const });
     },
     async cpuModels() {
       return wait({ visible: true, canModify: true, models });
@@ -539,15 +464,6 @@ export function demoMachineApi(backend: Backend): MachineApi {
       return wait({ task: "demo" });
     },
   };
-}
-
-function parseLine(line: string): MappingEntry {
-  const o: Record<string, string> = {};
-  for (const part of line.split(",")) {
-    const i = part.indexOf("=");
-    if (i > 0) o[part.slice(0, i)] = part.slice(i + 1);
-  }
-  return { node: o.node ?? "", path: o.path ?? "", id: o.id ?? "", iommugroup: o.iommugroup ? Number(o.iommugroup) : null, subsystemId: o["subsystem-id"] ?? null, description: o.description ?? null };
 }
 
 /** Live against the host service, or the in-browser stand-in in the demo. */

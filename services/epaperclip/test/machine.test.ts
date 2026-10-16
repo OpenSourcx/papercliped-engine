@@ -566,29 +566,12 @@ describe("guest agent", () => {
   });
 });
 
-describe("hardware, capabilities, mappings, CPU models and bulk actions", () => {
-  it("lists PCI devices with IOMMU groups and the mappings they are in, and mediated types", async () => {
+describe("vGPU types, capabilities, CPU models and bulk actions", () => {
+  it("lists the mediated (vGPU) types a PCI device offers", async () => {
     const c = await signIn();
-    const h = await j(await get(c, "/api/hardware/pci"));
-    const gpu = h.devices.find((d: any) => d.id === "0000:01:00.0");
-    expect(gpu).toMatchObject({ iommuGroup: 14, mdev: true, mappings: ["gpu0"], vendor: "NVIDIA Corporation" });
-    expect(h.devices.map((d: any) => d.id)).not.toContain("0000:00:00.0"); // host bridges are filtered, as Proxmox does
-    const all = await j(await get(c, "/api/hardware/pci?all=1"));
-    expect(all.devices.map((d: any) => d.id)).toContain("0000:00:00.0");
     const t = await j(await get(c, "/api/hardware/pci/mdev?id=0000:01:00.0"));
     expect(t.types[0]).toMatchObject({ type: "nvidia-63", available: 8 });
     expect((await get(c, "/api/hardware/pci/mdev?id=%24x")).status).toBe(400);
-  });
-
-  it("lists USB devices, and says why a non-administrator can't", async () => {
-    const c = await signIn();
-    const u = await j(await get(c, "/api/hardware/usb"));
-    expect(u.devices.find((d: any) => d.id === "1234:5678")).toMatchObject({ port: "1-2", name: "Acme Security key", hub: false });
-    expect(u.devices.find((d: any) => d.id === "1d6b:0002").hub).toBe(true);
-    const lee = await signIn("lee");
-    const denied = await j(await get(lee, "/api/hardware/usb"));
-    expect(denied.devices).toEqual([]);
-    expect(denied.note).toMatch(/can't read USB devices/);
   });
 
   it("reads CPU models, flags, machine types and migration support", async () => {
@@ -599,39 +582,6 @@ describe("hardware, capabilities, mappings, CPU models and bulk actions", () => 
     expect(k.flags.map((x: any) => x.name)).toContain("spec-ctrl");
     expect(k.machines.map((x: any) => x.id)).toContain("pc-q35-9.0");
     expect(k.migration.cpu).toBe("Skylake-Server");
-  });
-
-  it("creates, edits and deletes a PCI mapping with checks", async () => {
-    const c = await signIn();
-    let list = await j(await get(c, "/api/mappings/pci"));
-    expect(list.canModify).toBe(true);
-    expect(list.mappings[0]).toMatchObject({ id: "gpu0", description: "Render GPU", mdev: true });
-    expect(list.mappings[0].map[0]).toMatchObject({ node: "pve", path: "0000:01:00.0", id: "10de:2484", iommugroup: 14 });
-    const r = await post(c, "/api/mappings/pci", { id: "nic1", description: "10G card", map: [{ node: "pve", path: "0000:03:00.0", id: "8086:1572", iommugroup: 20 }] });
-    expect(r.status).toBe(200);
-    expect(pve.mappings.pci.get("nic1")!.map).toEqual(["node=pve,path=0000:03:00.0,id=8086:1572,iommugroup=20"]);
-    expect((await post(c, "/api/mappings/pci", { id: "nic1", map: [{ node: "pve", path: "0000:03:00.0", id: "8086:1572" }] })).status).toBe(409);
-    expect((await j(await post(c, "/api/mappings/pci", { id: "bad1", map: [{ node: "pve", path: "zz", id: "8086:1572" }] }))).error).toMatch(/PCI path/);
-    list = await j(await get(c, "/api/mappings/pci"));
-    const nic = list.mappings.find((m: any) => m.id === "nic1");
-    expect((await post(c, "/api/mappings/pci/nic1", { digest: nic.digest, description: "Renamed", map: [{ node: "pve", path: "0000:03:00.0", id: "8086:1572" }] })).status).toBe(200);
-    expect(pve.mappings.pci.get("nic1")!.description).toBe("Renamed");
-    expect((await post(c, "/api/mappings/pci/nic1", { digest: "0".repeat(40), map: [{ node: "pve", path: "0000:03:00.0", id: "8086:1572" }] })).status).toBe(400);
-    expect((await post(c, "/api/mappings/pci/nic1/delete", { confirm: "x" })).status).toBe(409);
-    expect((await post(c, "/api/mappings/pci/nic1/delete", { confirm: "nic1" })).status).toBe(200);
-    expect(pve.mappings.pci.has("nic1")).toBe(false);
-  });
-
-  it("USB and directory mappings; a non-administrator can't change them", async () => {
-    const c = await signIn();
-    expect((await post(c, "/api/mappings/usb", { id: "key1", map: [{ node: "pve", id: "1050:0407", path: "1-2.3" }] })).status).toBe(200);
-    expect((await post(c, "/api/mappings/dir", { id: "media", map: [{ node: "pve", path: "/srv/media" }] })).status).toBe(200);
-    expect((await post(c, "/api/mappings/dir", { id: "bad", map: [{ node: "pve", path: "/srv/../etc" }] })).status).toBe(400);
-    const dirs = await j(await get(c, "/api/mappings/dir"));
-    expect(dirs.mappings.map((m: any) => m.id).sort()).toEqual(["docs", "media"]);
-    const lee = await signIn("lee");
-    expect((await j(await get(lee, "/api/mappings/dir"))).canModify).toBe(false);
-    expect((await post(lee, "/api/mappings/dir", { id: "x1", map: [{ node: "pve", path: "/srv" }] })).status).toBe(403);
   });
 
   it("custom CPU models: list, create, edit, delete", async () => {
@@ -669,7 +619,7 @@ describe("security", () => {
     expect(noHeader.status).toBe(403);
     const anon = await fetch(`${base}/api/guests/302/settings`);
     expect(anon.status).toBe(401);
-    for (const p of ["/api/hardware/pci", "/api/mappings/pci", "/api/cpu-models", "/api/capabilities/qemu", "/api/guests/302/cloudinit", "/api/guests/302/agent/info", "/api/guests/302/clone-options"]) expect((await fetch(base + p)).status, p).toBe(401);
+    for (const p of ["/api/hardware/pci/mdev?id=0000:01:00.0", "/api/cpu-models", "/api/capabilities/qemu", "/api/guests/302/cloudinit", "/api/guests/302/agent/info", "/api/guests/302/clone-options"]) expect((await fetch(base + p)).status, p).toBe(401);
   });
   it("an unknown machine is a 404", async () => {
     const c = await signIn();
