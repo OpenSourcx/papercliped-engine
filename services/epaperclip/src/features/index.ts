@@ -12,6 +12,9 @@ import { access } from "./access.ts";
 import { handleWizard } from "./wizard.ts";
 import { handlePin } from "./pin.ts";
 import { handleNotes } from "./notes.ts";
+import { handleStorageTools } from "./storageTools.ts";
+import { handleBackupTools } from "./backupTools.ts";
+import { handleDiskHealth } from "./diskHealth.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -57,4 +60,7 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "cluster", handle: handleCluster },
   { name: "pin", handle: handlePin },
   { name: "notes", handle: handleNotes },
+  { name: "storage-tools", handle: handleStorageTools },
+  { name: "backup-tools", handle: handleBackupTools },
+  { name: "disk-health", handle: handleDiskHealth },
 ];

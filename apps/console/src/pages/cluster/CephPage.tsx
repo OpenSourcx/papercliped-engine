@@ -8,8 +8,9 @@ import { Modal } from "../../ui/Modal.tsx";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, Select, Status, Tabs, Toggle, type StatusKind } from "../../ui/primitives.tsx";
 import { Async, LiveOnly, NodeSwitcher, TypedConfirm, useNodeName } from "../node/common.tsx";
+import { CephManage, CephSetupCard } from "./CephManage.tsx";
 
-type Tab = "overview" | "services" | "osds" | "pools" | "config";
+type Tab = "overview" | "services" | "osds" | "pools" | "config" | "manage";
 const HEALTH: Record<string, { kind: StatusKind; label: string }> = { HEALTH_OK: { kind: "good", label: "Healthy" }, HEALTH_WARN: { kind: "warning", label: "Warning" }, HEALTH_ERR: { kind: "critical", label: "Error" } };
 const num = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toLocaleString());
 const rate = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${formatBytes(n)}/s`);
@@ -53,7 +54,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
   const mute = useMutation({ mutationFn: (v: { code: string; value: boolean }) => clusterApi.cephMute(v.code, v.value, v.value ? "1d" : undefined), onSuccess: () => void refresh() });
   if (c.denied) return <Notice tone="info">Your Proxmox account can't read Ceph (it needs Sys.Audit or Datastore.Audit).</Notice>;
   if (!c.installed || !c.status) {
-    return <EmptyState icon={<Database className="h-5 w-5" />} title="Ceph isn't set up on this cluster" body="Ceph spreads machine disks over the drives of several nodes. Set it up with pveceph on a node (install, init, then monitors and OSDs); this screen then shows its health and lets you tune it. Nothing here needs it." />;
+    return <><EmptyState icon={<Database className="h-5 w-5" />} title="Ceph isn't set up on this cluster" body="Ceph spreads machine disks over the drives of several nodes. Install it on a node, write its first configuration, then add monitors, managers and OSDs; this screen then shows its health and manages it. Nothing here needs it." /><CephSetupCard node={node} /></>;
   }
   const s = c.status;
   const h = HEALTH[s.health] ?? { kind: "idle" as StatusKind, label: s.health };
@@ -61,7 +62,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
   return (
     <div className="space-y-5">
       {err && <Notice tone="critical" title="Proxmox didn't do that">{errorText(err)}</Notice>}
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "overview", label: "Overview" }, { id: "services", label: "Services" }, { id: "osds", label: "OSDs", count: c.osds?.length }, { id: "pools", label: "Pools", count: c.pools?.length }, { id: "config", label: "Configuration" }]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "overview", label: "Overview" }, { id: "services", label: "Services" }, { id: "osds", label: "OSDs", count: c.osds?.length }, { id: "pools", label: "Pools", count: c.pools?.length }, { id: "config", label: "Configuration" }, { id: "manage", label: "Manage" }]} />
 
       {tab === "overview" && (
         <div className="space-y-4">
@@ -119,7 +120,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
             </Card>
           ))}
           {(c.filesystems ?? []).length > 0 && <Card className="p-5"><div className="font-medium mb-2">CephFS</div><ul className="text-compact">{c.filesystems!.map((f) => <li key={f.name}><span className="font-mono">{f.name}</span> <span className="text-ink-3">data {f.dataPool ?? "?"}, metadata {f.metadataPool ?? "?"}</span></li>)}</ul></Card>}
-          <p className="text-xs text-ink-3">Adding or removing monitors, managers and metadata servers is done with pveceph on a node.</p>
+          <p className="text-xs text-ink-3">Add or remove them under Manage.</p>
         </div>
       )}
 
@@ -145,7 +146,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-ink-3 px-4 py-3">Creating and destroying OSDs is done with pveceph on the node that holds the drive.</p>
+          <p className="text-xs text-ink-3 px-4 py-3">Create and destroy OSDs under Manage.</p>
         </Card>
       )}
 
@@ -159,9 +160,11 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
             </table>
             {!(c.pools ?? []).length && <p className="px-4 py-3 text-compact text-ink-3">No pools yet.</p>}
           </Card>
-          <p className="text-xs text-ink-3">Removing a pool destroys its data, so it is left to pveceph.</p>
+          <p className="text-xs text-ink-3">Deleting a pool destroys its data; it is under Manage and needs the name typed.</p>
         </>
       )}
+
+      {tab === "manage" && <CephManage c={c} node={node} />}
 
       {tab === "config" && (
         <Async q={cfg}>

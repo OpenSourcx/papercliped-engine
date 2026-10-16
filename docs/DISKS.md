@@ -31,7 +31,10 @@ Things the API does not have, and what is done instead:
 
 - **`reassign_disk`** does not exist in the current API. Reassigning a disk to another machine is `move_disk` / `move_volume` with `target-vmid` (and optionally `target-disk` / `target-volume`, `target-digest`). The target must be the same kind of machine on the same device.
 - **GlusterFS** is not in the current API and is not offered.
-- **Exporting or downloading a VM disk image** is not supported by the API (there is only upload and download-from-URL into a storage), so there is no export button. Restoring backups stays on the Backups page.
+- **Exporting or downloading a VM disk image** is not supported by the API (there is only upload and download-from-URL into a storage), so there is no export button. Restoring backups is on Backup jobs.
+- **Uploading a snippet** is not accepted by Proxmox's upload call (it takes `iso`, `vztmpl` and `import` only). Snippets are listed, with the folder and a copy-paste `scp` command.
+- **Checking a file that is already stored** has no call either. Proxmox checks a checksum only while it downloads or uploads; for stored files the screen gives `sha256sum` and friends with the real path, quoted for a shell.
+- **ZFS scrub, trim, replace, attach, detach, export and import** have no API. See Storage health below.
 - **Renaming ISO images and templates** is not supported by Proxmox, so it is not offered.
 
 ## Routes (host service)
@@ -80,6 +83,41 @@ Dir, NFS, SMB/CIFS, Proxmox Backup Server, LVM, LVM-Thin, ZFS pool, iSCSI, iSCSI
 
 Content types, node restriction, enable/disable, `shared`, backup retention (`keep-all` or `keep-last/hourly/daily/weekly/monthly/yearly`) and bandwidth limits (`default`, `restore`, `move`, `clone`, `migration`, in MiB/s in the form and KiB/s on the wire) are available for every type that supports them.
 
+
+## Storage depth, backups and health
+
+Everything below is a call as the signed-in person; Proxmox decides who may do what. Routes are under `/api/storage-tools/`, `/api/backup-tools/` and `/api/disk-health` (host `storageTools.ts`, `backupTools.ts`, `diskHealth.ts`; console `pages/storage/StorageTools.tsx`, `pages/backups/BackupJobs.tsx`, `pages/disks/StorageHealth.tsx`).
+
+### Space and tools (a storage's page, live only)
+
+| Tab | What it does |
+| --- | --- |
+| Space | Used and free, space by content type (machine disks, container volumes, templates, ISO images, backups, snippets, import files), what the storage uses beyond its volumes, space by machine, the ten largest files, and a usage line over an hour to a year (`rrddata`). |
+| Retention | Pick keep-last / daily / weekly / monthly / yearly (or leave empty for the storage's own), optionally one machine. **Preview** (`GET .../prunebackups`) lists each backup as keep, remove, protected or renamed, with the space freed. **Prune** needs the storage's name typed and is refused when nothing would go. |
+| New disk | Reserve an empty image for a machine (`POST .../content`): name `vm-<id>-...`, size in GiB, format. Copying a volume (`POST .../content/{volume}`) is exposed at the API only, behind an explicit acknowledgement, because Proxmox calls it experimental. |
+| Import | Look up a URL's size and name first (`query-url-metadata`), download an OVA / OVF / qcow2 / raw / VMDK into an import-capable storage with its checksum checked by Proxmox, then attach it to a virtual machine as a new disk (`import-from`, next free slot, the machine's digest). The API also takes a streamed upload (`upload-import`); there is no file picker yet. |
+| Snippets | Lists snippets, says whether the storage holds them, and gives the commands to put a file there. |
+| Check a file | `sha256sum`-style commands for a stored file, and links to the publishers' pages for common ISO images (Debian, Ubuntu, Fedora, Alma, Rocky, Alpine, the VirtIO drivers, Windows). Nothing is bundled: there is no list of addresses or checksums to go stale. |
+
+### Backup jobs (Datacenter, Backup jobs, live only)
+
+Every option `POST/PUT /cluster/backup` has that a person may set: schedule, storage, node, mode, compression, which machines (chosen, everything except some, or a whole pool), notes template, notification mode, fleecing (with its storage), speed limit, workers, zstd threads, IO priority, repeat missed, protect, standard excludes, excluded paths, change detection for Proxmox Backup Server, and retention. `tmpdir`, `dumpdir` and `script` are not offered (Proxmox restricts them to `root@pam`). Edits carry the job's digest; switching the selection removes the other selections' fields from the job. Deleting a job needs its name typed.
+
+Also on that page: **Not covered** (`/cluster/backup-info/not-backed-up`), **Included disks** per job, and **Backups and restore**: pick a backup, see its guest configuration (`extractconfig`, password hashes hidden), browse a Proxmox Backup Server snapshot (listing only: the single-file download is a binary stream the console does not carry), and restore with Proxmox's options: a chosen number, target storage, unique MAC addresses, start afterwards, speed limit, pool, live restore. Replacing the original needs its number typed and is refused while it runs.
+
+### Storage health (Host, Storage health, live only)
+
+One answer (`GET /api/disk-health`) with an overall level and alerts, sorted worst first:
+
+- **Disks**: SMART health FAILED is critical; wear (life left, 100 is new) at or below the warning or critical threshold; remapped or pending sectors; NVMe spare capacity at or below 10%. Temperature, hours on and sector counts come from `disks/smart`.
+- **ZFS pools**: not ONLINE (degraded is a warning, faulted or unavailable critical), and fullness. **Thin pools**: data or metadata fullness (metadata runs out first). **Storages**: fullness, and configured but inactive.
+- **Thresholds** default to wear 25 / 10 (% life left) and usage 85 / 95 (% full). Only a Proxmox administrator may change them (they are shared); they are stored in the host service's state.
+- **History**: Proxmox keeps none. While someone has the page open, the host service stores one sample per disk at most every six hours (up to 120), shown per disk under History.
+
+**ZFS pools** open to the pool's state, last scan, errors, disks, and the **datasets and zvols** of the storages that use it (a machine disk is a zvol, a container volume is a dataset). **Maintenance** builds the commands for scrub (start, pause, stop), trim, automatic trim, clear, offline, online, replace, attach, detach, export, import and status. Names are validated; a disk to offline, replace or detach must really be in the pool, and a new disk for replace or attach must be unused on this node. Each step says what it does and what it risks, and copying is all the console does.
+
 ## Not verified against a real Proxmox
 
 Everything was checked against the API viewer and a fake Proxmox that behaves like it (digests, unused disks, pending changes, tasks). Not yet seen on real hardware: how `wearout` is reported for every disk model, the exact text of Proxmox's refusals, hot-plug behaviour for running VMs, and `move_disk` with `target-vmid` across storage types. After attaching a detached disk the service reports `staleUnused` if Proxmox did not drop the detached entry itself.
+
+Also not yet seen on real hardware for the screens above: the shape of `GET .../prunebackups` marks on every Proxmox version, `import-from` on a running machine, the text of NVMe SMART output on every model (parsed defensively), `file-restore/list` on PBS versions, and the array encoding of repeated parameters such as `exclude-path`.

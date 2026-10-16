@@ -118,7 +118,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-037 | Storage | Add BTRFS storage | POST /storage (type=btrfs) | done | P2 | W-DISK | storage-schema.ts btrfs |  |
 | DC-038 | Storage | Add iSCSI storage | POST /storage (type=iscsi); GET /nodes/{node}/scan/iscsi | done | P1 | W-DISK | storage-schema.ts iscsi; scan/iscsi |  |
 | DC-039 | Storage | Add CephFS and RBD storage | POST /storage (type=cephfs, rbd) | done | P1 | W-CLUSTER | storage-schema.ts cephfs, rbd |  |
-| DC-040 | Storage | Add GlusterFS, ZFS over iSCSI storage | POST /storage (type=glusterfs, zfs) | partial | P2 | W-DISK | storage-schema.ts zfs; no GlusterFS |  |
+| DC-040 | Storage | Add GlusterFS, ZFS over iSCSI storage | POST /storage (type=glusterfs, zfs) | partial | P2 | W-DISK | GlusterFS is not in the current API; ZFS over iSCSI is in storage-schema.ts |  |
 | DC-041 | Storage | Add ESXi import source | POST /storage (type=esxi) | done | P2 | W-DISK | storage-schema.ts esxi |  |
 | DC-042 | Storage | Edit storage (content types, nodes, enable, shared, pruning, thin provision) | PUT /storage/{storage} | done | P0 | W-DISK | POST /api/storage-config/:id; StorageAdmin.tsx |  |
 | DC-043 | Storage | Remove storage definition | DELETE /storage/{storage} | done | P0 | W-DISK | POST /api/storage-config/:id/delete (usage check) |  |
@@ -191,12 +191,12 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-110 | Support | Support information and system report | GET /nodes/{node}/report | done | P2 | W-NODE | Hardware, System report (copy) |  |
 | DC-111 | SDN | Apply and roll back SDN configuration | PUT /cluster/sdn; POST /cluster/sdn/rollback; DELETE/POST /cluster/sdn/lock | done | P1 | W-NODE | Virtual networks (SDN): preview, apply, discard with typed word (dcSdn.ts) |  |
 | DC-112 | SDN | Zones: simple, VLAN, QinQ, VXLAN | GET/POST /cluster/sdn/zones; PUT/DELETE .../zones/{zone} | done | P1 | W-NODE | Virtual networks (SDN), Zones: simple, VLAN, QinQ, VXLAN, EVPN with per-type required settings |  |
-| DC-113 | SDN | Zones: EVPN, with controllers and exit nodes | GET/POST /cluster/sdn/controllers; zone type evpn | partial | P2 | W-CLUSTER | EVPN zones and EVPN/BGP/IS-IS controllers can be created in SDN; exit-node routing is unverified on a real cluster |  |
+| DC-113 | SDN | Zones: EVPN, with controllers and exit nodes | GET/POST /cluster/sdn/controllers; zone type evpn | done | P2 | W-CLUSTER | SdnRouted.tsx; /api/cluster/sdn controllers (EVPN, BGP, IS-IS) and EVPN zones |  |
 | DC-114 | SDN | VNets | GET/POST /cluster/sdn/vnets; PUT/DELETE .../vnets/{vnet} | done | P1 | W-NODE | /api/sdn/vnets |  |
 | DC-115 | SDN | Subnets with gateway, DHCP range, SNAT | GET/POST /cluster/sdn/vnets/{vnet}/subnets; PUT/DELETE | done | P1 | W-NODE | /api/sdn/vnets/:id/subnets |  |
 | DC-116 | SDN | IPAM and DNS plugins | GET/POST /cluster/sdn/ipams; GET/POST /cluster/sdn/dns | done | P2 | W-NODE | Virtual networks (SDN): IPAM (Proxmox, NetBox, phpIPAM) and DNS (PowerDNS) plugins; secrets write-only |  |
 | DC-117 | SDN | IPAM status, VNet IP allocations | GET /cluster/sdn/ipams/{ipam}/status; POST/PUT/DELETE /cluster/sdn/vnets/{vnet}/ips | done | P2 | W-NODE | SDN IPAM Addresses; /api/node/sdn/vnets/:vnet/ips |  |
-| DC-118 | SDN | Fabrics (OpenFabric, OSPF), route maps, prefix lists | GET/POST /cluster/sdn/fabrics/*; /cluster/sdn/route-maps; /cluster/sdn/prefix-lists | missing | P2 | W-CLUSTER |  |  |
+| DC-118 | SDN | Fabrics (OpenFabric, OSPF), route maps, prefix lists | GET/POST /cluster/sdn/fabrics/*; /cluster/sdn/route-maps; /cluster/sdn/prefix-lists | done | P2 | W-CLUSTER | SdnRouted.tsx; fabrics (OpenFabric, OSPF, BGP) with nodes, prefix lists, route maps; WireGuard fabrics are shown, not edited |  |
 | DC-119 | SDN | VNet firewall | GET/PUT /cluster/sdn/vnets/{vnet}/firewall/options; rules | partial | P2 | W-NODE | SDN VNets, Firewall: options editable; rules shown read-only |  |
 | DC-120 | SDN | SDN status per node (zones, bridges, MAC/IP-VRF) | GET /nodes/{node}/sdn/zones; .../vnets/{vnet}/mac-vrf | done | P2 | W-NODE | SDN, Status tab: per-node zones and VNets, MAC and IP table |  |
 | DC-121 | Resource Mappings | PCI device mappings | GET/POST /cluster/mapping/pci; PUT/DELETE .../{id} | done | P1 | W-MACHINE | Resource mappings, PCI: pick the device per node, vGPU flag, problem checks (dcMapping.ts) |  |
@@ -247,15 +247,15 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-035 | Disks | Disks > ZFS: create pool (RAID level, compression, ashift), details, delete | GET/POST /nodes/{node}/disks/zfs; GET/DELETE .../{name} | done | P0 | W-DISK | POST /api/disks/zfs, GET /api/disks/zfs/:name, .../delete |  |
 | ND-036 | Disks | Disks > LVM: create and delete volume group | GET/POST /nodes/{node}/disks/lvm; DELETE .../{name} | done | P1 | W-DISK | POST /api/disks/lvm, .../delete |  |
 | ND-037 | Disks | Disks > LVM-Thin: create and delete thin pool | GET/POST /nodes/{node}/disks/lvmthin; DELETE .../{name} | done | P1 | W-DISK | POST /api/disks/lvmthin, .../delete |  |
-| ND-038 | Disks | ZFS scrub, replace device, pool health | GET /nodes/{node}/disks/zfs/{name} | missing | P2 | W-DISK |  |  |
+| ND-038 | Disks | ZFS scrub, replace device, pool health | GET /nodes/{node}/disks/zfs/{name} | partial | P2 | W-DISK | Storage health: pool state, disks, datasets and zvols; scrub, trim, replace, attach, detach, export, import have no API, so guided commands (/api/disk-health/zfs/:pool/guide) |  |
 | ND-039 | Disks | Storage scans for the add-storage dialog | GET /nodes/{node}/scan/{nfs,cifs,iscsi,lvm,lvmthin,zfs,pbs} | done | P1 | W-DISK | GET /api/storage-config/scan/* |  |
-| ND-040 | Ceph | Install Ceph and initial configuration wizard | POST /nodes/{node}/ceph/init; GET /nodes/{node}/ceph/releases | missing | P1 | W-CLUSTER |  |  |
+| ND-040 | Ceph | Install Ceph and initial configuration wizard | POST /nodes/{node}/ceph/init; GET /nodes/{node}/ceph/releases | partial | P1 | W-CLUSTER | Releases, install command (pveceph install has no API) and init: /api/cluster/ceph/setup, /init; CephSetupCard |  |
 | ND-041 | Ceph | Status, health, monitors, managers, metadata servers | GET /nodes/{node}/ceph/status; mon, mgr, mds endpoints | done | P1 | W-CLUSTER | Ceph, Overview and Services: health, monitors, managers, metadata servers |  |
-| ND-042 | Ceph | OSDs: create, destroy, in/out, scrub | GET/POST /nodes/{node}/ceph/osd; DELETE .../{osdid}; POST .../in, out, scrub | partial | P1 | W-CLUSTER | Ceph, OSDs: list, in, out (typed), scrub; create and destroy stay in pveceph |  |
-| ND-043 | Ceph | Pools: create, edit, delete | GET/POST /nodes/{node}/ceph/pool; PUT/DELETE .../{name} | partial | P1 | W-CLUSTER | Ceph, Pools: list, create, tune (size change typed); delete stays in pveceph |  |
-| ND-044 | Ceph | CephFS | GET/POST /nodes/{node}/ceph/fs/{name} | partial | P2 | W-CLUSTER | Ceph, Services lists CephFS; create and destroy stay in pveceph |  |
-| ND-045 | Ceph | Configuration, CRUSH map, rules, log | GET /nodes/{node}/ceph/cfg, crush, rules, log | partial | P2 | W-CLUSTER | Ceph, Configuration: ceph.conf, rules and log read; CRUSH map not shown |  |
-| ND-046 | Ceph | Cluster flags, health mute, service start/stop/restart | PUT /cluster/ceph/flags; PUT /cluster/ceph/health-mute/{code}; POST /nodes/{node}/ceph/{start,stop,restart} | partial | P2 | W-CLUSTER | Ceph flags (pause typed) and health mute; service start, stop, restart stay in pveceph |  |
+| ND-042 | Ceph | OSDs: create, destroy, in/out, scrub | GET/POST /nodes/{node}/ceph/osd; DELETE .../{osdid}; POST .../in, out, scrub | done | P1 | W-CLUSTER | Ceph, Manage: OSD create (drive typed), destroy (out and down, Ceph safety check, name typed), in, out, scrub |  |
+| ND-043 | Ceph | Pools: create, edit, delete | GET/POST /nodes/{node}/ceph/pool; PUT/DELETE .../{name} | done | P1 | W-CLUSTER | Ceph, Manage: pool delete (name typed, data needs a second yes); create and tune on Pools |  |
+| ND-044 | Ceph | CephFS | GET/POST /nodes/{node}/ceph/fs/{name} | done | P2 | W-CLUSTER | Ceph, Manage: CephFS create and destroy, metadata server create and destroy |  |
+| ND-045 | Ceph | Configuration, CRUSH map, rules, log | GET /nodes/{node}/ceph/cfg, crush, rules, log | done | P2 | W-CLUSTER | Ceph, Manage: CRUSH map with rules, plus Configuration |  |
+| ND-046 | Ceph | Cluster flags, health mute, service start/stop/restart | PUT /cluster/ceph/flags; PUT /cluster/ceph/health-mute/{code}; POST /nodes/{node}/ceph/{start,stop,restart} | done | P2 | W-CLUSTER | Ceph, Manage: service start, stop, restart (typed, Ceph safety check); flags and health mute on Overview |  |
 | ND-047 | Replication (node) | Jobs for this node, status, log, schedule now | GET /nodes/{node}/replication; .../{id}/status; .../log; POST .../schedule_now | done | P1 | W-CLUSTER | Replication page, jobs and status per source node; /api/cluster/replication |  |
 | ND-048 | Task History | List tasks with type, status, user, time | GET /nodes/{node}/tasks | done | P0 | W-NODE | GET /api/tasks; Tasks.tsx |  |
 | ND-049 | Task History | Filter by user, type, status, date, source, VMID | GET /nodes/{node}/tasks (userfilter, typefilter, statusfilter, since, until, source, vmid) | done | P1 | W-NODE | All tasks: node, type, user, status, time filters |  |
@@ -270,7 +270,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ND-058 | Hardware and capabilities | List USB devices | GET /nodes/{node}/hardware/usb | done | P1 | W-MACHINE | Hardware, PCI and USB: USB devices |  |
 | ND-059 | Hardware and capabilities | QEMU CPU models, flags, machine types, migration capabilities | GET /nodes/{node}/capabilities/qemu/{cpu,cpu-flags,machines,migration} | missing | P1 | W-MACHINE |  |  |
 | ND-060 | Hardware and capabilities | OCI image pull and tag lookup (container from registry image) | POST /nodes/{node}/storage/{storage}/oci-registry-pull; GET /nodes/{node}/query-oci-repo-tags | missing | P2 | W-MACHINE |  |  |
-| ND-061 | Hardware and capabilities | URL metadata lookup before download | GET /nodes/{node}/query-url-metadata | missing | P2 | W-DISK |  |  |
+| ND-061 | Hardware and capabilities | URL metadata lookup before download | GET /nodes/{node}/query-url-metadata | done | P2 | W-DISK | GET /api/storage-tools/url-metadata; StorageTools, Import |  |
 
 ### VM and Container
 
@@ -354,7 +354,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-076 | Task History | Per-guest task list and log | GET /nodes/{node}/tasks (vmid) | done | P0 | W-MACHINE | MachineTasks.tsx; GET /api/tasks?vmid= |  |
 | GU-077 | Backup (per guest) | Back up now (mode, compression, storage, notes) | POST /nodes/{node}/vzdump | done | P0 | W-DISK | modal backup-now; POST /api/backups/run |  |
 | GU-078 | Backup (per guest) | List backups of this guest and restore | GET /nodes/{node}/storage/{storage}/content (backup, vmid) | done | P0 | W-DISK | MachineBackups in MachinePage.tsx |  |
-| GU-079 | Backup (per guest) | Backup job membership (which jobs include this guest) | GET /cluster/backup-info/not-backed-up | missing | P2 | W-DISK |  |  |
+| GU-079 | Backup (per guest) | Backup job membership (which jobs include this guest) | GET /cluster/backup-info/not-backed-up | partial | P2 | W-DISK | Not covered list and per-job included disks on Backup jobs; no card on the machine page |  |
 | GU-080 | Replication (per guest) | Guest replication jobs | GET/POST /cluster/replication (guest filter) | done | P1 | W-CLUSTER | Machine overview, Replication card; /api/cluster/replication?guest= |  |
 | GU-081 | Snapshots | List snapshots as a tree with current state | GET .../snapshot | done | P0 | W-MACHINE | Snapshots.tsx |  |
 | GU-082 | Snapshots | Take snapshot (name, description, include RAM) | POST .../snapshot | done | P0 | W-MACHINE | POST /api/guests/:id/snapshots |  |
@@ -364,7 +364,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | GU-086 | Firewall (per guest) | Rules, options, aliases, IP sets, log | GET/POST .../firewall/{rules,options,aliases,ipset,log} | done | P1 | W-NODE | /api/firewall/guest-<vmid>/*; MachineFirewall |  |
 | GU-087 | Permissions (per guest) | View and change who may use this guest | GET/PUT /access/acl (path /vms/{vmid}) | done | P1 | W-ACCESS | Permissions tab: list, grant, revoke (typed); GET/POST /api/guests/:id/permissions |  |
 | GU-088 | Migrate and clone | Migrate (online/offline, target node, local disks, target storage, preconditions) | GET/POST .../migrate | done | P1 | W-CLUSTER | Machine, Migrate (online, offline, restart, target node, local disks and storage, HA aware, watched task); /api/cluster/migrate/:vmid |  |
-| GU-089 | Migrate and clone | Remote migrate to another cluster | POST .../remote_migrate | missing | P2 | W-CLUSTER |  |  |
+| GU-089 | Migrate and clone | Remote migrate to another cluster | POST .../remote_migrate | done | P2 | W-CLUSTER | RemoteMigrateButton on the machine page; POST /api/cluster/remote-migrate/:vmid (token write-only, fingerprint required) |  |
 | GU-090 | Migrate and clone | Clone: name, target storage, full or linked (from template), pool | POST .../clone | done | P0 | W-MACHINE | POST /api/guests/:id/clone |  |
 | GU-091 | Migrate and clone | Clone: target node, VMID choice, format, from a snapshot, bandwidth limit | POST .../clone (target, newid, format, snapname, bwlimit) | missing | P1 | W-MACHINE |  |  |
 | GU-092 | Migrate and clone | Convert to template | POST .../template | done | P0 | W-MACHINE | POST /api/guests/:id/template |  |
@@ -378,16 +378,16 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ID | Screen | Item | API | Status | Pri | Workstream | Evidence | Seq |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ST-001 | Summary | Usage, type, content types, active, shared | GET /nodes/{node}/storage/{storage}/status | done | P0 | W-DISK | StorageDetail.tsx; GET /api/host |  |
-| ST-002 | Summary | Usage graphs | GET /nodes/{node}/storage/{storage}/rrddata | missing | P1 | W-DISK |  |  |
+| ST-002 | Summary | Usage graphs | GET /nodes/{node}/storage/{storage}/rrddata | done | P1 | W-DISK | GET /api/storage-tools/:id/rrd; StorageTools, Space |  |
 | ST-003 | Content | Browse by type: ISO, CT templates, VM disks, CT volumes, backups, snippets, import | GET /nodes/{node}/storage/{storage}/content | done | P0 | W-DISK | GET /api/storage/:id/content |  |
 | ST-004 | Content | Upload ISO and CT template | POST /nodes/{node}/storage/{storage}/upload | done | P0 | W-DISK | POST /api/storage/:id/upload |  |
 | ST-005 | Content | Download from URL with checksum | POST /nodes/{node}/storage/{storage}/download-url | done | P0 | W-DISK | POST /api/storage/:id/download-url |  |
 | ST-006 | Content | Template catalog download | POST /nodes/{node}/aplinfo | done | P0 | W-DISK | GET /api/templates/catalog; POST /api/templates/download |  |
 | ST-007 | Content | Delete volume | DELETE /nodes/{node}/storage/{storage}/content/{volume} | done | P0 | W-DISK | POST /api/storage/:id/delete |  |
-| ST-008 | Content | Upload snippets (hookscripts, cloud-init files) | POST .../upload (content=snippets) | partial | P1 | W-DISK | snippets listed in content; upload route accepts iso and vztmpl only |  |
-| ST-009 | Content | Import disk image into a VM; import OVA/qcow2/raw | POST /nodes/{node}/qemu (import-from); GET .../import-metadata | missing | P1 | W-DISK |  |  |
-| ST-010 | Content | Allocate a new disk image volume directly | POST /nodes/{node}/storage/{storage}/content | missing | P2 | W-DISK |  |  |
-| ST-011 | Content | Copy or move a volume between storages | POST .../content/{volume} | missing | P2 | W-DISK |  |  |
+| ST-008 | Content | Upload snippets (hookscripts, cloud-init files) | POST .../upload (content=snippets) | partial | P1 | W-DISK | Snippets are listed with copy-paste commands; Proxmox's upload API does not accept snippets |  |
+| ST-009 | Content | Import disk image into a VM; import OVA/qcow2/raw | POST /nodes/{node}/qemu (import-from); GET .../import-metadata | done | P1 | W-DISK | download-import and upload-import, import-metadata and import-disk (attach as a new disk); StorageTools, Import |  |
+| ST-010 | Content | Allocate a new disk image volume directly | POST /nodes/{node}/storage/{storage}/content | done | P2 | W-DISK | POST /api/storage-tools/:id/allocate; StorageTools, New disk |  |
+| ST-011 | Content | Copy or move a volume between storages | POST .../content/{volume} | partial | P2 | W-DISK | POST /api/storage-tools/:id/copy exists behind an experimental acknowledgement (Proxmox marks it experimental); no screen |  |
 | ST-012 | Permissions | View and change who may use this storage | GET/PUT /access/acl (path /storage/{id}) | missing | P1 | W-ACCESS |  |  |
 
 ### Pools
