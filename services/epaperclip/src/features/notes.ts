@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { INBOX, NotesError, cleanFolder, cleanTag, type Query } from "./notes-core.ts";
-import { applyDraft, buildInventory, createFolder, createNote, deleteFolder, deleteNote, draftView, exportZip, getNote, importZip, listNotes, notesFor, renameFolder, revealSecret, secretsAction, setSettings, shareNote, sharedNote, sharedWithMe, startSort, undoBatch, updateNote, emptyInventory, type Edit, type SecretMode } from "./notes-ops.ts";
+import { applyDraft, buildInventory, createFolder, createNote, deleteFolder, deleteNote, draftView, exportZip, getNote, importZip, listNotes, notesFor, renameFolder, revealSecret, secretsAction, setSettings, shareNote, sharedNote, sharedWithMe, startSort, undoBatch, updateNote, emptyInventory, warningsFor, type Edit, type SecretMode } from "./notes-ops.ts";
 import { IMPORT_LIMITS } from "./notes-zip.ts";
 import type { FeatureCtx, FeatureHandler } from "./index.ts";
 import type { Inventory } from "./notes-rules.ts";
@@ -182,7 +182,7 @@ async function route(ctx: FeatureCtx, rt: ReturnType<typeof notesFor>, rest: str
   if (!one[2]) {
     if (method === "GET") {
       const note = getNote(rt, user, id);
-      return ctx.json(200, { note, warnings: [] }), true;
+      return ctx.json(200, { note, warnings: warningsFor(note.body) }), true;
     }
     write();
     if (method === "PUT") return ctx.json(200, updateNote(rt, user, id, await ctx.readJson(160 * 1024))), true;
