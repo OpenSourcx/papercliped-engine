@@ -47,7 +47,19 @@ or `npm install -g epaperclip`, then `epaperclip install`. Host Node.js only sta
 curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash
 ```
 
-This downloads the latest release, checks it against its published SHA-256 and runs the installer inside it. Run it again to upgrade.
+This downloads the latest release, checks its Ed25519 signature (against the project's public key, which is written into that `get.sh`) and its checksum and version, and only then unpacks it and runs the installer inside it. If anything doesn't check out it installs nothing and says why. It needs `openssl`, which Proxmox hosts have. Run it again to upgrade. It refuses a release older than the installed one unless you set `EPC_ALLOW_DOWNGRADE=1`. How the signing works and how to check a download by hand: [SECURITY.md](SECURITY.md#release-signing).
+
+### Release candidates
+
+A tag with a hyphen (`v1.0.0-rc1`) is published as a GitHub pre-release, so "latest" (and the one-line command above) never picks it up, and it is on the npm tag `next`, not `latest`. The APT repository only ever carries stable releases. To try a release candidate on a test host:
+
+```sh
+B=https://github.com/OpenSourcx/papercliped-engine/releases/download/v1.0.0-rc1
+curl -fsSL $B/get.sh | EPC_RELEASE_BASE=$B bash
+# or: npx epaperclip@next install
+```
+
+It is verified exactly like a stable release. The console's Update button only offers stable releases. Going from a release candidate to the final `1.0.0` counts as an upgrade.
 
 From a branch, building on the host (a few minutes):
 
@@ -138,7 +150,7 @@ If an apt upgrade fails, the installer has already put the previous version back
 
 A tag like `v0.1.0` runs `.github/workflows/release.yml`. It builds and tests (including `deploy/test/run.sh`, the installer's tests on simulated hosts, and a real engine install from the lockfile), then publishes:
 
-- the GitHub release: `epaperclip.tar.gz`, its checksum, `get.sh` and `epaperclip_<version>_all.deb`
+- the GitHub release: `epaperclip.tar.gz`, its checksum, the signed manifest and signature (`epaperclip.manifest.json`, `epaperclip.manifest.sig`), `get.sh` and `epaperclip_<version>_all.deb`. A tag with a hyphen is marked as a pre-release; the build fails for any tag if the `RELEASE_SIGNING_KEY` secret is missing. See [RELEASING.md](RELEASING.md).
 - the APT repository: `scripts/publish-apt.sh` signs it and pushes it to the `gh-pages` branch under `apt/`. GitHub Pages must serve that branch (Settings → Pages → Deploy from a branch → `gh-pages`, `/`). It needs the secret `APT_SIGNING_KEY` (and `APT_SIGNING_PASSPHRASE` if the key has one). It signs only with the key whose public half is in `deploy/apt/epaperclip-archive-keyring.asc`, and skips with a notice when the secret isn't set.
 - the npm package `epaperclip` (`npm/epaperclip`), with provenance. It needs the secret `NPM_TOKEN` and skips with a notice when it isn't set.
 

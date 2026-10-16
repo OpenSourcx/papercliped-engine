@@ -17,7 +17,7 @@ or `npm install -g epaperclip`, then `epaperclip install`.
 | `epaperclip rollback` | go back to the previous version |
 | `epaperclip uninstall` | remove it, keeping data and settings (`--purge` removes those too) |
 
-This package carries the same installer as the release download and the Debian package. It checks the host first and changes nothing if something is missing. It brings its own pinned, checksum-verified Node.js and installs the engine from its lockfile, so it needs internet access. It test-starts everything and rolls back by itself if the new version doesn't come up. Node.js on the host is only used to start this command.
+This package carries the signed release (the tarball, its manifest and Ed25519 signature) and the project's public key. The command verifies the signature and the checksum and refuses to unpack anything that doesn't match. A release candidate is on the `next` tag (`npx epaperclip@next install`). It carries the same installer as the release download and the Debian package. It checks the host first and changes nothing if something is missing. It brings its own pinned, checksum-verified Node.js and installs the engine from its lockfile, so it needs internet access. It test-starts everything and rolls back by itself if the new version doesn't come up. Node.js on the host is only used to start this command.
 
 Requirements: Proxmox VE 8 or newer, 4 GB of memory recommended (2 GB minimum), about 3 GB of free disk. Full guide: [docs/INSTALL.md](https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/INSTALL.md).
 

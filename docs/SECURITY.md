@@ -105,6 +105,7 @@ fails without it.
 | F-17 | Info | `from-source.sh` put its GitHub token on `git`'s command line, readable with `ps`. | Passed through git's environment. |
 | F-18 | Info | systemd: other processes were visible in `/proc`; the root update unit had no kernel hardening. | `ProtectProc=invisible`, `RemoveIPC`; update unit protects kernel tunables, modules, clock, personality, realtime. |
 | F-19 | Info | No cross-origin isolation headers. | `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin`. |
+| F-20 | High | Release signing. The one-click update (a root helper), `get.sh`, `install.sh` and the tarball were protected only by a SHA-256 published next to the file, so anyone able to publish a release (a stolen GitHub account or token) could get root on every host that updates. | Detached Ed25519 signatures. CI signs a manifest (file name, version, SHA-256, size) with a key that is a CI secret; the public key is pinned in the repository (`deploy/release-signing.pub`), shipped in every release, and inlined into the `get.sh` each release carries. `get.sh`, `install.sh --tarball`, the npm command and the root helper verify the signature, the manifest's checksum, the version (the one asked for, and not older than installed) with `openssl` before anything is unpacked, and refuse otherwise. See "Release signing" below. Tests: `deploy/test/run.sh signing get npm update_helper` and `scripts/release-signing.test.mjs`. |
 
 ### Checked, no issue found
 
@@ -134,6 +135,53 @@ By default the host exposes nothing without a sign-in except the login page, its
 
 Tests: `access-people.test.ts` (the door, with a stand-in engine) and the real-engine E2E stage "routine webhooks from outside".
 
+## Release signing
+
+What is signed. Each release has `epaperclip.tar.gz`, `epaperclip.manifest.json` and `epaperclip.manifest.sig`. The manifest
+is `{ format, name, version, sha256, size }`; the signature is a detached Ed25519 signature (base64) over the manifest's bytes.
+The manifest binds the file name, the exact version and the content hash together, so a validly signed manifest can't be
+paired with another tarball (hash), a newer request can't be answered with an old release (version), and a manifest can't be
+edited (signature).
+
+What checks it, all with `openssl pkeyutl -verify -rawin` (OpenSSL 1.1.1 or newer; Debian and Proxmox have it) and fail closed,
+before anything is extracted or run:
+
+| Path | Key it uses |
+| --- | --- |
+| The root update helper (`deploy/epaperclip-update.sh`, the console's Update button) | `/opt/epaperclip/update/release-signing.pub`, installed by the running version (root's). Also checks the manifest's version equals the requested one and is not older than the running one. |
+| `get.sh` (the copy a release carries) | The key written into that file when the release was built. Refuses a release older than the installed one unless `EPC_ALLOW_DOWNGRADE=1`. |
+| `install.sh --tarball <file>` | The installed key, else `deploy/release-signing.pub` next to the script. |
+| `npx epaperclip` | `payload/release-signing.pub` in the package; the command verifies (node's Ed25519) and unpacks to a private folder. |
+
+A build that has no key pinned (the state of the repository until the maintainer runs `scripts/release-keygen.mjs`) installs
+nothing and says to run that script. CI refuses to build a tag without the `RELEASE_SIGNING_KEY` secret.
+
+Check a download by hand:
+
+```sh
+base64 -d < epaperclip.manifest.sig > sig.bin
+openssl pkeyutl -verify -pubin -inkey release-signing.pub -rawin -in epaperclip.manifest.json -sigfile sig.bin
+sha256sum epaperclip.tar.gz    # must equal the "sha256" in the manifest
+```
+
+### Rotating the key
+
+A new key can only arrive inside a release that the old key signed, because every installed copy trusts the key it was
+installed with and nothing else. Steps (`docs/RELEASING.md` has the commands):
+
+1. On a trusted machine make the new pair without touching the CI secret: `node scripts/release-keygen.mjs --public-out new.pub`
+   (it prints the new private key once; keep it aside). Do not use `--set-secret` yet: it would replace the secret at once, the
+   bridge release would then be signed by the new key, and installed hosts (which still trust the old one) would refuse it.
+2. Replace `deploy/release-signing.pub` with the new public key and tag a release (the bridge release). The CI secret still
+   holds the OLD private key, so this release is signed by the old key and carries the new public key. Hosts update to it (the helper
+   verifies it with the old key and installs the new key).
+3. Wait until most hosts have updated, then set the secret `RELEASE_SIGNING_KEY` to the new private key. Every later release is signed by the new key.
+4. Destroy the old private key. Hosts that skipped the bridge release can't verify new releases: they refuse with a clear
+   message and must be reinstalled once with `get.sh` from the newest release.
+
+If the key is lost or stolen the steps can't be followed safely (a thief signs a bridge release too). Publish an advisory, build a
+new key, and have every host reinstall with `get.sh` from a copy of the repository verified out of band.
+
 ## Accepted, with reasons
 
 | ID | Risk | Why it stays |
@@ -157,11 +205,14 @@ Tests: `access-people.test.ts` (the door, with a stand-in engine) and the real-e
 
 ## Needs the owner
 
-1. **Release signing (High, open).** The one-click update, `get.sh` and the release tarball verify a SHA-256 that is published
-   next to the file, so they protect against corruption, not against a compromised release or GitHub account (anyone able to
-   publish a release can have the root helper install it). The `.deb`/APT path is GPG-signed and the catalog is Ed25519-signed;
-   the tarball should be too. Suggested: sign `epaperclip.tar.gz` with the same Ed25519 scheme as the catalog (key in CI,
-   public key pinned in `install.sh` and the helper), and make `get.sh` and the helper verify the signature before extracting.
+1. **Release signing: code fixed (F-20); key custody is the maintainers'.** The mechanism below is only as strong as the
+   private key's custody. Open items: generate the key once on a maintainer's own machine (`docs/RELEASING.md`), keep the
+   GitHub secret `RELEASE_SIGNING_KEY` limited to the release workflow (a protected tag rule and a `release` environment with
+   required reviewers are worth adding), keep an offline backup of the key, and decide who may rotate it. Until the key is
+   generated no release can be built or installed (that is deliberate). Not covered: the very first install through
+   `curl | bash` trusts the `get.sh` it downloads (it carries the key); a person who wants more fetches `get.sh` from a
+   pinned commit of the repository, or verifies `epaperclip.manifest.json` by hand with the public key in the repository
+   (`openssl pkeyutl -verify`, see below). The `.deb` is covered by the APT repository's GPG signature, not by this key.
 2. **Engine API surface (Medium, narrowed).** `/engine/api` now forwards only the routes the console uses (an allow-list),
    so engine routes nobody listed, including future ones, are closed. Still to confirm with the real engine: that
    managed-sandbox-only blocks every adapter that would run a command on the host (not just the local adapter), because
