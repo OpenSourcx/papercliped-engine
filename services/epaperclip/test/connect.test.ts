@@ -119,7 +119,7 @@ describe("authorizing in the console", () => {
     expect(body).toMatchObject({ client: { name: "Claude", redirectHost: "claude.ai" }, scope: "paperclip:read", user: "sam@pve" });
     expect(body.orgs.map((o: any) => o.id).sort()).toEqual(["co_1", "co_2"]);
     expect((await ask({}, null)).status).toBe(401);
-    for (const bad of <Record<string, string>[]>[{ response_type: "token" }, { code_challenge_method: "plain" }, { code_challenge: "short" }, { scope: "paperclip:admin" }, { resource: "https://elsewhere.example/mcp" }, { redirect_uri: "https://claude.ai/other" }, { state: "a\nb" }])
+    for (const bad of [{ response_type: "token" }, { code_challenge_method: "plain" }, { code_challenge: "short" }, { scope: "paperclip:admin" }, { resource: "https://elsewhere.example/mcp" }, { redirect_uri: "https://claude.ai/other" }, { state: "a\nb" }] as Record<string, string>[])
       expect((await ask(bad)).status, JSON.stringify(bad)).toBe(400);
     expect((await ask({ resource: `${h.base}/mcp` })).status).toBe(200);
     // Highest asked-for scope wins.
