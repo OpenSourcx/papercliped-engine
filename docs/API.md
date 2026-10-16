@@ -100,6 +100,22 @@ Every route needs a session cookie (plus `X-EPC-Request: 1` for changes) or a Be
 | `GET/POST /api/access/realms`, `PUT/DELETE /api/access/realms/:realm`, `POST /api/access/realms/:realm/sync` | Realms; sync answers `{task}` and the log is at `GET /api/tasks/:upid` |
 | `GET/POST /api/access/pools`, `PUT/DELETE /api/access/pools/:poolid` | Resource groups (Proxmox pools) |
 
+### Connectors (docs/CONNECTORS.md)
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /.well-known/oauth-protected-resource`, `GET /.well-known/oauth-authorization-server` | Discovery for MCP apps |
+| `POST /oauth/register`, `GET /oauth/authorize` (console page), `POST /oauth/token`, `POST /oauth/revoke` | OAuth 2.1 with PKCE for MCP apps (no cookies, no Bearer epc tokens) |
+| `POST /mcp` | MCP over Streamable HTTP (JSON replies) with an `epo_` access token; Read only and Full control tools |
+| `GET /api/connect/overview`, `GET /api/connect/oauth/request`, `POST /api/connect/oauth/consent` | The consent page's calls (browser session only) |
+| `GET /api/connect/apps[?all=1]`, `PATCH/DELETE /api/connect/apps/:id`, `GET /api/connect/activity` | Connected apps |
+| `PUT /api/connect/settings` `{fetchUrl}` | Administrators: allow the web-fetch tool |
+| `GET /api/connect/catalog`, `GET/POST /api/connect/connections`, `PATCH/DELETE .../:id`, `PUT .../:id/key`, `POST .../:id/test`, `GET .../:id/models`, `PUT /api/connect/fallbacks`, `GET /api/connect/usage` | Model connections |
+| `GET /api/connect/orgs/:id/ai`, `POST .../apply/:connection`, `POST .../login`, `GET/POST .../login/:session[/code\|/cancel]` | Agents' AI accounts |
+| `GET /api/connect/adapters`, `PUT /api/connect/adapters/:type` `{enabled}`, `DELETE ...`, `POST /api/connect/adapters/install` `{id}` | Adapters |
+
+The `/api/connect/*` routes are for a signed-in browser session; ePaperclip API tokens get 403 `ticket_only`. `/mcp` is also reachable at the older `POST /api/mcp` with an `epc_` token (read tools only).
+
 ### Machines, storage, tasks
 
 `GET /api/host`, `GET /api/stats/node`, `GET /api/stats/guests/:vmid`, `GET /api/machines/options`, `POST /api/vms`, `POST /api/guests/:vmid/power`, `GET /api/tasks`, `GET /api/tasks/:upid`, and the guests, storage, network, firewall and backup routes the console uses. The console's network tab in a browser's developer tools shows the exact calls for any screen.

@@ -66,6 +66,12 @@ Reviewed end to end:
 - **Clear errors.** Provider failures become sentences with a code (`provider_auth`, `provider_rate_limited`, `provider_rejected`, `provider_overloaded`, `provider_timeout`, `provider_unreachable`) and say who can fix it.
 - **No key in logs or responses.** Provider error text is redacted before it is shown or logged: the exact key, `sk-...`/`AIza...` shapes (including masked ones), bearer values and any long unbroken token become `[key]`. Tests assert that no response or log line from the connector, settings, model, test and chat routes contains the key. Gemini keys travel in a header, never the URL.
 
+## More model services, fallbacks and usage
+
+Besides the four built-in providers, an administrator can add hosted providers and local servers (Ollama, LM Studio, llama.cpp, vLLM, any OpenAI-compatible server) in Connectors; they appear in Pin's provider list as `x:<name>`. Pin streams from them the same way (tools included for the OpenAI-compatible ones). A chain of fallbacks lets Pin carry on when the chosen provider is rate-limited, out of quota, overloaded, unreachable or refuses the key, before any answer has been shown; the finished chat says which provider answered (`done.via`). Each turn's token counts, as the provider reports them, feed the Usage table in Connectors (no text is kept). Details in [CONNECTORS.md](CONNECTORS.md).
+
+Agent mode plans can now also come from connected apps (`createdBy: "app"`, titled with the app's name): they wait on the Plans tab exactly like Pin's.
+
 ## Update awareness
 
 `GET /api/pin/update` shows the installed version (`/opt/epaperclip/VERSION`) next to the latest release from the project's public release feed (GitHub's `releases/latest`), the release notes as plain text, and the release page link (only links inside this project's repository are kept).
@@ -78,7 +84,7 @@ Reviewed end to end:
 
 ## Read-only MCP endpoint
 
-`POST /api/mcp` with `Authorization: Bearer epc_...` speaks MCP's streamable HTTP in its simplest form (one JSON-RPC message per POST, one JSON answer): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are Pin's read tools (host status, machines, one machine, storage, tasks, organizations, one organization), run as the token's person with the token's own Proxmox permissions, so a privilege-separated token sees only what it was given. It offers no tool that changes anything and never accepts the console's cookie. For a token with the least reach, create one with **Separate privileges** and give it `PVEAuditor` on the paths to share. (A read-only token can't be used: it may only make GET requests, and MCP is a POST.) The full Papercliped bridge (OAuth, write tools through plans) is planned in [ROADMAP.md](ROADMAP.md).
+`POST /api/mcp` with `Authorization: Bearer epc_...` speaks MCP's streamable HTTP in its simplest form (one JSON-RPC message per POST, one JSON answer): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are Pin's read tools (host status, machines, one machine, storage, tasks, organizations, one organization), run as the token's person with the token's own Proxmox permissions, so a privilege-separated token sees only what it was given. It offers no tool that changes anything and never accepts the console's cookie. For a token with the least reach, create one with **Separate privileges** and give it `PVEAuditor` on the paths to share. (A read-only token can't be used: it may only make GET requests, and MCP is a POST.) The full Papercliped bridge (OAuth at `/oauth/*`, `POST /mcp`, write tools through plans) is described in [CONNECTORS.md](CONNECTORS.md).
 
 ## State and limits
 

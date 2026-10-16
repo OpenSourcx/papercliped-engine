@@ -18,21 +18,22 @@ Each phase ends with something that runs on a real Proxmox host.
 - [ ] Host service: vault, managed engine accounts, `/engine/api` and events WebSocket proxy
 - [ ] Container-session engine: a Paperclip sandbox provider that leases containers from the broker in the company's resource group
 - [ ] Resource groups in the company model: creating a company creates its pool, range, tag and limits through the broker; "let Pin decide" sizing
-- [ ] Connector access per connector: Pin and/or chosen companies
+- [x] Connector access per connector: Pin and/or chosen organizations; keys handed to the engine per organization; subscription sign-in inside agent containers (`docs/CONNECTORS.md`; the engine-facing parts are unchecked against a real engine)
 - [ ] Company memory options when creating a company manually
 
 ## Papercliped, native (v1)
 
 - [x] Connected apps page on demo data: device MCP address and per-app setup steps, the API only / Full / Agent only switch, sessions with Read only or Full control, organization and agent limits capped by the owning user, activity
 - [x] Read-only MCP endpoint on the host service (`POST /api/mcp`, Bearer ePaperclip API tokens, Pin's read tools, Proxmox decides what each token sees): the part of the bridge that is small and safe to ship now
-- [ ] Move the Papercliped bridge into this repository as a device service (MCP at `/mcp`, OAuth against IAC users). Plan below.
-- [ ] Papercliped bridge, the exact plan (not started because it adds an OAuth server and write tools, which need their own review):
+- [x] Papercliped bridge on the device: MCP at `/mcp`, OAuth 2.1 authorization code with PKCE and dynamic client registration, consent and revoke screens, Read only and Full control, host changes as plans by default, audit trail and rate limits (`docs/CONNECTORS.md`). The plan below is what was built; direct power tools exist behind a per-app opt-in.
+- [x] Papercliped bridge, the exact plan (built):
   1. OAuth 2.1 authorization server on the host service for MCP clients (authorization code with PKCE, dynamic client registration, consent screen in the console), issuing the same kind of credential as an ePaperclip API token: a real Proxmox API token of the signed-in person, so Proxmox keeps deciding. Scopes are exactly two: Read only (`paperclip:read`) and Full control (`paperclip:control`).
   2. Serve MCP at `/mcp` (today `/api/mcp`, kept as an alias) with the Papercliped tool set; Read only gets the tools `/api/mcp` has now, Full control adds the engine tools through `/engine/api` as the person's managed engine account.
   3. Host-changing tools (power, snapshot) are never run by the bridge directly: they create an Agent mode plan, so a person still approves each step in the console (`docs/PIN.md`). Full control sessions whose user allows it may be given direct power tools later, behind the session limits below.
   4. Revoke from Connected apps (the Proxmox token is deleted), audit every call in the existing audit trail, rate-limit per credential.
 - [ ] Session limits by organization, and host tools for Full control sessions whose user allows them
-- [ ] Remote access setup for web apps (Tailscale or tunnel connector)
+- [ ] Remote access setup for web apps (Tailscale or tunnel connector): claude.ai and ChatGPT need an https address they can reach
+- [ ] Wire this device's MCP endpoint in as a tool source for agents through the engine's tool connections
 
 ## Phase 3: Pin
 
