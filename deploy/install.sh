@@ -4,6 +4,9 @@
 #   sudo ./deploy/install.sh              install or upgrade
 #   sudo ./deploy/install.sh --rollback   go back to the previous version
 #   sudo ./deploy/install.sh --status     what's installed and whether it's healthy
+#   sudo ./deploy/install.sh --tarball epaperclip.tar.gz   verify a downloaded release (epaperclip.manifest.json and
+#                                         epaperclip.manifest.sig beside it) and install it; nothing is extracted unless
+#                                         its Ed25519 signature, checksum and version check out
 #   sudo ./deploy/install.sh --uninstall  remove it (keeps its data and settings; --purge removes those too)
 #
 # Works from a release download (epaperclip.mjs, console/ and engine/ next to this script's deploy/ folder), from the
@@ -136,6 +139,27 @@ start_all() { # the engine first, if this version has one
 }
 healthy_all() { { [ ! -f "$ENGINE_SERVICE" ] || wait_engine; } && wait_healthy; }
 stop_all() { systemctl stop epaperclip epaperclip-engine 2>/dev/null || true; }
+
+# ---- --tarball <file>: verify, extract, and run the installer inside -----------------------------------------------------
+# The key is the one already installed (a verified release put it there), else the one next to this script. A tarball can't vouch
+# for itself, so the key inside it is never used. EPC_SIGNING_KEY exists for tests only.
+if [ "${1:-}" = "--tarball" ]; then
+  [ "$#" -eq 2 ] || die "usage: install.sh --tarball <epaperclip.tar.gz> (with epaperclip.manifest.json and epaperclip.manifest.sig beside it)"
+  TB="$2"; TBDIR="$(cd "$(dirname "$TB")" && pwd)"
+  VLIB="$ROOT/deploy/verify-release.sh"; [ -f "$PREFIX/update/verify-release.sh" ] && VLIB="$PREFIX/update/verify-release.sh"
+  [ -f "$VLIB" ] || die "the release verifier (verify-release.sh) is missing, so $TB can't be checked and was not installed"
+  KEY="${EPC_SIGNING_KEY:-$ROOT/deploy/release-signing.pub}"; [ -z "${EPC_SIGNING_KEY:-}" ] && [ -s "$PREFIX/update/release-signing.pub" ] && KEY="$PREFIX/update/release-signing.pub"
+  # shellcheck disable=SC1090
+  . "$VLIB"
+  cur="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null || true)"; cur="${cur#v}"
+  [[ "$cur" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || cur=""
+  epc_verify_release "$TB" "$TBDIR/epaperclip.manifest.json" "$TBDIR/epaperclip.manifest.sig" "$KEY" "" "$cur" || die "$TB was not installed: $EPC_VERIFY_ERROR"
+  say "signature and checksum verified (version $EPC_VERIFIED_VERSION)"
+  TBWORK="$(mktemp -d)"; trap 'rm -rf "$TBWORK"' EXIT
+  tar -xzf "$TB" --no-same-owner -C "$TBWORK" || die "couldn't unpack $TB"
+  [ -f "$TBWORK/epaperclip/deploy/install.sh" ] || die "$TB isn't an ePaperclip release"
+  bash "$TBWORK/epaperclip/deploy/install.sh"; exit $?
+fi
 
 ACTION="${1:-}"
 case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge) ;; *) die "unknown option $ACTION (use --status, --rollback, --uninstall or --purge)" ;; esac
@@ -371,6 +395,10 @@ if [ -f "$ROOT/deploy/epaperclip-update.sh" ]; then
   install -d -m 0755 "$STAGE/update"
   install -m 0755 "$ROOT/deploy/epaperclip-update.sh" "$STAGE/update/run.sh"
   install -m 0755 "$ROOT/deploy/install.sh" "$STAGE/update/install.sh"
+  # The verifier and the pinned release-signing key the helper checks every update with. They are root's, installed from a
+  # release that was itself verified, so a new key can only arrive inside a release the previous key signed.
+  [ -f "$ROOT/deploy/verify-release.sh" ] && install -m 0644 "$ROOT/deploy/verify-release.sh" "$STAGE/update/verify-release.sh"
+  [ -f "$ROOT/deploy/release-signing.pub" ] && install -m 0644 "$ROOT/deploy/release-signing.pub" "$STAGE/update/release-signing.pub"
 fi
 
 install -m 0644 "$SRC_ENGINE/package.json" "$SRC_ENGINE/package-lock.json" "$STAGE/engine/"

@@ -1,9 +1,11 @@
 name: release
 
 # Pushing a tag like v0.1.0 builds and tests everything, then publishes:
-#   - a GitHub release with epaperclip.tar.gz, its checksum, get.sh and the .deb
+#   - a GitHub release with epaperclip.tar.gz, its checksum, the signed manifest and signature, get.sh and the .deb
 #   - the signed APT repository on GitHub Pages (gh-pages branch, apt/), when the APT_SIGNING_KEY secret is set
 #   - the epaperclip npm package, when the NPM_TOKEN secret is set
+# A tag needs the RELEASE_SIGNING_KEY secret (see docs/RELEASING.md): without it the build FAILS, so nothing unsigned is ever
+# published. A tag with a hyphen (v1.0.0-rc1) is a release candidate: a GitHub pre-release, npm dist-tag "next", no APT update.
 # Running it by hand (workflow_dispatch) builds and tests without publishing.
 on:
   push:
@@ -37,7 +39,22 @@ jobs:
           npm --prefix plugins/proxmox-sandbox run typecheck
           npm --prefix plugins/proxmox-sandbox test
           npm --prefix plugins/proxmox-sandbox run build
+      - name: Require the signing key for a tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          [ -n "$RELEASE_SIGNING_KEY" ] || { echo "::error::The RELEASE_SIGNING_KEY secret is not set, so this tag cannot be released. Run scripts/release-keygen.mjs once (docs/RELEASING.md)."; exit 1; }
+          [ -f deploy/release-signing.pub ] || { echo "::error::deploy/release-signing.pub is not committed. Run scripts/release-keygen.mjs once (docs/RELEASING.md)."; exit 1; }
       - run: node scripts/package-release.mjs "${GITHUB_REF_NAME}"
+        env:
+          EPC_REQUIRE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
+      - name: Sign the release (Ed25519 over the manifest; the build fails if it can't)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          EPC_RELEASE_VERSION: ${{ github.ref_name }}
+        run: node scripts/sign-release.mjs
       - name: Build the Debian package
         run: bash scripts/build-deb.sh
       - name: Installer tests (simulated Proxmox hosts, the .deb, the npm command)
@@ -48,9 +65,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" --generate-notes
-      - name: Publish the APT repository
-        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          flags=(--generate-notes)
+          case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/epaperclip.manifest.json release/epaperclip.manifest.sig release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" "${flags[@]}"
+      - name: Publish the APT repository (stable releases only)
+        if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
           APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
@@ -65,4 +85,5 @@ jobs:
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then echo "::notice::NPM_TOKEN isn't set, so the npm package was not published."; exit 0; fi
           npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
-          npm publish --access public --provenance
+          tag=latest; case "${GITHUB_REF_NAME}" in *-*) tag=next ;; esac
+          npm publish --access public --provenance --tag "$tag"

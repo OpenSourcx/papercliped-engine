@@ -18,7 +18,10 @@ tar -xzf "$REL/epaperclip.tar.gz" -C "$work"
 src="$work/epaperclip"
 version="$(cat "$src/VERSION")"
 # A Debian version starts with a digit and has no '-' (that would mean a Debian revision): v1.2.3-4-gabc -> 1.2.3+4.gabc
-debver="${version#v}"; debver="${debver//-/+}"; debver="${debver//_/.}"
+# A release candidate (1.0.0-rc1) must sort BEFORE 1.0.0, which '~' does and '+' doesn't: 1.0.0-rc1 -> 1.0.0~rc1
+debver="${version#v}"
+case "$debver" in [0-9]*.[0-9]*.[0-9]*-rc*|[0-9]*.[0-9]*.[0-9]*-beta*|[0-9]*.[0-9]*.[0-9]*-alpha*) debver="${debver/-/\~}" ;; esac
+debver="${debver//-/+}"; debver="${debver//_/.}"
 case "$debver" in [0-9]*) ;; *) debver="0.0.0+$debver" ;; esac
 echo "$debver" | grep -Eq '^[0-9][A-Za-z0-9.+~]*$' || die "can't make a Debian version from '$version'"
 

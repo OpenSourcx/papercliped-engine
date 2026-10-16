@@ -2,7 +2,9 @@
 # The update helper. Runs as root, started by epaperclip-update.path when the host service (which is unprivileged and
 # sandboxed, and stays that way) leaves a request in /var/lib/epaperclip/update/request. It does only two things:
 #
-#   action=update    download that exact release, check its published SHA-256, and run the installer from it. The
+#   action=update    download that exact release, check its Ed25519 signature (against the public key installed with the
+#                    running version, so a new key can only arrive inside a release the old key signed), then its manifest's
+#                    SHA-256 and version, and run the installer from it. Anything that fails a check is not extracted. The
 #                    installer is the same one a person runs by hand: it test-starts the new version on the side, swaps it
 #                    in, and puts the previous version back by itself if the new one doesn't come up healthy.
 #   action=rollback  run the installer's own --rollback.
@@ -17,7 +19,8 @@
 #   - it never opens an existing name there for writing: its log and status are built in a private folder and put in place
 #     by renaming a fresh file over the name (a rename replaces a link, it never follows one), so a link named "log" or
 #     "status" can't make root truncate or chmod some other file;
-#   - it refuses to install an older release than the one running (that is what "rollback" is for).
+#   - it refuses to install an older release than the one running (that is what "rollback" is for), by the signed
+#     manifest's version, not by anything in the request.
 set -uo pipefail
 
 PREFIX="${EPC_PREFIX:-/opt/epaperclip}"
@@ -79,18 +82,32 @@ fi
 # Never install an older release than the one running: a request (or a replayed one) for an old, vulnerable version
 # must not downgrade the host. Going back is what "rollback" is for, and it only goes to the version this one replaced.
 cur="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null)"; cur="${cur#v}"
-if [[ "$cur" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$ ]] && [ "$version" != "$cur" ] && [ "$(printf '%s\n%s\n' "$version" "$cur" | sort -V | head -n1)" = "$version" ]; then
+# The verifier and the pinned public key are the ones installed with the running version (root's, in $PREFIX/update), never
+# anything from the download or the request folder. A version installed before signing existed has neither and can't update itself.
+if [ ! -f "$PREFIX/update/verify-release.sh" ]; then
+  status failed "This installation predates signed releases, so it can't check an update. Install once from a shell: curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash" "$version"; exit 0
+fi
+# shellcheck disable=SC1091
+. "$PREFIX/update/verify-release.sh"
+[[ "$cur" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || cur=""   # a development build has no comparable version
+if [ -n "$cur" ] && epc_ver_lt "$version" "$cur"; then
   status failed "Version $version is older than the $cur that is running, so it was not installed. Nothing was changed." "$version"; exit 0
 fi
 
 status downloading "Downloading $version from the project's releases." "$version"
 url="$BASE/v$version"
-if ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 900 -o "$WORK/epaperclip.tar.gz" "$url/epaperclip.tar.gz" || ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 60 -o "$WORK/epaperclip.tar.gz.sha256" "$url/epaperclip.tar.gz.sha256"; then
-  status failed "Couldn't download release $version. Nothing was changed." "$version"; exit 0
+if ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 900 -o "$WORK/epaperclip.tar.gz" "$url/epaperclip.tar.gz" \
+  || ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 60 -o "$WORK/epaperclip.manifest.json" "$url/epaperclip.manifest.json" \
+  || ! curl -fsSL --proto-redir '=https' --retry 3 --max-time 60 -o "$WORK/epaperclip.manifest.sig" "$url/epaperclip.manifest.sig"; then
+  status failed "Couldn't download release $version (or its signature). Nothing was changed." "$version"; exit 0
 fi
-status verifying "Checking the download against its published checksum." "$version"
-if ! (cd "$WORK" && sha256sum -c epaperclip.tar.gz.sha256 >/dev/null 2>&1); then
-  status failed "The download doesn't match its published checksum, so it was not installed. Nothing was changed." "$version"; exit 0
+status verifying "Checking the download's signature, checksum and version." "$version"
+# Fail closed: the signature over the manifest, the manifest's SHA-256 against the file, the manifest's version against the
+# request, and no older than what is running (checked again here against the signed version, not just the requested one).
+if ! epc_verify_release "$WORK/epaperclip.tar.gz" "$WORK/epaperclip.manifest.json" "$WORK/epaperclip.manifest.sig" "$PREFIX/update/release-signing.pub" "$version" "$cur"; then
+  logger -t epaperclip-update "refused release $version: $EPC_VERIFY_ERROR" 2>/dev/null || true
+  echo "refused: $EPC_VERIFY_ERROR" >>"$LOG"
+  status failed "The download was refused, so it was not installed and nothing was changed: ${EPC_VERIFY_ERROR:0:200}" "$version"; exit 0
 fi
 if ! tar -xzf "$WORK/epaperclip.tar.gz" --no-same-owner -C "$WORK" 2>>"$LOG" || [ ! -f "$WORK/epaperclip/deploy/install.sh" ]; then
   status failed "The download isn't an ePaperclip release. Nothing was changed." "$version"; exit 0

@@ -3,18 +3,43 @@
 #
 #   curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash
 #
-# It downloads the release, checks it against the published SHA-256, and runs the installer inside it.
-# Read it first if you like: it is short, and deploy/install.sh (what it runs) is in the same repository.
+# It downloads the release and checks its Ed25519 signature (a detached signature over a manifest that carries the
+# tarball's version and SHA-256) against the project's public key, which is written into this file when the release is
+# built. Nothing is extracted or run unless that check passes; if it fails, nothing is installed. Then it runs the
+# installer inside the release. Read it first if you like: it is short, and deploy/install.sh is in the same repository.
+#
+# A release candidate (a pre-release) is not "latest"; install one by pointing get.sh at its tag:
+#   B=https://github.com/OpenSourcx/papercliped-engine/releases/download/v1.0.0-rc1
+#   curl -fsSL $B/get.sh | EPC_RELEASE_BASE=$B bash
+#
+# This is the template. scripts/package-release.mjs writes the verification code and the public key into the copy
+# that is published with each release; this template has neither and refuses to install anything.
 set -euo pipefail
 BASE="${EPC_RELEASE_BASE:-https://github.com/OpenSourcx/papercliped-engine/releases/latest/download}"
 die() { echo "epaperclip: $*" >&2; exit 1; }
+
+# @@EPC_VERIFY_LIB@@
+# @@EPC_PINNED_KEY@@
+EPC_PINNED_KEY="${EPC_PINNED_KEY:-}"
+
+declare -F epc_verify_release >/dev/null || die "this copy of get.sh is the unsigned template and cannot verify a release. Use the get.sh attached to a release: https://github.com/OpenSourcx/papercliped-engine/releases"
 [ "$(id -u)" -eq 0 ] || die "run as root"
-for c in curl tar sha256sum; do command -v "$c" >/dev/null || die "the '$c' command is missing (apt-get install -y curl)"; done
+for c in curl tar sha256sum openssl base64; do command -v "$c" >/dev/null || die "the '$c' command is missing (apt-get install -y curl openssl)"; done
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-echo "epaperclip: downloading the latest release"
+[ -n "$EPC_PINNED_KEY" ] || die "this release carries no signing key, so nothing can be verified and nothing was installed. The maintainer must run scripts/release-keygen.mjs and publish a release with deploy/release-signing.pub"
+printf '%s\n' "$EPC_PINNED_KEY" >"$tmp/release-signing.pub"
+
+echo "epaperclip: downloading the release"
 curl -fsSL --retry 3 -o "$tmp/epaperclip.tar.gz" "$BASE/epaperclip.tar.gz" || die "couldn't download the release from $BASE"
-curl -fsSL --retry 3 -o "$tmp/epaperclip.tar.gz.sha256" "$BASE/epaperclip.tar.gz.sha256" || die "couldn't download the release's checksum"
-(cd "$tmp" && sha256sum -c epaperclip.tar.gz.sha256 >/dev/null) || die "the download doesn't match its checksum, so it was not installed"
-tar -xzf "$tmp/epaperclip.tar.gz" -C "$tmp"
+curl -fsSL --retry 3 -o "$tmp/epaperclip.manifest.json" "$BASE/epaperclip.manifest.json" || die "couldn't download the release's signed manifest, so it was not installed"
+curl -fsSL --retry 3 -o "$tmp/epaperclip.manifest.sig" "$BASE/epaperclip.manifest.sig" || die "couldn't download the release's signature, so it was not installed"
+
+# Never go backwards by accident: refuse a release older than the one installed (set EPC_ALLOW_DOWNGRADE=1 to mean it).
+have=""
+if [ "${EPC_ALLOW_DOWNGRADE:-}" != 1 ]; then have="$(tr -d '[:space:]' <"${EPC_PREFIX:-/opt/epaperclip}/VERSION" 2>/dev/null || true)"; have="${have#v}"; fi
+epc_verify_release "$tmp/epaperclip.tar.gz" "$tmp/epaperclip.manifest.json" "$tmp/epaperclip.manifest.sig" "$tmp/release-signing.pub" "" "$have" \
+  || die "the release was not installed: $EPC_VERIFY_ERROR"
+echo "epaperclip: signature and checksum verified (version $EPC_VERIFIED_VERSION)"
+tar -xzf "$tmp/epaperclip.tar.gz" --no-same-owner -C "$tmp"
 bash "$tmp/epaperclip/deploy/install.sh" "$@"
