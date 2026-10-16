@@ -23,14 +23,14 @@ function inline(text: string, key = ""): ReactNode[] {
     const k = `${key}${n++}`;
     if (m[1] !== undefined) out.push(<code key={k} className="font-mono text-compact bg-code rounded-sm px-1 py-0.5 break-words">{m[1]}</code>);
     else if (m[2] !== undefined) {
-      const href = httpUrl(m[3]);
-      out.push(href ? <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline underline-offset-2 break-words">{m[2]}</a> : <Fragment key={k}>{m[2]}</Fragment>);
+      const safe = httpUrl(m[3]);
+      out.push(safe ? <a key={k} href={safe} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline underline-offset-2 break-words">{m[2]}</a> : <Fragment key={k}>{m[2]}</Fragment>);
     } else if (m[4] !== undefined) out.push(<strong key={k} className="font-semibold">{inline(m[4], k)}</strong>);
     else if (m[5] !== undefined) out.push(<em key={k}>{inline(m[5], k)}</em>);
     else if (m[6] !== undefined) out.push(<span key={k} className="inline-flex items-center gap-1 rounded-sm bg-warning/10 text-warning px-1.5 text-compact align-baseline"><KeyRound className="h-3 w-3" aria-hidden />{KIND_WORD[m[6]] ?? "secret"} removed</span>);
     else {
-      const href = httpUrl(m[0]);
-      out.push(href ? <a key={k} href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline underline-offset-2 break-all">{m[0]}</a> : m[0]);
+      const safe = httpUrl(m[0]);
+      out.push(safe ? <a key={k} href={safe} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline underline-offset-2 break-all">{m[0]}</a> : m[0]);
     }
     at = m.index! + m[0].length;
   }
@@ -81,7 +81,7 @@ export function parseBlocks(src: string): Block[] {
       blocks.push({ t: "list", ordered, items });
     } else {
       const p: string[] = [];
-      for (; i < lines.length && lines[i].trim() && !/^\s*(```|~~~|#{1,6}\s|>|(?:[-*+]|\d+[.)])\s+)/.test(lines[i]); i++) p.push(lines[i]);
+      for (; i < lines.length && lines[i].trim() && !/^\s*(```|~~~|#{1,6}\s|>|(?:[-*+]|\d+[.)])\s+)/.test(lines[i]) && !/^\s*([-*_])(\s*\1){2,}\s*$/.test(lines[i]); i++) p.push(lines[i]);
       if (!p.length) {
         p.push(lines[i]);
         i++;
