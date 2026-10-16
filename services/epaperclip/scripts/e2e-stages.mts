@@ -149,7 +149,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     }
   };
   /** The engine makes a Proxmox administrator an instance admin shortly after sign-in, in the background. */
-  const engineAdmin = (user: string) => until(`${user} to be an engine instance admin`, async () => (await eng(user, "GET", "/api/companies")).status === 200 && (await eng(user, "GET", "/api/admin/users")).status === 200);
+  const engineAdmin = (user: string) => until(`${user} to be an engine instance admin`, async () => (await eng(user, "GET", "/api/companies")).status === 200 && (await eng(user, "GET", "/api/cli-auth/me")).json?.isInstanceAdmin === true);
   /** The control inside the <label> whose first line is this text (the engine pages wrap their inputs in labels). */
   const field = (page: Page, label: string) => page.locator("label").filter({ has: page.locator("span", { hasText: new RegExp(`^${label}\\b`) }) }).locator("input, select, textarea").first();
   /** A tab or a segmented button, whichever the page uses. */
@@ -161,7 +161,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     const page = await signedIn("sam");
     await shot(page, "01-admin-home");
     const t = await bodyText(page);
-    expect(/Good (morning|afternoon|evening), sam/.test(t), "the greeting names the signed-in person");
+    expect(/(Good (morning|afternoon|evening)|Working late), sam/.test(t), "the greeting names the signed-in person");
     expect(/2 \/ 3\s*Machines running/.test(t), "the three machines Proxmox lists are shown");
     for (const n of ["web", "cache", "db"]) expect(t.includes(n), `machine ${n} is listed`);
     await engineAdmin("sam");
@@ -171,7 +171,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     const page = await signedIn("lee");
     await shot(page, "02-nonadmin-home");
     const t = await bodyText(page);
-    expect(/Good (morning|afternoon|evening), lee/.test(t), "the greeting names lee");
+    expect(/(Good (morning|afternoon|evening)|Working late), lee/.test(t), "the greeting names lee");
     const created = await eng("lee", "POST", "/api/companies", { name: "Sneaky" });
     expect(created.status === 403, `a non-admin creating an organization is refused, got ${created.status} ${created.text.slice(0, 120)}`);
     const list = await eng("lee", "GET", "/api/companies");
@@ -217,6 +217,12 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await page.click(`button:has-text("${userid}")`);
     await page.waitForSelector("text=Save changes");
   };
+  /** A change to someone's access is shown first (what Proxmox and the engine will do), then applied. */
+  const review = async (page: Page) => {
+    await page.click("button:has-text('Review changes')");
+    await page.waitForSelector("[aria-label='Review changes']");
+    await page.click("button:has-text('Apply changes')");
+  };
   const orgMembers = async (): Promise<any[]> => {
     const r = await eng("sam", "GET", `/api/companies/${S.org!.id}/members`);
     expect(r.status === 200, `members listed, got ${r.status}`);
@@ -230,7 +236,7 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await openUser(page, "kim@pve");
     await page.getByLabel("Role in Acme Labs").selectOption("operator");
     await shot(page, "04-iac-kim-operator");
-    await page.click("button:has-text('Save changes')");
+    await review(page);
     await until("kim's ACL on the pool", () => poolAcl().some((a) => a.ugid === "kim@pve"));
     expect(poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEVMUser"), `kim has PVEVMUser on the pool, got ${JSON.stringify(poolAcl())}`);
     expect(!c.pve.acl.some((a) => a.ugid === "kim@pve" && a.path === "/"), "kim got no device-wide access");
@@ -270,12 +276,12 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     const { page } = await open("sam");
     await openUser(page, "kim@pve");
     await page.getByLabel("Role in Acme Labs").selectOption("viewer");
-    await page.click("button:has-text('Save changes')");
+    await review(page);
     await until("kim becomes an auditor", () => poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEAuditor"));
     expect(!poolAcl().some((a) => a.ugid === "kim@pve" && a.roleid === "PVEVMUser"), "the operator role was taken away");
     await openUser(page, "kim@pve");
     await page.getByLabel("Role in Acme Labs").selectOption("");
-    await page.click("button:has-text('Save changes')");
+    await review(page);
     await until("kim's pool ACLs removed", () => !poolAcl().some((a) => a.ugid === "kim@pve"));
     await until("kim to leave the engine membership", async () => !(await orgMembers()).some((m) => (m.user?.name === "kim") && m.status === "active"));
     // Taking someone's organization role away ends their open sessions, so a stale tab can't keep working.
@@ -1008,11 +1014,39 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await page.getByRole("button", { name: "Done" }).click();
     expect(!(await bodyText(page)).includes(secret), "the secret is not on the page after closing the dialog");
     const u = new URL(url);
-    if (u.port !== new URL(c.base).port) openFindings.push(`OPEN: a routine's webhook address is the engine's own loopback address (${u.origin}); nothing outside the device can reach it, and the host service has no unauthenticated route for it (design decision: see docs/E2E.md)`);
+    if (u.port !== new URL(c.base).port) openFindings.push(`OPEN: a routine's webhook address is the engine's own loopback address (${u.origin}); nothing outside the device can reach it, and an administrator can open it per organization (Access control > Sign-in policy; design decision: see docs/E2E.md)`);
     await page.getByRole("button", { name: "Revisions" }).click();
     await page.waitForSelector("text=Every change to this routine is kept");
     await shot(page, "34-revisions");
     await page.keyboard.press("Escape");
+  });
+
+  await stage("routine webhooks from outside: off by default, opened per organization, forwarded to the real engine, nothing else gets through", async () => {
+    const routines = (await eng("sam", "GET", `/api/companies/${S.org!.id}/routines`)).json;
+    const r = (Array.isArray(routines) ? routines : routines.routines).find((x: any) => x.title === "Morning summary");
+    const made = await eng("sam", "POST", `/api/routines/${r.id}/triggers`, { kind: "webhook", label: "ingress test", signingMode: "none" });
+    expect(made.status === 200 || made.status === 201, `a webhook trigger was created, got ${made.status} ${made.text.slice(0, 200)}`);
+    const publicId: string = made.json?.trigger?.publicId ?? made.json?.publicId;
+    expect(/^[0-9a-f]{24}$/.test(publicId ?? ""), `the trigger has a public id, got ${made.text.slice(0, 300)}`);
+    const fire = (id: string, body = JSON.stringify({ ref: "main" }), method = "POST", type = "application/json") => fetch(`${c.base}/hooks/routines/${id}/fire`, { method, headers: { "Content-Type": type }, body: method === "POST" ? body : undefined });
+    expect((await fire(publicId)).status === 404, "closed until an administrator opens the organization");
+    expect((await call("lee", "PUT", `/api/access/routine-ingress/${S.org!.id}`, { enabled: true })).status === 403, "only a Proxmox administrator can open it");
+    expect((await call("sam", "PUT", `/api/access/routine-ingress/${S.org!.id}`, { enabled: true })).status === 200, "an administrator opens the organization");
+    const listed = await call("sam", "GET", "/api/access/routine-ingress");
+    const org = listed.json.organizations.find((o: any) => o.companyId === S.org!.id);
+    expect(org?.enabled && org.hooks.some((h: any) => h.publicId === publicId), `the open organization lists the webhook, got ${listed.text.slice(0, 400)}`);
+    const ok = await fire(publicId);
+    expect(ok.status === 202, `the real engine accepted the call, got ${ok.status} ${(await ok.text()).slice(0, 200)}`);
+    expect((await fire(publicId, "x".repeat(70 * 1024))).status === 413, "an oversize body is refused");
+    expect((await fire(publicId, "{}", "GET")).status === 405, "only POST");
+    expect((await fire(publicId, "x", "POST", "text/plain")).status === 415, "only JSON");
+    expect((await fire("0".repeat(24))).status === 404, "an unknown trigger looks like any wrong address");
+    expect((await fetch(`${c.base}/hooks/anything/else`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status === 404, "no other path exists");
+    // The proxy only reaches the routes the console uses.
+    expect((await eng("sam", "GET", "/api/companies")).status === 200, "a console route works through the proxy");
+    for (const p of ["/api/instance/settings", "/api/routine-triggers/public/" + publicId + "/fire", `/api/companies/${S.org!.id}/invites`, "/api/admin/users"]) expect((await eng("sam", p.includes("/fire") ? "POST" : "GET", p, p.includes("/fire") ? {} : undefined)).status === 404, `${p} is closed in the proxy`);
+    expect((await call("sam", "PUT", `/api/access/routine-ingress/${S.org!.id}`, { enabled: false })).status === 200, "closing it again");
+    expect((await fire(publicId)).status === 404, "closed again");
   });
 
   await stage("decisions: reject and request a revision on hires", async () => {

@@ -29,6 +29,10 @@ const STEPS_PER_RUN = 25;
 const TICK_MS = 15_000;
 const TASK_TIMEOUT_MS = 120_000;
 const MAX_PER_USER = 50;
+/** An automation's Proxmox token lives this long unless the owner picks otherwise, and can be renewed. */
+export const TOKEN_DEFAULT_DAYS = 90;
+export const TOKEN_MAX_DAYS = 366;
+const DAY_MS = 86_400_000;
 const ROLE_FOR = (action: string) => (action === "notify" ? "PVEAuditor" : "PVEVMUser");
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -96,6 +100,16 @@ export class AutomationRunner {
     try {
       const now = this.rt.now();
       for (const a of Object.values(this.rt.store.automations())) {
+        // Tokens end. A day or more before, the owner is told; when it ends the automation stops (not fails) until renewed.
+        if (a.tokenExpiresAt) {
+          if (a.tokenExpiresAt <= now && !a.paused) {
+            this.rt.store.patchAutomation(a.id, { paused: { at: now, reason: "Its Proxmox token expired. Renew it to resume.", by: "runner" }, retryAt: null });
+            this.rt.audit(`automation:${a.id}`, "pin.automation.expired", a.id, a.spec.name);
+            pushNotice(this.rt, a.owner, { key: `automation:${a.id}:expired:${a.tokenExpiresAt}`, kind: "automation", level: "critical", title: `${a.spec.name} stopped: its token expired`, body: "Renew it on Pin's Automations tab to start it again.", link: "pin?tab=automations" });
+            continue;
+          }
+          if (a.tokenExpiresAt - now < 7 * DAY_MS && !a.paused) pushNotice(this.rt, a.owner, { key: `automation:${a.id}:expiring:${a.tokenExpiresAt}`, kind: "automation", level: "warning", title: `${a.spec.name}: its token ends soon`, body: `It ends on ${new Date(a.tokenExpiresAt).toLocaleDateString()}. Renew it on Pin's Automations tab.`, link: "pin?tab=automations" });
+        }
         if (a.paused || this.active.has(a.id)) continue;
         const due = dueOf(a, now);
         if (due > this.rt.now()) continue;
@@ -278,6 +292,8 @@ const view = (rt: PinRuntime, a: Automation) => {
     spec: a.spec,
     readBack: describeSpec(a.spec),
     permissions: a.permissions,
+    tokenExpiresAt: a.tokenExpiresAt ?? null,
+    tokenName: a.tokenName,
     permissionsNote: a.permissions === "scoped" ? "Acts through its own Proxmox token that can only view, and power or snapshot machines, within its scope." : "Acts with all of its owner's Proxmox permissions, limited by its one action and scope.",
     paused: a.paused,
     running: runner?.isRunning(a.id) ?? false,
@@ -336,7 +352,9 @@ export async function automationRoutes(ctx: FeatureCtx): Promise<boolean> {
     if (s.apiToken) throw new HttpError(403, "ticket_only", "Automations are created in the console, by a signed-in person.");
     if (!isConfigured(rt)) throw new HttpError(503, "runner_unavailable", "The automation runner isn't running on this host service.");
     const b = await ctx.readJson();
-    const { allowOwnerPermissions, ...rest } = b;
+    const { allowOwnerPermissions, tokenDays, ...rest } = b;
+    if (tokenDays !== undefined && (typeof tokenDays !== "number" || !Number.isInteger(tokenDays) || tokenDays < 1 || tokenDays > TOKEN_MAX_DAYS)) throw new HttpError(400, "bad_request", `tokenDays is between 1 and ${TOKEN_MAX_DAYS}`);
+    const tokenExpiresAt = rt.now() + (tokenDays ?? TOKEN_DEFAULT_DAYS) * DAY_MS;
     if (allowOwnerPermissions !== undefined && typeof allowOwnerPermissions !== "boolean") throw new HttpError(400, "bad_request", "allowOwnerPermissions must be true or false");
     const v = validateSpec(rest);
     if (!v.ok) throw new HttpError(400, "bad_automation", v.errors.join("; "));
@@ -346,7 +364,7 @@ export async function automationRoutes(ctx: FeatureCtx): Promise<boolean> {
     const tokenId = `${s.username}!${tokenName}`;
     const created = await ctx.asUser(async (pve) => {
       const made = async (privsep: boolean) => {
-        const r = await pve.callFull<{ value?: string }>("POST", `/access/users/${enc(s.username)}/token/${enc(tokenName)}`, { comment: `ePaperclip automation: ${v.spec.name}`.slice(0, 120), expire: 0, privsep });
+        const r = await pve.callFull<{ value?: string }>("POST", `/access/users/${enc(s.username)}/token/${enc(tokenName)}`, { comment: `ePaperclip automation: ${v.spec.name}`.slice(0, 120), expire: Math.floor(tokenExpiresAt / 1000), privsep });
         if (!r.data?.value) throw new HttpError(502, "proxmox_error", "Proxmox didn't return a token for the automation.");
         return r.data.value;
       };
@@ -365,14 +383,14 @@ export async function automationRoutes(ctx: FeatureCtx): Promise<boolean> {
     });
     const now = rt.now();
     rt.state.setSecret(automationSecret(id), created.secret);
-    const a: Automation = { id, spec: v.spec, owner: s.username, paused: null, permissions: created.permissions, tokenName, createdAt: now, updatedAt: now, lastRunAt: null, lastStatus: null, consecutiveFailures: 0, retryAt: null };
+    const a: Automation = { id, spec: v.spec, owner: s.username, paused: null, permissions: created.permissions, tokenName, tokenExpiresAt, createdAt: now, updatedAt: now, lastRunAt: null, lastStatus: null, consecutiveFailures: 0, retryAt: null };
     // A new condition automation starts looking at the next pass; a schedule waits for its time.
     rt.store.putAutomation(a);
     rt.audit(s.username, "pin.automation.create", id, `${v.spec.name} (${created.permissions} permissions)`);
     return ctx.json(201, { automation: view(rt, a) }), true;
   }
 
-  const one = ctx.path.match(/^\/api\/pin\/automations\/([0-9a-f]{8})(?:\/(pause|resume|run))?$/);
+  const one = ctx.path.match(/^\/api\/pin\/automations\/([0-9a-f]{8})(?:\/(pause|resume|run|renew))?$/);
   if (!one) throw new HttpError(404, "not_found", "Not found");
   if (method === "GET" && !one[2]) {
     const a = await mine(one[1]);
@@ -389,6 +407,19 @@ export async function automationRoutes(ctx: FeatureCtx): Promise<boolean> {
     return ctx.json(200, { ok: true, tokenRemoved: tokenGone }), true;
   }
   if (method !== "POST" || !one[2]) throw new HttpError(405, "method", "Method not allowed");
+  if (one[2] === "renew") {
+    // A new end date for the automation's Proxmox token, made as the owner (or an administrator): Proxmox and the host agree on it.
+    if (s.apiToken) throw new HttpError(403, "ticket_only", "Renewing an automation's token needs a signed-in person; API tokens can't do it.");
+    const b = await ctx.readJson();
+    const days = b.days === undefined ? TOKEN_DEFAULT_DAYS : b.days;
+    if (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > TOKEN_MAX_DAYS) throw new HttpError(400, "bad_request", `Renew for 1 to ${TOKEN_MAX_DAYS} days from now`);
+    const until = rt.now() + days * DAY_MS;
+    await ctx.asUser((pve) => pve.call("PUT", `/access/users/${enc(a.owner)}/token/${enc(a.tokenName)}`, { expire: Math.floor(until / 1000) }));
+    const expiredPause = a.paused?.by === "runner" && /token expired/.test(a.paused.reason);
+    rt.store.patchAutomation(a.id, { tokenExpiresAt: until, ...(expiredPause ? { paused: null, consecutiveFailures: 0, retryAt: null } : {}) });
+    rt.audit(s.username, "pin.automation.renew", a.id, `${a.spec.name} until ${new Date(until).toISOString().slice(0, 10)}`);
+    return ctx.json(200, { automation: view(rt, rt.store.automation(a.id)!) }), true;
+  }
   if (one[2] === "pause") {
     rt.store.patchAutomation(a.id, { paused: { at: rt.now(), reason: "Paused by you.", by: "user" } });
     rt.audit(s.username, "pin.automation.pause", a.id, a.spec.name);

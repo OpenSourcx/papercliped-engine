@@ -102,7 +102,8 @@ const app = createApp({
   state,
   now: hostNow,
   fetch: fetchOut,
-  engine: { url: engineUrl, installDir: enginePrefix },
+  // The stages report spend the way an agent would; that route isn't one the console uses, so the proxy's allow-list gets it for this run only.
+  engine: { url: engineUrl, installDir: enginePrefix, extraAllowed: [/^\/api\/companies\/[^/]+\/cost-events$/] },
   containers: { ssh: ssh.runner, paceMs: 0 },
   maxUploadBytes: 5 * 1024 ** 2,
 });

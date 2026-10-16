@@ -255,7 +255,7 @@ export function AutomationsLive() {
         <Card><EmptyState icon={<Workflow className="h-5 w-5" />} title="No automations yet" body='Tell Pin what you want ("snapshot every container tagged prod each night"), or build one here.' action={<Button variant="primary" onClick={() => setCreating(true)}>New automation</Button>} /></Card>
       ) : q.data.automations.map((a) => (
         <AutomationRow key={a.id} a={a} showOwner={q.data.canSeeAll}
-          onPause={run(() => pinRt.automationAction(a.id, a.paused ? "resume" : "pause"))} onRun={run(() => pinRt.runNow(a.id))} onDelete={() => setDeleting(a)} />
+          onPause={run(() => pinRt.automationAction(a.id, a.paused ? "resume" : "pause"))} onRun={run(() => pinRt.runNow(a.id))} onRenew={run(() => pinRt.renewAutomation(a.id))} onDelete={() => setDeleting(a)} />
       ))}
       <p className="text-xs text-ink-3">Automations can notify, shut down, stop, start or take snapshots. They can never delete anything, and machines tagged <span className="font-mono">protected</span> only ever get a notification.</p>
       {creating && <NewAutomation onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void refresh(); }} />}
@@ -269,7 +269,7 @@ export function AutomationsLive() {
   );
 }
 
-function AutomationRow({ a, showOwner, onPause, onRun, onDelete }: { a: AutomationView; showOwner: boolean; onPause: () => void; onRun: () => void; onDelete: () => void }) {
+function AutomationRow({ a, showOwner, onPause, onRun, onRenew, onDelete }: { a: AutomationView; showOwner: boolean; onPause: () => void; onRun: () => void; onRenew: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const kind = a.paused ? "paused" : a.running ? "working" : a.lastStatus === "failed" ? "critical" : a.lastRunAt ? "good" : "idle";
@@ -287,12 +287,14 @@ function AutomationRow({ a, showOwner, onPause, onRun, onDelete }: { a: Automati
             <span className="text-xs text-ink-3">Last run {ago(a.lastRunAt)}{a.nextRunAt && !a.paused ? ` · next ${when(a.nextRunAt)}` : ""}</span>
             <Chip tone={a.permissions === "scoped" ? "good" : "warning"}>{a.permissions === "scoped" ? "Limited permissions" : "Acts as its owner"}</Chip>
             {showOwner && <Chip>{a.owner}</Chip>}
+            <span className={`text-xs ${a.tokenExpiresAt && a.tokenExpiresAt - Date.now() < 7 * 86_400_000 ? "text-warning" : "text-ink-3"}`}>{a.tokenExpiresAt ? `Token ${a.tokenExpiresAt < Date.now() ? "expired" : "ends"} ${new Date(a.tokenExpiresAt).toLocaleDateString()}` : "Token has no end date yet"}</span>
           </div>
           {a.paused && <Notice tone={a.paused.by === "runner" ? "warning" : "info"} className="mt-3">{a.paused.reason}</Notice>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" loading={busy === "pause"} onClick={wrap("pause", onPause)}>{a.paused ? <><Play className="h-3.5 w-3.5" />Resume</> : <><Pause className="h-3.5 w-3.5" />Pause</>}</Button>
           <Button size="sm" disabled={!!a.paused || a.running} loading={busy === "run"} onClick={wrap("run", onRun)}><Zap className="h-3.5 w-3.5" />Run now</Button>
+          <Button size="sm" loading={busy === "renew"} onClick={wrap("renew", onRenew)} aria-label={`Renew the token of ${a.name}`}>Renew token</Button>
           <Button size="sm" variant="ghost" aria-label={`Delete ${a.name}`} onClick={onDelete}><Trash2 className="h-3.5 w-3.5" />Delete</Button>
         </div>
       </div>

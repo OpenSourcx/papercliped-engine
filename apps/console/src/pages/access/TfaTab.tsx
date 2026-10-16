@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { KeyRound, Plus, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { access, type TfaEntry } from "../../data/engine/access.ts";
+import { accessAdmin } from "../../data/engine/accessAdmin.ts";
+import { registerKey, webauthnAvailable, webauthnUsableHere } from "./webauthn.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Chip, EmptyState, Input, Notice, SectionTitle, Select, Toggle } from "../../ui/primitives.tsx";
@@ -43,6 +45,41 @@ function AddTotp({ userid, mine, onClose }: { userid: string; mine: boolean; onC
         <Field label="Description" hint="So you can tell entries apart, for example Phone."><Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={255} /></Field>
         <Field label="Current code" hint="The six digits your app shows now. Proxmox checks it before saving."><Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" className="font-mono tracking-code" /></Field>
         {mine && <Field label="Your password" hint="Proxmox asks for it when you change your own two-factor settings."><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></Field>}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+/** Registers a security key (WebAuthn) from this browser, if Proxmox's WebAuthn address is this page's. */
+function AddKey({ userid, onClose }: { userid: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const policy = useQuery({ queryKey: ["access", "policy"], queryFn: accessAdmin.policy.get, retry: 0 });
+  const [description, setDescription] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const verdict = policy.data ? webauthnUsableHere(policy.data.webauthn, window.location) : null;
+  const add = useMutation({
+    mutationFn: async () => {
+      const begun = await accessAdmin.webauthn.begin(userid, { description: description.trim() || undefined, password });
+      const made = await registerKey(begun.challenge);
+      return accessAdmin.webauthn.finish(userid, { challenge: made.challenge, value: made.value, description: description.trim() || undefined, password });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: key(userid) });
+      onClose();
+    },
+    onError: (e) => setError(e instanceof DOMException ? (e.name === "NotAllowedError" ? "The key wasn't used in time, or you cancelled. Try again." : e.message) : errorText(e)),
+  });
+  const blocked = !webauthnAvailable() ? "This browser can't use security keys here. Security keys need a secure (https) address." : verdict && !verdict.ok ? verdict.why : null;
+  return (
+    <Modal size="md" icon={<KeyRound className="h-5 w-5" />} title="Add a security key" subtitle={`Second factor for ${userid}: a hardware key or a passkey on this device.`} onClose={onClose}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={add.isPending} disabled={!!blocked || !password} onClick={() => add.mutate()}>Add security key</Button></>}>
+      <div className="space-y-4">
+        {blocked && <Notice tone="warning" title="Can't add a key from this page">{blocked}</Notice>}
+        <Field label="Description" hint="So you can tell keys apart, for example Desk key."><Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={255} /></Field>
+        <Field label="Your password" hint="Proxmox asks for it when you change your own two-factor settings."><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></Field>
+        <p className="text-xs text-ink-3">After you press the button your browser asks you to touch the key. Keep an authenticator app or recovery keys too, in case the key is lost.</p>
         {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
@@ -107,7 +144,7 @@ export function TfaTab() {
   const q = useQuery({ queryKey: key(userid), queryFn: () => access.tfa.forUser(userid), enabled: !!userid, retry: 0 });
   const locks = useQuery({ queryKey: ["access", "tfa", "all"], queryFn: access.tfa.all, retry: 0 });
   const lock = locks.data?.users.find((u) => u.userid === userid);
-  const [adding, setAdding] = useState<"totp" | "recovery" | null>(null);
+  const [adding, setAdding] = useState<"totp" | "recovery" | "key" | null>(null);
   const [removing, setRemoving] = useState<TfaEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pwFor, setPwFor] = useState<{ entry: TfaEntry; enable: boolean } | null>(null);
@@ -125,7 +162,7 @@ export function TfaTab() {
   const users = iacQ.data?.users ?? (me ? [{ userid: me }] : []);
   return (
     <div>
-      <SectionTitle action={<><Button onClick={() => setAdding("recovery")}><Plus className="h-4 w-4" />Recovery keys</Button><Button variant="primary" onClick={() => setAdding("totp")}><Plus className="h-4 w-4" />Authenticator app</Button></>}>Two-factor sign-in</SectionTitle>
+      <SectionTitle action={<>{mine && <Button onClick={() => setAdding("key")}><Plus className="h-4 w-4" />Security key</Button>}<Button onClick={() => setAdding("recovery")}><Plus className="h-4 w-4" />Recovery keys</Button><Button variant="primary" onClick={() => setAdding("totp")}><Plus className="h-4 w-4" />Authenticator app</Button></>}>Two-factor sign-in</SectionTitle>
       <p className="text-compact text-ink-2 mb-3 max-w-2xl">A second step when signing in: a code from an app on your phone, or a recovery key. It is enforced by Proxmox, so it applies to the Proxmox console and every API sign-in as well.</p>
       <div className="max-w-xs mb-4"><Field label="User"><Select value={userid} onChange={(e) => setPick(e.target.value)}>{users.map((u) => <option key={u.userid} value={u.userid}>{u.userid}{u.userid === me ? " (you)" : ""}</option>)}</Select></Field></div>
       {lock && (lock.totpLocked || lock.lockedUntil) && (
@@ -152,8 +189,9 @@ export function TfaTab() {
           </Table>
         ))}
       </QueryState>
-      <p className="text-xs text-ink-3 mt-3">Security keys (WebAuthn) are listed here and can be removed, but they are added in Proxmox: a key is tied to the web address it was registered on, and Proxmox's own address is the one it is configured for. If a key is someone's only second factor, ePaperclip sign-in tells them so and points them to Proxmox.</p>
+      <p className="text-xs text-ink-3 mt-3">Security keys (WebAuthn) can be added by their owner from this page when Proxmox's WebAuthn address is this page's (set in Sign-in policy). A key is tied to that address, so one registered on a different address won't work here. Anyone's keys can be removed by an administrator.</p>
       {adding === "totp" && <AddTotp userid={userid} mine={mine} onClose={() => setAdding(null)} />}
+      {adding === "key" && <AddKey userid={userid} onClose={() => setAdding(null)} />}
       {adding === "recovery" && <AddRecovery userid={userid} mine={mine} onClose={() => setAdding(null)} />}
       {removing && <ConfirmRemove userid={userid} entry={removing} mine={mine} onClose={() => setRemoving(null)} />}
       {pwFor && (

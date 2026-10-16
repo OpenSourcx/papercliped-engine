@@ -31,7 +31,7 @@ async function boot(opts: { bootstrap?: "pending" | "ready"; engineUrl?: string;
     secureCookies: false,
     maxUploadBytes: opts.maxUploadBytes ?? 4 * 1024 * 1024,
     state: new StateStore(stateDir),
-    engine: { url: opts.engineUrl ?? eng.url, installDir, sleep: async () => {} },
+    engine: { url: opts.engineUrl ?? eng.url, installDir, sleep: async () => {}, extraAllowed: [/^\/api\/(echo|download|stream)$/] },
   });
   server = createServer(app);
   server.on("upgrade", app.upgrade);

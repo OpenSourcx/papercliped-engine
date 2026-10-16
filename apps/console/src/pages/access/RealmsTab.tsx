@@ -5,6 +5,7 @@ import { access, type Realm, type RealmField } from "../../data/engine/access.ts
 import { errorText } from "../../data/engine/queries.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Chip, EmptyState, Field, Input, Notice, SectionTitle, Select, Toggle } from "../../ui/primitives.tsx";
+import { SyncJobs } from "./SyncJobs.tsx";
 import { QueryState, ReadOnlyNote, Table, Td, Th } from "./shared.tsx";
 
 const KEY = ["access", "realms"] as const;
@@ -225,6 +226,7 @@ export function RealmsTab() {
           {adding && <RealmModal realm={null} type={adding} schema={q.data.schema[adding]} canManage onClose={() => setAdding(null)} />}
           {editing && <RealmModal realm={editing} type={editing.type} schema={q.data.schema[editing.type] ?? []} canManage={q.data.canManage} onClose={() => setEditing(null)} />}
           {syncing && <SyncModal realm={syncing} onClose={() => setSyncing(null)} />}
+          {q.data.canManage && <SyncJobs syncableRealms={q.data.realms.filter((r) => r.canSync).map((r) => r.realm)} />}
         </>
       )}
     </QueryState>

@@ -37,6 +37,8 @@ export interface Automation {
   /** "scoped": the automation's own Proxmox token holds only the privileges its action needs, on its scope. "owner": it acts with all of its owner's permissions. */
   permissions: "scoped" | "owner";
   tokenName: string;
+  /** When the automation's Proxmox token ends (it always has an end; renewing moves it). Missing on automations made before tokens expired. */
+  tokenExpiresAt?: number | null;
   createdAt: number;
   updatedAt: number;
   lastRunAt: number | null;

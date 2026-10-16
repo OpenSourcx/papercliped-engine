@@ -2,13 +2,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { EngineGateway } from "../engine.ts";
 import type { HttpError } from "../http.ts";
-import type { Session } from "../sessions.ts";
+import type { Iac } from "../iac.ts";
+import type { Session, SessionStore } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { handleCluster } from "./cluster.ts";
 import { handleDisks } from "./disks.ts";
 import { handleGuest } from "./guest.ts";
 import { nodeFeature } from "./node.ts";
 import { access } from "./access.ts";
+import { accessAdmin } from "./access-admin.ts";
 import { handleWizard } from "./wizard.ts";
 import { handlePin } from "./pin.ts";
 import { connectApi } from "./connect.ts";
@@ -39,6 +41,11 @@ export interface FeatureCtx {
   node: string;
   state: StateStore;
   gateway: EngineGateway | null;
+  /** All signed-in sessions, and the access-control engine (users, roles, organization membership). */
+  sessions: SessionStore;
+  iac: Iac;
+  /** The id of the cookie session making this request, if it came with one (not for API tokens). */
+  cookieSessionId(): string | undefined;
   /** The signed-in session, or a 401 HttpError. */
   session(): Session;
   /** Runs `fn` as the signed-in person against Proxmox; a Proxmox 401 ends their session, a 403 becomes a clear error. */
@@ -58,6 +65,7 @@ export type FeatureHandler = (ctx: FeatureCtx) => Promise<boolean>;
 export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "disks", handle: handleDisks },
   { name: "node", handle: nodeFeature },
+  { name: "access-admin", handle: accessAdmin },
   { name: "access", handle: access },
   { name: "wizard", handle: handleWizard },
   { name: "guest", handle: handleGuest },

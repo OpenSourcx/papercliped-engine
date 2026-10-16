@@ -25,7 +25,7 @@ By workstream (Proxmox rows only):
 | W-NODE | node and datacenter operations | 21 | 6 | 47 | 9 |
 | W-DISK | disks, storage definitions, VM/CT disk management | 50 | 6 | 13 | 1 |
 | W-MACHINE | VM/CT completeness, wizards, cloud-init, passthrough | 48 | 13 | 40 | 9 |
-| W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 8 | 7 | 19 | 7 |
+| W-ACCESS | users, groups, roles, ACLs, tokens, TFA, realms | 34 | 0 | 0 | 0 |
 | W-CLUSTER | cluster, HA, replication, Ceph, migration | 25 | 7 | 4 | 0 |
 | W-ENGINE | organizations, agents, Pin, engine screens | 0 | 0 | 0 | 0 |
 
@@ -55,17 +55,9 @@ Every P0 row that is not done, in the order a person setting up a new host would
 - `GU-038` Network device: add and edit (model, bridge, VLAN, MAC, firewall, rate limit) (partial) - Hardware: VM
 - `GU-056` Network: add, edit, remove (bridge, VLAN, static or DHCP IPv4/IPv6, gateway, firewall, rate, MTU) (partial) - Hardware: Container
 
-**W-ACCESS** (7)
+**W-ACCESS** (0)
 
-- `DC-063` Edit user (name, email, comment, groups, enabled, expiry, SSH keys) (partial) - Permissions: Users
-- `DC-076` List pools with members (partial) - Permissions: Pools
-- `DC-077` Create, edit, delete pool (partial) - Permissions: Pools
-- `DC-078` Add and remove members (guests, storage) (missing) - Permissions: Pools
-- `DC-081` List ACL entries (partial) - Permissions: Path permissions (ACL)
-- `DC-082` Add user, group or token permission on a path (partial) - Permissions: Path permissions (ACL)
-- `DC-083` Remove permission (partial) - Permissions: Path permissions (ACL)
-
-Total P0 gaps: 31 of 120 P0 rows.
+Nothing open: every row of this workstream is built (see docs/ACCESS.md).
 
 ### First-hour path
 
@@ -103,9 +95,9 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-022 | Options | Max parallel workers for bulk actions | PUT /cluster/options (max_workers) | done | P2 | W-NODE | Options, parallel workers |  |
 | DC-023 | Options | Tag style, registered tags, user tag access | PUT /cluster/options (tag-style, registered-tags, user-tag-access) | done | P2 | W-NODE | Options and Tags: tag style, registered tags, who may set tags |  |
 | DC-024 | Options | Next free VMID range | PUT /cluster/options (next-id) | done | P2 | W-MACHINE | Options, next VMID range (nodeDatacenter.ts) |  |
-| DC-025 | Options | WebAuthn and U2F settings | PUT /cluster/options (webauthn, u2f) | missing | P1 | W-ACCESS |  |  |
+| DC-025 | Options | WebAuthn and U2F settings | PUT /cluster/options (webauthn, u2f) | done | P1 | W-ACCESS | Sign-in policy tab (PolicyTab.tsx); GET/PUT /api/access/signin-policy |  |
 | DC-026 | Options | Cluster resource scheduling and HA settings | PUT /cluster/options (crs, ha) | done | P2 | W-CLUSTER | Datacenter Options, HA settings and resource scheduling (schema form) |  |
-| DC-027 | Options | Login consent banner | PUT /cluster/options (consent-text) | missing | P2 | W-ACCESS |  |  |
+| DC-027 | Options | Login consent banner | PUT /cluster/options (consent-text) | done | P2 | W-ACCESS | Sign-in policy tab login notice; shown on the sign-in page (GET /api/login/banner) |  |
 | DC-028 | Options | Custom CPU models | GET/POST /cluster/qemu/custom-cpu-models; GET /cluster/qemu/cpu-flags | missing | P2 | W-MACHINE |  |  |
 | DC-029 | Storage | List storage definitions | GET /storage | done | P0 | W-DISK | GET /api/storage-config; StorageAdmin.tsx |  |
 | DC-030 | Storage | Add Directory storage | POST /storage (type=dir) | done | P0 | W-DISK | POST /api/storage-config (storage-schema.ts dir) |  |
@@ -141,32 +133,32 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | DC-060 | Replication | Schedule now, view status and log | POST /nodes/{node}/replication/{id}/schedule_now; GET .../status; GET .../log | done | P1 | W-CLUSTER | Replication: Run now, status, log; /api/cluster/replication/:id/run-now, /log |  |
 | DC-061 | Permissions: Users | List users with realm, enabled, expiry, TFA | GET /access/users | done | P0 | W-ACCESS | LiveAccess.tsx; iac.ts snapshot |  |
 | DC-062 | Permissions: Users | Create user | POST /access/users | done | P0 | W-ACCESS | POST /api/iac/users |  |
-| DC-063 | Permissions: Users | Edit user (name, email, comment, groups, enabled, expiry, SSH keys) | PUT /access/users/{userid} | done | P0 | W-ACCESS | PATCH /api/iac/users/:id covers enable, expire, groups; no UI for email, comment, keys | 41 |
+| DC-063 | Permissions: Users | Edit user (name, email, comment, groups, enabled, expiry, SSH keys) | PUT /access/users/{userid} | done | P0 | W-ACCESS | User dialog: name, email, comment, expiry, enabled, groups, Yubico keys; PUT /api/iac/users/:id | 41 |
 | DC-064 | Permissions: Users | Delete user | DELETE /access/users/{userid} | done | P0 | W-ACCESS | DELETE /api/iac/users/:id |  |
 | DC-065 | Permissions: Users | Change a user's password | PUT /access/password | done | P0 | W-ACCESS | POST /api/iac/users/:id/password |  |
-| DC-066 | Permissions: Users | Change your own password | PUT /access/password | missing | P1 | W-ACCESS |  |  |
-| DC-067 | Permissions: API Tokens | List tokens for a user | GET /access/users/{userid}/token | missing | P1 | W-ACCESS | only used internally by containers.ts |  |
-| DC-068 | Permissions: API Tokens | Create token (expiry, privilege separation) | POST /access/users/{userid}/token/{tokenid} | missing | P1 | W-ACCESS |  |  |
-| DC-069 | Permissions: API Tokens | Edit and delete token | PUT/DELETE /access/users/{userid}/token/{tokenid} | missing | P1 | W-ACCESS |  |  |
+| DC-066 | Permissions: Users | Change your own password | PUT /access/password | done | P1 | W-ACCESS | My security tab; POST /api/access/password |  |
+| DC-067 | Permissions: API Tokens | List tokens for a user | GET /access/users/{userid}/token | done | P1 | W-ACCESS | TokensTab, Proxmox tokens per user; GET /api/access/users/:id/tokens |  |
+| DC-068 | Permissions: API Tokens | Create token (expiry, privilege separation) | POST /access/users/{userid}/token/{tokenid} | done | P1 | W-ACCESS | TokensTab create (expiry, privilege separation; secret shown once); POST /api/access/users/:id/tokens |  |
+| DC-069 | Permissions: API Tokens | Edit and delete token | PUT/DELETE /access/users/{userid}/token/{tokenid} | done | P1 | W-ACCESS | TokensTab edit, regenerate, delete, token permissions; PUT/DELETE /api/access/users/:id/tokens/:tokenid |  |
 | DC-070 | Permissions: Two Factor | Sign in with TOTP/WebAuthn/recovery | POST /access/ticket | done | P0 | W-ACCESS | POST /api/login/tfa |  |
-| DC-071 | Permissions: Two Factor | List two-factor entries (all users, own) | GET /access/tfa; GET /access/tfa/{userid} | missing | P1 | W-ACCESS |  |  |
-| DC-072 | Permissions: Two Factor | Add TOTP, WebAuthn, recovery keys, YubiKey OTP | POST /access/tfa/{userid} | missing | P1 | W-ACCESS |  |  |
-| DC-073 | Permissions: Two Factor | Edit, remove entry; admin reset a user's TFA lockout | PUT/DELETE /access/tfa/{userid}/{id}; PUT /access/users/{userid}/unlock-tfa | missing | P1 | W-ACCESS |  |  |
+| DC-071 | Permissions: Two Factor | List two-factor entries (all users, own) | GET /access/tfa; GET /access/tfa/{userid} | done | P1 | W-ACCESS | TfaTab; GET /api/access/tfa, /api/access/tfa/:userid |  |
+| DC-072 | Permissions: Two Factor | Add TOTP, WebAuthn, recovery keys, YubiKey OTP | POST /access/tfa/{userid} | done | P1 | W-ACCESS | TfaTab: authenticator app, recovery keys, security key (WebAuthn, AddKey); POST /api/access/tfa/:userid, /api/access/webauthn/:userid/begin|finish. Yubico OTP stays legacy keys on the user |  |
+| DC-073 | Permissions: Two Factor | Edit, remove entry; admin reset a user's TFA lockout | PUT/DELETE /access/tfa/{userid}/{id}; PUT /access/users/{userid}/unlock-tfa | done | P1 | W-ACCESS | TfaTab enable, disable, remove, unlock; PUT/DELETE /api/access/tfa/:userid/:id, PUT /api/access/users/:id/tfa-unlock |  |
 | DC-074 | Permissions: Groups | List, create, delete groups | GET/POST /access/groups; DELETE /access/groups/{groupid} | done | P0 | W-ACCESS | POST /api/iac/groups; DELETE /api/iac/groups/:id |  |
-| DC-075 | Permissions: Groups | Edit group comment and members | PUT /access/groups/{groupid} | missing | P1 | W-ACCESS |  |  |
-| DC-076 | Permissions: Pools | List pools with members | GET /pools; GET /pools/{poolid} | done | P0 | W-ACCESS | pools.ts and resource-groups only list ePaperclip's own pools; no general pools page | 42 |
-| DC-077 | Permissions: Pools | Create, edit, delete pool | POST /pools; PUT/DELETE /pools/{poolid} | done | P0 | W-ACCESS | /api/resource-groups creates epc-* pools for organizations only | 43 |
-| DC-078 | Permissions: Pools | Add and remove members (guests, storage) | PUT /pools/{poolid} (vms, storage, delete) | done | P0 | W-ACCESS | docs/NODE.md or docs/ACCESS.md | 44 |
-| DC-079 | Permissions: Roles | List roles with privileges | GET /access/roles | missing | P1 | W-ACCESS | only used by containers.ts internally |  |
-| DC-080 | Permissions: Roles | Create, edit, delete role with privilege picker | POST /access/roles; PUT/DELETE /access/roles/{roleid} | missing | P1 | W-ACCESS |  |  |
-| DC-081 | Permissions: Path permissions (ACL) | List ACL entries | GET /access/acl | done | P0 | W-ACCESS | iac.ts reads ACLs to map organization roles; no general table | 45 |
-| DC-082 | Permissions: Path permissions (ACL) | Add user, group or token permission on a path | PUT /access/acl | done | P0 | W-ACCESS | iac.ts grants organization roles only | 46 |
-| DC-083 | Permissions: Path permissions (ACL) | Remove permission | PUT /access/acl (delete=1) | done | P0 | W-ACCESS | iac.ts removes organization roles only | 47 |
-| DC-084 | Permissions: Path permissions (ACL) | Effective permissions of a user or token | GET /access/permissions | partial | P2 | W-ACCESS | used internally for admin checks |  |
+| DC-075 | Permissions: Groups | Edit group comment and members | PUT /access/groups/{groupid} | done | P1 | W-ACCESS | GroupsTab; PUT /api/access/groups/:id |  |
+| DC-076 | Permissions: Pools | List pools with members | GET /pools; GET /pools/{poolid} | done | P0 | W-ACCESS | PoolsTab lists every pool with members; GET /api/access/pools | 42 |
+| DC-077 | Permissions: Pools | Create, edit, delete pool | POST /pools; PUT/DELETE /pools/{poolid} | done | P0 | W-ACCESS | PoolsTab create, edit, delete; POST/PUT/DELETE /api/access/pools | 43 |
+| DC-078 | Permissions: Pools | Add and remove members (guests, storage) | PUT /pools/{poolid} (vms, storage, delete) | done | P0 | W-ACCESS | PoolsTab add and remove machines and storage | 44 |
+| DC-079 | Permissions: Roles | List roles with privileges | GET /access/roles | done | P1 | W-ACCESS | RolesTab Roles view; GET /api/access/roles |  |
+| DC-080 | Permissions: Roles | Create, edit, delete role with privilege picker | POST /access/roles; PUT/DELETE /access/roles/{roleid} | done | P1 | W-ACCESS | RolesTab privilege picker; POST/PUT/DELETE /api/access/roles |  |
+| DC-081 | Permissions: Path permissions (ACL) | List ACL entries | GET /access/acl | done | P0 | W-ACCESS | RolesTab Permissions view; GET /api/access/acl | 45 |
+| DC-082 | Permissions: Path permissions (ACL) | Add user, group or token permission on a path | PUT /access/acl | done | P0 | W-ACCESS | RolesTab add permission; POST /api/access/acl | 46 |
+| DC-083 | Permissions: Path permissions (ACL) | Remove permission | PUT /access/acl (delete=1) | done | P0 | W-ACCESS | RolesTab remove permission; POST /api/access/acl remove | 47 |
+| DC-084 | Permissions: Path permissions (ACL) | Effective permissions of a user or token | GET /access/permissions | done | P2 | W-ACCESS | Effective permissions tab (explorer: entries, per-path privileges and their sources) and Check access; GET /api/access/explorer, /api/access/permissions |  |
 | DC-085 | Permissions: Authentication realms | List realms | GET /access/domains | done | P0 | W-ACCESS | GET /api/realms; sign-in realm picker |  |
-| DC-086 | Permissions: Authentication realms | Add/edit/delete realm (LDAP, Active Directory, OpenID Connect, PAM, PVE) | POST /access/domains; PUT/DELETE /access/domains/{realm} | missing | P1 | W-ACCESS |  |  |
-| DC-087 | Permissions: Authentication realms | Sync realm users and groups; scheduled sync jobs | POST /access/domains/{realm}/sync; GET/POST /cluster/jobs/realm-sync | missing | P1 | W-ACCESS |  |  |
-| DC-088 | Permissions: Authentication realms | OpenID Connect sign-in | POST /access/openid/auth-url; POST /access/openid/login | missing | P1 | W-ACCESS |  |  |
+| DC-086 | Permissions: Authentication realms | Add/edit/delete realm (LDAP, Active Directory, OpenID Connect, PAM, PVE) | POST /access/domains; PUT/DELETE /access/domains/{realm} | done | P1 | W-ACCESS | RealmsTab, forms from the apidoc schema; POST/PUT/DELETE /api/access/realms |  |
+| DC-087 | Permissions: Authentication realms | Sync realm users and groups; scheduled sync jobs | POST /access/domains/{realm}/sync; GET/POST /cluster/jobs/realm-sync | done | P1 | W-ACCESS | Realms: Sync (dry run first) and Scheduled syncs (SyncJobs.tsx); POST /api/access/realms/:realm/sync, /api/access/sync-jobs |  |
+| DC-088 | Permissions: Authentication realms | OpenID Connect sign-in | POST /access/openid/auth-url; POST /access/openid/login | done | P1 | W-ACCESS | Sign-in page OpenID button; POST /api/login/openid/start|finish |  |
 | DC-089 | HA | HA status, quorum, current manager | GET /cluster/ha/status/current; GET /cluster/ha/status/manager_status | done | P1 | W-CLUSTER | High availability, Status and fencing; GET /api/cluster/ha |  |
 | DC-090 | HA | Add/edit/remove HA resource (state, max restart, relocate, group) | GET/POST /cluster/ha/resources; PUT/DELETE /cluster/ha/resources/{sid} | done | P1 | W-CLUSTER | High availability, Resources: add, edit, remove; /api/cluster/ha/resources |  |
 | DC-091 | HA | HA groups (nodes, priority, restricted, nofailback) | GET/POST /cluster/ha/groups; PUT/DELETE /cluster/ha/groups/{group} | done | P1 | W-CLUSTER | High availability, Groups on Proxmox versions that have them; /api/cluster/ha/groups |  |
@@ -388,14 +380,14 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | ST-009 | Content | Import disk image into a VM; import OVA/qcow2/raw | POST /nodes/{node}/qemu (import-from); GET .../import-metadata | done | P1 | W-DISK | download-import and upload-import, import-metadata and import-disk (attach as a new disk); StorageTools, Import |  |
 | ST-010 | Content | Allocate a new disk image volume directly | POST /nodes/{node}/storage/{storage}/content | done | P2 | W-DISK | POST /api/storage-tools/:id/allocate; StorageTools, New disk |  |
 | ST-011 | Content | Copy or move a volume between storages | POST .../content/{volume} | partial | P2 | W-DISK | POST /api/storage-tools/:id/copy exists behind an experimental acknowledgement (Proxmox marks it experimental); no screen |  |
-| ST-012 | Permissions | View and change who may use this storage | GET/PUT /access/acl (path /storage/{id}) | missing | P1 | W-ACCESS |  |  |
+| ST-012 | Permissions | View and change who may use this storage | GET/PUT /access/acl (path /storage/{id}) | done | P1 | W-ACCESS | Storage page: Who can use this storage (PathPermissions.tsx); GET/POST /api/access/acl |  |
 
 ### Pools
 
 | ID | Screen | Item | API | Status | Pri | Workstream | Evidence | Seq |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PL-001 | Pool pages | Pool summary and members | GET /pools/{poolid} | missing | P1 | W-ACCESS |  |  |
-| PL-002 | Pool pages | Pool permissions | GET/PUT /access/acl (path /pool/{id}) | missing | P1 | W-ACCESS |  |  |
+| PL-001 | Pool pages | Pool summary and members | GET /pools/{poolid} | done | P1 | W-ACCESS | PoolsTab pool dialog: summary and members |  |
+| PL-002 | Pool pages | Pool permissions | GET/PUT /access/acl (path /pool/{id}) | done | P1 | W-ACCESS | PoolsTab pool dialog: Who can use this resource group (PathPermissions.tsx) |  |
 
 ### Create wizards
 

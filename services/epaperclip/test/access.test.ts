@@ -214,13 +214,15 @@ describe("two-factor", () => {
     expect((await j(r)).code).toBe("ticket_only");
   });
 
-  it("warns WebAuthn-only accounts at sign-in instead of asking for a code they can't give", async () => {
+  it("offers a security key to WebAuthn-only accounts, with the options the browser needs, and signs them in with its answer", async () => {
     h.pve.needTfa.set("yuki@pve", "webauthn");
     const r = await fetch(h.base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ username: "yuki", password: "right", realm: "pve" }) });
-    expect(r.status).toBe(403);
     const b = await j(r);
-    expect(b.code).toBe("tfa_webauthn_only");
-    expect(b.error).toMatch(/security key/);
+    expect(b.needTfa).toBe(true);
+    expect(b.methods).toMatchObject({ totp: false, recovery: false, webauthn: { publicKey: { challenge: "YWJj", rpId: "pve.test" } } });
+    const tfa = (body: unknown) => fetch(h.base + "/api/login/tfa", { method: "POST", headers: { "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify(body) });
+    expect((await tfa({ challenge: b.challenge, kind: "webauthn", response: "not json" })).status).toBe(400);
+    expect((await tfa({ challenge: b.challenge, kind: "webauthn", response: JSON.stringify({ id: "cred", type: "public-key", rawId: "x", response: {} }) })).status).toBe(200);
   });
 
   it("still asks for a code from accounts with an authenticator or recovery keys", async () => {

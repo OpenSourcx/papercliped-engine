@@ -302,7 +302,7 @@ describe("two-factor", () => {
     await openTab("Two-factor");
     await screen.findByText("YubiKey");
     expect(screen.getByText("Security key", { selector: "span" })).toBeTruthy();
-    expect(screen.getByText(/added in Proxmox/)).toBeTruthy();
+    expect(screen.getByText(/Anyone.s keys can be removed by an administrator/)).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Remove Security key"));
     fireEvent.change(await screen.findByLabelText("Your password"), { target: { value: "right" } });
     fireEvent.click(screen.getByText("Remove", { selector: "button" }));

@@ -5,6 +5,7 @@ import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer } from "ws";
+import { engineAllowed } from "./engine-allow.ts";
 import { HttpError } from "./http.ts";
 import type { EngineLogin, Session } from "./sessions.ts";
 import type { StateStore } from "./state.ts";
@@ -120,7 +121,7 @@ export function mergeCookies(jar: string, setCookie: string[] | undefined): stri
  * Checks a browser path under /engine/api and returns the engine path (with the query string as sent). Refuses dot
  * segments, empty segments and encoded slashes, backslashes or NULs, so nothing can climb out of /api.
  */
-export function enginePath(raw: string): string {
+export function enginePath(raw: string, extraAllowed: readonly RegExp[] = []): string {
   const q = raw.indexOf("?");
   const path = q < 0 ? raw : raw.slice(0, q);
   const query = q < 0 ? "" : raw.slice(q);
@@ -143,6 +144,8 @@ export function enginePath(raw: string): string {
   // The engine matches routes without regard to case, so the refusal list does too.
   const lower = decoded.toLowerCase();
   if (BLOCKED.some((re) => re.test(lower)) && lower !== "/api/cli-auth/me") throw new HttpError(404, "not_found", "Not found");
+  // Allow-list: only the routes the console uses (src/engine-allow.ts). Everything else is closed, whatever the engine adds.
+  if (!engineAllowed(decoded, extraAllowed)) throw new HttpError(404, "not_found", "Not found");
   return rest + query;
 }
 
@@ -170,6 +173,8 @@ export class EngineGateway {
   private readonly state: StateStore;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
+  /** Extra engine routes the proxy lets through; for tests with a stand-in engine. Empty in production. */
+  private readonly extraAllowed: RegExp[];
   private service: ServiceState = { state: "unknown" };
   private serviceFlight: Promise<ServiceState> | null = null;
   private stopped = false;
@@ -178,7 +183,8 @@ export class EngineGateway {
   private readonly loginFlights = new Map<string, Promise<EngineLogin>>();
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, autoPong: false });
 
-  constructor(opts: { url: string; publicUrl?: string; installDir?: string; state: StateStore; sleep?: (ms: number) => Promise<void>; now?: () => number }) {
+  constructor(opts: { url: string; publicUrl?: string; installDir?: string; state: StateStore; sleep?: (ms: number) => Promise<void>; now?: () => number; extraAllowed?: RegExp[] }) {
+    this.extraAllowed = opts.extraAllowed ?? [];
     this.url = new URL(opts.url);
     this.publicUrl = new URL(opts.publicUrl ?? opts.url).origin;
     this.installDir = opts.installDir ?? "/opt/epaperclip/engine";
@@ -554,6 +560,33 @@ export class EngineGateway {
     return this.userJson<BoardAccess>(s, "GET", "/api/cli-auth/me");
   }
 
+  /**
+   * Forwards a routine webhook to the engine's public trigger route, with no engine login (the engine authenticates the
+   * call itself). Used only by the routine ingress (src/routine-ingress.ts), which has already limited who may call it.
+   */
+  firePublicTrigger(publicId: string, headers: Record<string, string>, body: Buffer): Promise<{ status: number; text: string }> {
+    if (!/^[0-9a-f]{24}$/.test(publicId)) return Promise.reject(new HttpError(404, "not_found", "Not found"));
+    return new Promise((resolve, reject) => {
+      const up = this.open(
+        "POST",
+        `/api/routine-triggers/public/${publicId}/fire`,
+        { ...headers, "content-length": String(body.length) },
+        (res) => {
+          const parts: Buffer[] = [];
+          let size = 0;
+          res.on("data", (c: Buffer) => {
+            size += c.length;
+            if (size <= 64 * 1024) parts.push(c);
+          });
+          res.on("end", () => resolve({ status: res.statusCode ?? 502, text: Buffer.concat(parts).toString("utf8") }));
+          res.on("error", () => reject(engineUnavailable()));
+        },
+        (e) => reject(e instanceof EngineDown ? engineUnavailable() : e),
+      );
+      up.end(body);
+    });
+  }
+
   /** This person's active membership in an organization, or null. */
   async membership(s: Session, companyId: string): Promise<{ role: string } | null> {
     const me = await this.me(s);
@@ -567,7 +600,7 @@ export class EngineGateway {
   async forward(req: IncomingMessage, res: ServerResponse, s: Session, maxBytes: number, hooks: ForwardHooks = {}): Promise<void> {
     const method = req.method ?? "GET";
     if (!METHODS.has(method)) throw new HttpError(405, "method", "Method not allowed");
-    const target = enginePath(req.url ?? "/");
+    const target = enginePath(req.url ?? "/", this.extraAllowed);
     const headers: Record<string, string> = {};
     for (const name of REQUEST_HEADERS) {
       const v = req.headers[name];

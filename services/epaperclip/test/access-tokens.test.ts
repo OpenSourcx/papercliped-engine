@@ -268,7 +268,7 @@ describe("the engine, for a token principal", () => {
     mkdirSync(join(installDir, "node_modules", "@paperclipai", "server"), { recursive: true });
     writeFileSync(join(installDir, "node_modules", "@paperclipai", "server", "package.json"), JSON.stringify({ version: "2026.1005.0" }));
     await h.close();
-    h = await startAccessApp({ engine: { url: eng.url, installDir, sleep: async () => {} } });
+    h = await startAccessApp({ engine: { url: eng.url, installDir, sleep: async () => {}, extraAllowed: [/^\/api\/(echo|download|stream)$/] } });
     try {
       sam = await h.signIn("sam");
       await until(() => eng.st.admins.size >= 1);

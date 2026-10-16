@@ -83,6 +83,8 @@ export interface AutomationView {
   readBack: string;
   permissions: "scoped" | "owner";
   permissionsNote: string;
+  /** When its Proxmox token ends; null for automations made before tokens expired. */
+  tokenExpiresAt?: number | null;
   paused: { at: number; reason: string; by: "runner" | "user" } | null;
   running: boolean;
   createdAt: number;
@@ -163,6 +165,7 @@ export const pinRt = {
   preview: (a: AutomationInput) => call<{ ok: boolean; readBack?: string; errors?: string[] }>("POST", "/api/pin/automations/preview", a),
   createAutomation: (a: AutomationInput) => call<{ automation: AutomationView }>("POST", "/api/pin/automations", a),
   automationAction: (id: string, what: "pause" | "resume") => call<{ automation: AutomationView }>("POST", `/api/pin/automations/${id}/${what}`),
+  renewAutomation: (id: string, days = 90) => call<{ automation: AutomationView }>("POST", `/api/pin/automations/${id}/renew`, { days }),
   runNow: (id: string) => call<{ run: Run }>("POST", `/api/pin/automations/${id}/run`),
   deleteAutomation: (id: string) => call<{ ok: true; tokenRemoved: boolean }>("DELETE", `/api/pin/automations/${id}`),
   runs: (id?: string) => call<{ runs: Run[] }>("GET", `/api/pin/automations/runs${id ? `?automation=${id}` : ""}`),

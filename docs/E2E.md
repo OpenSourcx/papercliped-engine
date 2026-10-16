@@ -44,8 +44,12 @@ policy off; sign-out and idle session expiry; no sideways scrolling at 390px on 
 
 ## Decisions
 
-- A routine's webhook address is the engine's loopback URL, unreachable from outside the device. Making it reachable
-  needs a new unauthenticated ingress (POST on that exact path only, size cap, rate limit); not built.
+- A routine's webhook address is the engine's loopback URL, unreachable from outside the device. Built: an ingress that is
+  off by default and opened per organization by an administrator (`POST /hooks/routines/<id>/fire` only, 64 KiB, rate
+  limited); the harness proves the real engine accepts a forwarded call (stage "routine webhooks from outside"). The risk is
+  written up in SECURITY.md.
+- The `/engine/api` proxy is an allow-list of the routes the console uses; the harness passes through it end to end
+  (it adds one test-only route, cost events, which an agent would report directly to the engine).
 - The engine's artifact list only holds agent-produced files; a file a person attaches to a task is not listed.
 
 ## Still unproven

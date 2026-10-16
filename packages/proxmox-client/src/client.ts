@@ -306,6 +306,45 @@ export class ProxmoxClient {
     return (JSON.parse(res.body || "{}") as { data?: { realm: string; type: string; comment?: string; default?: number }[] }).data ?? [];
   }
 
+  /**
+   * OpenID Connect, step one (`POST /access/openid/auth-url`, open to anyone): the identity provider's address to send
+   * the browser to. `redirectUrl` is where the provider returns the person, normally the origin of this site.
+   */
+  static async openidAuthUrl(opts: { baseUrl: string; caPem?: string; transport?: Transport }, p: { realm: string; redirectUrl: string }): Promise<string> {
+    const body = await ProxmoxClient.anonymousPost(opts, "/access/openid/auth-url", { realm: p.realm, "redirect-url": p.redirectUrl });
+    const url = (body as { data?: unknown }).data;
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) throw new ProxmoxError("Proxmox returned no sign-in address for this realm", 502);
+    return url;
+  }
+
+  /** OpenID Connect, step two (`POST /access/openid/login`): trades the provider's code and state for a Proxmox ticket. */
+  static async openidLogin(opts: { baseUrl: string; caPem?: string; transport?: Transport }, p: { code: string; state: string; redirectUrl: string }): Promise<LoginResult> {
+    const body = await ProxmoxClient.anonymousPost(opts, "/access/openid/login", { code: p.code, state: p.state, "redirect-url": p.redirectUrl });
+    const data = (body as { data?: { username?: string; ticket?: string; CSRFPreventionToken?: string } }).data;
+    if (!data?.ticket || !data.username) throw new ProxmoxError("Proxmox returned no ticket for this sign-in", 502);
+    return { username: data.username, ticket: data.ticket, csrf: data.CSRFPreventionToken ?? null, needTfa: false };
+  }
+
+  private static async anonymousPost(opts: { baseUrl: string; caPem?: string; transport?: Transport }, path: string, params: Record<string, string>): Promise<unknown> {
+    const transport = opts.transport ?? nodeTransport(opts.caPem);
+    const res = await transport({ method: "POST", url: `${apiBase(opts.baseUrl)}${path}`, headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams(params).toString() });
+    if (res.status !== 200) {
+      let why: string | null = null;
+      try {
+        const b = JSON.parse(res.body || "{}") as { message?: string; errors?: Record<string, string> };
+        why = (b.errors ? Object.entries(b.errors).map(([k, v]) => `${k}: ${v}`).join("; ") : b.message)?.trim() || null;
+      } catch {
+        // No JSON: the reason, if any, is in the status line.
+      }
+      throw new ProxmoxError(`Proxmox ${path} failed (${res.status})${why ? `: ${why}` : ""}`, res.status === 0 ? 502 : res.status, why);
+    }
+    try {
+      return JSON.parse(res.body || "{}");
+    } catch {
+      throw new ProxmoxError(`Proxmox ${path} returned something unreadable`, 502);
+    }
+  }
+
   /** Parameters may also be lists (sent as repeated keys, the way Proxmox expects array parameters). */
   async call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params?: Record<string, string | number | boolean | string[] | undefined>): Promise<T> {
     return (await this.callFull<T>(method, path, params)).data;
