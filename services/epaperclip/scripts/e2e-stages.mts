@@ -482,6 +482,20 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     await shot(page, "11-chat-thread");
   });
 
+  await stage("chat: an agent that cannot run says why, stops saying it is writing, and offers a retry", async () => {
+    const { page } = await open("sam");
+    await page.goto(c.base + "/pve/acm/chat");
+    await page.click("button:has-text('Runner')");
+    await page.waitForSelector("text=Runner can't run: no agent container is set up yet", { timeout: 15000 });
+    await page.waitForSelector("text=Open Agent containers");
+    expect((await page.locator("text=Runner is writing").count()) === 0, "the thread does not claim Runner is writing");
+    await shot(page, "11-chat-cannot-run");
+    await page.getByRole("button", { name: "Try again", exact: true }).click();
+    await page.waitForTimeout(1500);
+    expect((await page.locator("text=Runner can't run: no agent container is set up yet").count()) === 1, "still blocked after a retry, as nothing was fixed");
+    expect((await page.locator("text=Runner is writing").count()) === 0, "still not writing after a retry");
+  });
+
   await stage("costs: the summary reads, and a budget is saved to the engine", async () => {
     const { page } = await open("sam");
     await page.goto(c.base + "/pve/acm/costs");
@@ -1127,6 +1141,25 @@ export async function runStages(c: Ctx): Promise<Result[]> {
     }
     await small.close();
     if (wide.length) throw new Error(wide.join("\n"));
+  });
+
+  await stage("access: the settings tab strip shows every tab at 1440 and 390 wide, wrapping instead of clipping", async () => {
+    const { ctx } = await open("sam");
+    for (const width of [1440, 390]) {
+      const page = await ctx.newPage();
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(c.base + "/pve/home?settings=access");
+      await page.waitForSelector('role=tab[name="Resource groups"]', { timeout: 15000 });
+      const clipped = await page.evaluate(() => {
+        const list = document.querySelector('[role="tablist"]') as HTMLElement | null;
+        if (!list) return ["no tab strip"];
+        const box = list.getBoundingClientRect();
+        return [...list.querySelectorAll('[role="tab"]')].filter((t) => { const r = t.getBoundingClientRect(); return r.right > box.right + 1 || r.left < box.left - 1; }).map((t) => t.textContent ?? "");
+      });
+      expect(clipped.length === 0, `at ${width}px these tabs are cut off: ${clipped.join(", ")}`);
+      await shot(page, `31-access-tabs-${width}`);
+      await page.close();
+    }
   });
 
   await stage("security headers: the console is served with its strict policy and signs cookies HttpOnly, SameSite=Strict", async () => {

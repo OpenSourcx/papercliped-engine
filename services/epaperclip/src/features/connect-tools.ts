@@ -18,8 +18,9 @@ import { runtimeFor } from "./pin-core.ts";
  *  - Full control (`paperclip:control`): all of them. Engine tools (tasks, comments, agents, approvals, goals) run as
  *    the person's own engine account, limited to the organizations the person chose for the app. Host-changing tools
  *    (power, snapshots) never run at once by default: they write a plan the person approves in the console, one step at
- *    a time, with typed confirmation for anything destructive. A person may allow an app to run them directly; even
- *    then destructive steps need the typed phrase as an argument and machines tagged `protected` are refused.
+ *    a time, with typed confirmation for anything destructive. A person may allow an app to run the non-destructive
+ *    ones directly ("act without asking"); destructive steps are still always a plan the person confirms with their own
+ *    typed phrase (a phrase sent by the app is ignored), and machines tagged `protected` are refused.
  *
  * Proxmox decides everything either way: tools act through the person's own Proxmox API token.
  */
@@ -130,26 +131,31 @@ const guestFor = async (env: ToolEnv, vmid: number) => {
 
 const POWER = ["start", "shutdown", "stop", "reboot"] as const;
 
-/** Runs a host change now (only for apps the person allowed to), or writes the plan for the person to approve. */
+/**
+ * Runs a host change now (only non-destructive ones, only for apps the person allowed to), or writes the plan for the person to approve.
+ * A destructive step (anything Pin's plan code marks destructive: shutdown, stop, reboot, delete, rollback) is ALWAYS a plan, even for an
+ * app allowed to act without asking: the person types its confirmation phrase in the console themselves. A phrase the app sends is ignored,
+ * so no app can confirm on the person's behalf. Machines tagged `protected` are refused outright.
+ */
 async function hostChange(env: ToolEnv, step: Record<string, unknown>, confirm: unknown, title: string): Promise<unknown> {
   const parsed = parseStep(step);
   const names = await machineNames(env.pve, [step]);
   const info = describeStep(parsed, names);
-  if (!env.grant.direct) {
-    const plan = createPlan(runtimeFor(env.state), { owner: env.username, title: `${env.grant.clientName}: ${title}`, summary: `Proposed by the connected app ${env.grant.clientName}.`, steps: [step], createdBy: "app", names });
-    return { status: "proposed", planId: plan.id, summary: info.label, note: "NOTHING has run. The person reviews this in the console (Pin, Plans) and approves it there; destructive steps need their typed confirmation." };
-  }
-  if (info.destructive && (typeof confirm !== "string" || confirm.trim() !== info.confirmPhrase)) throw new PinError("confirm_required", `This step interrupts a machine or can't be undone. Run it again with confirm set to exactly "${info.confirmPhrase}" if the person really wants it.`);
   const vmid = parsed.args.vmid as number;
   const g = await guestFor(env, vmid);
-  if (info.destructive && /(^|[;,])protected($|[;,])/.test(g.tags ?? "")) throw new PinError("protected", `Machine ${vmid} is tagged protected. Apps can't do this directly; propose it as a plan (turn off direct mode for this app) or do it in the console.`);
+  if (info.destructive && /(^|[;,])protected($|[;,])/.test(g.tags ?? "")) throw new PinError("protected", `Machine ${vmid} is tagged protected. Apps can't do this to it; the person can do it in the console.`);
+  if (info.destructive || !env.grant.direct) {
+    const plan = createPlan(runtimeFor(env.state), { owner: env.username, title: `${env.grant.clientName}: ${title}`, summary: `Proposed by the connected app ${env.grant.clientName}.`, steps: [step], createdBy: "app", names });
+    const ignored = typeof confirm === "string" && confirm !== "" ? " The confirmation phrase you sent was ignored: only the person can type it, in the console." : "";
+    const why = info.destructive && env.grant.direct ? " This step is destructive, so it is always a plan, even though the person let this app act without asking." : "";
+    return { status: "proposed", planId: plan.id, summary: info.label, note: `NOTHING has run. The person reviews this in the console (Pin, Plans) and approves it there; destructive steps need their own typed confirmation.${why}${ignored}` };
+  }
   const type = g.type as GuestType;
   const where = g.node ?? env.node;
   let upid: string;
   if (parsed.kind === "power") upid = await env.pve.guestPower(where, type, vmid, parsed.args.action as (typeof POWER)[number]);
   else if (parsed.kind === "snapshot") upid = await env.pve.createSnapshot(where, type, vmid, parsed.args.name as string, parsed.args.description as string | undefined);
-  else if (parsed.kind === "snapshot_rollback") upid = await env.pve.rollbackSnapshot(where, type, vmid, parsed.args.name as string);
-  else upid = await env.pve.deleteSnapshot(where, type, vmid, parsed.args.name as string);
+  else throw new PinError("bad_args", "This step can't run directly.");
   return { status: "started", task: upid, summary: info.label, note: "Proxmox started the task. Check recent_tasks for the result." };
 }
 
@@ -376,8 +382,8 @@ export const MCP_TOOLS: McpTool[] = [
   // ---- Control: the host (plans by default)
   {
     name: "power_machine", title: "Start, stop or reboot a machine", access: "control", destructive: true,
-    description: "Start, shut down, stop or reboot a machine. By default this only writes a plan the person approves in the console; if the person allowed this app to act directly, it runs now (shutdown, stop and reboot need confirm, e.g. \"shutdown 101\").",
-    inputSchema: schema({ vmid: { type: "integer" }, action: { type: "string", enum: [...POWER] }, confirm: { type: "string", description: "The exact phrase, e.g. \"shutdown 101\". Only needed when running directly." } }, ["vmid", "action"]),
+    description: "Start, shut down, stop or reboot a machine. By default this only writes a plan the person approves in the console; if the person allowed this app to act without asking, a start runs now, but shutdown, stop and reboot are still a plan the person approves with their own typed phrase.",
+    inputSchema: schema({ vmid: { type: "integer" }, action: { type: "string", enum: [...POWER] }, confirm: { type: "string", description: "Ignored. Only the person can type the confirmation phrase, in the console." } }, ["vmid", "action"]),
     async run(a, env) {
       strictArgs(a, ["vmid", "action", "confirm"]);
       return hostChange(env, { kind: "power", vmid: vmidArg(a.vmid), action: oneOf(a.action, POWER, "action") }, a.confirm, `${a.action} machine ${a.vmid}`);
@@ -397,8 +403,8 @@ export const MCP_TOOLS: McpTool[] = [
   ...(["snapshot_delete", "snapshot_rollback"] as const).map(
     (kind): McpTool => ({
       name: kind === "snapshot_delete" ? "delete_snapshot" : "rollback_snapshot", title: kind === "snapshot_delete" ? "Delete a snapshot" : "Roll back to a snapshot", access: "control", destructive: true,
-      description: `${kind === "snapshot_delete" ? "Delete a snapshot" : "Roll a machine back to a snapshot"} (a plan the person approves with a typed phrase, or run now if allowed with confirm "${kind === "snapshot_delete" ? "delete" : "rollback"} <vmid>").`,
-      inputSchema: schema({ vmid: { type: "integer" }, name: { type: "string" }, confirm: { type: "string" } }, ["vmid", "name"]),
+      description: `${kind === "snapshot_delete" ? "Delete a snapshot" : "Roll a machine back to a snapshot"} (always a plan the person approves in the console with their own typed phrase; an app can't confirm for them).`,
+      inputSchema: schema({ vmid: { type: "integer" }, name: { type: "string" }, confirm: { type: "string", description: "Ignored. Only the person can type the confirmation phrase, in the console." } }, ["vmid", "name"]),
       async run(a, env) {
         strictArgs(a, ["vmid", "name", "confirm"]);
         if (typeof a.name !== "string" || !SNAP.test(a.name)) throw bad("name is 2 to 40 letters, digits, - or _, starting with a letter.");

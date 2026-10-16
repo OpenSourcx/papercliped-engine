@@ -13,7 +13,7 @@ import { EngineProvider } from "../src/data/store.tsx";
 import { keysForEvent, tapEvents, applyEvent } from "../src/data/engine/events.ts";
 import { qk } from "../src/data/engine/keys.ts";
 import { useInboxCounts } from "../src/data/engine/more.ts";
-import { chatDisabled } from "../src/data/engine/chat.ts";
+import { chatBlock, chatDisabled } from "../src/data/engine/chat.ts";
 import { EngineError } from "@papercliped-engine/engine-client";
 import { previewKind } from "../src/pages/org/live/LiveArtifacts.tsx";
 import { logText } from "../src/pages/org/live/LiveAgentTabs.tsx";
@@ -65,6 +65,47 @@ describe("chat", () => {
     await waitFor(() => expect(FakeSocket.all.length).toBeGreaterThan(0));
     act(() => FakeSocket.all[0].emit({ companyId: "c1", type: "activity.logged", payload: { entityType: "issue", entityId: "chat1", action: "issue.comment_added" } }));
     expect(await screen.findByText("Hello back")).toBeTruthy();
+  });
+
+  it("says why an agent that cannot run cannot answer, instead of writing forever, and retries", async () => {
+    state.routes["GET /engine/api/companies/c1/agents"] = () => [200, [agent("a1", "c1", "Forge", "idle")]];
+    state.routes["GET /engine/api/companies/c1/chats"] = () => [200, [issue("chat1", 1, "Chat with Forge", "in_review", { conversationAgentId: "a1", conversationState: "active" })]];
+    state.routes["GET /engine/api/issues/chat1/comments"] = () => [200, []];
+    state.routes["GET /api/agent-containers"] = () => [200, { state: "missing", steps: [], pluginInstalled: false, environments: [], template: { exists: false }, token: { exists: false }, canManage: true, job: null }];
+    state.routes["GET /engine/api/companies/c1/heartbeat-runs"] = () => [200, []];
+    state.routes["POST /engine/api/agents/a1/wakeup"] = () => [202, {}];
+    renderOrg("/pve/acme/chat");
+    fireEvent.click(await screen.findByRole("button", { name: /Forge/ }));
+    expect(await screen.findByText(/Forge can't run: no agent container is set up yet/)).toBeTruthy();
+    expect(screen.getByText("Open Agent containers")).toBeTruthy();
+    expect(screen.queryByText("Forge is writing")).toBeNull();
+    // Fixed: containers are ready, so trying again wakes the agent and the notice goes.
+    state.routes["GET /api/agent-containers"] = () => [200, { state: "ready", steps: [], pluginInstalled: true, environments: [], template: { exists: true }, token: { exists: true }, canManage: true, job: null }];
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(callsTo("POST", "/engine/api/agents/a1/wakeup")).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText(/no agent container is set up yet/)).toBeNull());
+    expect(await screen.findByText("Forge is writing")).toBeTruthy();
+  });
+
+  it("works out the reason from the agent and its last run", () => {
+    const a = (status: string) => ({ name: "Runner", status });
+    expect(chatBlock({ agent: a("idle") })).toBeNull();
+    expect(chatBlock({ agent: a("running"), containersReady: true })).toBeNull();
+    expect(chatBlock({ agent: a("error"), containersReady: true })?.code).toBe("error");
+    expect(chatBlock({ agent: a("paused") })?.code).toBe("paused");
+    expect(chatBlock({ agent: a("terminated") })?.code).toBe("terminated");
+    expect(chatBlock({ agent: a("pending_approval") })?.code).toBe("pending");
+    const none = chatBlock({ agent: a("idle"), containersReady: false, canManageContainers: false });
+    expect(none?.code).toBe("containers");
+    expect(none?.fix).toBeUndefined();
+    expect(none?.todo).toMatch(/administrator/);
+    expect(chatBlock({ agent: a("idle"), containersReady: false, canManageContainers: true })?.fix).toBe("agent-containers");
+    const sandbox = chatBlock({ agent: a("idle"), run: { status: "failed", error: "Managed sandbox only: local execution is disabled" } });
+    expect(sandbox?.code).toBe("no-sandbox");
+    expect(chatBlock({ agent: a("idle"), run: { status: "failed", error: "adapter exited 2" }, conversationStartedAt: "2026-10-01T00:00:00Z", })?.code).toBe("run-failed");
+    // A run that failed before this conversation began is not about it.
+    expect(chatBlock({ agent: a("idle"), run: { status: "failed", error: "x", createdAt: "2026-09-01T00:00:00Z" }, conversationStartedAt: "2026-10-01T00:00:00Z" })).toBeNull();
+    expect(chatBlock({ agent: a("idle"), run: { status: "succeeded" } })).toBeNull();
   });
 
   it("recognises the engine's 'disabled' answer", () => {

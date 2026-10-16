@@ -348,7 +348,7 @@ export function LiveAccess() {
         title="Access control"
         subtitle="Integrated Access Control: people here are real Proxmox users, and what they can do is Proxmox permissions. A change made here is made in Proxmox first, as you, and Proxmox decides whether it's allowed."
       />
-      <Tabs<TabId> value={tab} tabs={TABS} onChange={setTab} className="mb-6" />
+      <Tabs<TabId> value={tab} tabs={TABS} onChange={setTab} className="mb-6" wrap />
       {tab === "users" && <UsersTab />}
       {tab === "groups" && <GroupsTab />}
       {tab === "tokens" && <TokensTab />}

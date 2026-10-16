@@ -33,12 +33,55 @@ export function pkceMatches(verifier: string, challenge: string): boolean {
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
+ * Schemes that can never be a redirect address, whatever an administrator allows: they run code, read local data or open
+ * a connection of their own. `http:` is not here because it has its own rule (loopback only); `https:` needs no allowance.
+ */
+export const DENIED_SCHEMES: readonly string[] = ["javascript", "data", "file", "blob", "about", "vbscript", "ws", "wss", "ftp", "ftps", "gopher", "view-source", "filesystem", "chrome", "chrome-extension", "resource"];
+const SCHEME_RE = /^[a-z][a-z0-9+.-]{0,31}$/;
+
+/** One entry of the administrator's allow-list of custom-scheme redirect addresses: an exact address, or a prefix (ending in "/"). */
+export interface RedirectAllow {
+  uri: string;
+  kind: "exact" | "prefix";
+  addedBy: string;
+  addedAt: number;
+}
+
+/** True when the (already parsed and normalised) address is covered by an entry of the allow-list. */
+export function redirectAllowed(href: string, allow: readonly Pick<RedirectAllow, "uri" | "kind">[]): boolean {
+  return allow.some((e) => (e.kind === "exact" ? href === e.uri : href.startsWith(e.uri)));
+}
+
+/** Checks an address an administrator wants to allow and returns it normalised with its scheme. Throws for anything that could never be safe. */
+export function checkAllowEntry(rawUri: unknown, rawKind: unknown): { uri: string; kind: "exact" | "prefix"; scheme: string } {
+  const bad = (m: string) => new HttpError(400, "bad_request", m);
+  if (rawKind !== "exact" && rawKind !== "prefix") throw bad("Say whether this is an exact address or a prefix.");
+  if (typeof rawUri !== "string" || rawUri.length === 0 || rawUri.length > 500 || /[\u0000-\u0020\u007f"<>\\^`{|}*#]/.test(rawUri)) throw bad("That is not a plain address: no spaces, wildcards or fragments.");
+  let u: URL;
+  try {
+    u = new URL(rawUri);
+  } catch {
+    throw bad("That is not an address, for example cursor://anysphere.cursor-mcp/oauth/callback");
+  }
+  const scheme = u.protocol.slice(0, -1);
+  if (!SCHEME_RE.test(scheme)) throw bad("That scheme is not valid.");
+  if (scheme === "https" || scheme === "http") throw bad("Web addresses are handled already: https is allowed and http only on this computer's own loopback address. This list is for app schemes such as cursor:// or vscode://.");
+  if (DENIED_SCHEMES.includes(scheme)) throw bad(`${scheme}: can never be allowed. It can run code, read local files or open connections.`);
+  if (u.username || u.password) throw bad("An address can't carry a user name or password.");
+  if (rawUri.includes("?") && rawKind === "prefix") throw bad("A prefix can't have a query.");
+  if (!u.host) throw bad("Include the app's name after the scheme, for example cursor://anysphere.cursor-mcp/. Allowing a whole scheme is not possible.");
+  if (rawKind === "prefix" && !u.href.endsWith("/")) throw bad("A prefix must end with /, so cursor://app/ can't match cursor://app-evil/.");
+  return { uri: u.href, kind: rawKind, scheme };
+}
+
+/**
  * The redirect-URI rules (OAuth 2.1 and RFC 8252). https addresses are allowed as they are; plain http only for a
- * loopback address (a command-line app on the same computer). No fragments, no user names, no other schemes (a
- * `javascript:`, `data:` or app-specific scheme is never accepted), no wildcards, and nothing over 2000 characters.
+ * loopback address (a command-line app on the same computer). No fragments, no user names, no wildcards, nothing over
+ * 2000 characters. An app-specific scheme (`cursor://`, `vscode://`) is refused unless an administrator listed that exact
+ * address or a prefix of it (`allow`); `javascript:`, `data:`, `file:` and the other denied schemes are never accepted.
  * Returns the normalised address or throws.
  */
-export function checkRedirectUri(raw: unknown): string {
+export function checkRedirectUri(raw: unknown, allow: readonly Pick<RedirectAllow, "uri" | "kind">[] = []): string {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > 2000 || /[\u0000- \u007f"<>\\^`{|}]/.test(raw)) throw new HttpError(400, "invalid_redirect_uri", "A redirect address must be a plain web address.");
   let u: URL;
   try {
@@ -51,7 +94,9 @@ export function checkRedirectUri(raw: unknown): string {
   if (raw.includes("*")) throw new HttpError(400, "invalid_redirect_uri", "A redirect address can't have wildcards.");
   if (u.protocol === "https:") return u.href;
   if (u.protocol === "http:" && LOOPBACK.has(u.hostname)) return u.href;
-  throw new HttpError(400, "invalid_redirect_uri", "A redirect address must be https, or http on this computer's own loopback address.");
+  const scheme = u.protocol.slice(0, -1);
+  if (u.protocol !== "http:" && SCHEME_RE.test(scheme) && !DENIED_SCHEMES.includes(scheme) && redirectAllowed(u.href, allow)) return u.href;
+  throw new HttpError(400, "invalid_redirect_uri", "A redirect address must be https, or http on this computer's own loopback address. An app-specific address such as cursor:// needs a Proxmox administrator to allow it in Connected apps.");
 }
 
 export const isLoopbackUri = (uri: string): boolean => {

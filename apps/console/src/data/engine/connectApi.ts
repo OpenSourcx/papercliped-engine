@@ -62,7 +62,7 @@ export interface ConnectedApp {
 export interface AppCall { at: number; grantId: string; user: string; client: string; tool: string; ok: boolean; control: boolean; note?: string }
 export interface AuditEvent { at: number; actor: string; action: string; target?: string; detail?: string }
 export interface AuthRequestInfo {
-  client: { id: string; name: string; redirectHost: string; loopback: boolean };
+  client: { id: string; name: string; redirectHost: string; redirectUri: string; loopback: boolean; customScheme: boolean };
   scope: Level;
   scopes: ScopeInfo[];
   user: string;
@@ -141,7 +141,14 @@ export interface AdapterList {
   marketProblem: { code: string; message: string } | null;
 }
 
+export interface RedirectAllowEntry { uri: string; kind: "exact" | "prefix"; addedBy: string; addedAt: number }
+
 export const connectApi = {
+  redirectAllow: {
+    list: () => req<{ entries: RedirectAllowEntry[]; deniedSchemes: string[] }>("GET", "/api/connect/redirect-allow"),
+    add: (b: { uri: string; kind: "exact" | "prefix"; confirm: string }) => req<{ entries: RedirectAllowEntry[] }>("POST", "/api/connect/redirect-allow", b),
+    remove: (e: { uri: string; kind: "exact" | "prefix" }) => req<{ entries: RedirectAllowEntry[] }>("DELETE", `/api/connect/redirect-allow?${new URLSearchParams(e)}`),
+  },
   overview: () => req<ConnectOverview>("GET", "/api/connect/overview"),
   authRequest: (query: string) => req<AuthRequestInfo>("GET", `/api/connect/oauth/request?${query}`),
   consent: (b: Record<string, unknown>) => req<{ redirect: string }>("POST", "/api/connect/oauth/consent", b),
