@@ -15,6 +15,10 @@ import { handleMachineSettings } from "./machineSettings.ts";
 import { handleMachineCloud } from "./machineCloud.ts";
 import { handleMachineRun } from "./machineRun.ts";
 import { handleMachineDc } from "./machineDc.ts";
+import { handleNotes } from "./notes.ts";
+import { handleStorageTools } from "./storageTools.ts";
+import { handleBackupTools } from "./backupTools.ts";
+import { handleDiskHealth } from "./diskHealth.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -63,4 +67,8 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "machine-cloud", handle: handleMachineCloud },
   { name: "machine-run", handle: handleMachineRun },
   { name: "machine-dc", handle: handleMachineDc },
+  { name: "notes", handle: handleNotes },
+  { name: "storage-tools", handle: handleStorageTools },
+  { name: "backup-tools", handle: handleBackupTools },
+  { name: "disk-health", handle: handleDiskHealth },
 ];

@@ -9,6 +9,7 @@ import { MachineTasks } from "./MachineTasks.tsx";
 import { MachineCluster, MigrateModal } from "../cluster/Migrate.tsx";
 import { MachineFirewall } from "../firewall/Firewall.tsx";
 import { AddressRows, NotesCard } from "./MachineAbout.tsx";
+import { MachineNotes } from "../pin/notes/MachineNotes.tsx";
 import { MachinePermissions } from "./MachinePermissions.tsx";
 import { Tag } from "../../ui/Tag.tsx";
 const Screen = lazy(() => import("./Screen.tsx"));
@@ -196,6 +197,7 @@ export function MachinePage() {
           </Card>
           <MachineCluster vmid={g.vmid} template={g.template} />
           <NotesCard vmid={g.vmid} />
+          {live && <MachineNotes vmid={g.vmid} name={g.name} />}
           <div className="lg:col-span-3 mt-2">
             <UsageGraphs seed={g.vmid} vmid={g.vmid} base={base} kind="guest" />
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Maximize2, Settings2, Sparkles, X } from "lucide-react";
+import { Bell, Maximize2, NotebookPen, Settings2, Sparkles, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { Button, IconButton, Segmented } from "../ui/primitives.tsx";
@@ -10,6 +10,7 @@ import { usePin } from "./PinContext.tsx";
 import { PinOrb } from "./PinOrb.tsx";
 import { PinThread } from "./PinThread.tsx";
 import { QuickActionBar } from "./QuickActionBar.tsx";
+import { QuickNote } from "../pages/pin/notes/QuickNote.tsx";
 
 export { PinOrb } from "./PinOrb.tsx";
 
@@ -250,6 +251,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
   const engine = useEngine();
   const device = engine.setup?.deviceName ?? "pve";
   const hasActions = !!pin.actions?.items.length;
+  const [noting, setNoting] = useState(false);
   const samples = ["How is my server?", engine.data.orgs.length ? "Which agents are idle?" : "Which machines use the most memory?", "If a container uses more than 50% of its memory, shut it down"];
 
   return (
@@ -260,6 +262,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
           <div className="text-body font-semibold leading-tight">Pin</div>
           <div className="text-xs text-ink-3 truncate">{modelLabel}</div>
         </div>
+        {engine.live && <IconButton size="sm" label={noting ? "Back to Pin" : "Quick note"} onClick={() => setNoting(!noting)} className={noting ? "text-accent" : undefined}><NotebookPen className="h-4 w-4" /></IconButton>}
         <Link to={`/${device}/pin?tab=settings`} onClick={() => pin.setState("rest")} aria-label="Pin's settings" title="Pin's settings" className="transition-control h-8 w-8 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Settings2 className="h-4 w-4" /></Link>
         <Link to={`/${device}/pin?tab=chat`} onClick={() => pin.setState("rest")} aria-label="Open Pin's page" title="Open Pin's page" className="transition-control h-8 w-8 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Maximize2 className="h-3.5 w-3.5" /></Link>
         <IconButton size="sm" label="Close Pin" onClick={() => pin.setState("rest")}><X className="h-4 w-4" /></IconButton>
@@ -276,7 +279,13 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
           ]}
         />
       </div>
-      {pin.tab === "chat" ? (
+      {noting ? (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+          <div className="text-sm font-medium mb-1">Quick note</div>
+          <p className="text-compact text-ink-3 mb-3 text-pretty">Goes to your Notes. Paste a pile and use Sort with Pin to file it with a preview.</p>
+          <QuickNote compact onDone={() => setNoting(false)} />
+        </div>
+      ) : pin.tab === "chat" ? (
         <PinThread
           className="flex-1"
           footer={hasActions && pin.messages.length > 0 ? <div className="px-3 pt-2"><QuickActionBar compact scroll /></div> : null}

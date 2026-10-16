@@ -9,6 +9,7 @@ import { formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Field, Input, Notice, SectionTitle, Select, Status, Toggle } from "../../ui/primitives.tsx";
 import { TaskModal } from "../node/common.tsx";
+import { RemoteMigrateButton } from "./ClusterTools.tsx";
 import { MachineReplication } from "./ReplicationPage.tsx";
 import { useOverview } from "./common.tsx";
 
@@ -140,7 +141,7 @@ function MachineClusterLive({ vmid, template }: { vmid: number; template?: boole
   return (
     <div className="lg:col-span-3 space-y-4">
       <Card className="p-5">
-        <SectionTitle action={!template && check.data && <Button size="sm" onClick={() => setOpen(true)}><Route className="h-3.5 w-3.5" />Migrate…</Button>}>Cluster</SectionTitle>
+        <SectionTitle action={!template && check.data && <span className="flex gap-2"><Button size="sm" onClick={() => setOpen(true)}><Route className="h-3.5 w-3.5" />Migrate…</Button><RemoteMigrateButton vmid={vmid} /></span>}>Cluster</SectionTitle>
         <dl className="grid sm:grid-cols-3 gap-x-6 gap-y-3 text-compact">
           <div><dt className="text-xs text-ink-3">Runs on</dt><dd className="font-mono">{check.data?.node ?? (check.isPending ? "…" : "Unknown")}</dd></div>
           <div><dt className="text-xs text-ink-3">High availability</dt><dd>{ha.data?.managed ? <span className="inline-flex items-center gap-2"><Status kind={ha.data.current === "started" ? "good" : "idle"} label={ha.data.current ?? ha.data.state ?? "Managed"} /><Chip>{ha.data.sid}</Chip></span> : <span className="text-ink-2">Not managed</span>}</dd></div>

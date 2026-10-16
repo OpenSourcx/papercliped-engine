@@ -4,6 +4,7 @@ import type { Session } from "../sessions.ts";
 import type { FeatureCtx } from "./index.ts";
 import { PLANS_MAX, newId, runtimeFor, type Plan, type PlanStep, type PinRuntime, type StepKind } from "./pin-core.ts";
 import { pushNotice } from "./pin-notify.ts";
+import { NOTE_STEP_KEYS, describeNoteStep, isNoteStep, parseNoteStep, runNoteStep } from "./notes-steps.ts";
 
 /**
  * Pin's Agent mode: a multi-step plan the person reviews and approves one step at a time. Pin (or an automation in
@@ -77,6 +78,7 @@ const KEYS: Record<StepKind, string[]> = {
   snapshot_delete: ["kind", "vmid", "name"],
   snapshot_rollback: ["kind", "vmid", "name"],
   create_task: ["kind", "companyId", "title", "description"],
+  ...NOTE_STEP_KEYS,
 };
 
 /** Strict check of one step; returns what to store. */
@@ -94,6 +96,13 @@ export function parseStep(raw: unknown): StepInput {
     if (typeof r.name !== "string" || !SNAP.test(r.name)) throw bad("a snapshot name is 2 to 40 letters, digits, - or _, starting with a letter");
     return r.name;
   };
+  if (isNoteStep(kind)) {
+    try {
+      return parseNoteStep(kind, r);
+    } catch (e) {
+      throw bad(e instanceof Error ? e.message : "that note step can't be used");
+    }
+  }
   switch (kind) {
     case "power":
       if (!POWER.includes(r.action as (typeof POWER)[number])) throw bad(`power action must be one of ${POWER.join(", ")}`);
@@ -116,6 +125,7 @@ const VERB: Record<string, string> = { start: "Start", shutdown: "Shut down", st
 
 /** What the step says in words, and what must be typed to approve it when it interrupts or can't be undone. */
 export function describeStep(s: StepInput, names?: ReadonlyMap<number, string>): { label: string; destructive: boolean; confirmPhrase: string | null } {
+  if (isNoteStep(s.kind)) return { label: describeNoteStep(s.kind, s.args), destructive: false, confirmPhrase: null };
   const vm = typeof s.args.vmid === "number" ? `machine ${s.args.vmid}${names?.get(s.args.vmid) ? ` (${names.get(s.args.vmid)})` : ""}` : "";
   switch (s.kind) {
     case "power": {
@@ -199,6 +209,7 @@ const reasonOf = (e: unknown): string => {
 
 async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: string, gw: EngineGateway | null, rt: PinRuntime): Promise<{ upid?: string; result: string }> {
   const a = step.args;
+  if (isNoteStep(step.kind)) return { result: runNoteStep(rt.state, s.username, step.kind, a) };
   if (step.kind === "create_task") {
     if (!gw) throw new PlanProblem(503, "engine_unavailable", "The engine isn't set up on this host.");
     const issue = await gw.userJson<{ id?: string; identifier?: string }>(s, "POST", `/api/companies/${encodeURIComponent(a.companyId as string)}/issues`, { title: a.title, ...(a.description ? { description: a.description } : {}) });
