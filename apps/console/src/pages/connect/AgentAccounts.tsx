@@ -99,7 +99,7 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
     if (login && !login.done) void connectApi.cancelLogin(companyId, login.id).catch(() => undefined);
     onClose();
   };
-  const link = httpUrl(login?.verificationUrl);
+  const signinAt = httpUrl(login?.verificationUrl);
   return (
     <Modal size="md" icon={<LogIn className="h-5 w-5" />} title={`Sign in with ${label}`} subtitle="The sign-in runs inside the agent container, not on this device." onClose={cancel}
       footer={login?.done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={cancel}>Cancel</Button>{!login && <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Start sign-in</Button>}</>}>
@@ -115,15 +115,15 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
         {!login && <p className="text-compact text-ink-2">You'll get a web address and, for some sign-ins, a short code. Open the address in your own browser, sign in to {label}, and approve. This page notices when it's done. Nothing about your password or login is shown here.</p>}
         {login && !login.done && !login.failed && (
           <div className="space-y-3" aria-live="polite">
-            {!link && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for the container" />Starting the sign-in in the container…</div>}
-            {link && <div><div className="text-compact font-medium mb-1">1. Open this address</div><a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-accent break-all text-sm">{new URL(link).host}<ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden /></a></div>}
+            {!signinAt && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for the container" />Starting the sign-in in the container…</div>}
+            {signinAt && <div><div className="text-compact font-medium mb-1">1. Open this address</div><a href={signinAt} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-accent break-all text-sm">{new URL(signinAt).host}<ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden /></a></div>}
             {login.userCode && <div><div className="text-compact font-medium mb-1">2. Enter this code</div><div className="font-mono text-title tracking-code select-all">{login.userCode}</div></div>}
             {login.needsCode && (
               <Field label="3. Paste the code the browser shows" hint="Sent to the container to finish; never stored or shown again.">
                 <div className="flex gap-2"><Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /><Button loading={sendCode.isPending} disabled={!code.trim()} onClick={() => sendCode.mutate()}>Send</Button></div>
               </Field>
             )}
-            {link && !login.needsCode && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for you" />Waiting for you to finish in the browser…</div>}
+            {signinAt && !login.needsCode && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for you" />Waiting for you to finish in the browser…</div>}
             {login.message && <p className="text-xs text-ink-3">{login.message}</p>}
           </div>
         )}
