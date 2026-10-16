@@ -416,5 +416,5 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     return ctx.json(200, { fetchUrl: b.fetchUrl }), true;
   }
 
-  throw new E(404, "not_found", "Not found");
+  return false;
 }

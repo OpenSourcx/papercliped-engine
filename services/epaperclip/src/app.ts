@@ -22,6 +22,7 @@ import { StateStore } from "./state.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
+import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
 
@@ -420,7 +421,9 @@ export function createApp(d: AppDeps) {
   const iac = new Iac({ gateway, state, sessions: d.sessions });
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
-  const pin = new Pin({ state, connectors, fetch: outbound, now });
+  const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
+  registerConnections(state, connections);
+  const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
 
   const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
 
@@ -727,7 +730,7 @@ export function createApp(d: AppDeps) {
     if (method === "GET" && path === "/api/pin/models") {
       const s = requireSession(req);
       const provider = url.searchParams.get("provider") ?? pin.settings(s.username).provider;
-      if (!isProvider(provider)) throw new HttpError(400, "bad_request", "Unknown provider");
+      if (!provider || (!isProvider(provider) && !/^x:[a-z0-9][a-z0-9-]{0,31}$/.test(provider))) throw new HttpError(400, "bad_request", "Unknown provider");
       return sendJson(res, 200, { provider, models: await pin.models(provider) });
     }
 

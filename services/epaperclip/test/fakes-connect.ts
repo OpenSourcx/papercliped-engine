@@ -191,3 +191,40 @@ export async function startConnectApp(o: { staticDir?: string | null; providers?
 }
 
 export type { IncomingMessage };
+
+/** An OpenAI-compatible server (Ollama, LM Studio ...) that can be told to fail, and remembers what it was asked. */
+export async function fakeCompat(opts: { key?: string; models?: string[] } = {}) {
+  const st = { fail: 0 as number, failStatus: 503, asked: [] as { method: string; url: string; auth: string | undefined; body: string }[], reply: "Hello from the local model." };
+  const server: Server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = Buffer.concat(chunks).toString();
+    st.asked.push({ method: req.method!, url: req.url!, auth: req.headers.authorization as string | undefined, body });
+    if (opts.key && req.headers.authorization !== `Bearer ${opts.key}`) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: { message: `Incorrect API key provided: ${(req.headers.authorization ?? "").replace("Bearer ", "")}` } }));
+    }
+    if (st.fail > 0 && req.url!.includes("chat")) {
+      st.fail--;
+      res.writeHead(st.failStatus, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: { message: "overloaded" } }));
+    }
+    if (req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ object: "list", data: (opts.models ?? ["llama3.2", "qwen2.5"]).map((id) => ({ id, object: "model" })) }));
+    }
+    if (req.url === "/v1/chat/completions") {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: st.reply } }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 120, completion_tokens: 30 } })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      return res.end();
+    }
+    res.writeHead(404);
+    res.end("{}");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  return { base, st, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+}

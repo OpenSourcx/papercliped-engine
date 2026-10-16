@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { ProxmoxError, type ClusterResource, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
-import { Connectors, errorDetail, isProvider, providerLabel, providerProblem, providerRequest, PROVIDERS, redact, type HttpFetch, type ProviderId } from "./connectors.ts";
+import { Connectors, errorDetail, isProvider, providerLabel, providerProblem, providerRequest, PROVIDERS, redact, refId, refLabel, refProtocol, type Endpoint, type HttpFetch, type ProviderId, type ProviderRef } from "./connectors.ts";
 import { HttpError } from "./http.ts";
 import { AGENT_TOOLS, proposeFromChat } from "./features/pin-agent.ts";
 import { runtimeFor } from "./features/pin-core.ts";
@@ -20,10 +20,25 @@ import type { StateStore } from "./state.ts";
  * console carries them out through its normal endpoints once the person confirms.
  */
 
+/** Connections added in Connectors, as Pin sees them (features/connect-connections.ts). */
+export interface ExtraProviders {
+  /** Usable by Pin right now, in display order; ids start with `x:`. */
+  usable(): { id: string; label: string }[];
+  resolve(pid: string): { ref: Endpoint; key: string } | null;
+  /** Changes whenever the key or address does, so cached model lists are dropped. */
+  stamp(pid: string): string;
+  /** What to try, in order, when `pid` can't answer. */
+  fallbacks(pid: string): { pid: string; model: string }[];
+  usage(pid: string, model: string, tokens: { in: number; out: number }): void;
+  /** A built-in provider an administrator switched off for Pin. */
+  hidden?(pid: string): boolean;
+}
+
 export type PinMode = "assistant" | "agent";
 
 export interface PinSettings {
-  provider: ProviderId | null;
+  /** A built-in provider id, or `x:<id>` for a connection added in Connectors (local models, other hosted providers). */
+  provider: string | null;
   model: string | null;
   mode: PinMode;
   connectors: string[];
@@ -136,12 +151,14 @@ export async function* sseEvents(body: AsyncIterable<Uint8Array>): AsyncGenerato
 // ---- Providers
 
 interface TurnResult {
+  usage?: { in: number; out: number };
   text: string;
   calls: ToolCall[];
   stop: string | null;
 }
 
 interface TurnInput {
+  ref: ProviderRef;
   key: string;
   model: string;
   system: string;
@@ -162,7 +179,7 @@ const parseArgs = (s: string): Record<string, unknown> => {
   }
 };
 
-async function post(fetchImpl: HttpFetch, provider: ProviderId, key: string, path: string, body: unknown, signal: AbortSignal): Promise<AsyncIterable<Uint8Array>> {
+async function post(fetchImpl: HttpFetch, provider: ProviderRef, key: string, path: string, body: unknown, signal: AbortSignal): Promise<AsyncIterable<Uint8Array>> {
   const { url, headers } = providerRequest(provider, key, path);
   let r: Response;
   try {
@@ -174,20 +191,20 @@ async function post(fetchImpl: HttpFetch, provider: ProviderId, key: string, pat
     const p = providerProblem(provider, r.status, redact(errorDetail(await r.text().catch(() => "")), key));
     throw new PinError(p.code, p.message);
   }
-  if (!r.body) throw new PinError("provider_error", `${providerLabel(provider)} sent an empty answer.`);
+  if (!r.body) throw new PinError("provider_error", `${refLabel(provider)} sent an empty answer.`);
   return r.body as unknown as AsyncIterable<Uint8Array>;
 }
 
-function abortProblem(provider: ProviderId, e: unknown): PinError {
+function abortProblem(provider: ProviderRef, e: unknown): PinError {
   if (e instanceof PinError) return e;
   const name = (e as Error)?.name;
-  if (name === "TimeoutError") return new PinError("provider_timeout", `${providerLabel(provider)} took too long to answer.`);
+  if (name === "TimeoutError") return new PinError("provider_timeout", `${refLabel(provider)} took too long to answer.`);
   if (name === "AbortError") return new PinError("cancelled", "The request was cancelled.");
-  return new PinError("provider_unreachable", `Couldn't reach ${providerLabel(provider)}.`);
+  return new PinError("provider_unreachable", `Couldn't reach ${refLabel(provider)}.`);
 }
 
 /** An error reported inside a provider's stream, by its type or status. */
-function streamProblem(provider: ProviderId, type: string | number | undefined, message: string | undefined): PinError {
+function streamProblem(provider: ProviderRef, type: string | number | undefined, message: string | undefined): PinError {
   const status = typeof type === "number" ? type : type === "overloaded_error" ? 529 : type === "rate_limit_error" ? 429 : type === "authentication_error" || type === "permission_error" ? 401 : type === "invalid_request_error" || type === "not_found_error" ? 400 : 500;
   const p = providerProblem(provider, status, message?.slice(0, 300));
   return new PinError(p.code, p.message);
@@ -201,7 +218,7 @@ async function anthropicTurn(fetchImpl: HttpFetch, t: TurnInput): Promise<TurnRe
         ? { role: "assistant", content: [...(x.text ? [{ type: "text", text: x.text }] : []), ...x.calls.map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: c.args }))] }
         : { role: "user", content: x.results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content })) },
   );
-  const body = await post(fetchImpl, "anthropic", t.key, "/messages", {
+  const body = await post(fetchImpl, t.ref, t.key, "/messages", {
     model: t.model,
     max_tokens: MAX_TOKENS,
     system: t.system,
@@ -212,6 +229,8 @@ async function anthropicTurn(fetchImpl: HttpFetch, t: TurnInput): Promise<TurnRe
   }, t.signal);
   let text = "";
   let stop: string | null = null;
+  let usageIn = 0;
+  let usageOut = 0;
   const blocks: { id?: string; name?: string; json: string }[] = [];
   try {
     for await (const ev of sseEvents(body)) {
@@ -222,17 +241,20 @@ async function anthropicTurn(fetchImpl: HttpFetch, t: TurnInput): Promise<TurnRe
         text += d.delta.text;
         t.onText(d.delta.text);
       } else if (d.type === "content_block_delta" && d.delta?.type === "input_json_delta" && blocks[d.index]) blocks[d.index].json += d.delta.partial_json ?? "";
-      else if (d.type === "message_delta") stop = d.delta?.stop_reason ?? stop;
-      else if (d.type === "error") throw streamProblem("anthropic", d.error?.type, d.error?.message);
+      else if (d.type === "message_start") usageIn = Number(d.message?.usage?.input_tokens) || usageIn;
+      else if (d.type === "message_delta") {
+        stop = d.delta?.stop_reason ?? stop;
+        usageOut = Number(d.usage?.output_tokens) || usageOut;
+      } else if (d.type === "error") throw streamProblem(t.ref, d.error?.type, d.error?.message);
     }
   } catch (e) {
-    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", "Anthropic sent an answer Pin couldn't read.") : abortProblem("anthropic", e);
+    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", `${refLabel(t.ref)} sent an answer Pin couldn't read.`) : abortProblem(t.ref, e);
   }
-  return { text, stop, calls: blocks.filter((b) => b?.id && b.name).map((b) => ({ id: b.id!, name: b.name!, args: parseArgs(b.json) })) };
+  return { text, stop, usage: { in: usageIn, out: usageOut }, calls: blocks.filter((b) => b?.id && b.name).map((b) => ({ id: b.id!, name: b.name!, args: parseArgs(b.json) })) };
 }
 
 /** OpenAI's Chat Completions, which OpenRouter also speaks. */
-async function openaiTurn(fetchImpl: HttpFetch, provider: "openai" | "openrouter", t: TurnInput): Promise<TurnResult> {
+async function openaiTurn(fetchImpl: HttpFetch, provider: ProviderRef, t: TurnInput): Promise<TurnResult> {
   const messages: Record<string, unknown>[] = [{ role: "system", content: t.system }];
   for (const x of t.turns) {
     if (x.role === "user") messages.push({ role: "user", content: x.text });
@@ -245,17 +267,24 @@ async function openaiTurn(fetchImpl: HttpFetch, provider: "openai" | "openrouter
     tools: t.tools.map((d) => ({ type: "function", function: { name: d.name, description: d.description, parameters: d.parameters } })),
     tool_choice: t.allowTools ? "auto" : "none",
     stream: true,
-    // OpenAI's current name for the output cap; OpenRouter takes the older one.
-    ...(provider === "openai" ? { max_completion_tokens: MAX_TOKENS } : { max_tokens: MAX_TOKENS }),
+    // OpenAI's current name for the output cap; OpenRouter and most compatible servers take the older one.
+    ...(provider === "openai" || (typeof provider !== "string" && provider.modern) ? { max_completion_tokens: MAX_TOKENS } : { max_tokens: MAX_TOKENS }),
+    stream_options: { include_usage: true },
   }, t.signal);
   let text = "";
   let stop: string | null = null;
   const slots: { id: string; name: string; args: string }[] = [];
+  let usageIn = 0;
+  let usageOut = 0;
   try {
     for await (const ev of sseEvents(body)) {
       if (ev.data === "[DONE]") break;
       const d = JSON.parse(ev.data) as Record<string, any>;
       if (d.error) throw streamProblem(provider, typeof d.error.code === "number" ? d.error.code : d.error.type, d.error.message);
+      if (d.usage) {
+        usageIn = Number(d.usage.prompt_tokens) || usageIn;
+        usageOut = Number(d.usage.completion_tokens) || usageOut;
+      }
       const ch = d.choices?.[0];
       if (!ch) continue;
       const delta = ch.delta ?? {};
@@ -272,22 +301,24 @@ async function openaiTurn(fetchImpl: HttpFetch, provider: "openai" | "openrouter
       if (ch.finish_reason) stop = ch.finish_reason;
     }
   } catch (e) {
-    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", `${providerLabel(provider)} sent an answer Pin couldn't read.`) : abortProblem(provider, e);
+    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", `${refLabel(provider)} sent an answer Pin couldn't read.`) : abortProblem(provider, e);
   }
-  return { text, stop, calls: slots.filter((s) => s?.name).map((s, i) => ({ id: s.id || `call_${i}`, name: s.name, args: parseArgs(s.args) })) };
+  return { text, stop, usage: { in: usageIn, out: usageOut }, calls: slots.filter((s) => s?.name).map((s, i) => ({ id: s.id || `call_${i}`, name: s.name, args: parseArgs(s.args) })) };
 }
 
 /** Gemini answers in words only for now (no tools). */
 async function geminiTurn(fetchImpl: HttpFetch, t: TurnInput): Promise<TurnResult> {
   if (!/^[\w.-]{1,128}$/.test(t.model)) throw new PinError("bad_model", "That Gemini model name can't be used.");
   const contents = t.turns.filter((x) => x.role !== "tool").map((x) => ({ role: x.role === "user" ? "user" : "model", parts: [{ text: (x as { text: string }).text || " " }] }));
-  const body = await post(fetchImpl, "gemini", t.key, `/models/${t.model}:streamGenerateContent?alt=sse`, { systemInstruction: { parts: [{ text: t.system }] }, contents, generationConfig: { maxOutputTokens: MAX_TOKENS } }, t.signal);
+  const body = await post(fetchImpl, t.ref, t.key, `/models/${t.model}:streamGenerateContent?alt=sse`, { systemInstruction: { parts: [{ text: t.system }] }, contents, generationConfig: { maxOutputTokens: MAX_TOKENS } }, t.signal);
   let text = "";
   let stop: string | null = null;
+  let usageIn = 0;
+  let usageOut = 0;
   try {
     for await (const ev of sseEvents(body)) {
       const d = JSON.parse(ev.data) as Record<string, any>;
-      if (d.error) throw streamProblem("gemini", d.error.code, d.error.message);
+      if (d.error) throw streamProblem(t.ref, d.error.code, d.error.message);
       const c = d.candidates?.[0];
       for (const p of c?.content?.parts ?? []) {
         if (typeof p.text === "string" && p.text) {
@@ -296,11 +327,15 @@ async function geminiTurn(fetchImpl: HttpFetch, t: TurnInput): Promise<TurnResul
         }
       }
       if (c?.finishReason) stop = c.finishReason;
+      if (d.usageMetadata) {
+        usageIn = Number(d.usageMetadata.promptTokenCount) || usageIn;
+        usageOut = Number(d.usageMetadata.candidatesTokenCount) || usageOut;
+      }
     }
   } catch (e) {
-    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", "Gemini sent an answer Pin couldn't read.") : abortProblem("gemini", e);
+    throw e instanceof PinError ? e : e instanceof SyntaxError ? new PinError("provider_error", `${refLabel(t.ref)} sent an answer Pin couldn't read.`) : abortProblem(t.ref, e);
   }
-  return { text, stop, calls: [] };
+  return { text, stop, usage: { in: usageIn, out: usageOut }, calls: [] };
 }
 
 // ---- Tools
@@ -445,16 +480,34 @@ export class Pin {
   private readonly now: () => number;
   private readonly modelCache = new Map<string, { at: number; models: { id: string; label: string }[] }>();
 
-  constructor(opts: { state: StateStore; connectors: Connectors; fetch: HttpFetch; now?: () => number }) {
+  private readonly extra: ExtraProviders | null;
+
+  constructor(opts: { state: StateStore; connectors: Connectors; fetch: HttpFetch; now?: () => number; extra?: ExtraProviders }) {
+    this.extra = opts.extra ?? null;
     this.state = opts.state;
     this.connectors = opts.connectors;
     this.fetch = opts.fetch;
     this.now = opts.now ?? Date.now;
   }
 
+  /** Where a provider id points and the key to use: a built-in provider, or a connection added in Connectors (`x:<id>`). */
+  private target(pid: string): { ref: ProviderRef; key: string; stamp: string } | null {
+    if (isProvider(pid)) {
+      const key = this.connectors.key(pid);
+      return key ? { ref: pid, key, stamp: this.connectors.keyStamp(pid) } : null;
+    }
+    const x = this.extra?.resolve(pid);
+    return x ? { ref: x.ref, key: x.key, stamp: this.extra!.stamp(pid) } : null;
+  }
+
+  /** Every provider Pin can use right now, built in or added. */
+  private usable(): string[] {
+    return [...this.connectors.configured().filter((c) => !this.extra?.hidden?.(c)), ...(this.extra?.usable() ?? []).map((u) => u.id)];
+  }
+
   settings(username: string): PinSettings {
     const saved = (this.state.getSetting<Record<string, Partial<PinSettings>>>("pin.settings") ?? {})[username] ?? {};
-    const configured = this.connectors.configured();
+    const configured = this.usable();
     const provider = saved.provider && configured.includes(saved.provider) ? saved.provider : (configured[0] ?? null);
     return { provider, model: provider && provider === saved.provider ? (saved.model ?? null) : null, mode: saved.mode === "agent" ? "agent" : "assistant", connectors: Array.isArray(saved.connectors) ? saved.connectors : [] };
   }
@@ -463,10 +516,11 @@ export class Pin {
     const cur = this.settings(username);
     const next: PinSettings = { ...cur };
     if (b.provider !== undefined) {
-      if (b.provider !== null && !isProvider(b.provider)) throw new HttpError(400, "bad_request", "Unknown provider");
-      if (b.provider !== null && !this.connectors.configured().includes(b.provider as ProviderId)) throw new HttpError(400, "not_configured", `${providerLabel(b.provider as ProviderId)} has no API key yet. An administrator can add one in Connectors.`);
+      if (b.provider !== null && typeof b.provider !== "string") throw new HttpError(400, "bad_request", "Unknown provider");
+      if (b.provider !== null && !isProvider(b.provider) && !/^x:[a-z0-9][a-z0-9-]{0,31}$/.test(b.provider)) throw new HttpError(400, "bad_request", "Unknown provider");
+      if (b.provider !== null && !this.usable().includes(b.provider)) throw new HttpError(400, "not_configured", `${isProvider(b.provider) ? providerLabel(b.provider) : "That connection"} isn't set up for Pin yet. An administrator can add it in Connectors.`);
       if (b.provider !== cur.provider) next.model = null;
-      next.provider = b.provider as ProviderId | null;
+      next.provider = b.provider;
     }
     if (b.model !== undefined) {
       if (b.model !== null && (typeof b.model !== "string" || !MODEL_ID.test(b.model))) throw new HttpError(400, "bad_request", "Pick a model from the list");
@@ -488,13 +542,17 @@ export class Pin {
   }
 
   /** The models the stored key can use, read from the provider and kept for a few minutes. */
-  async models(provider: ProviderId): Promise<{ id: string; label: string }[]> {
-    const key = this.connectors.key(provider);
-    if (!key) throw new HttpError(404, "not_configured", `${providerLabel(provider)} has no API key yet`);
-    const cacheKey = `${provider}:${this.connectors.keyStamp(provider)}`;
+  async models(pid: string): Promise<{ id: string; label: string }[]> {
+    const t = this.target(pid);
+    if (!t) throw new HttpError(404, "not_configured", `${isProvider(pid) ? providerLabel(pid) : "That connection"} has no API key yet`);
+    const provider = t.ref;
+    const key = t.key;
+    const label = refLabel(provider);
+    const proto = refProtocol(provider);
+    const cacheKey = `${pid}:${t.stamp}`;
     const hit = this.modelCache.get(cacheKey);
     if (hit && this.now() - hit.at < MODELS_TTL_MS) return hit.models;
-    const path = provider === "anthropic" ? "/models?limit=1000" : provider === "gemini" ? "/models?pageSize=1000" : "/models";
+    const path = proto === "anthropic" ? "/models?limit=1000" : proto === "gemini" ? "/models?pageSize=1000" : "/models";
     const { url, headers } = providerRequest(provider, key, path);
     let r: Response;
     let text: string;
@@ -513,20 +571,20 @@ export class Pin {
     try {
       j = JSON.parse(text);
     } catch {
-      throw new HttpError(502, "provider_error", `${providerLabel(provider)} sent a model list Pin couldn't read.`);
+      throw new HttpError(502, "provider_error", `${label} sent a model list Pin couldn't read.`);
     }
     let models: { id: string; label: string }[];
-    if (provider === "gemini") {
+    if (proto === "gemini") {
       models = (Array.isArray(j.models) ? j.models : [])
         .filter((m: any) => typeof m?.name === "string" && (!Array.isArray(m.supportedGenerationMethods) || m.supportedGenerationMethods.includes("generateContent")))
         .map((m: any) => ({ id: m.name.replace(/^models\//, ""), label: typeof m.displayName === "string" ? m.displayName : m.name.replace(/^models\//, "") }));
     } else {
       models = (Array.isArray(j.data) ? j.data : []).filter((m: any) => typeof m?.id === "string").map((m: any) => ({ id: m.id, label: typeof m.display_name === "string" ? m.display_name : typeof m.name === "string" ? m.name : m.id }));
       // Anthropic lists newest first, which is the useful order; the others come in no particular order.
-      if (provider !== "anthropic") models.sort((a, b) => a.label.localeCompare(b.label));
+      if (proto !== "anthropic") models.sort((a, b) => a.label.localeCompare(b.label));
     }
     models = models.filter((m) => MODEL_ID.test(m.id));
-    for (const [k] of this.modelCache) if (k.startsWith(`${provider}:`)) this.modelCache.delete(k);
+    for (const [k] of this.modelCache) if (k.startsWith(`${pid}:`)) this.modelCache.delete(k);
     this.modelCache.set(cacheKey, { at: this.now(), models });
     return models;
   }
@@ -562,11 +620,11 @@ export class Pin {
     const s = this.settings(username);
     if (!s.provider) throw new HttpError(400, "no_provider", "Pin needs a model provider. An administrator can add an API key in Connectors.");
     if (!s.model) throw new HttpError(400, "no_model", "Pick a model for Pin in its settings first.");
-    const key = this.connectors.key(s.provider);
-    if (!key) throw new HttpError(400, "not_configured", `${providerLabel(s.provider)} has no API key yet`);
+    const t = this.target(s.provider);
+    if (!t) throw new HttpError(400, "not_configured", `${isProvider(s.provider) ? providerLabel(s.provider) : "That connection"} has no API key yet`);
     const messages = parseMessages(b.messages);
     const context = b.context && typeof b.context === "object" && !Array.isArray(b.context) ? (b.context as Record<string, unknown>) : {};
-    return { settings: s, provider: s.provider, model: s.model, key, messages, context };
+    return { settings: s, provider: s.provider, ref: t.ref, model: s.model, key: t.key, messages, context };
   }
 
   /** Answers one chat request as a server-sent event stream. */
@@ -577,15 +635,45 @@ export class Pin {
     };
     const system = systemPrompt({ node: host.node, username: host.username, mode: p.settings.mode, context: p.context });
     const turns: Turn[] = p.messages.map((m) => (m.role === "user" ? { role: "user", text: m.content } : { role: "assistant", text: m.content, calls: [] }));
-    const tools: ToolDef[] = p.provider === "gemini" ? [] : p.settings.mode === "agent" ? [...TOOLS, ...AGENT_TOOLS] : TOOLS;
+    const tools: ToolDef[] = refProtocol(p.ref) === "gemini" ? [] : p.settings.mode === "agent" ? [...TOOLS, ...AGENT_TOOLS] : TOOLS;
+    let via: string | null = null;
     try {
       for (let step = 0; step < MAX_STEPS; step++) {
         const signal = AbortSignal.any([clientGone, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
-        const input: TurnInput = { key: p.key, model: p.model, system, turns, tools, allowTools: step < MAX_STEPS - 1, onText: (text) => send("delta", { text }), signal };
-        const r = p.provider === "anthropic" ? await anthropicTurn(this.fetch, input) : p.provider === "gemini" ? await geminiTurn(this.fetch, input) : await openaiTurn(this.fetch, p.provider, input);
+        let sent = false;
+        const run = async (ref: ProviderRef, key: string, model: string): Promise<TurnResult> => {
+          const input: TurnInput = { ref, key, model, system, turns, tools: refProtocol(ref) === "gemini" ? [] : tools, allowTools: step < MAX_STEPS - 1, onText: (text) => { sent = true; send("delta", { text }); }, signal };
+          const proto = refProtocol(ref);
+          return proto === "anthropic" ? anthropicTurn(this.fetch, input) : proto === "gemini" ? geminiTurn(this.fetch, input) : openaiTurn(this.fetch, ref, input);
+        };
+        let r: TurnResult;
+        let used = { pid: p.provider, ref: p.ref, model: p.model };
+        try {
+          r = await run(p.ref, p.key, p.model);
+        } catch (e) {
+          // The chosen provider couldn't answer and nothing was shown yet: try the fallbacks the administrator set, in order.
+          const retryable = e instanceof PinError && /^provider_(auth|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
+          if (!retryable || sent || !this.extra) throw e;
+          let ok: TurnResult | null = null;
+          for (const f of this.extra.fallbacks(p.provider)) {
+            const t = this.target(f.pid);
+            if (!t) continue;
+            try {
+              ok = await run(t.ref, t.key, f.model);
+              used = { pid: f.pid, ref: t.ref, model: f.model };
+              break;
+            } catch (e2) {
+              if (!(e2 instanceof PinError) || sent || !/^provider_/.test(e2.code)) throw e2;
+            }
+          }
+          if (!ok) throw e;
+          r = ok;
+        }
+        if (r.usage && (r.usage.in || r.usage.out)) this.extra?.usage(used.pid, used.model, r.usage);
+        via = used.pid === p.provider ? null : refLabel(used.ref);
         turns.push({ role: "assistant", text: r.text, calls: r.calls });
         if (!r.calls.length) {
-          send("done", { stopReason: r.stop });
+          send("done", { stopReason: r.stop, ...(via ? { via } : {}) });
           return;
         }
         const results: { id: string; name: string; content: string }[] = [];

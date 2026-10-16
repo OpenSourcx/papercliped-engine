@@ -17,6 +17,24 @@ export const PROVIDERS: readonly { id: ProviderId; label: string }[] = [
   { id: "openrouter", label: "OpenRouter" },
 ];
 
+/**
+ * A model endpoint that isn't one of the four built-in providers: a hosted OpenAI-compatible service (Groq, Mistral ...)
+ * or a local one (Ollama, LM Studio ...) added in Connectors (features/connect-connections.ts). Pin talks to it like
+ * any other provider.
+ */
+export interface Endpoint {
+  id: string;
+  label: string;
+  protocol: "anthropic" | "openai" | "gemini";
+  base: string;
+  /** Whether the provider wants `max_completion_tokens` (OpenAI itself) or the older `max_tokens` (compatible servers). */
+  modern: boolean;
+}
+export type ProviderRef = ProviderId | Endpoint;
+export const refLabel = (p: ProviderRef): string => (typeof p === "string" ? providerLabel(p) : p.label);
+export const refId = (p: ProviderRef): string => (typeof p === "string" ? p : p.id);
+export const refProtocol = (p: ProviderRef): "anthropic" | "openai" | "gemini" => (typeof p === "string" ? (p === "anthropic" ? "anthropic" : p === "gemini" ? "gemini" : "openai") : p.protocol);
+
 export const isProvider = (v: unknown): v is ProviderId => typeof v === "string" && PROVIDERS.some((p) => p.id === v);
 export const providerLabel = (id: ProviderId) => PROVIDERS.find((p) => p.id === id)!.label;
 
@@ -31,10 +49,11 @@ const BASE: Record<ProviderId, string> = {
 };
 
 /** How to call a provider's API with a key. Gemini's key goes in a header rather than the URL, so it never lands in a log line. */
-export function providerRequest(id: ProviderId, key: string, path: string): { url: string; headers: Record<string, string> } {
-  const headers: Record<string, string> =
-    id === "anthropic" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : id === "gemini" ? { "x-goog-api-key": key } : { Authorization: `Bearer ${key}` };
-  return { url: `${BASE[id]}${path}`, headers };
+export function providerRequest(ref: ProviderRef, key: string, path: string): { url: string; headers: Record<string, string> } {
+  const proto = refProtocol(ref);
+  // Local servers often need no key; then no credential header is sent at all.
+  const headers: Record<string, string> = !key ? {} : proto === "anthropic" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : proto === "gemini" ? { "x-goog-api-key": key } : { Authorization: `Bearer ${key}` };
+  return { url: `${typeof ref === "string" ? BASE[ref] : ref.base}${path}`, headers };
 }
 
 /** The cheapest authenticated call for each provider. OpenRouter's model list is public, so its key endpoint is used. */
@@ -88,8 +107,8 @@ export function redact(text: string | undefined, key?: string | null): string | 
 }
 
 /** Turns a provider's HTTP status into words a person can act on. Never includes the key. */
-export function providerProblem(id: ProviderId, status: number, rawDetail?: string): { code: string; message: string } {
-  const label = providerLabel(id);
+export function providerProblem(id: ProviderRef, status: number, rawDetail?: string): { code: string; message: string } {
+  const label = refLabel(id);
   const detail = redact(rawDetail);
   if (status === 401 || status === 403) return { code: "provider_auth", message: `${label} rejected the API key. An administrator can replace it in Connectors.` };
   if (status === 429) return { code: "provider_rate_limited", message: `${label} is rate-limiting this key, or its quota ran out. Try again shortly.` };
