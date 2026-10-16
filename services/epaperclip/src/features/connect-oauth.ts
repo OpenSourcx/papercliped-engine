@@ -6,7 +6,7 @@ import { HttpError } from "../http.ts";
 import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { appendAudit, getToken, newTokenParts, pveTokenName, removeToken, storeToken } from "./access-tokens.ts";
-import { CHALLENGE_RE, FailureCounter, RateWindow, VERIFIER_RE, checkRedirectUri, cleanText, hashSecret, newHexId, newSalt, newSecret, pkceMatches, redirectMatches, sameHash } from "./connect-util.ts";
+import { CHALLENGE_RE, FailureCounter, type RedirectAllow, checkAllowEntry, RateWindow, VERIFIER_RE, checkRedirectUri, cleanText, hashSecret, newHexId, newSalt, newSecret, pkceMatches, redirectMatches, sameHash } from "./connect-util.ts";
 
 /**
  * The OAuth 2.1 authorization server for MCP clients (Claude, ChatGPT, Codex, any MCP client), docs/CONNECTORS.md.
@@ -36,6 +36,8 @@ const CODE_TTL_MS = 60_000;
 const PENDING_TTL_MS = 10 * 60_000;
 const UNUSED_CLIENT_MS = 24 * 3600_000;
 const MAX_CLIENTS = 500;
+const REDIRECT_ALLOW = "connect.redirectAllow";
+const MAX_REDIRECT_ALLOW = 50;
 const MAX_GRANTS_PER_USER = 30;
 
 const ACCESS_RE = /^epo_([0-9a-f]{16})_([A-Za-z0-9_-]{43})$/;
@@ -199,6 +201,33 @@ export class ConnectService {
   }
   callLog = (): McpLogEntry[] => this.o.state.getSetting<McpLogEntry[]>(MCP_LOG) ?? [];
 
+  // ---- Custom-scheme redirect addresses an administrator allowed (cursor://, vscode://). Empty by default: apps get https and loopback only.
+
+  redirectAllow(): RedirectAllow[] {
+    const v = this.o.state.getSetting<RedirectAllow[]>(REDIRECT_ALLOW);
+    return Array.isArray(v) ? v : [];
+  }
+
+  addRedirectAllow(rawUri: unknown, rawKind: unknown, who: string, ip?: string): RedirectAllow {
+    const e = checkAllowEntry(rawUri, rawKind);
+    const list = this.redirectAllow();
+    if (list.some((x) => x.uri === e.uri && x.kind === e.kind)) throw oauthError(409, "conflict", "That address is already allowed.");
+    if (list.length >= MAX_REDIRECT_ALLOW) throw oauthError(409, "conflict", `At most ${MAX_REDIRECT_ALLOW} addresses can be allowed. Remove one you no longer need.`);
+    const entry: RedirectAllow = { uri: e.uri, kind: e.kind, addedBy: who, addedAt: this.o.now() };
+    this.o.state.setSetting(REDIRECT_ALLOW, [...list, entry]);
+    this.audit(who, "oauth.redirect_allow", e.uri, `allowed ${e.kind} ${e.uri}`, ip);
+    return entry;
+  }
+
+  removeRedirectAllow(uri: string, kind: unknown, who: string, ip?: string): boolean {
+    const list = this.redirectAllow();
+    const rest = list.filter((x) => !(x.uri === uri && x.kind === kind));
+    if (rest.length === list.length) return false;
+    this.o.state.setSetting(REDIRECT_ALLOW, rest);
+    this.audit(who, "oauth.redirect_remove", uri, `no longer allowed: ${kind} ${uri}`, ip);
+    return true;
+  }
+
   // ---- Registration (RFC 7591)
 
   register(body: Record<string, unknown>, ip: string): Record<string, unknown> {
@@ -207,7 +236,8 @@ export class ConnectService {
     if (!Array.isArray(uris) || uris.length === 0 || uris.length > 5) throw oauthError(400, "invalid_redirect_uri", "Send 1 to 5 redirect addresses.");
     let redirectUris: string[];
     try {
-      redirectUris = [...new Set(uris.map((u) => checkRedirectUri(u)))];
+      const allow = this.redirectAllow();
+      redirectUris = [...new Set(uris.map((u) => checkRedirectUri(u, allow)))];
     } catch (e) {
       throw oauthError(400, "invalid_redirect_uri", e instanceof HttpError ? e.message : "Bad redirect address.");
     }
@@ -253,7 +283,7 @@ export class ConnectService {
     if (!uri) throw oauthError(400, "invalid_request", "The app sent no redirect address.");
     let redirectUri: string;
     try {
-      redirectUri = checkRedirectUri(uri);
+      redirectUri = checkRedirectUri(uri, this.redirectAllow());
     } catch {
       throw oauthError(400, "invalid_request", "The app's redirect address isn't allowed.");
     }

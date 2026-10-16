@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { calculate } from "../src/features/connect-tools.ts";
-import { checkRedirectUri, pkceMatches, redirectMatches } from "../src/features/connect-util.ts";
+import { DENIED_SCHEMES, checkAllowEntry, checkRedirectUri, pkceMatches, redirectMatches } from "../src/features/connect-util.ts";
 import { startConnectApp, pkce, type ConnectApp } from "./fakes-connect.ts";
 
 let h: ConnectApp;
@@ -28,6 +28,40 @@ describe("redirect address rules", () => {
     for (const bad of ["http://example.com/cb", "javascript:alert(1)", "data:text/html,x", "myapp://cb", "https://a.example/cb#frag", "https://user:pw@a.example/cb", "https://*.example.com/cb", "https://a.example/ cb", "", "not a url", "ftp://a.example/", `https://a.example/${"x".repeat(2100)}`, "http://127.0.0.1.evil.com/cb", "http://[::2]/cb"])
       expect(() => checkRedirectUri(bad), bad.slice(0, 40)).toThrow();
     expect(() => checkRedirectUri(42)).toThrow();
+  });
+  it("refuses app-specific schemes by default and accepts them only when an administrator listed them", () => {
+    const cursor = "cursor://anysphere.cursor-mcp/oauth/callback";
+    expect(() => checkRedirectUri(cursor)).toThrow(/administrator/);
+    expect(() => checkRedirectUri(cursor, [])).toThrow();
+    expect(checkRedirectUri(cursor, [{ uri: cursor, kind: "exact" }])).toBe(cursor);
+    expect(checkRedirectUri(cursor, [{ uri: "cursor://anysphere.cursor-mcp/", kind: "prefix" }])).toBe(cursor);
+    // Not the same address, and not another app that merely starts with the same letters.
+    expect(() => checkRedirectUri("cursor://anysphere.cursor-mcp/oauth/other", [{ uri: cursor, kind: "exact" }])).toThrow();
+    expect(() => checkRedirectUri("cursor://anysphere.cursor-mcp-evil/oauth/callback", [{ uri: "cursor://anysphere.cursor-mcp/", kind: "prefix" }])).toThrow();
+    expect(() => checkRedirectUri("vscode://x.y/cb", [{ uri: "cursor://anysphere.cursor-mcp/", kind: "prefix" }])).toThrow();
+    // The checks that apply to every address still apply.
+    expect(() => checkRedirectUri(`${cursor}#frag`, [{ uri: cursor, kind: "exact" }])).toThrow();
+    expect(() => checkRedirectUri("cursor://u:p@anysphere.cursor-mcp/cb", [{ uri: "cursor://u:p@anysphere.cursor-mcp/cb", kind: "exact" }])).toThrow();
+  });
+  it("never accepts a denied scheme, even if one somehow reached the list", () => {
+    for (const scheme of ["javascript", "data", "file", "blob", "about", "vbscript", "ws", "wss"]) {
+      expect(DENIED_SCHEMES).toContain(scheme);
+      const uri = `${scheme}://example/cb`;
+      expect(() => checkRedirectUri(uri, [{ uri, kind: "exact" }, { uri: `${scheme}://example/`, kind: "prefix" }]), scheme).toThrow();
+      expect(() => checkAllowEntry(uri, "exact"), scheme).toThrow(/never be allowed/);
+    }
+    expect(() => checkRedirectUri("javascript:alert(1)", [{ uri: "javascript:alert(1)", kind: "exact" }])).toThrow();
+    // Plain http beyond loopback stays refused and can't be listed; https needs no listing.
+    expect(() => checkRedirectUri("http://example.com/cb", [{ uri: "http://example.com/cb", kind: "exact" }])).toThrow();
+    expect(() => checkAllowEntry("http://example.com/cb", "exact")).toThrow();
+    expect(() => checkAllowEntry("https://example.com/cb", "exact")).toThrow();
+  });
+  it("only lists specific, plain addresses", () => {
+    expect(checkAllowEntry("cursor://anysphere.cursor-mcp/oauth/callback", "exact")).toMatchObject({ scheme: "cursor", kind: "exact" });
+    expect(checkAllowEntry("vscode://vscode.github-authentication/", "prefix")).toMatchObject({ scheme: "vscode", kind: "prefix" });
+    for (const [uri, kind] of [["cursor://", "prefix"], ["cursor:///", "prefix"], ["cursor://app", "prefix"], ["cursor://app/*", "exact"], ["cursor://app/cb#x", "exact"], ["cursor://app/ cb", "exact"], ["cursor://a/", "weird"], ["", "exact"], ["not a url", "exact"], ["cursor://u:p@app/", "prefix"]] as const)
+      expect(() => checkAllowEntry(uri, kind), `${uri} ${kind}`).toThrow();
+    expect(() => checkAllowEntry(42, "exact")).toThrow();
   });
   it("matches exactly, except that a loopback address may use any port", () => {
     expect(redirectMatches(["https://a.example/cb"], "https://a.example/cb")).toBe(true);
@@ -575,5 +609,67 @@ describe("small pieces", () => {
     expect(calculate("-4 + 10 % 3")).toBe(-3);
     expect(calculate("1.5e2 / 3")).toBe(50);
     for (const bad of ["", "1 +", "process.exit()", "1/0", "alert(1)", "1; 2", "(1", "0x10", "Infinity"]) expect(() => calculate(bad), bad).toThrow();
+  });
+});
+
+describe("custom-scheme redirect addresses an administrator allows", () => {
+  const cursor = "cursor://anysphere.cursor-mcp/oauth/callback";
+  const register = (redirect: string, name = "Cursor") => fetch(`${h.base}/oauth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: name, redirect_uris: [redirect], token_endpoint_auth_method: "none" }) });
+  const allow = (cookie: string, b: Record<string, unknown>) => h.call("POST", "/api/connect/redirect-allow", { cookie }, b);
+
+  it("is refused until a Proxmox administrator allows it with a typed confirmation, and then the whole flow works", async () => {
+    expect((await register(cursor)).status).toBe(400);
+    expect((await j(await register(cursor))).error).toBe("invalid_redirect_uri");
+    // Only an administrator; the list is empty by default.
+    expect((await h.call("GET", "/api/connect/redirect-allow", { cookie: h.lee })).status).toBe(403);
+    expect((await allow(h.lee, { uri: cursor, kind: "exact", confirm: "allow cursor" })).status).toBe(403);
+    expect((await j(await h.call("GET", "/api/connect/redirect-allow", { cookie: h.sam }))).entries).toEqual([]);
+    // Typed confirmation: the scheme being allowed.
+    expect((await allow(h.sam, { uri: cursor, kind: "exact" })).status).toBe(409);
+    expect((await allow(h.sam, { uri: cursor, kind: "exact", confirm: "allow vscode" })).status).toBe(409);
+    expect((await allow(h.sam, { uri: "javascript:alert(1)", kind: "exact", confirm: "allow javascript" })).status).toBe(400);
+    expect((await allow(h.sam, { uri: "file:///etc/", kind: "prefix", confirm: "allow file" })).status).toBe(400);
+    expect((await allow(h.sam, { uri: "cursor://", kind: "prefix", confirm: "allow cursor" })).status).toBe(400);
+    expect((await register(cursor)).status).toBe(400);
+    const added = await allow(h.sam, { uri: cursor, kind: "exact", confirm: "allow cursor" });
+    expect(added.status).toBe(200);
+    expect((await j(added)).entries).toMatchObject([{ uri: cursor, kind: "exact", addedBy: "sam@pve" }]);
+    expect((await allow(h.sam, { uri: cursor, kind: "exact", confirm: "allow cursor" })).status).toBe(409);
+    // A different address on the same scheme is still refused.
+    expect((await register("cursor://anysphere.cursor-mcp/oauth/other")).status).toBe(400);
+    // The app registers, the consent page shows the full address and the app's name, and the code goes back to it.
+    const t = await h.connect({ scope: "paperclip:read", redirect: cursor, name: "Cursor" });
+    expect(t.redirect).toBe(cursor);
+    const { client_id } = await h.register(cursor, "Cursor IDE");
+    const { challenge } = pkce();
+    const q = new URLSearchParams({ client_id, redirect_uri: cursor, response_type: "code", scope: "paperclip:read", state: "s", code_challenge: challenge, code_challenge_method: "S256" });
+    const info = await j(await h.call("GET", `/api/connect/oauth/request?${q}`, { cookie: h.sam }));
+    expect(info.client).toMatchObject({ name: "Cursor IDE", redirectUri: cursor, redirectHost: "anysphere.cursor-mcp", customScheme: true, loopback: false });
+    const consent = await j(await h.call("POST", "/api/connect/oauth/consent", { cookie: h.sam }, { ...Object.fromEntries(q), approve: false }));
+    expect(consent.redirect.startsWith("cursor://anysphere.cursor-mcp/oauth/callback?")).toBe(true);
+    // Removing it closes the door again, for apps that already registered too.
+    const gone = await h.call("DELETE", "/api/connect/redirect-allow", { cookie: h.sam }, { uri: cursor, kind: "exact" });
+    expect(gone.status).toBe(200);
+    expect((await h.call("GET", `/api/connect/oauth/request?${q}`, { cookie: h.sam })).status).toBe(400);
+    expect((await register(cursor)).status).toBe(400);
+    expect((await h.call("DELETE", "/api/connect/redirect-allow", { cookie: h.sam }, { uri: cursor, kind: "exact" })).status).toBe(404);
+    // The audit trail records who allowed and removed it.
+    const audit = JSON.stringify(await j(await h.call("GET", "/api/access/audit", { cookie: h.sam })));
+    expect(audit).toContain("oauth.redirect_allow");
+    expect(audit).toContain("oauth.redirect_remove");
+  });
+
+  it("allows a prefix, keeps the other web rules, and survives only for listed apps", async () => {
+    expect((await allow(h.sam, { uri: "vscode://vscode.github-authentication/", kind: "prefix", confirm: "allow vscode" })).status).toBe(200);
+    expect((await register("vscode://vscode.github-authentication/did-authenticate")).status).toBe(201);
+    expect((await register("vscode://vscode.github-authentication-evil/x")).status).toBe(400);
+    expect((await register("http://example.com/cb")).status).toBe(400);
+    expect((await register("https://claude.ai/api/mcp/auth_callback")).status).toBe(201);
+  });
+
+  it("cannot be changed with an API token or from another site", async () => {
+    const t = await h.connect({ scope: "paperclip:control" });
+    expect((await h.call("POST", "/api/connect/redirect-allow", { bearer: t.access }, { uri: cursor, kind: "exact", confirm: "allow cursor" })).status).toBeGreaterThanOrEqual(401);
+    expect((await register(cursor)).status).toBe(400);
   });
 });

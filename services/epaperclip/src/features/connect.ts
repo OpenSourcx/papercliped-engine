@@ -4,7 +4,7 @@ import { HttpError } from "../http.ts";
 import { readAudit, newTokenParts, pveTokenName, storeToken } from "./access-tokens.ts";
 import { GRANT_TTL_MS, SCOPES, SCOPE_CONTROL, SCOPE_READ, connectOf, type ConnectService, type GrantRec, type Scope } from "./connect-oauth.ts";
 import { MCP_TOOLS, toolFailureText, toolsFor } from "./connect-tools.ts";
-import { readBodyText, readFormOrJson, cleanText } from "./connect-util.ts";
+import { DENIED_SCHEMES, checkAllowEntry, readBodyText, readFormOrJson, cleanText } from "./connect-util.ts";
 import type { FeatureCtx } from "./index.ts";
 
 /**
@@ -299,7 +299,7 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     const r = svc.validateAuthRequest(ctx.url.searchParams, origin);
     const orgs = await companiesOf(ctx);
     return ctx.json(200, {
-      client: { id: r.client.id, name: r.client.name, redirectHost: new URL(r.redirectUri).host, loopback: new URL(r.redirectUri).protocol === "http:" },
+      client: { id: r.client.id, name: r.client.name, redirectHost: new URL(r.redirectUri).host, redirectUri: r.redirectUri, loopback: new URL(r.redirectUri).protocol === "http:", customScheme: !/^https?:$/.test(new URL(r.redirectUri).protocol) },
       scope: r.scope, scopes: SCOPES, user: s.username, orgs, lifetimeDays: Math.round(GRANT_TTL_MS / 86_400_000),
     }), true;
   }
@@ -404,6 +404,26 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     const calls = svc.callLog().filter((c) => (admin || c.user === s.username) && (!grant || c.grantId === grant)).slice(-100).reverse();
     const events = readAudit(ctx.state).filter((a) => /^(oauth|app)\./.test(a.action) && (admin || a.actor === s.username)).slice(-100).reverse();
     return ctx.json(200, { calls, events }), true;
+  }
+
+  // Custom-scheme redirect addresses (cursor://, vscode://): refused unless a Proxmox administrator listed them, with a typed confirmation to add.
+  if (path === "/api/connect/redirect-allow") {
+    const who = person(ctx).username;
+    if (!(await ctx.asUser((pve) => ctx.isNodeAdmin(pve)))) throw new E(403, "forbidden", "Only Proxmox administrators can change this.");
+    if (method === "GET") return ctx.json(200, { entries: svc.redirectAllow(), deniedSchemes: DENIED_SCHEMES }), true;
+    if (method === "POST") {
+      ctx.sameSite();
+      const b = await ctx.readJson();
+      const e = checkAllowEntry(b.uri, b.kind);
+      if (typeof b.confirm !== "string" || b.confirm.trim() !== `allow ${e.scheme}`) throw new E(409, "confirm", `Type "allow ${e.scheme}" to allow apps to return to ${e.uri}.`);
+      return ctx.json(200, { entry: svc.addRedirectAllow(b.uri, b.kind, who, ctx.req.socket.remoteAddress ?? undefined), entries: svc.redirectAllow() }), true;
+    }
+    if (method === "DELETE") {
+      ctx.sameSite();
+      const b = await ctx.readJson();
+      if (typeof b.uri !== "string" || !svc.removeRedirectAllow(b.uri, b.kind, who, ctx.req.socket.remoteAddress ?? undefined)) throw new E(404, "not_found", "That address is not on the list.");
+      return ctx.json(200, { entries: svc.redirectAllow() }), true;
+    }
   }
 
   if (path === "/api/connect/settings" && method === "PUT") {
