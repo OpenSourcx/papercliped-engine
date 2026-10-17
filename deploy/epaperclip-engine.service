@@ -11,6 +11,8 @@ Group=epaperclip-engine
 # Generated once at install (secrets, loopback address, port 3100); upgrades never rewrite it.
 EnvironmentFile=/etc/epaperclip/engine.env
 Environment=PAPERCLIP_HOME=/var/lib/epaperclip-engine HOME=/var/lib/epaperclip-engine
+# Node's default heap is about 1.5 GB, which the engine has run out of while setting up its database on a slow machine.
+Environment=NODE_OPTIONS=--max-old-space-size=2048
 WorkingDirectory=/opt/epaperclip/engine
 ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/engine/node_modules/@paperclipai/server/dist/index.js
 Restart=on-failure
@@ -46,8 +48,9 @@ ProtectProc=invisible
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 UMask=0077
-# The server (~0.5 GB) and PostgreSQL (~0.4 GB) at idle, with room for work; the host itself stays protected.
-MemoryMax=3G
+# The server (~0.5 GB) and PostgreSQL (~0.4 GB) at idle, up to 2 GB of heap while it sets up its database, and room for
+# work; the host itself stays protected.
+MemoryMax=4G
 # PostgreSQL backends plus the agent processes the engine starts.
 TasksMax=4096
 LimitNOFILE=65536

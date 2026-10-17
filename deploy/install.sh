@@ -90,16 +90,29 @@ wait_healthy() { # the host service, up to ~20 s
   done
   return 1
 }
-wait_engine() { # up to ~3 minutes: its first start sets up its database (a few hundred migrations)
-  local limit="${EPC_ENGINE_WAIT:-180}" start=$SECONDS next=15
-  say "waiting for the engine to answer (its first start sets up its database; this can take up to $((limit / 60 > 0 ? limit / 60 : 1)) minutes)"
+wait_engine() { # up to 15 minutes by default: its first start sets up its database, and slow or older CPUs take minutes over it
+  local limit="${EPC_ENGINE_WAIT:-900}" start=$SECONDS next=15
+  say "waiting for the engine to answer (its first start sets up its database; this can take up to $((limit / 60 > 0 ? limit / 60 : 1)) minutes on a slow machine)"
   while [ $((SECONDS - start)) -lt "$limit" ]; do
     curl -fs --max-time 2 "${1:-$(engine_url)}/api/health" >/dev/null 2>&1 && return 0
-    if [ $((SECONDS - start)) -ge "$next" ]; then say "  still starting ($((SECONDS - start)) s)"; next=$((next + 15)); fi
+    if [ $((SECONDS - start)) -ge "$next" ]; then
+      say "  still starting ($((SECONDS - start)) s)$(engine_progress "${2:-}")"
+      next=$((next + 15))
+    fi
     [ -z "${2:-}" ] || kill -0 "$2" 2>/dev/null || return 1
     sleep 1
   done
   return 1
+}
+# One line about what the engine is doing, so a slow start doesn't look like a hang: its CPU time and memory, and the
+# last thing it logged.
+engine_progress() {
+  local pid="${1:-}" line="" st=""
+  if [ -z "$pid" ]; then pid="$(systemctl show -p MainPID --value epaperclip-engine 2>/dev/null || true)"; [ "${pid:-0}" != 0 ] || pid=""; fi
+  [ -z "$pid" ] || st="$(ps -o time=,rss= -p "$pid" 2>/dev/null | awk '{printf "cpu %s, %d MB", $1, $2/1024}')"
+  if [ -n "${ENGINE_TEST_LOG:-}" ] && [ -f "$ENGINE_TEST_LOG" ]; then line="$(grep -v '^[[:space:]]*at ' "$ENGINE_TEST_LOG" | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-110)"
+  else line="$(journalctl -u epaperclip-engine -n1 --no-pager -o cat 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-110 || true)"; fi
+  printf '%s' "${st:+ [$st]}${line:+ last log: $line}"
 }
 installed_version() { [ -f "${1:-$PREFIX}/VERSION" ] && cat "${1:-$PREFIX}/VERSION" || echo "none"; }
 # The engine version a tree holds, read from its lockfile (no Node.js needed).
@@ -476,8 +489,9 @@ if [ "$engine_fresh" -eq 1 ]; then
     PAPERCLIP_DEPLOYMENT_MODE=authenticated PAPERCLIP_DEPLOYMENT_EXPOSURE=private HOST=127.0.0.1 PORT="$etp" \
     PAPERCLIP_PUBLIC_URL="http://127.0.0.1:$etp" PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost PAPERCLIP_API_URL="http://127.0.0.1:$etp" \
     PAPERCLIP_MIGRATION_AUTO_APPLY=true SERVE_UI=false PAPERCLIP_TELEMETRY_DISABLED=1 PAPERCLIP_DB_BACKUP_ENABLED=false \
+    NODE_OPTIONS=--max-old-space-size=2048 \
     "$SETPRIV" --reuid="$ENGINE_USER" --regid="$ENGINE_USER" --clear-groups "$NODE" "$STAGE/$ENGINE_ENTRY") >"$TMPDIR_EPC/engine.log" 2>&1 &
-  ENGINE_TEST_PID=$!
+  ENGINE_TEST_PID=$!; ENGINE_TEST_LOG="$TMPDIR_EPC/engine.log"
   ok=0; wait_engine "http://127.0.0.1:$etp" "$ENGINE_TEST_PID" && ok=1
   kill -TERM -- "-$ENGINE_TEST_PID" 2>/dev/null || true
   for _ in $(seq 1 40); do kill -0 "$ENGINE_TEST_PID" 2>/dev/null || break; sleep 0.5; done
@@ -528,8 +542,12 @@ fi
 
 # ---- it didn't come up: put things back ---------------------------------------------------------------------------
 warn "the new version didn't become healthy; putting things back."
-journalctl -u epaperclip-engine -n 30 --no-pager 2>/dev/null || true
-journalctl -u epaperclip -n 30 --no-pager 2>/dev/null || true
+{
+  echo "--- engine: status and memory ---"; systemctl status epaperclip-engine --no-pager -n 0 2>/dev/null | head -n 12 || true
+  ps -o pid,etime,time,rss,args -u "$ENGINE_USER" 2>/dev/null | cut -c1-160 | head -n 8 || true
+  echo "--- engine log (last 60 lines) ---"; journalctl -u epaperclip-engine -n 60 --no-pager -o cat 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-220 || true
+  echo "--- console log (last 20 lines) ---"; journalctl -u epaperclip -n 20 --no-pager -o cat 2>/dev/null | cut -c1-220 || true
+} >&2
 stop_all
 if [ "$snapshot_taken" -eq 1 ]; then rm -rf "${DB_DIR:?}"; mv "$SNAPSHOT/db" "$DB_DIR"; rm -rf "${SNAPSHOT:?}"; fi
 if [ "$first_install" -eq 0 ]; then
