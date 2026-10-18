@@ -157,7 +157,7 @@ probe() { # <label> <waitseconds> <props...>: starts the engine in a transient u
   mapfile -t envs < <(env_args "$home")
   for e in "${envs[@]}"; do props+=(-E "$e"); done
   for e in "$@"; do props+=(-p "$e"); done
-  case " $* " in *ProtectSystem=strict*) props+=(-p "ReadWritePaths=$home") ;; esac
+  case " $* " in *ProtectSystem=strict*) props+=(-p "ReadWritePaths=$home"); case " $* " in *PrivateTmp=yes*) ;; *) props+=(-p PrivateTmp=yes) ;; esac ;; esac
   systemd-run --quiet --collect --unit=epc-diag-bisect "${props[@]}" "$NODE" "$ENTRY" >/dev/null 2>&1 || { printf '   %-52s could not start\n' "$label"; return 2; }
   while [ $((SECONDS - start)) -lt "$wait" ]; do
     sleep 1
@@ -165,7 +165,10 @@ probe() { # <label> <waitseconds> <props...>: starts the engine in a transient u
       printf '   %-52s ok (%s s)\n' "$label" "$((SECONDS - start))"; ok=0; break
     fi
   done
-  [ "$ok" -eq 0 ] || printf '   %-52s BROKEN (no answer in %s s, cpu %s, %s MB)\n' "$label" "$wait" "$(cpu_of)" "$(rss_mb)"
+  if [ "$ok" -ne 0 ]; then
+    if [ -z "$(pid_of)" ]; then printf '   %-52s BROKEN (the engine exited)\n' "$label"; else printf '   %-52s BROKEN (hung: no answer in %s s, cpu %s, %s MB)\n' "$label" "$wait" "$(cpu_of)" "$(rss_mb)"; fi
+    grep -v '^[[:space:]]*at ' "$log" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | tail -n 3 | cut -c1-150 | sed 's/^/         log: /'
+  fi
   systemctl stop epc-diag-bisect >/dev/null 2>&1 || true; pkill -u "$EUSER" -f "$ENTRY" >/dev/null 2>&1 || true; pkill -u "$EUSER" -x postgres >/dev/null 2>&1 || true
   sleep 2; return "$ok"
 }
@@ -179,8 +182,8 @@ if [ "${EPC_DIAG_BISECT:-0}" = 1 ]; then
   for prop in "${SANDBOX[@]}"; do
     probe "+ $prop" "$BW" "$prop"; rc=$?; [ "$rc" -eq 0 ] || culprits+=("$prop")
   done
-  if [ "${#culprits[@]}" -eq 0 ]; then
-    echo; echo "no single setting breaks it; adding them cumulatively:"
+  if true; then
+    echo; echo "adding them cumulatively (the real unit is all of them together):"
     acc=(); for prop in "${SANDBOX[@]}"; do acc+=("$prop"); probe "cumulative up to $prop" "$BW" "${acc[@]}" || { culprits+=("(first broken when '$prop' is added on top of the ones before it)"); break; }; done
   fi
   echo; echo "BISECT RESULT: ${culprits[*]:-no sandbox setting breaks it}"
