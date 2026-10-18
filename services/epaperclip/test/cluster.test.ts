@@ -184,6 +184,14 @@ describe("the cluster", () => {
 });
 
 describe("high availability", () => {
+  it("says it isn't available, not that Proxmox failed, on a host with no cluster", async () => {
+    await boot({ single: true, haNoCluster: true });
+    const sam = await signIn();
+    const r = await send(sam, "GET", "/api/cluster/ha");
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ available: false, resources: [] });
+  });
+
   it("shows rules on a Proxmox that has them", async () => {
     await boot();
     const sam = await signIn();

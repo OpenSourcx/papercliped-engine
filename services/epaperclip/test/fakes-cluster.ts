@@ -23,6 +23,8 @@ export interface ClusterFakeOptions {
   pveVersion?: string;
   /** Whether Ceph is set up. */
   ceph?: boolean;
+  /** A standalone host whose HA calls fail with "no cluster" (500), as a real one does. */
+  haNoCluster?: boolean;
 }
 
 interface FakeGuest { vmid: number; node: string; type: "qemu" | "lxc"; name: string; status: string; template?: number; lock?: string }
@@ -141,6 +143,7 @@ export function fakeCluster(opts: ClusterFakeOptions = {}, inner: Transport = fa
     }
 
     // ---- High availability
+    if (opts.haNoCluster && path.startsWith("/cluster/ha/")) return fail(500, "no such cluster: corosync.conf: No such file or directory");
     if (path === "/cluster/ha/resources" && m === "GET") return ok([...st.ha.resources.values()].map((r) => ({ ...r, digest: st.ha.digest })));
     if (path === "/cluster/ha/resources" && m === "POST") {
       const sid = f.get("sid")!;

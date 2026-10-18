@@ -175,19 +175,22 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!live) return;
     let alive = true;
+    let misses = 0;
     const load = () =>
       api.host().then(
         (h) => {
           if (!alive) return;
+          misses = 0;
           setHost((prev) => liveHostMetrics(h, prev));
           setGuests((prev) => liveGuests(h, orgsRef.current, prev ?? []));
           setStorage(liveStorage(h));
           setLiveError(null);
         },
-        (e) => alive && !(e instanceof ApiError && e.code === "signed_out") && setLiveError(e instanceof ApiError ? e.message : "Can't reach this device"),
+        // One missed poll (Proxmox busy for a moment) is not news; the next one usually answers.
+        (e) => alive && !(e instanceof ApiError && e.code === "signed_out") && ++misses >= 2 && setLiveError(e instanceof ApiError ? e.message : "Can't reach this device"),
       );
     load();
-    const t = setInterval(load, 5000);
+    const t = setInterval(() => { if (!document.hidden) load(); }, 5000);
     return () => {
       alive = false;
       clearInterval(t);
