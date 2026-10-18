@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/Confirm.tsx";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Waypoints } from "lucide-react";
@@ -198,9 +199,11 @@ function RouteMaps({ d, refresh }: { d: SdnOverview; refresh: () => void }) {
 
 function Apply() {
   const run = useTaskRunner();
+  const { ask, dialog } = useConfirm();
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <Button onClick={() => void run.start("Apply SDN changes", () => clusterMoreApi.applySdn())} loading={run.busy}>Apply SDN changes</Button>
+      {dialog}
+      <Button onClick={() => ask({ title: "Apply the SDN changes?", body: "They are rolled out to every node and the network is reloaded there. Machines on these networks can lose connectivity for a moment.", label: "Apply", danger: true, run: () => void run.start("Apply SDN changes", () => clusterMoreApi.applySdn()) })} loading={run.busy}>Apply SDN changes</Button>
       <span className="text-compact text-ink-3">Changes here wait until applied; applying rolls them out to every node.</span>
       {run.error && <p role="alert" className="text-compact text-critical w-full">{run.error}</p>}
       {run.modal}

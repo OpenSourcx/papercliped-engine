@@ -69,9 +69,11 @@ describe("services", () => {
     handlers["POST /api/node/services/sshd/stop"] = () => ({ task: "UPID:pve:1:1:1:srvstop::sam@pve:" });
   });
 
-  it("restarts an ordinary service straight away", async () => {
+  it("restarts an ordinary service after one confirmation", async () => {
     wrap(<ServicesPage />);
     fireEvent.click(await screen.findByLabelText("Restart chrony"));
+    expect(posted("POST", "/api/node/services/chrony/restart")).toHaveLength(0);
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Restart" }));
     await waitFor(() => expect(posted("POST", "/api/node/services/chrony/restart")).toHaveLength(1));
     expect(await screen.findByText(/Restart sent to chrony/)).toBeTruthy();
   });
@@ -93,6 +95,7 @@ describe("services", () => {
     handlers["POST /api/node/services/chrony/restart"] = () => json({ error: "Your Proxmox account doesn't have permission for this" }, 403);
     wrap(<ServicesPage />);
     fireEvent.click(await screen.findByLabelText("Restart chrony"));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Restart" }));
     expect(await screen.findByText(/doesn't have permission/)).toBeTruthy();
   });
 });
@@ -390,6 +393,8 @@ describe("tasks", () => {
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "error" } });
     await waitFor(() => expect(calls.some((c) => c.path === "/api/node/tasks" && c.query.get("status") === "error")).toBe(true));
     fireEvent.click(await screen.findByRole("button", { name: /Stop qmstart task/ }));
+    expect(calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Stop task" }));
     await waitFor(() => expect(calls.filter((c) => c.method === "DELETE")).toHaveLength(1));
   });
 

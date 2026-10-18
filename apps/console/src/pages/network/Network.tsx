@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/Confirm.tsx";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Cable, Check, GitMerge, Loader2, Network as NetIcon, Pencil, Plus, RotateCcw, Split, Trash2 } from "lucide-react";
@@ -57,6 +58,7 @@ function InterfacesView() {
       setApplying(false);
     }
   };
+  const { ask, dialog } = useConfirm();
   const revert = async () => {
     try {
       await engine.backend.revertNetwork();
@@ -81,6 +83,7 @@ function InterfacesView() {
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center justify-between gap-3 mb-3"><p className="text-compact text-ink-3">Bridges, VLANs, bonds and network cards. Changes wait here until you apply them.</p><Button size="sm" variant="primary" onClick={() => nav("?modal=iface&type=bridge")}><Plus className="h-3.5 w-3.5" />New</Button></div>
       {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
 
@@ -90,7 +93,7 @@ function InterfacesView() {
             <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
             <div className="flex-1 min-w-[220px]"><div className="font-medium text-sm">Changes waiting to be applied</div><div className="text-xs text-ink-3">Nothing changes on the host until you apply them.</div></div>
             <Button size="sm" variant="ghost" onClick={() => setShowDiff((v) => !v)}>{showDiff ? "Hide" : "Show"} changes</Button>
-            <Button size="sm" variant="ghost" onClick={revert}><RotateCcw className="h-3.5 w-3.5" />Revert</Button>
+            <Button size="sm" variant="ghost" onClick={() => ask({ title: "Throw away the waiting changes?", body: "The changes you staged are discarded and the network stays as it is now.", label: "Discard changes", danger: true, run: revert })}><RotateCcw className="h-3.5 w-3.5" />Revert</Button>
             <Button size="sm" variant="primary" onClick={() => setConfirmApply(true)}><Check className="h-3.5 w-3.5" />Apply</Button>
           </div>
           {showDiff && (

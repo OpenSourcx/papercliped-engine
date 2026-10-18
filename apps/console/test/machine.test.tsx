@@ -75,6 +75,9 @@ describe("a machine's header", () => {
     at(`/pve/machines/${g.vmid}`, <MachinePage />);
     const group = await screen.findByRole("group", { name: `Power and console for ${g.name}` });
     fireEvent.click(within(group).getByRole("button", { name: /Shut down/ }));
+    expect(guestPower).not.toHaveBeenCalled(); // one click is never enough
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Shut down" }));
     expect(guestPower).toHaveBeenCalledWith(g.vmid, "shutdown");
     expect((within(group).getByRole("button", { name: /Console/ }) as HTMLButtonElement).disabled).toBe(false);
   });

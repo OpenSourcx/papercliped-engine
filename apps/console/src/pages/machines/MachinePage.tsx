@@ -26,6 +26,7 @@ import { DemoTransport, LiveTransport } from "../../terminal/transport.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, PageFrame, SectionTitle, Segmented, Status } from "../../ui/primitives.tsx";
+import { useConfirm } from "../../ui/Confirm.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: <Box className="h-4 w-4" /> },
@@ -79,6 +80,7 @@ export function MachinePage() {
   const openAction = (action: "destroy" | "template") => g && setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "machine-action"); n.set("action", action); n.set("vmid", String(g.vmid)); return n; });
   const running = g?.status === "running";
   const [acting, setActing] = useState(false);
+  const { ask, dialog } = useConfirm();
   const [migrating, setMigrating] = useState(false);
   const [powerOpts, setPowerOpts] = useState(false);
   const act = (a: "start" | "shutdown") => {
@@ -94,13 +96,13 @@ export function MachinePage() {
     context: `${g.name} #${g.vmid}`,
     items: [
       { id: "start", label: "Start", icon: <Play className="h-4 w-4" />, run: () => power("start"), disabled: running || !!lock, title: lock ?? (running ? "Already running" : undefined) },
-      { id: "shutdown", label: "Shut down", icon: <Power className="h-4 w-4" />, run: () => power("shutdown"), disabled: !running || !!lock, title: lock },
+      { id: "shutdown", label: "Shut down", icon: <Power className="h-4 w-4" />, run: () => power("shutdown"), disabled: !running || !!lock, title: lock, danger: true, confirm: { title: `Shut down ${g.name}?`, body: "It is asked to shut down cleanly, like pressing the power button. Anything using it stops being reachable until you start it again.", label: "Shut down" } },
       { id: "console", label: "Console", icon: <SquareTerminal className="h-4 w-4" />, run: () => setTab("console"), disabled: !running, title: running ? undefined : "Start it to open its console" },
       { id: "snapshot", label: "Snapshot", icon: <Camera className="h-4 w-4" />, run: () => setTab("snapshots", { new: "1" }) },
       { id: "clone", label: "Clone", icon: <Copy className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "clone"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "backup", label: "Back up now", icon: <Archive className="h-4 w-4" />, more: true, run: () => setParams((p) => { const n = new URLSearchParams(p); n.set("modal", "backup-now"); n.set("vmid", String(g.vmid)); return n; }) },
       { id: "power-options", label: "Power options…", icon: <Pause className="h-4 w-4" />, run: () => setPowerOpts(true), more: true, disabled: !!g.template, title: g.template ? "A template can't be started" : undefined },
-      { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, more: true },
+      { id: "reboot", label: "Reboot", icon: <RotateCw className="h-4 w-4" />, run: () => power("reboot"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Reboot ${g.name}?`, body: "It restarts, so connections to it drop for a moment and anything unsaved inside may be lost.", label: "Reboot" } },
       { id: "stop", label: "Stop", icon: <Square className="h-4 w-4" />, run: () => power("stop"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Stop ${g.name}?`, body: "Stopping cuts power immediately, like pulling the plug. Unsaved work inside is lost. Shut down is the gentle option.", label: "Stop now" } },
       ...(g.type === "qemu" ? [{ id: "reset", label: "Reset", icon: <RotateCw className="h-4 w-4" />, run: () => power("reset"), disabled: !running || !!lock, title: lock, danger: true, more: true, confirm: { title: `Reset ${g.name}?`, body: "A reset restarts the VM instantly, like pressing the reset button. Unsaved work inside is lost. Reboot is the gentle option.", label: "Reset now" } }] : []),
       { id: "template", label: "Convert to template", icon: <Copy className="h-4 w-4" />, run: () => openAction("template"), disabled: !!g.template || running, title: g.template ? "Already a template" : running ? "Shut it down first" : undefined, more: true },
@@ -140,6 +142,7 @@ export function MachinePage() {
 
   return (
     <PageFrame width="6xl">
+      {dialog}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div className="flex items-start gap-3 min-w-0">
           <span className="h-12 w-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-2 shrink-0">{g.type === "qemu" ? <Monitor className="h-5 w-5" /> : <Box className="h-5 w-5" />}</span>
@@ -158,7 +161,7 @@ export function MachinePage() {
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Power and console for ${g.name}`}>
           {running ? (
-            <Button onClick={() => act("shutdown")} disabled={!!lock || acting} title={lock} loading={acting}><Power className="h-4 w-4" />Shut down</Button>
+            <Button onClick={() => ask({ title: `Shut down ${g.name}?`, body: "It is asked to shut down cleanly, like pressing the power button. Anything using it stops being reachable until you start it again.", label: "Shut down", danger: true, run: () => act("shutdown") })} disabled={!!lock || acting} title={lock} loading={acting}><Power className="h-4 w-4" />Shut down</Button>
           ) : (
             <Button variant="primary" onClick={() => act("start")} disabled={!!lock || acting} title={lock} loading={acting}><Play className="h-4 w-4" />Start</Button>
           )}

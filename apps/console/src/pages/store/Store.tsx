@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/Confirm.tsx";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -102,6 +103,7 @@ export function Store() {
 
 /** One Store item: what it is, what's installed, and the install button. ?modal=store-item&item=<id> */
 export function StoreItemModal({ onClose }: { onClose: () => void }) {
+  const { ask, dialog } = useConfirm();
   const engine = useEngine();
   const nav = useNavigate();
   const { items, latest } = useStoreItems();
@@ -170,6 +172,8 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
   const canCreate = (it.kind === "iso" || it.kind === "template" || it.kind === "fixed") && it.volid && it.kind !== "fixed";
 
   return (
+    <>
+    {dialog}
     <Modal
       size="md"
       icon={plugin ? <Puzzle className="h-5 w-5" /> : it.kind === "template" ? <Package className="h-5 w-5" /> : <Box className="h-5 w-5" />}
@@ -179,7 +183,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          {plugin && (it.status === "installed" ? <Button variant="danger" loading={busy} onClick={() => (liveAdapter ? setAdapter(false) : engine.uninstallPlugin(plugin.id, plugin))}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" loading={busy} onClick={() => (liveAdapter ? setAdapter(true) : engine.installPlugin(plugin.id, plugin))}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
+          {plugin && (it.status === "installed" ? <Button variant="danger" loading={busy} onClick={() => ask({ title: `${plugin.kind === "adapter" ? "Disable" : "Remove"} ${it.name}?`, body: plugin.kind === "adapter" ? "Agents that use it stop being able to run with it until you enable it again." : "It is uninstalled, and anything that relies on it stops working until you install it again.", label: plugin.kind === "adapter" ? "Disable" : "Remove", danger: true, run: () => (liveAdapter ? setAdapter(false) : engine.uninstallPlugin(plugin.id, plugin)) })}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" loading={busy} onClick={() => (liveAdapter ? setAdapter(true) : engine.installPlugin(plugin.id, plugin))}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
           {it.kind === "manual" && it.lib?.kind === "manual" && (
             <>
               <Button onClick={() => nav("?modal=upload&content=iso", { replace: true })}><FileUp className="h-4 w-4" />Upload ISO</Button>
@@ -216,5 +220,6 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>
     </Modal>
+    </>
   );
 }

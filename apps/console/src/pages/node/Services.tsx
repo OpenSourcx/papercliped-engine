@@ -4,6 +4,7 @@ import { Clock, Play, RefreshCw, RotateCw, Square } from "lucide-react";
 import { nodeApi, type ServiceInfo } from "../../data/engine/nodeApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { Button, Card, Field, Input, Notice, PageFrame, PageHeader, Select, Status } from "../../ui/primitives.tsx";
+import { useConfirm } from "../../ui/Confirm.tsx";
 import { Async, LiveOnly, NodeSwitcher, TasksLink, TypedConfirm, useNodeName } from "./common.tsx";
 
 type Action = "start" | "stop" | "restart" | "reload";
@@ -25,12 +26,19 @@ function ServicesBody() {
       void qc.invalidateQueries({ queryKey: ["node", "services"] });
     },
   });
-  const go = (s: ServiceInfo, action: Action) => (needsTyping(s.service, action) ? setAsking({ s, action }) : run.mutate({ service: s.service, action }));
+  const { ask, dialog } = useConfirm();
+  const go = (s: ServiceInfo, action: Action) => {
+    if (needsTyping(s.service, action)) return setAsking({ s, action });
+    if (action === "start") return run.mutate({ service: s.service, action });
+    const verb = action === "stop" ? "Stop" : action === "restart" ? "Restart" : "Reload";
+    ask({ title: `${verb} ${s.service}?`, body: action === "stop" ? `${s.service} stays off until someone starts it again, and whatever depends on it stops working.` : action === "restart" ? `${s.service} is stopped and started again, so it is briefly unavailable.` : `${s.service} re-reads its settings without stopping.`, label: verb, danger: action !== "reload", run: () => run.mutate({ service: s.service, action }) });
+  };
 
   return (
     <Async q={q}>
       {(data) => (
         <>
+          {dialog}
           {note && <Notice tone="good" className="mb-4">{note}</Notice>}
           {run.error && !asking && <Notice tone="critical" className="mb-4" title="Proxmox didn't do that">{errorText(run.error)}</Notice>}
           <Card className="overflow-x-auto">

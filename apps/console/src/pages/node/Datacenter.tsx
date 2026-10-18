@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/Confirm.tsx";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -253,10 +254,12 @@ function TasksBody() {
     refetchInterval: 5000,
     retry: 1,
   });
+  const { ask, dialog } = useConfirm();
   const stop = useMutation({ mutationFn: (t: TaskRow) => nodeApi.stopTask(t.upid), onSuccess: () => void qc.invalidateQueries({ queryKey: ["node", "tasks"] }) });
   useEffect(() => setType(params.get("type") ?? ""), [params]);
   return (
     <>
+      {dialog}
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <Field label="Node" htmlFor="t-node"><Select id="t-node" value={node} onChange={(e) => setNode(e.target.value)}><option value="all">All nodes</option>{(nodes.data?.nodes ?? []).map((n) => <option key={n.node} value={n.node}>{n.node}</option>)}</Select></Field>
@@ -283,7 +286,7 @@ function TasksBody() {
                     <td className="px-3 text-ink-2">{t.user}</td>
                     <td className="px-3 text-right tabular-nums whitespace-nowrap">{took(t)}</td>
                     <td className="px-3">{statusOf(t)}</td>
-                    <td className="px-3">{t.status === null && <Button size="sm" variant="ghost" aria-label={`Stop ${t.type} task`} onClick={() => stop.mutate(t)} loading={stop.isPending && stop.variables?.upid === t.upid}><Square className="h-4 w-4" />Stop</Button>}</td>
+                    <td className="px-3">{t.status === null && <Button size="sm" variant="ghost" aria-label={`Stop ${t.type} task`} onClick={() => ask({ title: `Stop this ${t.type} task?`, body: "The task is asked to stop. A backup or migration stopped part-way usually has to be started again from the beginning.", label: "Stop task", danger: true, run: () => stop.mutate(t) })} loading={stop.isPending && stop.variables?.upid === t.upid}><Square className="h-4 w-4" />Stop</Button>}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,3 +1,4 @@
+import { useConfirm } from "../../ui/Confirm.tsx";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network, Plus, Trash2, Undo2 } from "lucide-react";
@@ -314,12 +315,14 @@ function SdnBody() {
   const [preview, setPreview] = useState(false);
   const [rollback, setRollback] = useState(false);
   const runner = useTaskRunner(() => void qc.invalidateQueries({ queryKey: ["node", "sdn"] }));
+  const { ask, dialog } = useConfirm();
   const roll = useMutation({ mutationFn: dcApi.sdnRollback, onSuccess: () => { setRollback(false); void qc.invalidateQueries({ queryKey: ["node", "sdn"] }); } });
   const prev = useQuery({ queryKey: ["node", "sdn", "preview", name], queryFn: () => dcApi.sdnPreview(node), enabled: preview, retry: 0, staleTime: 0 });
   return (
     <Async q={q}>
       {(ov) => (
         <div className="space-y-4">
+          {dialog}
           {ov.denied && <Notice tone="info" title="Your Proxmox account can't read the SDN configuration">It needs SDN.Audit.</Notice>}
           {ov.error && <Notice tone="warning">{ov.error}</Notice>}
           {runner.error && <Notice tone="critical">{runner.error}</Notice>}
@@ -331,7 +334,7 @@ function SdnBody() {
               </div>
               <Button onClick={() => setPreview(true)} disabled={ov.pending === 0}>Preview changes</Button>
               <Button variant="danger" onClick={() => setRollback(true)} disabled={ov.pending === 0}><Undo2 className="h-4 w-4" />Discard…</Button>
-              <Button variant="primary" loading={runner.busy} disabled={ov.pending === 0} onClick={() => void runner.start("Apply SDN configuration", dcApi.sdnApply)}>Apply</Button>
+              <Button variant="primary" loading={runner.busy} disabled={ov.pending === 0} onClick={() => ask({ title: "Apply the SDN configuration?", body: "The virtual network settings are rolled out and the network is reloaded on every node. Machines on them can lose connectivity for a moment.", label: "Apply", danger: true, run: () => void runner.start("Apply SDN configuration", dcApi.sdnApply) })}>Apply</Button>
             </div>
           </Card>
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "zones", label: "Zones", count: ov.zones.length }, { id: "vnets", label: "VNets", count: ov.vnets.length }, { id: "plugins", label: "IPAM, DNS, controllers" }, { id: "status", label: "Status" }]} />
