@@ -42,4 +42,4 @@ Software the installer fetches, rather than ships
 If you build an image that bundles the engine
   Redistributing the engine's installed packages (an installer image, a container image) makes you the distributor of every
   package above. Check each license in THIRD_PARTY_LICENSES.md, keep every notice, offer the source of copyleft components, and
-  read the terms of the packages that say "SEE LICENSE IN ...". docs/PINOS.md describes the plan for such an image.
+  read the terms of the packages that say "SEE LICENSE IN ...".
