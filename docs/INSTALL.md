@@ -152,7 +152,7 @@ A tag like `v0.1.0` runs `.github/workflows/release.yml`. It builds and tests (i
 
 - the GitHub release: `epaperclip.tar.gz`, its checksum, the signed manifest and signature (`epaperclip.manifest.json`, `epaperclip.manifest.sig`), `get.sh` and `epaperclip_<version>_all.deb`. A tag with a hyphen is marked as a pre-release; the build fails for any tag if the `RELEASE_SIGNING_KEY` secret is missing. See [RELEASING.md](RELEASING.md).
 - the APT repository: `scripts/publish-apt.sh` signs it and pushes it to the `gh-pages` branch under `apt/`. GitHub Pages must serve that branch (Settings → Pages → Deploy from a branch → `gh-pages`, `/`). It needs the secret `APT_SIGNING_KEY` (and `APT_SIGNING_PASSPHRASE` if the key has one). It signs only with the key whose public half is in `deploy/apt/epaperclip-archive-keyring.asc`, and skips with a notice when the secret isn't set.
-- the npm package `epaperclip` (`npm/epaperclip`), with provenance. It needs the secret `NPM_TOKEN` and skips with a notice when it isn't set.
+- the npm package `epaperclip` (`npm/epaperclip`), over npm Trusted Publishing (OIDC, with provenance; no token is stored). A failure there never fails the release, because the GitHub release is the artifact.
 
 To replace the signing key (it expires 2029-10-11; see `deploy/apt/README.md`), on a trusted machine:
 
