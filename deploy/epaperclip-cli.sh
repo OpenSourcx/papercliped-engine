@@ -5,7 +5,9 @@
 #
 #   epaperclip status               versions, whether both services run and answer, where the data is
 #   epaperclip version              the installed version
-#   epaperclip update [--tag vX]    install the latest release (or a tag, such as a release candidate); signature-checked
+#   epaperclip update [--pre|--tag vX]
+#                                   install the newest release; signature-checked. While you run a release candidate it
+#                                   follows release candidates too; --pre does that from a stable version, --tag picks one
 #   epaperclip rollback             put the previous version back
 #   epaperclip uninstall [--purge]  remove it (keeps its data and settings; --purge removes those too)
 set -euo pipefail
@@ -22,7 +24,8 @@ ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
 
   ${B}status${R}               versions, whether both services run and answer, where the data is
   ${B}version${R}              the installed version
-  ${B}update${R} [--tag vX]    install the latest release, or a tag such as v1.0.0-rc4 (signature-checked)
+  ${B}update${R} [--pre]       install the newest release (candidates too while you run one, or with --pre); signature-checked
+  ${B}update${R} --tag vX      install a particular release, such as v1.0.0-rc5
   ${B}rollback${R}             put the previous version back
   ${B}uninstall${R} [--purge]  remove it; your data and settings stay unless you add --purge
 
@@ -41,11 +44,32 @@ case "$cmd" in
   uninstall) need_root uninstall; if [ "${1:-}" = "--purge" ]; then exec bash "$INSTALLER" --purge; else exec bash "$INSTALLER" --uninstall; fi ;;
   update)
     need_root update
-    tag=""; if [ "${1:-}" = "--tag" ]; then tag="${2:-}"; [ -n "$tag" ] || die "update --tag needs a tag, such as v1.0.0-rc4"; fi
     command -v curl >/dev/null || die "curl is needed (apt-get install -y curl)"
-    if [ -n "$tag" ]; then base="https://github.com/$REPO/releases/download/$tag"; else base="https://github.com/$REPO/releases/latest/download"; fi
+    tag=""; pre=0
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --tag) tag="${2:-}"; [ -n "$tag" ] || die "update --tag needs a tag, such as v1.0.0-rc5"; shift 2 ;;
+        --pre) pre=1; shift ;;
+        *) die "unknown option $1 (use --pre or --tag vX)" ;;
+      esac
+    done
+    installed="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null || true)"; installed="${installed#v}"
+    case "$installed" in *-*) pre=1 ;; esac   # on a release candidate: follow candidates
+    if [ -z "$tag" ]; then
+      # The newest tag first in the project's public release feed; a release candidate has a hyphen in its tag.
+      tag="$(curl -fsSL --max-time 20 "${EPC_FEED:-https://github.com/$REPO/releases.atom}" 2>/dev/null | grep -o 'releases/tag/v[0-9][0-9A-Za-z.+-]*' | sed 's|releases/tag/||' | awk '!seen[$0]++' | while read -r t; do case "$t" in *-*) [ "$pre" = 1 ] || continue ;; esac; echo "$t"; break; done)"
+      if [ -z "$tag" ]; then
+        [ "$pre" = 1 ] && die "couldn't find a release (is this host online?). Try: epaperclip update --tag vX"
+        die "no final release has been published yet. Release candidates are installed with: epaperclip update --pre"
+      fi
+    fi
+    [[ "$tag" =~ ^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || die "that isn't a release tag (like v1.0.0 or v1.0.0-rc5)"
+    if [ "${tag#v}" = "$installed" ]; then echo "epaperclip: already on $tag"; exit 0; fi
+    echo "epaperclip: installing $tag${installed:+ (you have v$installed)}"
+    [ -z "${EPC_UPDATE_DRY:-}" ] || exit 0
+    base="https://github.com/$REPO/releases/download/$tag"
     curl -fsSL "$base/get.sh" | EPC_RELEASE_BASE="$base" bash ;;
   help|-h|--help) usage ;;
-  install) die "to install or upgrade, use: epaperclip update   (or apt, or: curl -fsSL https://github.com/$REPO/releases/latest/download/get.sh | bash)" ;;
+  install) die "to install or upgrade, use: epaperclip update" ;;
   *) usage >&2; exit 2 ;;
 esac

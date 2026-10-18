@@ -141,6 +141,21 @@ s_fresh() {
   check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
   check "epaperclip status runs the installed installer" eval 'EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" status >"$H/cli-out" 2>&1; grep -q "engine health" "$H/cli-out"'
   check "epaperclip with no arguments shows its commands" eval '"$H/usrbin/epaperclip" help | grep -q "rollback"'
+  feed() { { echo "<feed>"; for t in "$@"; do echo "<entry><link rel=\"alternate\" href=\"https://github.com/OpenSourcx/papercliped-engine/releases/tag/$t\"/></entry>"; done; echo "</feed>"; } >"$H/feed.atom"; }
+  upd() { EPC_PREFIX="$H/prefix" EPC_FEED="file://$H/feed.atom" EPC_UPDATE_DRY=1 "$H/usrbin/epaperclip" update "$@" 2>&1; }
+  feed v1.1.0-rc1 v1.0.0
+  check "epaperclip update on a stable version skips release candidates" eval 'upd | grep -q "already on v1.0.0"'
+  feed v1.1.0 v1.1.0-rc1 v1.0.0
+  check "epaperclip update installs the newest final release" eval 'upd | grep -q "installing v1.1.0 (you have v1.0.0)"'
+  feed v1.1.0-rc1 v1.0.0
+  check "epaperclip update --pre takes the newest candidate" eval 'upd --pre | grep -q "installing v1.1.0-rc1"'
+  feed v1.1.0-rc1
+  check "with only candidates published, update says so and points at --pre" eval '{ upd || true; } | grep -q "no final release has been published yet.*--pre"'
+  check "epaperclip update --tag takes exactly that release" eval 'upd --tag v1.0.0-rc9 | grep -q "installing v1.0.0-rc9"'
+  check "epaperclip update refuses something that isn't a release tag" eval '! upd --tag "v1;rm" | grep -q installing'
+  printf '1.0.0-rc1\n' >"$H/prefix/VERSION"; feed v1.0.0-rc2 v1.0.0-rc1
+  check "while on a release candidate, update follows candidates by itself" eval 'upd | grep -q "installing v1.0.0-rc2 (you have v1.0.0-rc1)"'
+  printf '1.0.0\n' >"$H/prefix/VERSION"
   check "the engine unit gives Node a 2 GB heap (the 1.5 GB default ran out on a slow machine)" grep -q "NODE_OPTIONS=--max-old-space-size=2048" "$REPO/deploy/epaperclip-engine.service"
   check "the engine unit allows netlink sockets (without them the engine hangs at start on a real host)" grep -q "^RestrictAddressFamilies=.*AF_NETLINK" "$REPO/deploy/epaperclip-engine.service"
   check "the engine is given 15 minutes to start by default" grep -q "EPC_ENGINE_WAIT:-900" "$REPO/deploy/install.sh"
