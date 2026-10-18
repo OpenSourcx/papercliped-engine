@@ -498,9 +498,13 @@ chown -R root:root "$STAGE"
 chmod -R a+rX,go-w "$STAGE"
 
 # Start the staged host service on a spare local port, plain http, away from Proxmox, and make sure it answers.
-spare_port() { # a random local port nothing answers on
+spare_port() { # a random local port nothing answers on, below the range the kernel hands out to outgoing connections
   local p
-  while :; do p=$((40000 + RANDOM % 20000)); (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null || { echo "$p"; return; }; done
+  while :; do
+    p=$((20000 + RANDOM % 12000))
+    ss -Htan "sport = :$p" 2>/dev/null | grep -q . && continue
+    (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null || { echo "$p"; return; }
+  done
 }
 test_port="$(spare_port)"
 install -d -m 0700 "$TMPDIR_EPC/state"
