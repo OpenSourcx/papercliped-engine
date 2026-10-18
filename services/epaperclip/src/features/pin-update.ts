@@ -124,7 +124,7 @@ async function check(rt: PinRuntime, force: boolean): Promise<Cache> {
   try {
     const r = await f(rt.opts.update?.feedUrl ?? FEED, { method: "GET", headers: { Accept: "application/vnd.github+json", "User-Agent": "epaperclip-update-check" }, signal: AbortSignal.timeout(10_000), redirect: "error" });
     const body = await r.text();
-    if (!r.ok) throw new Error(r.status === 404 ? "No final release has been published yet, only release candidates. Release candidates are not offered here; to move to a newer one, run on the host: sudo epaperclip update --tag <tag> (tags are listed on the releases page)." : r.status === 403 || r.status === 429 ? "The release feed is rate-limiting this address. Try again later." : `The release feed answered ${r.status}.`);
+    if (!r.ok) throw new Error(r.status === 404 ? "No final release has been published yet, only release candidates. Release candidates are not offered here; to move to a newer one, run on the host, as root: epaperclip update --tag <tag> (tags are listed on the releases page)." : r.status === 403 || r.status === 429 ? "The release feed is rate-limiting this address. Try again later." : `The release feed answered ${r.status}.`);
     if (body.length > MAX_FEED) throw new Error("The release feed's answer was too large.");
     next = { checkedAt: rt.now(), latest: readFeed(body) };
   } catch (e) {
@@ -157,7 +157,7 @@ function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, can
     previous: existsSync(p.prev) ? (prevVersion ?? "previous version") : null,
     status,
     inProgress: !!status && !TERMINAL.has(status.phase) && status.at !== null && rt.now() - status.at < 30 * 60_000,
-    manual: "sudo epaperclip update, from the host's shell (or: curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash)",
+    manual: "epaperclip update, as root in the host's shell (or: curl -fsSL https://github.com/OpenSourcx/papercliped-engine/releases/latest/download/get.sh | bash)",
   };
 }
 

@@ -33,7 +33,7 @@ Proxmox's own interface on :8006 is never touched.
 TXT
 }
 die() { echo "epaperclip: $*" >&2; exit 1; }
-need_root() { [ "$(id -u)" -eq 0 ] || die "run as root: sudo epaperclip $1"; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "run as root (on Proxmox you already are; elsewhere put sudo in front): epaperclip $1"; }
 [ -f "$INSTALLER" ] || die "the installer isn't at $INSTALLER; reinstall with: curl -fsSL https://github.com/$REPO/releases/latest/download/get.sh | bash"
 
 cmd="${1:-help}"; [ "$#" -eq 0 ] || shift
