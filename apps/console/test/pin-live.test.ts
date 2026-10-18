@@ -31,7 +31,7 @@ describe("Pin's host API", () => {
   it("reads the host service's connectors, settings and models", async () => {
     const { f, calls } = fakeHost({
       "/api/connectors": () => json({ connectors: [{ id: "anthropic", kind: "model", label: "Anthropic", configured: true, last4: "abcd", ok: true }, { id: "openai", kind: "model", label: "OpenAI", configured: false }], canManage: true }),
-      "/api/pin/settings": (init) => (init.method === "PUT" ? json(JSON.parse(String(init.body))) : json({ provider: "anthropic", model: "model-a", mode: "agent", connectors: ["github"] })),
+      "/api/pin/settings": (init) => (init.method === "PUT" ? json(JSON.parse(String(init.body))) : json({ provider: "anthropic", model: "model-a", mode: "agent", permission: "ask", connectors: ["github"] })),
       "/api/pin/models": () => json({ provider: "anthropic", models: [{ id: "model-a", label: "Model A" }, { id: "model-b", label: "Model B" }] }),
     });
     const api = pinApi(f);
@@ -39,11 +39,11 @@ describe("Pin's host API", () => {
       { id: "anthropic", kind: "model", name: "Anthropic", configured: true, last4: "abcd", ok: true },
       { id: "openai", kind: "model", name: "OpenAI", configured: false },
     ]);
-    expect(await api.settings()).toEqual({ provider: "anthropic", model: "model-a", mode: "agent", connectors: ["github"] });
+    expect(await api.settings()).toEqual({ provider: "anthropic", model: "model-a", mode: "agent", permission: "ask", connectors: ["github"] });
     expect(await api.models("anthropic")).toEqual([{ id: "model-a", name: "Model A" }, { id: "model-b", name: "Model B" }]);
     expect(calls.at(-1)!.path).toBe("/api/pin/models?provider=anthropic");
 
-    const saved = await api.saveSettings({ provider: "anthropic", model: "model-b", mode: "assistant", connectors: [] });
+    const saved = await api.saveSettings({ provider: "anthropic", model: "model-b", mode: "assistant", permission: "ask", connectors: [] });
     expect(saved.model).toBe("model-b");
     const put = calls.at(-1)!;
     expect(put.init.method).toBe("PUT");

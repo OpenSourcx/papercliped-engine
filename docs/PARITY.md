@@ -420,7 +420,7 @@ Columns: ID, Screen (where it lives in Proxmox's tree), Item (the action), API (
 | BY-005 | ePaperclip only | Organization resource groups (pool, limits) | /api/resource-groups | done | - | W-ENGINE | app.ts resource-groups |  |
 | BY-006 | ePaperclip only | Agent containers in unprivileged Proxmox containers | /api/agent-containers/* | done | - | W-ENGINE | AgentContainers.tsx; containers.ts |  |
 | BY-007 | ePaperclip only | Pin assistant (chat, quick actions, SOUL.md, MEMORY.md) | /api/pin/* | done | - | W-ENGINE | pin/ and PinPage.tsx |  |
-| BY-008 | ePaperclip only | Pin tools that operate the host (guests, storage, network, backups) | /api/pin/chat tool calls | partial | - | W-ENGINE | pin.ts tools; broader skills pending |  |
+| BY-008 | ePaperclip only | Pin tools that operate the host (guests, storage, network, backups) | /api/pin/chat tool calls | partial | - | W-ENGINE | pin-act.ts: create container or VM, clone, back up, resize, settings, power, snapshots, delete, with five permission modes (docs/PIN.md); network, storage and firewall skills pending |  |
 | BY-009 | ePaperclip only | Automations (rules and schedules with plain-language read-back) | packages/automations; /api/pin/automations/* | done | - | W-ENGINE | features/pin-automations.ts runner; pages/pin/runtime.tsx; docs/PIN.md |  |
 | BY-010 | ePaperclip only | Store: OS images, container apps, drivers, plugins, signed marketplace | /api/library/*, /api/marketplace | done | - | W-ENGINE | Store.tsx |  |
 | BY-011 | ePaperclip only | Integrated Access Control (IAC): organization members mapped to Proxmox users | /api/iac/* | done | - | W-ENGINE | iac.ts; LiveAccess.tsx |  |

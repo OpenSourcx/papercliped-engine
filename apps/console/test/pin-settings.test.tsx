@@ -36,7 +36,7 @@ const mount = (source: PinSettingsSource, onSaved = vi.fn()) => {
 
 describe("Pin settings", () => {
   it("chooses a provider, a model, the mode and connectors, then saves them in one go", async () => {
-    const source = fakeSource({ provider: "anthropic", model: "model-a", mode: "assistant", connectors: [] });
+    const source = fakeSource({ provider: "anthropic", model: "model-a", mode: "assistant", permission: "ask", connectors: [] });
     const onSaved = mount(source);
 
     await screen.findByRole("radio", { name: /Anthropic/ });
@@ -56,20 +56,20 @@ describe("Pin settings", () => {
 
     expect(save).toHaveProperty("disabled", false);
     fireEvent.click(save);
-    await waitFor(() => expect(source.save).toHaveBeenCalledWith({ provider: "openai", model: "model-y", mode: "agent", connectors: ["github"] }));
+    await waitFor(() => expect(source.save).toHaveBeenCalledWith({ provider: "openai", model: "model-y", mode: "agent", permission: "ask", connectors: ["github"] }));
     await screen.findByText(/Saved/);
     expect(onSaved).toHaveBeenCalled();
     expect(save).toHaveProperty("disabled", true);
   });
 
   it("asks for a model provider when none is set up", async () => {
-    mount(fakeSource({ provider: null, model: null, mode: "assistant", connectors: [] }, CONNECTORS.map((c) => ({ ...c, configured: c.kind === "model" ? false : c.configured }))));
+    mount(fakeSource({ provider: null, model: null, mode: "assistant", permission: "ask", connectors: [] }, CONNECTORS.map((c) => ({ ...c, configured: c.kind === "model" ? false : c.configured }))));
     await screen.findByText("Pin needs a model provider");
     expect(screen.getByRole("link", { name: "Add a model provider" }).getAttribute("href")).toContain("settings=connectors");
   });
 
   it("says when a save fails and keeps the changes", async () => {
-    const source = fakeSource({ provider: "anthropic", model: "model-a", mode: "assistant", connectors: [] });
+    const source = fakeSource({ provider: "anthropic", model: "model-a", mode: "assistant", permission: "ask", connectors: [] });
     source.save.mockRejectedValueOnce(new Error("The host service is restarting."));
     mount(source);
     fireEvent.click(await screen.findByRole("radio", { name: /Agent/ }));
@@ -79,7 +79,7 @@ describe("Pin settings", () => {
   });
 
   it("offers a retry when the settings don't load", async () => {
-    const source = fakeSource({ provider: null, model: null, mode: "assistant", connectors: [] });
+    const source = fakeSource({ provider: null, model: null, mode: "assistant", permission: "ask", connectors: [] });
     (source.load as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Can't reach this device."));
     mount(source);
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));

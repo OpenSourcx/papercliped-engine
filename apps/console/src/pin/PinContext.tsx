@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { QuickAction, QuickActions } from "./quickActions.ts";
 import { useEngine } from "../data/store.tsx";
 import { think, type PinCard } from "./brain.ts";
-import { streamChat, type PinChatError, type PinSettings, type PinToolEvent } from "./live.ts";
+import { streamChat, type PinChatError, type PinPermission, type PinSettings, type PinToolEvent } from "./live.ts";
 import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { demoSettingsSource, liveSettingsSource, type PinSettingsSource } from "./settings.ts";
 import { pageOf } from "./suggestions.ts";
@@ -62,6 +62,8 @@ interface PinCtx {
   settingsSource: PinSettingsSource;
   /** Switches Assistant/Agent everywhere: the console at once, and the host service's saved settings when live. */
   setMode: (m: "assistant" | "agent") => void;
+  /** Changes how much Agent mode may do without asking. Bypass needs the typed word. Rejects (and keeps the old value) when the host refuses. */
+  setPermission: (p: PinPermission, confirmBypass?: string) => Promise<void>;
 }
 
 const Ctx = createContext<PinCtx | null>(null);
@@ -289,6 +291,18 @@ export function PinProvider({ children }: { children: ReactNode }) {
       resolveTool: (id, p) => setMessages((m) => m.map((x) => (x.id === id && x.tool ? { ...x, tool: { ...x.tool, ...p } } : x))),
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
       providerName: settings?.provider ? names[settings.provider] ?? settings.provider : null,
+      setPermission: async (p, confirmBypass) => {
+        if (!settings) return;
+        const prev = settings;
+        setSettings({ ...settings, permission: p });
+        if (!engineRef.current.live) return;
+        try {
+          setSettings(await settingsSource.save({ ...prev, permission: p }, { confirmBypass }));
+        } catch (e) {
+          setSettings(prev);
+          throw e;
+        }
+      },
       setMode: (m) => {
         engineRef.current.setPinMode(m);
         if (settings && settings.mode !== m) {

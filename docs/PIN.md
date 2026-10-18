@@ -44,6 +44,30 @@ Kinds: task finished, backup failed, device events (a device goes offline or com
 
 Limits: while nobody is signed in nothing is collected for them; on their next sign-in the last 6 hours of tasks and the current device and approval state are picked up. The inbox is on the device's state file, not pushed to email or a phone.
 
+## Agent mode: what Pin can do, and what it asks first
+
+In Agent mode Pin does the work, not just a checklist. It has real action tools, and each person chooses how much runs on its own (Pin's page, Agent mode, "What Pin may do on its own"; saved per person as `permission`):
+
+| Permission | What happens |
+| --- | --- |
+| **Ask** (the default) | Every action Pin wants to take is shown in the chat as a card. You approve or decline it there, and Pin carries on with the result. |
+| **Accept edits** | Safe actions run at once: create, start, snapshot, clone, back up, grow a disk, change settings. Anything that interrupts a machine (shut down, stop, reboot) or can't be undone asks. |
+| **Auto** | Everything runs at once except what can't be undone (delete a machine, delete a snapshot, roll back), which asks. |
+| **Plan** | Pin only writes plans (`propose_plan`); nothing runs until you approve each step on the Plans tab, as before. |
+| **Bypass permissions** | Everything runs with no questions, deletes included. Turning it on takes the typed word `bypass` (the host refuses without it) and is written to the audit trail. |
+
+Every action runs as the signed-in person, so Proxmox's own permissions still decide, and each run, result and failure is audited (`pin.act.run`, `pin.act.done`, `pin.act.failed`). Bypass does not widen what the account may do. Nothing in a tool call can carry a password: a container Pin creates has none and is opened from its console as root, or with an SSH public key you give it.
+
+**Actions**: `create_container` (a template by volume id, or an OS name like `debian-12`, found on the node or downloaded from Proxmox's catalog; storage and bridge default to sensible ones), `create_vm` (with an ISO attached if asked), `clone_machine`, `backup_machine`, `resize_disk`, `set_machine_config` (name, cores, memory, swap, start at boot, description, tags), `power_machine`, `snapshot_machine`, `delete_snapshot`, `rollback_snapshot`, `delete_machine` (stopped machines only), `download_template`, `create_task`. **Reads** it uses to choose well: `list_machines`, `machine_detail`, `storage_overview`, `list_container_templates`, `list_isos`, `list_bridges`, `list_snapshots`, `list_backups`, `task_status`, plus the existing host, task, organization and notes tools.
+
+Behaviour worth knowing:
+
+- Risk classes: *safe*, *disruptive* (power off or restart) and *destructive* (can't be undone). Only destructive actions need a typed phrase when approved (`destroy 101`, `rollback 101`, `delete 101`).
+- An action that needs approval becomes a one-step plan, so it also shows on the Plans tab and goes through the same checks (only a signed-in browser session can approve, never an API token). The conversation waits up to 15 minutes; if nobody answers, the request is cancelled and Pin is told nothing was done.
+- Pin takes up to 24 steps in a conversation and at most 30 changes, then stops.
+- A task that outlasts the approval request (a long backup or clone) is reported as still running, with its task id; Pin can follow it with `task_status`.
+- `GET /api/pin/settings` and `PUT /api/pin/settings` carry `permission`; going to `bypass` needs `confirmBypass: "bypass"` in the same request.
+
 ## Agent mode plans
 
 In Agent mode Pin gets one more tool, `propose_plan`. It writes a plan down (1 to 8 steps) and cannot run one:

@@ -13,6 +13,7 @@ import { PinSettingsPanel } from "../../pin/PinSettings.tsx";
 import { useConnectors } from "../../data/engine/queries.ts";
 import { AutomationsLive, InboxTab, PlansTab, UpdatesTab } from "./runtime.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
+import { PermissionPicker } from "../../pin/PermissionPicker.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -77,13 +78,16 @@ export function PinPage() {
           <div className="flex-1 min-w-0 basis-56">
             <h1 className="text-display font-semibold tracking-tight">Pin</h1>
             <p className="text-sm text-ink-2 mt-1 text-pretty">
-              {mode === "agent" ? "Agent mode: acts on its own and tells you after." : "Assistant mode: asks before it changes anything."} Watching {device} · {activeRules} automation{activeRules === 1 ? "" : "s"} on{last ? ` · last ${LOG_LABEL[last.kind].toLowerCase()} ${ago(last.at)}` : ""}
+              {mode === "agent" ? "Agent mode: does the work for you, as much as you allow." : "Assistant mode: asks before it changes anything."} Watching {device} · {activeRules} automation{activeRules === 1 ? "" : "s"} on{last ? ` · last ${LOG_LABEL[last.kind].toLowerCase()} ${ago(last.at)}` : ""}
             </p>
             <button type="button" onClick={() => setTab("settings")} className="transition-control mt-2 inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink">
               <Cpu className="h-3.5 w-3.5" />{pin.settings?.provider ? <>Thinks with <span className="text-ink-2 font-medium">{pin.providerName}</span>{pin.settings.model && <> · <span className="font-mono text-ink-2">{pin.settings.model}</span></>}</> : "No model provider yet. Choose one in Settings."}
             </button>
           </div>
-          <Segmented label="Pin's mode" value={mode} onChange={(m) => pin.setMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+          <div className="flex flex-col gap-3 items-start">
+            <Segmented label="Pin's mode" value={mode} onChange={(m) => pin.setMode(m)} options={[{ value: "assistant", label: "Assistant" }, { value: "agent", label: "Agent" }]} />
+            {mode === "agent" && <PermissionPicker />}
+          </div>
         </div>
       </div>
 

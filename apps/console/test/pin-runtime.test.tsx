@@ -263,7 +263,7 @@ describe("updates", () => {
 
 describe("model settings", () => {
   const source = (test: () => Promise<unknown>) => ({
-    load: async () => ({ settings: { provider: "anthropic", model: "m-1", mode: "assistant" as const, connectors: [] }, connectors: [{ id: "anthropic", kind: "provider", name: "Anthropic", configured: true, last4: "WXYZ" }] }),
+    load: async () => ({ settings: { provider: "anthropic", model: "m-1", mode: "assistant" as const, permission: "ask" as const, connectors: [] }, connectors: [{ id: "anthropic", kind: "provider", name: "Anthropic", configured: true, last4: "WXYZ" }] }),
     models: async () => [{ id: "m-1", name: "m-1" }],
     save: async (s: never) => s,
     test: test as never,

@@ -16,10 +16,15 @@ import { SseParser } from "./sse.ts";
 
 export type PinModeName = "assistant" | "agent";
 
+/** How much Agent mode may do without asking: plan (only writes plans), ask, accept edits, auto, bypass. */
+export type PinPermission = "plan" | "ask" | "accept" | "auto" | "bypass";
+export const PERMISSION_IDS: readonly PinPermission[] = ["plan", "ask", "accept", "auto", "bypass"];
+
 export interface PinSettings {
   provider: string | null;
   model: string | null;
   mode: PinModeName;
+  permission: PinPermission;
   connectors: string[];
 }
 
@@ -94,6 +99,7 @@ export function normalizeSettings(raw: Partial<PinSettings> | null | undefined):
     provider: raw?.provider ?? null,
     model: raw?.model ?? null,
     mode: raw?.mode === "agent" ? "agent" : "assistant",
+    permission: PERMISSION_IDS.includes(raw?.permission as PinPermission) ? (raw!.permission as PinPermission) : "ask",
     connectors: Array.isArray(raw?.connectors) ? raw!.connectors.filter((c): c is string => typeof c === "string") : [],
   };
 }
@@ -102,7 +108,7 @@ export function pinApi(f: Fetch = (...a) => fetch(...a)) {
   return {
     connectors: async () => pickArray<Record<string, unknown>>(await call<unknown>(f, "GET", "/api/connectors"), "connectors").map(normalizeConnector),
     settings: async () => normalizeSettings(await call<{ settings?: PinSettings } & PinSettings>(f, "GET", "/api/pin/settings").then((r) => r.settings ?? r)),
-    saveSettings: async (s: PinSettings) => normalizeSettings(await call<{ settings?: PinSettings } & PinSettings>(f, "PUT", "/api/pin/settings", s).then((r) => (r.settings ?? (r.provider !== undefined ? r : s)))),
+    saveSettings: async (s: PinSettings, o: { confirmBypass?: string } = {}) => normalizeSettings(await call<{ settings?: PinSettings } & PinSettings>(f, "PUT", "/api/pin/settings", { ...s, ...(o.confirmBypass ? { confirmBypass: o.confirmBypass } : {}) }).then((r) => (r.settings ?? (r.provider !== undefined ? r : s)))),
     models: async (provider: string) =>
       pickArray<string | { id?: string; name?: string; label?: string }>(await call<unknown>(f, "GET", `/api/pin/models?provider=${encodeURIComponent(provider)}`), "models")
         .map((m) => (typeof m === "string" ? { id: m, name: m } : { id: String(m.id ?? m.name ?? ""), name: String(m.label ?? m.name ?? m.id ?? "") }))
@@ -118,8 +124,18 @@ export interface PinToolEvent {
   title?: string;
   summary?: string;
   args: Record<string, unknown>;
-  status: "proposed" | "done" | "failed";
+  /** proposed: a suggestion to confirm here. approval: Pin's own action waiting for approval in the chat. running: Pin is doing it. */
+  status: "proposed" | "approval" | "running" | "done" | "failed";
   error?: string;
+  /** What an action does, in words, and how it ended (Agent mode). */
+  label?: string;
+  result?: string;
+  vmid?: number;
+  /** For approval: the one-step plan to decide, whether it can't be undone, and what to type to allow it. */
+  planId?: string;
+  stepId?: string;
+  destructive?: boolean;
+  confirmPhrase?: string | null;
 }
 
 export interface PinChatError {
@@ -168,7 +184,7 @@ export function toStreamEvent(e: { event: string; data: string }): PinStreamEven
     }
     case "tool": {
       if (!j) return null;
-      const status = j.status === "done" || j.status === "completed" ? "done" : j.status === "failed" || j.status === "error" ? "failed" : "proposed";
+      const status = j.status === "done" || j.status === "completed" ? "done" : j.status === "failed" || j.status === "error" ? "failed" : j.status === "running" ? "running" : "proposed";
       return {
         type: "tool",
         tool: {
@@ -179,6 +195,26 @@ export function toStreamEvent(e: { event: string; data: string }): PinStreamEven
           args: (j.args ?? j.input ?? j.arguments ?? {}) as Record<string, unknown>,
           status,
           ...(typeof j.error === "string" ? { error: j.error } : {}),
+          ...(typeof j.label === "string" ? { label: j.label } : {}),
+          ...(typeof j.result === "string" ? { result: j.result } : {}),
+          ...(typeof j.vmid === "number" ? { vmid: j.vmid } : {}),
+        },
+      };
+    }
+    case "approval": {
+      if (!j || typeof j.planId !== "string" || typeof j.stepId !== "string") return null;
+      return {
+        type: "tool",
+        tool: {
+          id: String(j.id ?? `tool-${++toolSeq}`),
+          name: String(j.name ?? "action"),
+          args: {},
+          status: "approval",
+          label: typeof j.label === "string" ? j.label : "An action",
+          planId: j.planId,
+          stepId: j.stepId,
+          destructive: j.destructive === true,
+          confirmPhrase: typeof j.confirmPhrase === "string" ? j.confirmPhrase : null,
         },
       };
     }

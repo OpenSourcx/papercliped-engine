@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Building2, Camera, Check, CircleSlash, Cpu, ListPlus, MemoryStick, Power, Workflow, XCircle, Zap } from "lucide-react";
+import { ArrowRight, Building2, Camera, Check, CircleSlash, Cpu, ListPlus, Loader2, MemoryStick, Power, ShieldQuestion, Workflow, XCircle, Zap } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { engine as engineClient } from "../data/engine/queries.ts";
 import { qk } from "../data/engine/keys.ts";
 import { cn, formatBytes } from "../lib/storage.ts";
-import { Button } from "../ui/primitives.tsx";
+import { Button, Input } from "../ui/primitives.tsx";
+import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { BarMeter } from "../ui/meters.tsx";
 import type { PinCard } from "./brain.ts";
 import { usePin, type PinToolState } from "./PinContext.tsx";
@@ -135,8 +136,83 @@ function PlanProposal({ tool }: { tool: PinToolState }) {
   );
 }
 
+/** Pin is doing something right now (Agent mode). */
+function RunningTool({ tool }: { tool: PinToolState }) {
+  return (
+    <div role="status" className="mt-2 inline-flex items-center gap-2 rounded-full border border-line bg-surface-2/50 min-h-8 py-1 px-3 text-compact text-ink-2 fade-in">
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-3" aria-hidden />
+      <span className="text-pretty">{tool.label ?? tool.name.replace(/_/g, " ")}…</span>
+    </div>
+  );
+}
+
+/** What an action Pin took did: its label and how it ended, in the person's own words. */
+function ActedTool({ tool }: { tool: PinToolState }) {
+  const ok = tool.status === "done";
+  return (
+    <div className={cn("mt-2 rounded-xl border bg-surface-2/50 p-3 fade-in", ok ? "border-line" : "border-critical/25")}>
+      <div className="flex items-start gap-2">
+        {ok ? <Check className="h-4 w-4 text-good mt-0.5 shrink-0" aria-hidden /> : <XCircle className="h-4 w-4 text-critical mt-0.5 shrink-0" aria-hidden />}
+        <div className="min-w-0">
+          <div className="text-compact font-medium text-pretty">{tool.label}</div>
+          <div className={cn("text-compact text-pretty mt-0.5", ok ? "text-ink-2" : "text-critical")}>{ok ? tool.result : tool.error}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One of Pin's own actions waiting for your say-so right here (Ask, or what a mode doesn't allow on its own). */
+function ApprovalCard({ tool }: { tool: PinToolState }) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [outcome, setOutcome] = useState<"approved" | "declined" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const need = tool.destructive ? tool.confirmPhrase : null;
+  const decide = async (what: "approve" | "reject") => {
+    setBusy(what);
+    setError(null);
+    try {
+      await pinRt.decide(tool.planId!, tool.stepId!, what, what === "approve" && need ? typed.trim() : undefined);
+      setOutcome(what === "approve" ? "approved" : "declined");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't go through.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <CardShell
+      icon={<ShieldQuestion />}
+      label={outcome ? "Pin asked" : "Pin asks"}
+      tone={tool.destructive && !outcome ? "danger" : "neutral"}
+      footer={
+        outcome ? <span role="status" className="inline-flex items-center gap-1.5 text-compact text-ink-3">{outcome === "approved" ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Approved. Running…</> : <><CircleSlash className="h-4 w-4" aria-hidden />Declined. Nothing changed.</>}</span>
+        : (
+          <>
+            <Button size="sm" variant={tool.destructive ? "danger" : "primary"} loading={busy === "approve"} disabled={busy !== null || (!!need && typed.trim() !== need)} onClick={() => void decide("approve")}>Approve</Button>
+            <Button size="sm" variant="ghost" loading={busy === "reject"} disabled={busy !== null} onClick={() => void decide("reject")}>Decline</Button>
+          </>
+        )
+      }
+    >
+      <div className="font-medium text-sm text-pretty">{tool.label}</div>
+      {need && !outcome && (
+        <div className="mt-2">
+          <label htmlFor={`ph-${tool.id}`} className="block text-compact text-ink-2 mb-1">This can't be undone. Type <span className="font-mono text-ink">{need}</span> to allow it.</label>
+          <Input id={`ph-${tool.id}`} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={need} autoComplete="off" />
+        </div>
+      )}
+      {error && <p role="alert" className="text-compact text-critical mt-2">{error}</p>}
+    </CardShell>
+  );
+}
+
 export function ToolCard({ messageId, tool }: { messageId: string; tool: PinToolState }) {
   if (tool.name === "propose_plan" && tool.status === "proposed") return <PlanProposal tool={tool} />;
+  if (tool.status === "approval") return <ApprovalCard tool={tool} />;
+  if (tool.status === "running") return <RunningTool tool={tool} />;
+  if (tool.label && (tool.status === "done" || tool.status === "failed")) return <ActedTool tool={tool} />;
   return <ActionCard messageId={messageId} tool={tool} />;
 }
 

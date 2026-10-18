@@ -12,7 +12,7 @@ export interface PinSettingsSource {
   /** connectorsError: the connector list failed but the settings loaded, so Pin's mode can still be changed. */
   load(): Promise<{ settings: PinSettings; connectors: ConnectorInfo[]; connectorsError?: string }>;
   models(provider: string): Promise<ModelInfo[]>;
-  save(s: PinSettings): Promise<PinSettings>;
+  save(s: PinSettings, o?: { confirmBypass?: string }): Promise<PinSettings>;
   /** Makes one tiny real request with the saved key and this model. Live only; the demo has no provider behind it. */
   test?(provider: string, model: string): Promise<ModelTest>;
 }
@@ -24,7 +24,7 @@ export function liveSettingsSource(api = pinApi()): PinSettingsSource {
       return { settings, connectors: connectors.list, ...("error" in connectors ? { connectorsError: connectors.error } : {}) };
     },
     models: (provider) => api.models(provider),
-    save: (s) => api.saveSettings(s),
+    save: (s, o) => api.saveSettings(s, o),
     test: (provider, model) => pinRt.testModel(provider, model),
   };
 }
@@ -53,6 +53,7 @@ export function demoSettingsSource(engine: Pick<Engine, "data" | "setup" | "setP
           provider: saved.provider ?? firstProvider,
           model: saved.model ?? (firstProvider ? DEMO_MODELS[0].id : null),
           mode: engine.setup?.pinMode ?? "assistant",
+          permission: "ask" as const,
           connectors: engine.data.connectors.filter((c) => c.kind !== "model" && c.access.pin).map((c) => c.id),
         },
       };
