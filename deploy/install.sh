@@ -124,7 +124,18 @@ engine_version() {
 engine_fingerprint() { cat "$1/package.json" "$1/package-lock.json" 2>/dev/null | sha256sum | cut -d' ' -f1; }
 plugin_version() { sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "${1:-$PREFIX}/$PLUGIN_REL/package.json" 2>/dev/null | head -n1; }
 host_name() { hostname -f 2>/dev/null || hostname; }
-host_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
+# Tailscale and other carrier-grade addresses (100.64.0.0/10) only work from devices on that network, so they never lead.
+is_tailnet_ip() { case "$1" in 100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 0;; esac; return 1; }
+host_ip() {
+  local ip first=""
+  for ip in $(hostname -I 2>/dev/null); do
+    case "$ip" in *:*) continue;; esac
+    [ -n "$first" ] || first="$ip"
+    is_tailnet_ip "$ip" || { echo "$ip"; return; }
+  done
+  echo "$first"
+}
+tailnet_ips() { local ip; for ip in $(hostname -I 2>/dev/null); do is_tailnet_ip "$ip" && echo "$ip"; done; }
 latest_backup() { ls -1t "$BACKUPS" 2>/dev/null | head -n1; }
 
 # Units: a version's units are kept inside its tree (.units/) when it becomes the previous one, so a rollback puts back
@@ -535,6 +546,7 @@ if healthy_all; then
   say "installed $(installed_version): running, $proxmox."
   say "engine: Paperclip $new_engine on 127.0.0.1:$ENGINE_PORT (loopback only). Its data is in $ENGINE_HOME and it backs itself up every hour into $BACKUPS"
   say "open https://$(host_ip)$([ "$PORT" = 443 ] || echo ":$PORT")/ (or https://$(host_name)/) and sign in with your Proxmox account."
+  for tip in $(tailnet_ips); do say "also https://$tip/ — only from devices signed in to the same Tailscale network."; done
   say "Proxmox's own interface is untouched at https://$(host_ip):8006/ — keep it as your way back in."
   [ "$first_install" -eq 1 ] || say "to go back to the previous version: sudo ./deploy/install.sh --rollback"
   exit 0
