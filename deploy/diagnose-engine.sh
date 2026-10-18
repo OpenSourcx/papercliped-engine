@@ -108,7 +108,7 @@ run_variant() { # <letter> <description>
         props+=(-p NoNewPrivileges=yes -p ProtectSystem=strict -p "ReadWritePaths=$home" -p ProtectHome=yes -p PrivateTmp=yes -p PrivateDevices=yes
           -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectKernelLogs=yes -p ProtectControlGroups=yes -p ProtectClock=yes
           -p ProtectHostname=yes -p RestrictNamespaces=yes -p RestrictRealtime=yes -p RestrictSUIDSGID=yes -p LockPersonality=yes -p RemoveIPC=yes
-          -p ProtectProc=invisible -p "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" -p SystemCallArchitectures=native -p UMask=0077
+          -p ProtectProc=invisible -p "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK" -p SystemCallArchitectures=native -p UMask=0077
           -p MemoryMax=4G -p TasksMax=4096 -p LimitNOFILE=65536 -p "CapabilityBoundingSet=")
       fi
       systemd-run --quiet --collect --unit="epc-diag-$(echo "$v" | tr A-Z a-z)" "${props[@]}" "$NODE" "$ENTRY" >/dev/null 2>&1 || { RESULT[$v]="could not start the unit"; echo "   could not start the unit"; return; } ;;
@@ -146,7 +146,7 @@ done
 SANDBOX=(NoNewPrivileges=yes ProtectSystem=strict ProtectHome=yes PrivateTmp=yes PrivateDevices=yes ProtectKernelTunables=yes
   ProtectKernelModules=yes ProtectKernelLogs=yes ProtectControlGroups=yes ProtectClock=yes ProtectHostname=yes RestrictNamespaces=yes
   RestrictRealtime=yes RestrictSUIDSGID=yes LockPersonality=yes RemoveIPC=yes ProtectProc=invisible
-  "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" SystemCallArchitectures=native UMask=0077 MemoryMax=4G TasksMax=4096
+  "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK" SystemCallArchitectures=native UMask=0077 MemoryMax=4G TasksMax=4096
   LimitNOFILE=65536 CapabilityBoundingSet=)
 probe() { # <label> <waitseconds> <props...>: starts the engine in a transient unit with those properties; prints and returns 0 if it answers
   local label="$1" wait="$2"; shift 2

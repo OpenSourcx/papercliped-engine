@@ -138,6 +138,7 @@ s_fresh() {
   new_host fresh; make_release 1.0.0 2026.1005.0; install
   check "installs (exit 0)" [ "$RC" -eq 0 ]
   check "the engine unit gives Node a 2 GB heap (the 1.5 GB default ran out on a slow machine)" grep -q "NODE_OPTIONS=--max-old-space-size=2048" "$REPO/deploy/epaperclip-engine.service"
+  check "the engine unit allows netlink sockets (without them the engine hangs at start on a real host)" grep -q "^RestrictAddressFamilies=.*AF_NETLINK" "$REPO/deploy/epaperclip-engine.service"
   check "the engine is given 15 minutes to start by default" grep -q "EPC_ENGINE_WAIT:-900" "$REPO/deploy/install.sh"
   check "VERSION is 1.0.0" [ "$(version)" = 1.0.0 ]
   check "host service running and healthy" eval 'active epaperclip && host_health'

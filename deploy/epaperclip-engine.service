@@ -45,7 +45,9 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 RemoveIPC=yes
 ProtectProc=invisible
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK is needed: the engine reads the machine's network addresses at start (Node's os.networkInterfaces), which fails
+# without it, and the engine then spins at full CPU, growing in memory, without ever listening or logging. Found on a real host.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 SystemCallArchitectures=native
 UMask=0077
 # The server (~0.5 GB) and PostgreSQL (~0.4 GB) at idle, up to 2 GB of heap while it sets up its database, and room for
