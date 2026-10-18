@@ -33,7 +33,7 @@ Open questions are in the email to Proxmox (permission for a rebranded distribut
 
 ## Not decided yet
 
-- The final name. PinOS is the working name, and the checks in the next section found a conflict.
+- Nothing about the name: **the name is PinOS** (decided). The name check below found an existing product called pinOS; the decision was made knowing that, and the steps under "Name risk" are how we reduce it.
 - Whether any change to Proxmox's own code is needed beyond the overlay.
 - The business model (support, a hosted Pin service, paid add-ons under our own license, a marketplace share).
 - Whether the image defaults to the no-subscription repository, with a plain "testing only" note, or asks for a key.
@@ -52,3 +52,13 @@ If the name changes, `docs/PINOS.md` is the only place that assumes it.
 ## Licensing finding for any bundled image
 
 The engine's dependency tree contains two packages under their own, non-open-source terms (`@anthropic-ai/claude-agent-sdk` and `@cursor/sdk`, both declared as "SEE LICENSE IN ..."), and the sharp image library's libvips builds under the LGPL. Today the installer fetches them from npm on the host, so our downloads do not redistribute them. An image that bundles `node_modules` would, and then those terms must be read and followed. `NOTICE` and the generated `THIRD_PARTY_LICENSES.md` record this.
+
+## Name risk (PinOS is the chosen name)
+
+An existing Linux thin-client product is called pinOS (Pintexx GmbH). Using the same name for another operating system carries a real chance of a complaint or a refused trademark registration. Steps that cost little now and a lot later:
+
+1. Run a trademark search (USPTO, EUIPO, UKIPO) for "PinOS" and "Pin OS" in the software and operating-system classes, before any paid branding or a launch. Ask a trademark lawyer to read the result.
+2. Look at Pintexx's actual product, market and any registrations, so we know how close the overlap is (a thin client for enterprise workplaces versus a Proxmox-based agent host).
+3. Always show the name with its purpose ("PinOS, the Pin host for AI agents") and a different logo and colors than theirs; never position it as a thin client or a workplace product.
+4. Register what is free early (the domains marked unregistered, the npm name, the GitHub organization) so a rename is not forced by a squatter.
+5. Keep the product name in one place in the code (`docs/PINOS.md` today, a brand constant later) so a rename stays a day of work.
