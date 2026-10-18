@@ -196,7 +196,7 @@ export function Onboarding() {
           ))}
         </div>
         <div className="mt-6">
-          <Field label="This device is called" hint={deviceSlug ? <span className="text-ink-3">Your console lives at <span className="text-ink-2">/{deviceSlug}/home</span></span> : <span className="text-critical">Use at least one letter or number.</span>}>
+          <Field label="Name for this console" hint={deviceSlug ? <span className="text-ink-3">Your console lives at <span className="text-ink-2">/{deviceSlug}/home</span>. This names the console and its address only{liveUser ? <>; the server's own hostname (<span className="text-ink-2">{liveUser.node}</span>) is not changed</> : null}.</span> : <span className="text-critical">Use at least one letter or number.</span>}>
             <div className="relative">
               <Server className="h-4 w-4 text-ink-3 absolute left-4 top-1/2 -translate-y-1/2" />
               <input value={device} onChange={(e) => setDevice(e.target.value)} className={cn(inputCls, "pl-10")} />

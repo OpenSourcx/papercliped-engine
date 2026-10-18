@@ -36,7 +36,7 @@ export function Settings() {
             <div className="text-compact text-ink-3">{host.cpuModel} · {host.cpus} CPUs · {formatBytes(host.memTotal)} · up {formatUptime(host.uptimeSec)}</div>
           </div>
         </div>
-        <p className="text-xs text-ink-3 mt-3">The device name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;.</p>
+        <p className="text-xs text-ink-3 mt-3">This name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;. It does not rename the server; its hostname is changed on the host itself (see the Proxmox documentation on renaming a node).</p>
       </Card>
       <Card className="p-5">
         <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-compact text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
