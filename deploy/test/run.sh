@@ -393,7 +393,10 @@ s_real_engine() {
   fi
   install
   check "real engine installs from engine/ with the pinned Node.js (exit 0)" [ "$RC" -eq 0 ]
-  check "real engine healthy, running as nobody" eval 'engine_health | grep -q "\"status\":\"ok\"" && [ "$(stat -c %u "$H/engine-home/instances/default/db")" = 65534 ]'
+  # The engine has just finished its first start on a shared runner; give its health answer a few tries rather than one 2 s look.
+  engine_ok() { local i; for i in $(seq 1 15); do engine_health 2>/dev/null | grep -q '"status":"ok"' && return 0; sleep 2; done; engine_health >"$H/out" 2>&1; return 1; }
+  check "real engine answers its health check" engine_ok
+  check "real engine's database is owned by nobody" eval '[ "$(stat -c %u "$H/engine-home/instances/default/db")" = 65534 ]'
   check "engine tree is root's and its database binaries are linked" eval '[ "$(stat -c %u "$H/prefix/engine/node_modules")" = 0 ] && [ -L "$H/prefix/engine/node_modules/@embedded-postgres/linux-$( [ "$(uname -m)" = aarch64 ] && echo arm64 || echo x64)/native/lib/libpq.so.5" ]'
   [ "${REAL_PLUGIN:-}" != 1 ] || check "the provider's production packages were installed from its lockfile, readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/node_modules/@paperclipai/plugin-sdk/package.json" ] && [ "$(stat -c %u "$H/prefix/plugins/proxmox-sandbox/node_modules")" = 0 ] && setpriv --reuid=65534 --regid=65534 --clear-groups node -e "import(process.argv[1]).then((m)=>{if(!m.default?.id)process.exit(1)})" "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js"'
   check "installed paperclipai matches the lockfile" eval '[ "$(node -p "require(\"$H/prefix/engine/node_modules/paperclipai/package.json\").version")" = "$(node -p "require(\"$REPO/engine/package-lock.json\").packages[\"node_modules/paperclipai\"].version")" ]'
