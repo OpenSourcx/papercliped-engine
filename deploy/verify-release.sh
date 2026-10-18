@@ -64,7 +64,9 @@ epc_verify_release() {
   if [ -n "$want" ] && [ "$v" != "${want#v}" ]; then
     EPC_VERIFY_ERROR="the signed manifest is for version $v, not the $want that was asked for"; return 1
   fi
-  if [ -n "$have" ] && [ "$have" != none ] && epc_ver_lt "$v" "$have"; then
+  # A development build (wsl-<hash>, a checkout) has no comparable version, so it never blocks an update.
+  [[ "$have" =~ ^v?[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || have=""
+  if [ -n "$have" ] && epc_ver_lt "$v" "$have"; then
     EPC_VERIFY_ERROR="release $v is older than the $have that is installed, so it was not installed (rollback is the way back)"; return 1
   fi
   EPC_VERIFIED_VERSION="$v"
