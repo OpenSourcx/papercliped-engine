@@ -26,10 +26,38 @@ for a in "$@"; do case "$a" in --keep-running) KEEP=1 ;; --bisect) export EPC_DI
 
 die() { echo "diagnose-engine: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "run as root"
-[ -x "$NODE" ] || die "no Node at $NODE (is the engine installed?)"
-[ -f "$ENTRY" ] || die "no engine at $ENTRY (is the engine installed?)"
-[ -f "$ENVFILE" ] || die "no settings at $ENVFILE"
-id "$EUSER" >/dev/null 2>&1 || die "no user $EUSER"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# No installed engine (the installer rolled it back, or this is a spare host)? Build a scratch one from the bundle beside this
+# script: the same pinned Node.js (checked against the same checksum), the same lockfile, the same npm flags, and a settings
+# file like the installer's, with fresh secrets. Nothing outside $WORK is touched.
+if [ ! -x "$NODE" ] || [ ! -f "$ENTRY" ]; then
+  SRC="$HERE/../engine"
+  [ -f "$SRC/package-lock.json" ] || die "no installed engine, and no engine/package-lock.json beside this script to build one from"
+  case "$(uname -m)" in x86_64|amd64) ARCH=x64; SUM=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6 ;; aarch64|arm64) ARCH=arm64; SUM=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2 ;; *) die "unsupported CPU $(uname -m)" ;; esac
+  NV=24.21.0; SCR="$WORK/scratch"
+  if [ ! -x "$SCR/node/bin/node" ] || [ ! -f "$SCR/engine/node_modules/@paperclipai/server/dist/index.js" ]; then
+    echo "no installed engine: building a scratch copy in $SCR (Node $NV, then the engine from its lockfile; a few minutes)"
+    rm -rf "$SCR"; install -d -m 0755 "$WORK" "$SCR" "$SCR/engine"
+    curl -fsSL --retry 3 -o "$SCR/node.tar.xz" "https://nodejs.org/dist/v$NV/node-v$NV-linux-$ARCH.tar.xz" || die "couldn't download Node.js"
+    [ "$(sha256sum "$SCR/node.tar.xz" | cut -d' ' -f1)" = "$SUM" ] || die "the Node.js download doesn't match its pinned checksum"
+    tar -xJf "$SCR/node.tar.xz" -C "$SCR" && mv "$SCR/node-v$NV-linux-$ARCH" "$SCR/node" && rm -f "$SCR/node.tar.xz"
+    install -m 0644 "$SRC/package.json" "$SRC/package-lock.json" "$SCR/engine/"
+    (cd "$SCR/engine" && HOME="$SCR" "$SCR/node/bin/node" "$SCR/node/lib/node_modules/npm/bin/npm-cli.js" ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error) || die "npm ci failed"
+    "$SCR/node/bin/node" "$HERE/engine-links.mjs" "$SCR/engine" >/dev/null || die "the engine's database binaries couldn't be prepared"
+    chmod -R a+rX "$SCR"
+  fi
+  NODE="$SCR/node/bin/node"; ENTRY="$SCR/engine/node_modules/@paperclipai/server/dist/index.js"
+fi
+if [ ! -f "$ENVFILE" ]; then
+  ENVFILE="$WORK/engine.env"; install -d -m 0755 "$WORK"
+  rh() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
+  { echo "BETTER_AUTH_SECRET=$(rh)"; echo "PAPERCLIP_AGENT_JWT_SECRET=$(rh)"
+    echo "PAPERCLIP_DEPLOYMENT_MODE=authenticated"; echo "PAPERCLIP_DEPLOYMENT_EXPOSURE=private"; echo "HOST=127.0.0.1"; echo "PORT=3100"
+    echo "PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost"; echo "PAPERCLIP_MIGRATION_AUTO_APPLY=true"; echo "SERVE_UI=false"
+    echo "PAPERCLIP_AUTH_RATE_LIMIT_ENABLED=false"; echo "PAPERCLIP_TELEMETRY_DISABLED=1"; } >"$ENVFILE"; chmod 0600 "$ENVFILE"
+fi
+id "$EUSER" >/dev/null 2>&1 || { echo "no user $EUSER here; using nobody"; EUSER=nobody; }
 EGROUP="$(id -gn "$EUSER")"
 command -v setpriv >/dev/null || die "setpriv is missing"
 HAVE_SYSTEMD=0; [ -d /run/systemd/system ] && command -v systemd-run >/dev/null && HAVE_SYSTEMD=1
