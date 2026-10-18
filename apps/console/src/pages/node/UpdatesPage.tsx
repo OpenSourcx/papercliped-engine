@@ -63,10 +63,11 @@ function UpdatesTab() {
               </div>
             </Card>
             {u.packages.length > 0 && (
-              <Card className="overflow-x-auto">
+              <Card className="overflow-hidden">
                 <div className="p-3 border-b border-line"><label className="sr-only" htmlFor="pkg-filter">Filter packages</label><Input id="pkg-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter packages" className="max-w-xs" /></div>
+                <div className="overflow-auto max-h-[min(70vh,640px)]">
                 <table className="w-full text-compact min-w-[640px]">
-                  <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Package</th><th className="font-normal px-3">Installed</th><th className="font-normal px-3">New</th><th className="font-normal px-3 hidden sm:table-cell">From</th></tr></thead>
+                  <thead className="sticky top-0 bg-surface"><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Package</th><th className="font-normal px-3">Installed</th><th className="font-normal px-3">New</th><th className="font-normal px-3 hidden sm:table-cell">From</th></tr></thead>
                   <tbody>
                     {shown.map((p) => (
                       <tr key={`${p.package}:${p.arch}`} className="border-b border-line last:border-0">
@@ -78,6 +79,7 @@ function UpdatesTab() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </Card>
             )}
             {u.packages.length === 0 && !u.listDenied && !u.listError && <Card><EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="Nothing to install" body="Press Refresh list to ask Proxmox's package servers again." /></Card>}

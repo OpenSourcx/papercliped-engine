@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Archive, Cable, Database, HardDrive, ShieldAlert } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
@@ -11,6 +11,7 @@ import { Button, Card, Chip, PageFrame, PageHeader, Status } from "../ui/primiti
 
 export function HostShell() {
   const { host, setup, live } = useEngine();
+  const [connected, setConnected] = useState(false);
   const make = useMemo(() => () => live ? new LiveTransport("/api/console/node") : new DemoTransport({ kind: "host", name: setup?.deviceName ?? "pve", os: "Debian 13 (trixie)", ip: host.ip, cores: host.cpus, memUsed: host.memUsed, memMax: host.memTotal, diskMax: host.diskTotal, uptimeSec: host.uptimeSec }), [live]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <PageFrame width="6xl">
@@ -19,7 +20,12 @@ export function HostShell() {
         <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-px" />
         <p className="text-ink-2">{live ? "A shell on the host, opened by Proxmox for your account (it needs Sys.Console). " : "Only owners can open the host shell. "}It is never available to agents or connected apps. Changes here bypass ePaperclip's checks; prefer machine consoles and Pin for everyday work.</p>
       </div>
-      <Terminal make={make} title={`root@${setup?.deviceName ?? "pve"}`} className="h-[min(600px,calc(100dvh-260px))]" />
+      {connected
+        ? <Terminal make={make} title={`root@${setup?.deviceName ?? "pve"}`} className="h-[min(600px,calc(100dvh-260px))]" />
+        : <Card className="p-6 flex flex-col items-start gap-3">
+            <p className="text-compact text-ink-2">Opening the shell starts a root session on the host and shows up in Tasks. It only starts when you press the button, never just from visiting this page.</p>
+            <Button variant="primary" onClick={() => setConnected(true)}>Open host shell</Button>
+          </Card>}
     </PageFrame>
   );
 }

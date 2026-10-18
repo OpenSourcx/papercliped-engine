@@ -167,7 +167,7 @@ export function MachinePage() {
         </div>
       </div>
 
-      <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto" role="tablist">
+      <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:overflow-y-hidden" role="tablist">
         {TABS.filter((t) => !t.vmOnly || g.type === "qemu").map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-sm inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
             {t.icon}{t.label}

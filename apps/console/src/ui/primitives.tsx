@@ -161,7 +161,7 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
 /** A strip of tabs. By default it scrolls sideways; with `wrap` a long strip flows onto more rows so every tab stays visible (use it where there are many). */
 export function Tabs<T extends string>({ value, tabs, onChange, className, wrap }: { value: T; tabs: { id: T; label: ReactNode; count?: number }[]; onChange: (v: T) => void; className?: string; wrap?: boolean }) {
   return (
-    <div role="tablist" className={cn("flex gap-1 border-b border-line", wrap ? "flex-wrap" : "overflow-x-auto [scrollbar-width:none]", className)}>
+    <div role="tablist" className={cn("flex gap-1 border-b border-line", wrap ? "flex-wrap" : "overflow-x-auto overflow-y-hidden [scrollbar-width:none]", className)}>
       {tabs.map((t) => (
         <button
           key={t.id}

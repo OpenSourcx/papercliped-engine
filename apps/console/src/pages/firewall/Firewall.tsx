@@ -505,7 +505,7 @@ export function FirewallPage() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Firewall" subtitle="Who can reach this device and its machines. Machines also have their own firewall on their page." actions={enabled === null ? null : enabled ? <Status kind="good" label="On" /> : <Status kind="off" label="Off for the whole device" />} />
-      <div className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:[scrollbar-width:none]" role="tablist">
+      <div className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:overflow-y-hidden sm:[scrollbar-width:none]" role="tablist">
         {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
       </div>
       {enabled === false && tab === "rules" && <p className="text-compact text-warning mb-3">The firewall is off for the whole device, so none of these rules apply yet. Turn it on in Options.</p>}

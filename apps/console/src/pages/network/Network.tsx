@@ -175,7 +175,7 @@ export function NetworkPage() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Network" subtitle="How this device and its machines connect: interfaces, DNS, and virtual networks." />
-      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto [scrollbar-width:none]" role="tablist">
+      <div className="flex gap-1 border-b border-line mb-5 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" role="tablist">
         {NET_TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", t.id); return n; }, { replace: true })} className={cn("px-3.5 h-10 text-sm whitespace-nowrap border-b-2 -mb-px transition", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}>{t.label}</button>)}
       </div>
       {tab === "interfaces" && <InterfacesView />}
