@@ -228,9 +228,12 @@ body {
   background: var(--accent-soft);
 }
 
+/* No visible scrollbars anywhere: everything still scrolls (wheel, touch, keys, drag), it just doesn't draw a bar. */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
 }
 
 @layer base {
