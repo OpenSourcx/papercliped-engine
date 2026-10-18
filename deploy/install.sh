@@ -55,9 +55,29 @@ NODE_VERSION="24.21.0"
 NODE_SHA256_x64="fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
 NODE_SHA256_arm64="6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2"
 
-say()  { echo "epaperclip: $*"; }
-warn() { echo "epaperclip: warning: $*" >&2; }
-die()  { echo "epaperclip: $*" >&2; exit 1; }
+# Output: plain "epaperclip: ..." lines when piped, logged or NO_COLOR is set (what scripts and the test suite read); on a
+# terminal the same messages get a little color and marks. The wording never changes, only the prefix.
+if [ -t 1 ] && [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+  UI=1; B=$'\e[1m'; D=$'\e[2m'; R=$'\e[0m'; G=$'\e[32m'; Y=$'\e[33m'; E=$'\e[31m'; C=$'\e[36m'
+  case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) M_SAY="›"; M_OK="✓"; M_WARN="!"; M_ERR="✕"; M_DOT="•"; M_CLIP="📎 ";; *) M_SAY=">"; M_OK="+"; M_WARN="!"; M_ERR="x"; M_DOT="-"; M_CLIP="";; esac
+else
+  UI=0; B=""; D=""; R=""; G=""; Y=""; E=""; C=""; M_SAY=""; M_OK=""; M_WARN=""; M_ERR=""; M_DOT="-"; M_CLIP=""
+fi
+say()  { if [ "$UI" = 1 ]; then echo "  ${C}${M_SAY}${R} $*"; else echo "epaperclip: $*"; fi; }
+warn() { if [ "$UI" = 1 ]; then echo "  ${Y}${M_WARN} $*${R}" >&2; else echo "epaperclip: warning: $*" >&2; fi; }
+die()  { if [ "$UI" = 1 ]; then echo "  ${E}${M_ERR} $*${R}" >&2; else echo "epaperclip: $*" >&2; fi; exit 1; }
+banner() { [ "$UI" = 1 ] || return 0; echo; echo "  ${B}${M_CLIP}ePaperclip${R} ${D}— $1${R}"; echo; }
+# A finished install on a terminal: one clear block with where to go. (Piped output keeps the plain lines.)
+summary() { # version proxmox engine-version url [more urls...]
+  local v="$1" px="$2" ev="$3"; shift 3
+  echo; echo "  ${G}${B}${M_OK} ePaperclip $v is running${R} ${D}— $px${R}"; echo
+  echo "  ${B}Open${R}      ${C}$1${R}"; shift
+  local u; for u in "$@"; do echo "  ${D}also${R}      $u"; done
+  echo "  ${B}Sign in${R}   with your Proxmox account"
+  echo "  ${B}Engine${R}    Paperclip $ev ${D}(loopback only; hourly backups in $BACKUPS)${R}"
+  echo "  ${B}Proxmox${R}   untouched at https://$(host_ip):8006/ ${D}— keep it as your way back in${R}"
+  echo
+}
 
 [ "$(id -u)" -eq 0 ] || die "run as root (for example: sudo ./deploy/install.sh)"
 
@@ -187,6 +207,7 @@ fi
 
 ACTION="${1:-}"
 case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge) ;; *) die "unknown option $ACTION (use --status, --rollback, --uninstall or --purge)" ;; esac
+case "$ACTION" in ""|--install) banner "installing on this Proxmox host" ;; --rollback) banner "going back to the previous version" ;; esac
 [ "$#" -le 1 ] || die "one option at a time, please (got: $*)"
 
 # ---- --status ---------------------------------------------------------------------------------------------------
@@ -543,11 +564,17 @@ start_all
 if healthy_all; then
   # The service answers. Check it can also reach Proxmox's sign-in, which is what makes it useful.
   if curl -fsk --max-time 5 "$(health_url)/api/realms" >/dev/null 2>&1; then proxmox="reaches Proxmox's sign-in"; else proxmox="could NOT reach Proxmox's sign-in (journalctl -u epaperclip -n 30)"; fi
-  say "installed $(installed_version): running, $proxmox."
-  say "engine: Paperclip $new_engine on 127.0.0.1:$ENGINE_PORT (loopback only). Its data is in $ENGINE_HOME and it backs itself up every hour into $BACKUPS"
-  say "open https://$(host_ip)$([ "$PORT" = 443 ] || echo ":$PORT")/ (or https://$(host_name)/) and sign in with your Proxmox account."
-  for tip in $(tailnet_ips); do say "also https://$tip/ — only from devices signed in to the same Tailscale network."; done
-  say "Proxmox's own interface is untouched at https://$(host_ip):8006/ — keep it as your way back in."
+  suffix=""; [ "$PORT" = 443 ] || suffix=":$PORT"
+  if [ "$UI" = 1 ]; then
+    more=("https://$(host_name)$suffix/"); for tip in $(tailnet_ips); do more+=("https://$tip$suffix/ ${D}(only from devices on the same Tailscale network)${R}"); done
+    summary "$(installed_version)" "$proxmox" "$new_engine" "https://$(host_ip)$suffix/" "${more[@]}"
+  else
+    say "installed $(installed_version): running, $proxmox."
+    say "engine: Paperclip $new_engine on 127.0.0.1:$ENGINE_PORT (loopback only). Its data is in $ENGINE_HOME and it backs itself up every hour into $BACKUPS"
+    say "open https://$(host_ip)$suffix/ (or https://$(host_name)/) and sign in with your Proxmox account."
+    for tip in $(tailnet_ips); do say "also https://$tip/ — only from devices signed in to the same Tailscale network."; done
+    say "Proxmox's own interface is untouched at https://$(host_ip):8006/ — keep it as your way back in."
+  fi
   [ "$first_install" -eq 1 ] || say "to go back to the previous version: sudo ./deploy/install.sh --rollback"
   exit 0
 fi
