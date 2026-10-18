@@ -45,6 +45,7 @@ if (havePub) cpSync(pubKey, `${dir}deploy/release-signing.pub`);
 for (const f of engineFiles) cpSync(`${root}engine/${f}`, `${dir}engine/${f}`);
 for (const f of pluginFiles) cpSync(`${pluginDir}${f}`, `${dir}plugins/proxmox-sandbox/${f}`, { recursive: true });
 cpSync(`${root}LICENSE`, `${dir}LICENSE`);
+for (const f of ["NOTICE", "THIRD_PARTY_LICENSES.md"]) if (existsSync(`${root}${f}`)) cpSync(`${root}${f}`, `${dir}${f}`);
 writeFileSync(`${dir}VERSION`, `${version}\n`);
 
 execFileSync("tar", ["-czf", `${out}epaperclip.tar.gz`, "--owner=0", "--group=0", "-C", out, "epaperclip"]);

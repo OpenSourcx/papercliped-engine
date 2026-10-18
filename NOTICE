@@ -1,0 +1,45 @@
+ePaperclip
+Copyright (c) 2026 OpenSourcx, released under the MIT License (see LICENSE).
+
+ePaperclip runs on a Proxmox VE host and runs the Paperclip engine. This file says what is and is not part of what we
+distribute, and under which terms. The generated list of every dependency and its declared license is THIRD_PARTY_LICENSES.md.
+This is a good-faith summary, not legal advice.
+
+Independence
+  ePaperclip is not made, endorsed or supported by Proxmox Server Solutions GmbH, Paperclip, or any other company named
+  here. Product names, logos and brand icons shown in the console (the connector and app store) belong to their owners and are
+  used only to identify those products.
+
+Paperclip (the engine)
+  The engine is the published npm package "paperclipai", installed unmodified at the exact version in engine/package-lock.json.
+  Paperclip is released under the MIT License:
+    MIT License. Copyright (c) 2025 Paperclip AI.
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+    documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the
+    following condition: the above copyright notice and this permission notice shall be included in all copies or
+    substantial portions of the Software. The Software is provided "as is", without warranty of any kind.
+  Its README names the holder as "Paperclip Labs, Inc"; the full text ships inside the package. Paperclip's usage telemetry
+  is on by default upstream and is turned off by the installer (PAPERCLIP_TELEMETRY_DISABLED=1).
+
+Proxmox VE
+  No Proxmox VE code is included in ePaperclip's downloads. ePaperclip is a separate program that talks to the Proxmox VE API
+  on a host where Proxmox VE is already installed. Proxmox VE is licensed under the GNU Affero General Public License,
+  version 3 or later (copyright Proxmox Server Solutions GmbH); its source is available from Proxmox. "Proxmox" is a
+  registered trademark of Proxmox Server Solutions GmbH, used here only to say what ePaperclip works with.
+
+Software the installer fetches, rather than ships
+  The installer downloads these at install time, checks them against a pinned checksum or a lockfile hash, and runs them under
+  their own licenses; our downloads do not contain them:
+    - Node.js (pinned version, from nodejs.org): MIT, with its bundled third-party components under their own licenses.
+    - The engine's and the sandbox provider's npm dependencies, from their lockfiles (see THIRD_PARTY_LICENSES.md), including:
+        . the embedded PostgreSQL binaries (PostgreSQL License);
+        . the sharp image library's libvips builds (LGPL-3.0-or-later): used as a separate, replaceable library;
+        . @anthropic-ai/claude-agent-sdk and @cursor/sdk, which declare "SEE LICENSE IN ..." and are under their own terms,
+          not an open-source license. They are the engine's dependencies, not ours. Anyone who redistributes an image that
+          bundles them must read and follow those terms first.
+
+If you build an image that bundles the engine
+  Redistributing the engine's installed packages (an installer image, a container image) makes you the distributor of every
+  package above. Check each license in THIRD_PARTY_LICENSES.md, keep every notice, offer the source of copyleft components, and
+  read the terms of the packages that say "SEE LICENSE IN ...". docs/PINOS.md describes the plan for such an image.

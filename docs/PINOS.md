@@ -33,7 +33,22 @@ Open questions are in the email to Proxmox (permission for a rebranded distribut
 
 ## Not decided yet
 
-- The final name (PinOS is the working name; availability on GitHub, npm, domains and trademark search is unchecked).
+- The final name. PinOS is the working name, and the checks in the next section found a conflict.
 - Whether any change to Proxmox's own code is needed beyond the overlay.
 - The business model (support, a hosted Pin service, paid add-ons under our own license, a marketplace share).
 - Whether the image defaults to the no-subscription repository, with a plain "testing only" note, or asks for a key.
+
+## Name check: "PinOS" (October 2026, not a trademark search)
+
+- **A product already uses the name.** Pintexx GmbH sells **pinOS**, a Linux-based thin-client operating system that boots to a configured web address. It is an operating system with the same name, which is the strongest reason to pick another name or get advice first. Its trademark status is unknown: the vendor's page could not be read from here.
+- **Other results:** none for an exact "PinOS" product or trademark. Near names exist ("Pintos", a teaching kernel; "PINO", a trademarked robot platform; "PINN", a Raspberry Pi installer), which matter for search results and confusion more than for ownership.
+- **npm:** `pinos`, `pin-os` and `pinos-dev` are not on the registry (404), and no `@pinos` scope was found.
+- **GitHub:** could not be checked from here (the API refused the request); check `github.com/pinos` and `github.com/pin-os` by hand.
+- **Domains:** `pinos.com`, `.dev`, `.org`, `.net` and `pin-os.com` are registered. `pinos.org` shows a renew period, so it may free up. `pinos.io`, `.co`, `.app` and `.sh` returned "not found" from the registry lookup, which suggests they are unregistered, but a lookup is not a purchase; confirm at a registrar. `pinos.ai` could not be checked (rate limited).
+- **Not done:** a real trademark search (USPTO, EUIPO and others). Do that, or pay for one, before spending on branding.
+
+If the name changes, `docs/PINOS.md` is the only place that assumes it.
+
+## Licensing finding for any bundled image
+
+The engine's dependency tree contains two packages under their own, non-open-source terms (`@anthropic-ai/claude-agent-sdk` and `@cursor/sdk`, both declared as "SEE LICENSE IN ..."), and the sharp image library's libvips builds under the LGPL. Today the installer fetches them from npm on the host, so our downloads do not redistribute them. An image that bundles `node_modules` would, and then those terms must be read and followed. `NOTICE` and the generated `THIRD_PARTY_LICENSES.md` record this.

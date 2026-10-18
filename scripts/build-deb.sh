@@ -30,6 +30,7 @@ install -d "$pkg/DEBIAN" "$pkg/usr/share/epaperclip" "$pkg/usr/share/doc/epaperc
 cp -a "$src/." "$pkg/usr/share/epaperclip/"
 chmod 0755 "$pkg/usr/share/epaperclip/deploy/install.sh"
 cp "$src/LICENSE" "$pkg/usr/share/doc/epaperclip/copyright"
+for f in NOTICE THIRD_PARTY_LICENSES.md; do [ ! -f "$src/$f" ] || cp "$src/$f" "$pkg/usr/share/doc/epaperclip/$f"; done
 
 # `epaperclip status|rollback|uninstall|install`: the installer that came with this package, as one command.
 cat >"$pkg/usr/sbin/epaperclip" <<'EOF'
