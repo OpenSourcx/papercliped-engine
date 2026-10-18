@@ -41,6 +41,7 @@ ENGINE_SERVICE="$UNIT_DIR/epaperclip-engine.service"
 UPDATE_SERVICE="$UNIT_DIR/epaperclip-update.service"
 UPDATE_PATH="$UNIT_DIR/epaperclip-update.path"
 UNITS=(epaperclip epaperclip-engine)
+BIN_DIR="${EPC_BIN_DIR:-/usr/local/bin}"
 STAGE="$PREFIX.new"
 PREV="$PREFIX.prev"
 ENGINE_USER="epaperclip-engine"
@@ -232,6 +233,7 @@ if [ "$ACTION" = "--uninstall" ] || [ "$ACTION" = "--purge" ]; then
   rm -f "$SERVICE" "$ENGINE_SERVICE" "$SERVICE.prev" "$UPDATE_SERVICE" "$UPDATE_PATH"
   systemctl daemon-reload 2>/dev/null || true
   rm -rf "${PREFIX:?}" "${PREV:?}" "${STAGE:?}" "${PREFIX:?}.failed"
+  [ ! -L "$BIN_DIR/epaperclip" ] || rm -f "$BIN_DIR/epaperclip"
   if [ "$ACTION" = "--purge" ]; then
     rm -rf "${ENGINE_HOME:?}" "${HOST_STATE:?}" "${ETC_DIR:?}"; rm -f "$DEFAULTS"
     for u in epaperclip "$ENGINE_USER"; do id "$u" >/dev/null 2>&1 && userdel "$u" 2>/dev/null || true; done
@@ -440,6 +442,7 @@ if [ -f "$ROOT/deploy/epaperclip-update.sh" ]; then
   install -d -m 0755 "$STAGE/update"
   install -m 0755 "$ROOT/deploy/epaperclip-update.sh" "$STAGE/update/run.sh"
   install -m 0755 "$ROOT/deploy/install.sh" "$STAGE/update/install.sh"
+  [ -f "$ROOT/deploy/epaperclip-cli.sh" ] && install -m 0755 "$ROOT/deploy/epaperclip-cli.sh" "$STAGE/update/epaperclip"
   # The verifier and the pinned release-signing key the helper checks every update with. They are root's, installed from a
   # release that was itself verified, so a new key can only arrive inside a release the previous key signed.
   [ -f "$ROOT/deploy/verify-release.sh" ] && install -m 0644 "$ROOT/deploy/verify-release.sh" "$STAGE/update/verify-release.sh"
@@ -558,6 +561,8 @@ fi
 [ -f "$DEFAULTS" ] || { install -d "$(dirname "$DEFAULTS")"; install -m 0644 "$ROOT/deploy/epaperclip.default" "$DEFAULTS"; created+=("$DEFAULTS"); }
 systemctl daemon-reload
 # The update helper's trigger is best effort: the console says so when "Update" isn't available, and nothing else depends on it.
+# The `epaperclip` command (status, update, rollback, uninstall). The Debian package ships its own, which is left alone.
+if [ -x "$PREFIX/update/epaperclip" ] && [ ! -e /usr/sbin/epaperclip ]; then install -d "$BIN_DIR"; ln -sfn "$PREFIX/update/epaperclip" "$BIN_DIR/epaperclip"; fi
 if [ -f "$UPDATE_PATH" ]; then systemctl enable --now epaperclip-update.path >/dev/null 2>&1 || warn "couldn't enable the update helper (epaperclip-update.path); the console's Update button won't work, updating from the shell still does"; fi
 start_all
 

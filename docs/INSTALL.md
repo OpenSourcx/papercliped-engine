@@ -31,6 +31,8 @@ The key's fingerprint is `B8A0 77BE 1EB3 B107 D11A  15DF 3A07 D686 6306 BE32` (e
 
 Updates come with the rest of the system: `apt update && apt upgrade`. The package also adds an `epaperclip` command: `epaperclip status`, `epaperclip rollback`, `epaperclip uninstall`.
 
+Every install method leaves the `epaperclip` command on the host (`get.sh` and `npx` link it as `/usr/local/bin/epaperclip`; the package ships its own): `epaperclip status | version | update [--tag v1.0.0-rc4] | rollback | uninstall [--purge]`. `update` downloads the release, checks its signature and installs it, exactly as `get.sh` does.
+
 ### With npm
 
 If the host has Node.js 18 or newer:

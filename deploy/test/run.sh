@@ -66,7 +66,7 @@ new_host() {
   [ "${2:-}" = no-proxmox ] && rm "$H/bin/pveversion"
   export PATH="$H/bin:$BASE_PATH"
   export STUB_STATE="$H/stub" EPC_PREFIX="$H/prefix" EPC_UNIT_DIR="$H/units" EPC_DEFAULTS="$H/default/epaperclip" \
-    EPC_ETC_DIR="$H/etc" EPC_ENGINE_HOME="$H/engine-home" EPC_HOST_STATE_DIR="$H/host-state" EPC_MEMINFO="$H/meminfo"
+    EPC_ETC_DIR="$H/etc" EPC_ENGINE_HOME="$H/engine-home" EPC_HOST_STATE_DIR="$H/host-state" EPC_MEMINFO="$H/meminfo" EPC_BIN_DIR="$H/usrbin"
   export EPC_SKIP_NODE=1 EPC_SKIP_CERT_CHECK=1 EPC_SKIP_ENGINE_NPM=1 EPC_ENGINE_WAIT=30 EPC_HOST_WAIT=20
   unset STUB_SS_BUSY STUB_PVEPROXY_DOWN STUB_PVE_VERSION STUB_RUN_AS_NOBODY
   printf 'MemTotal:       16303412 kB\nMemAvailable:   12000000 kB\n' >"$H/meminfo"
@@ -81,7 +81,7 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh} "$R/deploy/"
+  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
@@ -137,6 +137,10 @@ install() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" bash "$R/deploy/install.sh" "$@
 s_fresh() {
   new_host fresh; make_release 1.0.0 2026.1005.0; install
   check "installs (exit 0)" [ "$RC" -eq 0 ]
+  check "leaves an epaperclip command behind (get.sh and npm installs have no package to provide one)" [ -x "$H/usrbin/epaperclip" ]
+  check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
+  check "epaperclip status runs the installed installer" eval 'EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" status >"$H/cli-out" 2>&1; grep -q "engine health" "$H/cli-out"'
+  check "epaperclip with no arguments shows its commands" eval '"$H/usrbin/epaperclip" help | grep -q "rollback"'
   check "the engine unit gives Node a 2 GB heap (the 1.5 GB default ran out on a slow machine)" grep -q "NODE_OPTIONS=--max-old-space-size=2048" "$REPO/deploy/epaperclip-engine.service"
   check "the engine unit allows netlink sockets (without them the engine hangs at start on a real host)" grep -q "^RestrictAddressFamilies=.*AF_NETLINK" "$REPO/deploy/epaperclip-engine.service"
   check "the engine is given 15 minutes to start by default" grep -q "EPC_ENGINE_WAIT:-900" "$REPO/deploy/install.sh"

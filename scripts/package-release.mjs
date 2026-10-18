@@ -11,7 +11,7 @@ import { buildGetSh } from "./release-lib.mjs";
 const root = new URL("../", import.meta.url).pathname;
 const bundle = `${root}services/epaperclip/dist/epaperclip.mjs`;
 const consoleDir = `${root}apps/console/dist`;
-const deployFiles = ["install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh"];
+const deployFiles = ["install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh", "epaperclip-cli.sh"];
 const engineFiles = ["package.json", "package-lock.json"];
 // The Proxmox sandbox provider (agent containers): its built code, template scripts and lockfile. Its production packages
 // are installed at install time with the private Node.js, like the engine's (about 44 MB, so they are not in the download).
