@@ -9,6 +9,7 @@
 #
 # Compare them with the real service (journal output, full sandbox): the first one that stops answering names the cause.
 # Run it as root, on a host where ePaperclip's engine is installed:   bash deploy/diagnose-engine.sh
+# With --bisect it then adds the real unit's sandbox settings to a plain unit one at a time, and names the one that breaks it.
 # It stops epaperclip-engine while it runs (and starts it again after) unless you pass --keep-running.
 set -uo pipefail
 
@@ -20,7 +21,8 @@ WAIT="${EPC_DIAG_WAIT:-150}"
 PORT="${EPC_DIAG_PORT:-3199}"
 WORK="${EPC_DIAG_DIR:-/var/lib/epc-diagnose}"
 ONLY="${EPC_DIAG_ONLY:-A B C D}"
-KEEP=0; [ "${1:-}" = "--keep-running" ] && KEEP=1
+KEEP=0
+for a in "$@"; do case "$a" in --keep-running) KEEP=1 ;; --bisect) export EPC_DIAG_BISECT=1; ONLY="${EPC_DIAG_ONLY:-}" ;; esac; done
 
 die() { echo "diagnose-engine: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "run as root"
@@ -110,6 +112,52 @@ for v in $ONLY; do
     D) [ "$HAVE_SYSTEMD" -eq 1 ] && run_variant D "systemd unit, the real unit's sandbox, output to a file" || echo "== D: skipped (no systemd here)" ;;
   esac
 done
+
+
+# ---- --bisect: add the real unit's sandbox settings one at a time to a plain systemd unit, and say which one breaks it ----
+SANDBOX=(NoNewPrivileges=yes ProtectSystem=strict ProtectHome=yes PrivateTmp=yes PrivateDevices=yes ProtectKernelTunables=yes
+  ProtectKernelModules=yes ProtectKernelLogs=yes ProtectControlGroups=yes ProtectClock=yes ProtectHostname=yes RestrictNamespaces=yes
+  RestrictRealtime=yes RestrictSUIDSGID=yes LockPersonality=yes RemoveIPC=yes ProtectProc=invisible
+  "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" SystemCallArchitectures=native UMask=0077 MemoryMax=4G TasksMax=4096
+  LimitNOFILE=65536 CapabilityBoundingSet=)
+probe() { # <label> <waitseconds> <props...>: starts the engine in a transient unit with those properties; prints and returns 0 if it answers
+  local label="$1" wait="$2"; shift 2
+  local home="$WORK/bisect/home" log="$WORK/bisect/engine.log" start=$SECONDS ok=1 e
+  rm -rf "$WORK/bisect"; install -d -m 0755 "$WORK" "$WORK/bisect"; install -d -m 0700 -o "$EUSER" -g "$EGROUP" "$home"
+  : >"$log"; chown "$EUSER:$EGROUP" "$log"
+  local -a envs props=(-p "User=$EUSER" -p "Group=$EGROUP" -p "WorkingDirectory=$(dirname "$ENTRY")" -p "StandardOutput=file:$log" -p "StandardError=file:$log")
+  mapfile -t envs < <(env_args "$home")
+  for e in "${envs[@]}"; do props+=(-E "$e"); done
+  for e in "$@"; do props+=(-p "$e"); done
+  case " $* " in *ProtectSystem=strict*) props+=(-p "ReadWritePaths=$home") ;; esac
+  systemd-run --quiet --collect --unit=epc-diag-bisect "${props[@]}" "$NODE" "$ENTRY" >/dev/null 2>&1 || { printf '   %-52s could not start\n' "$label"; return 2; }
+  while [ $((SECONDS - start)) -lt "$wait" ]; do
+    sleep 1
+    if curl -fs --max-time 1 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
+      printf '   %-52s ok (%s s)\n' "$label" "$((SECONDS - start))"; ok=0; break
+    fi
+  done
+  [ "$ok" -eq 0 ] || printf '   %-52s BROKEN (no answer in %s s, cpu %s, %s MB)\n' "$label" "$wait" "$(cpu_of)" "$(rss_mb)"
+  systemctl stop epc-diag-bisect >/dev/null 2>&1 || true; pkill -u "$EUSER" -f "$ENTRY" >/dev/null 2>&1 || true; pkill -u "$EUSER" -x postgres >/dev/null 2>&1 || true
+  sleep 2; return "$ok"
+}
+if [ "${EPC_DIAG_BISECT:-0}" = 1 ]; then
+  [ "$HAVE_SYSTEMD" -eq 1 ] || die "--bisect needs systemd"
+  BW="${EPC_DIAG_BISECT_WAIT:-50}"
+  echo; echo "== bisect: the sandbox settings added one at a time to a plain unit (each gets $BW s)"
+  probe "no sandbox at all" "$BW" || echo "   (the plain unit itself fails; nothing to bisect)"
+  culprits=()
+  [ -z "${EPC_DIAG_MAXPROPS:-}" ] || SANDBOX=("${SANDBOX[@]:0:$EPC_DIAG_MAXPROPS}")
+  for prop in "${SANDBOX[@]}"; do
+    probe "+ $prop" "$BW" "$prop"; rc=$?; [ "$rc" -eq 0 ] || culprits+=("$prop")
+  done
+  if [ "${#culprits[@]}" -eq 0 ]; then
+    echo; echo "no single setting breaks it; adding them cumulatively:"
+    acc=(); for prop in "${SANDBOX[@]}"; do acc+=("$prop"); probe "cumulative up to $prop" "$BW" "${acc[@]}" || { culprits+=("(first broken when '$prop' is added on top of the ones before it)"); break; }; done
+  fi
+  echo; echo "BISECT RESULT: ${culprits[*]:-no sandbox setting breaks it}"
+  RESULT[bisect]="${culprits[*]:-none}"
+fi
 
 echo; echo "================ summary ================"
 for v in $ONLY; do [ -n "${RESULT[$v]:-}" ] && echo "$v: ${RESULT[$v]}"; done
