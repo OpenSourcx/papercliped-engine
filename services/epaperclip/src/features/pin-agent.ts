@@ -5,6 +5,7 @@ import type { FeatureCtx } from "./index.ts";
 import { PLANS_MAX, newId, runtimeFor, type Plan, type PlanStep, type PinRuntime, type StepKind } from "./pin-core.ts";
 import { pushNotice } from "./pin-notify.ts";
 import { NOTE_STEP_KEYS, describeNoteStep, isNoteStep, parseNoteStep, runNoteStep } from "./notes-steps.ts";
+import { ACTS, ACT_NAMES, ActProblem } from "./pin-act.ts";
 
 /**
  * Pin's Agent mode: a multi-step plan the person reviews and approves one step at a time. Pin (or an automation in
@@ -48,7 +49,9 @@ export const AGENT_TOOLS = [
           items: {
             type: "object",
             properties: {
-              kind: { type: "string", enum: ["power", "snapshot", "snapshot_delete", "snapshot_rollback", "create_task"] },
+              kind: { type: "string", enum: ["power", "snapshot", "snapshot_delete", "snapshot_rollback", "create_task", "act"] },
+              tool: { type: "string", enum: [...ACT_NAMES], description: "For act steps: which action (the same names as the action tools)" },
+              params: { type: "object", description: "For act steps: that action's arguments (for example create_container takes hostname, template, cores, memory_mb, disk_gb)" },
               vmid: { type: "integer" },
               action: { type: "string", enum: [...POWER], description: "For power steps" },
               name: { type: "string", description: "Snapshot name: 2 to 40 letters, digits, - or _, starting with a letter" },
@@ -78,6 +81,7 @@ const KEYS: Record<StepKind, string[]> = {
   snapshot_delete: ["kind", "vmid", "name"],
   snapshot_rollback: ["kind", "vmid", "name"],
   create_task: ["kind", "companyId", "title", "description"],
+  act: ["kind", "tool", "params"],
   ...NOTE_STEP_KEYS,
 };
 
@@ -104,6 +108,16 @@ export function parseStep(raw: unknown): StepInput {
     }
   }
   switch (kind) {
+    case "act": {
+      const def = typeof r.tool === "string" && Object.hasOwn(ACTS, r.tool) ? ACTS[r.tool] : null;
+      if (!def) throw bad(`an act step needs a tool: one of ${ACT_NAMES.join(", ")}`);
+      if (!r.params || typeof r.params !== "object" || Array.isArray(r.params)) throw bad("an act step needs params");
+      try {
+        return { kind, args: { tool: def.name, params: def.parse(r.params as Record<string, unknown>) } };
+      } catch (e) {
+        throw bad(e instanceof ActProblem ? e.message : "those params can't be used");
+      }
+    }
     case "power":
       if (!POWER.includes(r.action as (typeof POWER)[number])) throw bad(`power action must be one of ${POWER.join(", ")}`);
       return { kind, args: { vmid: vmid(), action: r.action } };
@@ -141,6 +155,13 @@ export function describeStep(s: StepInput, names?: ReadonlyMap<number, string>):
       return { label: `Roll ${vm} back to snapshot ${s.args.name}`, destructive: true, confirmPhrase: `rollback ${s.args.vmid}` };
     case "create_task":
       return { label: `Create task "${s.args.title}"`, destructive: false, confirmPhrase: null };
+    case "act": {
+      const def = ACTS[s.args.tool as string];
+      const d = def.describe(s.args.params as Record<string, unknown>, names);
+      // Only what can't be undone needs a typed phrase; shutting a machine down is a click.
+      const irreversible = def.risk(s.args.params as Record<string, unknown>) === "destructive";
+      return { label: d.label, destructive: irreversible, confirmPhrase: irreversible ? d.phrase : null };
+    }
   }
 }
 
@@ -166,7 +187,8 @@ export async function machineNames(pve: ProxmoxClient, steps: unknown[]): Promis
   const names = new Map<number, string>();
   for (const r of res) if ((r.type === "lxc" || r.type === "qemu") && typeof r.vmid === "number") names.set(r.vmid, r.name ?? String(r.vmid));
   for (const raw of steps) {
-    const v = (raw as { vmid?: unknown } | null)?.vmid;
+    const r = raw as { vmid?: unknown; params?: { vmid?: unknown } } | null;
+    const v = r?.vmid ?? r?.params?.vmid;
     if (typeof v === "number" && !names.has(v)) throw bad(`There is no machine ${v} that you can see.`);
   }
   return names;
@@ -214,6 +236,10 @@ async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: str
     if (!gw) throw new PlanProblem(503, "engine_unavailable", "The engine isn't set up on this host.");
     const issue = await gw.userJson<{ id?: string; identifier?: string }>(s, "POST", `/api/companies/${encodeURIComponent(a.companyId as string)}/issues`, { title: a.title, ...(a.description ? { description: a.description } : {}) });
     return { result: `Created task ${issue.identifier ?? issue.id ?? ""}`.trim() };
+  }
+  if (step.kind === "act") {
+    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, sleep: rt.sleep, maxWaitMs: 100_000 }, a.params as Record<string, unknown>);
+    return { ...(r.upid ? { upid: r.upid } : {}), result: r.result };
   }
   const vmid = a.vmid as number;
   const g = (await pve.clusterResources()).find((r) => r.vmid === vmid && (r.type === "lxc" || r.type === "qemu"));

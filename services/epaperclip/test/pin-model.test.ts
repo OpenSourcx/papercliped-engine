@@ -122,7 +122,7 @@ describe("Agent mode in the conversation", () => {
     tool("propose_plan", { title: "Stop web", steps: [{ kind: "snapshot", vmid: 101, name: "before-stop" }, { kind: "power", vmid: 101, action: "stop" }] });
     await chat();
     expect(JSON.parse(prov.asked.at(-2)!.body).tools.map((t: any) => t.name)).not.toContain("propose_plan");
-    await put("/api/pin/settings", { mode: "agent" });
+    await put("/api/pin/settings", { mode: "agent", permission: "plan" });
     const ev = await chat();
     expect(JSON.parse(prov.asked.at(-2)!.body).tools.map((t: any) => t.name)).toContain("propose_plan");
     const proposed = ev.find((e) => e.event === "tool" && e.data.name === "propose_plan")!;
@@ -136,7 +136,7 @@ describe("Agent mode in the conversation", () => {
 
   it("a plan naming a machine the person can't see is refused to the model, not stored", async () => {
     await configure();
-    await put("/api/pin/settings", { mode: "agent" });
+    await put("/api/pin/settings", { mode: "agent", permission: "plan" });
     tool("propose_plan", { title: "x", steps: [{ kind: "power", vmid: 999, action: "start" }] });
     const ev = await chat();
     expect(ev.find((e) => e.event === "tool")!.data).toMatchObject({ status: "error", error: expect.stringMatching(/no machine 999/) });

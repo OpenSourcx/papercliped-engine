@@ -117,12 +117,12 @@ describe("connectors", () => {
 describe("Pin settings and models", () => {
   it("starts in Assistant mode on the first configured provider and remembers choices per person", async () => {
     const c = await signIn();
-    expect(await j(await get("/api/pin/settings", c))).toEqual({ provider: null, model: null, mode: "assistant", connectors: [] });
+    expect(await j(await get("/api/pin/settings", c))).toEqual({ provider: null, model: null, mode: "assistant", permission: "ask", connectors: [] });
     expect((await send("PUT", "/api/pin/settings", { provider: "openai" }, { Cookie: c })).status).toBe(400);
     await send("PUT", "/api/connectors/openai/credential", { apiKey: KEY }, { Cookie: c });
-    expect(await j(await get("/api/pin/settings", c))).toEqual({ provider: "openai", model: null, mode: "assistant", connectors: [] });
+    expect(await j(await get("/api/pin/settings", c))).toEqual({ provider: "openai", model: null, mode: "assistant", permission: "ask", connectors: [] });
     const saved = await j(await send("PUT", "/api/pin/settings", { model: "model-a", mode: "agent", connectors: ["openai"] }, { Cookie: c }));
-    expect(saved).toEqual({ provider: "openai", model: "model-a", mode: "agent", connectors: ["openai"] });
+    expect(saved).toEqual({ provider: "openai", model: "model-a", mode: "agent", permission: "ask", connectors: ["openai"] });
     expect(new StateStore(stateDir).getSetting<Record<string, unknown>>("pin.settings")!["sam@pve"]).toEqual(saved);
     expect((await j(await get("/api/pin/settings", await signIn("lee")))).mode).toBe("assistant");
     expect((await send("PUT", "/api/pin/settings", { mode: "boss" }, { Cookie: c })).status).toBe(400);

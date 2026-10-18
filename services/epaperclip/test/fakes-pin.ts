@@ -55,6 +55,10 @@ export function fakePinPve() {
     taskFails: null as string | null,
     nodeOnline: true,
     unreachable: false,
+    /** Creating machines: the next free id, whether a Debian template is already on the node, and the create calls seen. */
+    nextId: 300,
+    haveTemplate: false,
+    created: [] as Record<string, string>[],
   };
   const calls: { method: string; path: string; params: Record<string, string>; who: string }[] = [];
   let n = 0;
@@ -92,7 +96,7 @@ export function fakePinPve() {
     const path = decodeURIComponent(u.pathname.replace("/api2/json", ""));
     const params: Record<string, string> = Object.fromEntries([...u.searchParams, ...new URLSearchParams(req.body ?? "")]);
     if (st.unreachable && path !== "/access/ticket") throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-    const mine = /^\/(cluster\/resources$|nodes\/pve\/(tasks$|(lxc|qemu)\/\d+\/(status|snapshot)))/.test(path);
+    const mine = /^\/(cluster\/(resources|nextid)$|nodes\/pve\/(tasks$|storage|network$|aplinfo$|lxc$|qemu$|lxc\/\d+$|lxc\/\d+\/interfaces$|vzdump$|(lxc|qemu)\/\d+\/(status|snapshot)))/.test(path);
     if (!mine) return base.transport(req);
     const who = principalOf(req.headers);
     if (!who) return { status: 401, body: JSON.stringify({ message: "invalid credentials" }) };
@@ -106,6 +110,55 @@ export function fakePinPve() {
       return ok(params.type === "vm" ? vm : [...vm, { id: "node/pve", type: "node", node: "pve", status: st.nodeOnline ? "online" : "offline" }]);
     }
     if (path === "/nodes/pve/tasks") return ok(taskList.slice(-Number(params.limit ?? 50)).reverse());
+
+    // What creating a machine needs from the node: ids, storages, templates, bridges, and the create calls themselves.
+    if (path === "/cluster/nextid") return ok(String(st.nextId));
+    if (path === "/nodes/pve/storage") {
+      const by: Record<string, { storage: string; type: string; avail: number }[]> = { rootdir: [{ storage: "local-lvm", type: "lvmthin", avail: 80 * GiB }], images: [{ storage: "local-lvm", type: "lvmthin", avail: 80 * GiB }], vztmpl: [{ storage: "local", type: "dir", avail: 50 * GiB }], iso: [{ storage: "local", type: "dir", avail: 50 * GiB }], backup: [{ storage: "backups", type: "dir", avail: 200 * GiB }] };
+      return ok(by[params.content] ?? []);
+    }
+    const content = /^\/nodes\/pve\/storage\/([^/]+)\/content$/.exec(path);
+    if (content) return ok(params.content === "vztmpl" && st.haveTemplate ? [{ volid: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst", content: "vztmpl" }] : params.content === "iso" ? [{ volid: "local:iso/debian-12.iso", content: "iso" }] : []);
+    if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok([{ template: "debian-12-standard_12.7-1_amd64.tar.zst", os: "debian-12", section: "system", headline: "Debian 12" }, { template: "ubuntu-24.04-standard_24.04-2_amd64.tar.zst", os: "ubuntu-24.04", section: "system" }]);
+    if (path === "/nodes/pve/aplinfo") {
+      st.haveTemplate = true;
+      const upid = `UPID:pve:${String(++n).padStart(8, "0")}:00000001:00000001:download:${params.template}:${who.user}:`;
+      base.tasks.set(upid, ["TASK OK"]);
+      return ok(upid);
+    }
+    if (path === "/nodes/pve/network") return ok([{ iface: "vmbr0", type: "bridge", cidr: "192.168.1.200/24", bridge_ports: "nic0", active: 1 }, { iface: "nic0", type: "eth", active: 1 }]);
+    if (path === "/nodes/pve/lxc" && req.method === "POST") {
+      const id = Number(params.vmid);
+      st.created.push(params);
+      guests.set(id, { type: "lxc", name: params.hostname, status: params.start === "1" || params.start === "true" ? "running" : "stopped", mem: 0, maxmem: Number(params.memory) * 1024 * 1024, cpu: 0, tags: params.tags ?? "" });
+      st.nextId = id + 1;
+      const upid = `UPID:pve:${String(++n).padStart(8, "0")}:00000001:00000001:vzcreate:${id}:${who.user}:`;
+      base.tasks.set(upid, st.taskFails ? [`TASK ERROR: ${st.taskFails}`] : ["TASK OK"]);
+      return ok(upid);
+    }
+    if (path === "/nodes/pve/qemu" && req.method === "POST") {
+      const id = Number(params.vmid);
+      st.created.push(params);
+      guests.set(id, { type: "qemu", name: params.name, status: "stopped", mem: 0, maxmem: Number(params.memory) * 1024 * 1024, cpu: 0, tags: params.tags ?? "" });
+      st.nextId = id + 1;
+      const upid = `UPID:pve:${String(++n).padStart(8, "0")}:00000001:00000001:qmcreate:${id}:${who.user}:`;
+      base.tasks.set(upid, ["TASK OK"]);
+      return ok(upid);
+    }
+    if (path === "/nodes/pve/vzdump") {
+      st.created.push(params);
+      const upid = `UPID:pve:${String(++n).padStart(8, "0")}:00000001:00000001:vzdump:${params.vmid}:${who.user}:`;
+      base.tasks.set(upid, ["TASK OK"]);
+      return ok(upid);
+    }
+    const lxcOne = /^\/nodes\/pve\/lxc\/(\d+)(\/interfaces)?$/.exec(path);
+    if (lxcOne && lxcOne[2]) return ok([{ name: "lo", inet: "127.0.0.1/8" }, { name: "eth0", inet: "192.168.1.55/24" }]);
+    if (lxcOne && req.method === "DELETE") {
+      guests.delete(Number(lxcOne[1]));
+      const upid = `UPID:pve:${String(++n).padStart(8, "0")}:00000001:00000001:vzdestroy:${lxcOne[1]}:${who.user}:`;
+      base.tasks.set(upid, ["TASK OK"]);
+      return ok(upid);
+    }
 
     const g = /^\/nodes\/pve\/(lxc|qemu)\/(\d+)\/(status\/(start|stop|shutdown|reboot)|snapshot(?:\/([^/]+)(\/rollback)?)?)$/.exec(path)!;
     const vmid = Number(g[2]);

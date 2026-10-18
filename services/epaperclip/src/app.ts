@@ -870,7 +870,12 @@ export function createApp(d: AppDeps) {
     if (path === "/api/pin/settings" && (method === "GET" || method === "PUT")) {
       if (method === "PUT") requireSameSite(req);
       const s = requireSession(req);
-      return sendJson(res, 200, method === "GET" ? pin.settings(s.username) : pin.saveSettings(s.username, await readJson(req)));
+      if (method === "GET") return sendJson(res, 200, pin.settings(s.username));
+      const body = await readJson(req);
+      const before = pin.settings(s.username);
+      const saved = pin.saveSettings(s.username, body);
+      if (saved.permission !== before.permission) audit(req, "pin.permission", s.username, `${before.permission} to ${saved.permission}`);
+      return sendJson(res, 200, saved);
     }
 
     if (method === "GET" && path === "/api/pin/models") {
@@ -887,7 +892,7 @@ export function createApp(d: AppDeps) {
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
-      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p) };
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body) };
       try {
         return await pin.chat(res, prepared, host, gone.signal);
       } finally {
