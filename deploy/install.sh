@@ -580,7 +580,9 @@ if healthy_all; then
     for tip in $(tailnet_ips); do say "also https://$tip/ — only from devices signed in to the same Tailscale network."; done
     say "Proxmox's own interface is untouched at https://$(host_ip):8006/ — keep it as your way back in."
   fi
-  [ "$first_install" -eq 1 ] || say "to go back to the previous version: sudo ./deploy/install.sh --rollback"
+  if [ "$first_install" -ne 1 ]; then
+    if [ -e "$BIN_DIR/epaperclip" ] || [ -e /usr/sbin/epaperclip ]; then say "to go back to the previous version: epaperclip rollback"; else say "to go back to the previous version: sudo ./deploy/install.sh --rollback"; fi
+  fi
   exit 0
 fi
 
