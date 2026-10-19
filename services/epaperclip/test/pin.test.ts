@@ -443,6 +443,45 @@ describe("when the model provider struggles", () => {
     expect(last.data.message).toMatch(/pick another model/i);
   });
 
+  const toolCallStream = (res: import("node:http").ServerResponse) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "host_status", arguments: "{}" } }] }, finish_reason: "tool_calls" }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+  const emptyStream = (res: import("node:http").ServerResponse) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+
+  it("asks a model that went quiet after its tool calls to answer in words", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    let n = 0;
+    prov.set((_r, res) => (++n === 1 ? toolCallStream(res) : n === 2 ? emptyStream(res) : okStream(res, "The host is healthy.")));
+    const events = await chat(c);
+    expect(text(events)).toBe("The host is healthy.");
+    expect(events.some((e) => e.event === "error")).toBe(false);
+    const asked = completions().map((a) => JSON.parse(a.body));
+    expect(asked).toHaveLength(3);
+    expect(asked[2].tool_choice).toBe("none");
+    expect(asked[2].messages.at(-1)).toMatchObject({ role: "user", content: expect.stringContaining("answer the person now") });
+  });
+
+  it("says so, with a way forward, when a model stays silent", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    let n = 0;
+    prov.set((_r, res) => (++n === 1 ? toolCallStream(res) : emptyStream(res)));
+    const last = (await chat(c)).at(-1)!;
+    expect(last.event).toBe("error");
+    expect(last.data.code).toBe("provider_empty");
+    expect(last.data.message).toMatch(/empty answer/);
+    expect(last.data.message).toMatch(/more capable model/);
+  });
+
   it("offers OpenRouter models that can call tools, and marks the free ones", async () => {
     const c = await signIn();
     await configure(c, "openrouter");

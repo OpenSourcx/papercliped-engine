@@ -158,7 +158,7 @@ export function fixFor(code: string | undefined, message: string): PinChatError[
   if (/no_provider|provider_missing|no provider|model provider|not configured|missing.*key/.test(t)) return { label: "Add a model provider in Connectors", to: "?settings=connectors" };
   if (/no_model|model_missing|choose a model|no model/.test(t)) return { label: "Choose a model in Pin's settings", to: "pin?tab=settings" };
   if (/provider_auth|invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the provider's key in Connectors", to: "?settings=connectors" };
-  if (/provider_(rejected|no_tools|rate_limited|no_credit)/.test(t)) return { label: "Choose another model in Pin's settings", to: "pin?tab=settings" };
+  if (/provider_(rejected|no_tools|rate_limited|no_credit|empty)/.test(t)) return { label: "Choose another model in Pin's settings", to: "pin?tab=settings" };
   return undefined;
 }
 

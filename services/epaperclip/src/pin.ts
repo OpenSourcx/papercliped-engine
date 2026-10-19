@@ -721,12 +721,14 @@ export class Pin {
     const maxSteps = acting ? 24 : MAX_STEPS;
     const actEnv = { rt: runtimeFor(this.state), host, permission: p.settings.permission, send, ping: () => { if (!res.writableEnded) res.write(": ping\n\n"); }, signal: clientGone, counter: { n: 0 } };
     let via: string | null = null;
+    // A model that goes quiet after its tool calls is asked once to answer in words (with tools off) before it is reported as failing.
+    let forceWords = false;
     try {
       for (let step = 0; step < maxSteps; step++) {
         const signal = AbortSignal.any([clientGone, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
         let sent = false;
         const run = async (ref: ProviderRef, key: string, model: string): Promise<TurnResult> => {
-          const input: TurnInput = { ref, key, model, system, turns, tools: refProtocol(ref) === "gemini" ? [] : tools, allowTools: step < maxSteps - 1, onText: (text) => { sent = true; send("delta", { text }); }, signal };
+          const input: TurnInput = { ref, key, model, system, turns, tools: refProtocol(ref) === "gemini" ? [] : tools, allowTools: !forceWords && step < maxSteps - 1, onText: (text) => { sent = true; send("delta", { text }); }, signal };
           const proto = refProtocol(ref);
           return proto === "anthropic" ? anthropicTurn(this.fetch, input) : proto === "gemini" ? geminiTurn(this.fetch, input) : openaiTurn(this.fetch, ref, input);
         };
@@ -746,7 +748,7 @@ export class Pin {
           }
         } catch (e) {
           // The chosen provider couldn't answer and nothing was shown yet: try the fallbacks the administrator set, in order.
-          const retryable = e instanceof PinError && /^provider_(auth|no_credit|no_tools|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
+          const retryable = e instanceof PinError && /^provider_(auth|no_credit|no_tools|empty|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
           if (!retryable || sent || !this.extra) throw e;
           let ok: TurnResult | null = null;
           for (const f of this.extra.fallbacks(p.provider)) {
@@ -765,6 +767,14 @@ export class Pin {
         }
         if (r.usage && (r.usage.in || r.usage.out)) this.extra?.usage(used.pid, used.model, r.usage);
         via = used.pid === p.provider ? null : refLabel(used.ref);
+        if (!r.calls.length && !r.text.trim()) {
+          if (!forceWords) {
+            forceWords = true;
+            turns.push({ role: "user", text: "Please answer the person now, in words, using what you have already found. Don't call any more tools." });
+            continue;
+          }
+          throw new PinError("provider_empty", `${refLabel(used.ref)} sent back an empty answer. Try again, or pick a more capable model in Pin's settings.`);
+        }
         turns.push({ role: "assistant", text: r.text, calls: r.calls });
         if (!r.calls.length) {
           send("done", { stopReason: r.stop, ...(via ? { via } : {}) });
