@@ -129,6 +129,29 @@ Behaviour: Esc or a click outside closes it and focus returns to the pill; openi
 
 Pin's conversation: your words sit in a bubble on the right; Pin's sit on the page on the left. While Pin waits, three dots take turns; while it writes, a soft caret breathes at the end of its words. Proposals arrive as cards with one primary action (the verb: "Stop", "Take snapshot", "Create task") and Cancel. Errors stay inline, say what happened, and link the fix ("Add a model provider in Connectors").
 
+## Modals and prompts
+
+Anything that isn't a main view opens in a `Modal` over the page it came from. Rules:
+
+1. **Addressable.** A modal has a URL: `?modal=<name>` (or `?settings=<section>`), registered in `modals/ModalHost.tsx`. Buttons, quick actions and Pin's island open it by link (`to: "?modal=new-automation"`), so Back closes it and the page underneath keeps its place. Nothing opens a modal through hidden state.
+2. **Actions open what they name.** "New automation", "New machine" and "Upload ISO" open that thing's modal. A quick action never posts a canned sentence into the current chat to stand in for a flow; chat is for asking Pin, a modal is for creating.
+3. **Say it in words, or fill the form.** Creation that Pin can interpret opens with one open question ("What should happen?"), a few example chips that fill the box when pressed, and a primary button that names the hand-off ("Set it up with Pin"). A ghost button on the left offers the structured form for people who prefer it. Pin reads the result back in plain words before anything is saved.
+4. **One primary action, in the footer.** Cancel is ghost, the commit action is primary and names its verb ("Save automation", "Add to the vault"). Secondary choices sit to the left, the way Paperclip's form footers do. Enter submits a single-field prompt; Ctrl/Cmd+Enter submits a multi-line one.
+5. **Sizes.** `sm` for a confirmation or one field, `md` for a prompt or a short form, `lg` for a form with a live preview. Phones get a bottom sheet.
+6. **Say what it is not.** Where two things sound alike, the subtitle separates them: an automation is a rule the device runs by itself; a task is work for an organization's agents.
+7. **Secrets are write-only.** A value field is a password input with `autoComplete="new-password"`, is cleared after saving, and the hint says it won't be shown again.
+8. **Errors stay in the modal.** A failure shows under the fields with what to do next; the modal does not close and nothing typed is lost.
+
+## Scrolling
+
+There are no visible scrollbars anywhere: `* { scrollbar-width: none }` and `*::-webkit-scrollbar { display: none }` in `src/index.css`. Everything still scrolls with the wheel, touch, keys and drag.
+
+- **Hide it once, globally.** Components don't set their own scrollbar styles. Where one already carries `[scrollbar-width:none]` it is redundant, not wrong.
+- **Hint what's hidden.** A strip that scrolls sideways (tabs, segmented controls, quick actions, wide tables) uses `edge-fade-x`: it fades at the edge that has more behind it, and only while it really overflows.
+- **Scroll one axis.** A sideways strip is `overflow-x-auto overflow-y-hidden`; a vertical region is `overflow-y-auto overflow-x-hidden`. Never leave the other axis on `auto`: an `auto` axis next to a scrolling one is what draws a stray bar.
+- **Nothing spills out of its box.** Long unbroken text wraps (`overflow-wrap: break-word` on the body); a flex child that holds text gets `min-w-0`; a card that may hold wide content clips or scrolls it, it doesn't push past its border.
+- **Check in a real browser** at a desktop and a phone width after changing a container's overflow, and with the console's own Chromium, since a bar that is hidden in one engine can show in another.
+
 ## Component inventory
 
 All in `src/ui/` unless noted. Each uses tokens only.
@@ -154,6 +177,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `Skeleton` / `Spinner` | loading | skeletons keep the layout; spinners have a label |
 | `Kbd` | a key | mono |
 | `Modal` (`ui/Modal.tsx`) | anything that isn't a main view | `sm`/`md`/`lg`; bottom-aligned on phones; focus moves in, Tab wraps, Esc closes the top one, focus returns to the opener |
+| `NewAutomationModal` (`pages/pin/runtime.tsx`) | the model for "describe it or fill the form" creation | open question, example chips, hand-off to Pin, form behind a ghost button |
 | `SettingsModal` | the full-screen settings | categories left, section right; phone shows one at a time |
 | `ArcMeter` / `BarMeter` (`ui/meters.tsx`) | one ratio against a limit | value in ink, never in the series colour; exact value in caption and tooltip |
 | `TimeSeriesChart` / `UsageGraphs` | history | series tokens; tooltip on hover |
