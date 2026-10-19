@@ -41,6 +41,21 @@ export function PinThread({ inPlace, empty, footer, className, autoFocus }: { in
   );
 }
 
+/** The dots while Pin waits for its model; after a few seconds it says so, since a slow model looks like a stuck one. */
+function Waiting() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 10_000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <span className="inline-flex items-center gap-2 h-6" role="status">
+      <span className="pin-dots" aria-hidden><span /><span /><span /></span>
+      {slow ? <span className="text-compact text-ink-3">Still waiting for the model. Some are slow; Stop ends it, or pick another model in Pin's settings.</span> : <span className="sr-only">Pin is thinking</span>}
+    </span>
+  );
+}
+
 function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
   const pin = usePin();
   if (m.from === "you") {
@@ -56,7 +71,7 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
       {inPlace && <span className="mt-0.5"><PinOrb size={22} thinking={m.streaming} /></span>}
       <div className="min-w-0 flex-1 text-sm leading-relaxed">
         {waiting ? (
-          <span className="inline-flex items-center h-6" role="status"><span className="pin-dots" aria-hidden><span /><span /><span /></span><span className="sr-only">Pin is thinking</span></span>
+          <Waiting />
         ) : m.text ? (
           <div><Markdown text={m.text} chat />{m.streaming && <span className="pin-cursor" aria-hidden />}</div>
         ) : null}

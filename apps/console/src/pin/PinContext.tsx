@@ -247,7 +247,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
     timers.current.forEach(clearTimeout);
     timers.current = [];
     const history = messagesRef.current.filter((m) => m.text && !m.error).map((m) => ({ role: m.from === "you" ? ("user" as const) : ("assistant" as const), content: m.text }));
-    const replyId = newId("p");
+    let replyId = newId("p");
     setMessages((m) => [...m.map((x) => (x.streaming ? { ...x, streaming: false } : x)), { id: newId("u"), from: "you", text: clean }, { id: replyId, from: "pin", text: "", streaming: true }]);
     setTab("chat");
     if (!opts?.inPlace) setState("open");
@@ -259,7 +259,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
     const finish = () => {
       setThinking(false);
       setStreaming(false);
-      setMessages((list) => list.filter((m) => !(m.id === replyId && !m.text && !m.card && !m.error)).map((m) => (m.id === replyId ? { ...m, streaming: false } : m)));
+      setMessages((list) => list.filter((m) => !(m.streaming && !m.tool && !m.text && !m.card && !m.error)).map((m) => (m.streaming ? { ...m, streaming: false } : m)));
     };
 
     if (e.live) {
@@ -282,12 +282,24 @@ export function PinProvider({ children }: { children: ReactNode }) {
             patch(replyId, (m) => ({ ...m, text: m.text + ev.text }));
           } else if (ev.type === "tool") {
             setThinking(false);
+            if (messagesRef.current.some((m) => m.tool?.id === ev.tool.id)) {
+              setMessages((list) => list.map((m) => (m.tool?.id === ev.tool.id ? { ...m, tool: { ...m.tool!, ...ev.tool } } : m)));
+              return;
+            }
+            // A new step goes after whatever Pin has said so far, and what Pin says next starts below it, so the thread reads in order.
+            const prev = replyId;
+            const fresh = newId("p");
+            replyId = fresh;
             setMessages((list) => {
-              const existing = list.find((m) => m.tool?.id === ev.tool.id);
-              if (existing) return list.map((m) => (m.tool?.id === ev.tool.id ? { ...m, tool: { ...m.tool!, ...ev.tool } } : m));
-              const i = list.findIndex((m) => m.id === replyId);
-              const item: PinMessage = { id: newId("t"), from: "pin", text: "", tool: ev.tool };
-              return i < 0 ? [...list, item] : [...list.slice(0, i + 1), item, ...list.slice(i + 1)];
+              const out: PinMessage[] = [];
+              for (const m of list) {
+                if (m.id !== prev) out.push(m);
+                else {
+                  if (m.text || m.card || m.error) out.push({ ...m, streaming: false });
+                  out.push({ id: newId("t"), from: "pin", text: "", tool: ev.tool }, { id: fresh, from: "pin", text: "", streaming: true });
+                }
+              }
+              return out;
             });
           } else if (ev.type === "error") {
             patch(replyId, (m) => ({ ...m, error: ev.error }));
