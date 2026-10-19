@@ -1,3 +1,4 @@
+import { proxmoxVersion } from "../lib/version.ts";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Bot, Boxes, Database, HardDrive, Plug, Plus, Workflow } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
@@ -99,7 +100,7 @@ export function Home() {
               </div>
               <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-compact text-ink-3">
                 <span>{host.cpuModel}</span>
-                <span>Proxmox VE {host.version}</span>
+                <span>Proxmox VE {proxmoxVersion(host.version)}</span>
                 <span>{host.ip}</span>
               </div>
             </Card>

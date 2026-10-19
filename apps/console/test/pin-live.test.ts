@@ -76,6 +76,7 @@ describe("Pin's chat stream", () => {
     expect(fixFor("no_provider", "")?.label).toBe("Add a model provider in Connectors");
     expect(fixFor("no_model", "")?.to).toBe("pin?tab=settings");
     expect(fixFor("provider_overloaded", "Busy, try again")).toBeUndefined();
+    for (const code of ["provider_rate_limited", "provider_no_credit", "provider_no_tools", "provider_rejected"]) expect(fixFor(code, "x")).toEqual({ label: "Choose another model in Pin's settings", to: "pin?tab=settings" });
   });
 
   it("streams a conversation and sends the page context", async () => {

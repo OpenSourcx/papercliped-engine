@@ -1,3 +1,4 @@
+import { proxmoxVersion } from "../lib/version.ts";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Archive, Cable, Database, HardDrive, ShieldAlert } from "lucide-react";
@@ -80,7 +81,7 @@ export function Summary() {
     ["Uptime", formatUptime(host.uptimeSec)],
     ["Machines", `${running} running of ${machines.length}`],
     ["CPU model", host.cpuModel],
-    ["Version", `Proxmox VE ${host.version} · ePaperclip 0.1.0`],
+    ["Version", `Proxmox VE ${proxmoxVersion(host.version)}`],
   ];
   return (
     <PageFrame width="6xl">

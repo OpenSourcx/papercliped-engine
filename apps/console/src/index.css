@@ -262,6 +262,11 @@ body {
 }
 
 @layer base {
+  /* A long unbroken string (a build hash, a path, a task id, a URL) wraps inside its box instead of pushing out of it.
+     `break-word` only acts when a line can't fit, so it never changes how tables and flex rows are sized. */
+  body {
+    overflow-wrap: break-word;
+  }
   /* One focus ring for every control; utilities can still opt out where a parent draws the ring. */
   :focus-visible {
     outline: 2px solid var(--ring);

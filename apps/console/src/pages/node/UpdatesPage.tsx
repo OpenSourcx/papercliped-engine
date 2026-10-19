@@ -171,28 +171,3 @@ export function NodeUpdatesPage() {
     </PageFrame>
   );
 }
-
-/** A short status for Settings, Updates (live): what is pending and whether a reboot is needed, with a link to the full screen. */
-export function LiveUpdatesSummary() {
-  const { setup } = useEngine();
-  const { node, name } = useNodeName();
-  const q = useQuery({ queryKey: ["node", "updates", name], queryFn: () => nodeApi.updates(node), retry: 1 });
-  const repos = useQuery({ queryKey: ["node", "repos", name], queryFn: () => nodeApi.repos(node), retry: 1 });
-  const warnings = (repos.data?.warnings ?? []).filter((w) => w.tone === "warning");
-  return (
-    <Card className="p-5">
-      <div className="text-xs text-ink-3">Proxmox VE</div>
-      {q.isPending ? <p className="text-compact text-ink-3 mt-1">Checking…</p> : q.error ? <p role="alert" className="text-compact text-critical mt-1">{errorText(q.error)}</p> : (
-        <>
-          <div className="text-xl font-semibold mt-1">{q.data.version ?? "Proxmox VE"}</div>
-          <div className="mt-2 space-y-2">
-            {q.data.listDenied ? <Status kind="idle" label="Your account can't read updates" /> : q.data.packages.length === 0 ? <Status kind="good" label="Up to date" /> : <Status kind="warning" label={`${q.data.packages.length} ${q.data.packages.length === 1 ? "update" : "updates"} available`} />}
-            {q.data.rebootRequired && <Status kind="warning" label="Reboot required for the new kernel" />}
-            {warnings.map((w) => <p key={w.id} className="text-compact text-warning flex items-start gap-1.5"><Package className="h-4 w-4 mt-0.5 shrink-0" aria-hidden />{w.message}</p>)}
-          </div>
-          <Link to={`/${setup?.deviceName ?? "pve"}/host/updates`} className="transition-control inline-flex items-center h-10 px-4 rounded-lg bg-surface-2 border border-line text-sm mt-4 hover:bg-surface-3">Open updates</Link>
-        </>
-      )}
-    </Card>
-  );
-}
