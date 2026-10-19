@@ -5,6 +5,7 @@ import { cn } from "../lib/storage.ts";
 import { PinCardView, ToolCard } from "./PinCards.tsx";
 import { usePin, type PinMessage } from "./PinContext.tsx";
 import { PinOrb } from "./PinOrb.tsx";
+import { Markdown } from "../pages/pin/notes/Markdown.tsx";
 
 /**
  * Pin's conversation, shared by the island and Pin's page: the messages, then the composer. Pin's words sit on the
@@ -27,7 +28,7 @@ export function PinThread({ inPlace, empty, footer, className, autoFocus }: { in
 
   return (
     <div className={cn("flex flex-col min-h-0", className)}>
-      <div ref={list} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-4" aria-live="polite" aria-busy={pin.streaming}>
+      <div ref={list} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4" aria-live="polite" aria-busy={pin.streaming}>
         {pin.messages.length === 0 ? empty : (
           <div className="space-y-4">
             {pin.messages.map((m) => <Message key={m.id} m={m} inPlace={inPlace} />)}
@@ -45,7 +46,7 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
   if (m.from === "you") {
     return (
       <div className="flex justify-end fade-in">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-surface-3 px-3.5 py-2 text-sm whitespace-pre-wrap text-pretty">{m.text}</div>
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-surface-3 px-3.5 py-2 text-pretty"><Markdown text={m.text} chat /></div>
       </div>
     );
   }
@@ -57,7 +58,7 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
         {waiting ? (
           <span className="inline-flex items-center h-6" role="status"><span className="pin-dots" aria-hidden><span /><span /><span /></span><span className="sr-only">Pin is thinking</span></span>
         ) : m.text ? (
-          <p className="whitespace-pre-wrap text-pretty">{m.text}{m.streaming && <span className="pin-cursor" aria-hidden />}</p>
+          <div><Markdown text={m.text} chat />{m.streaming && <span className="pin-cursor" aria-hidden />}</div>
         ) : null}
         {m.error && (
           <div role="alert" className="mt-1 rounded-xl border border-critical/25 bg-critical/5 px-3.5 py-2.5 text-compact fade-in">

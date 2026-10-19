@@ -183,7 +183,7 @@ function ApplyTemplate({ template, onClose }: { template: Template; onClose: () 
         {!done && <Button variant="primary" disabled={!picked.length || !plans} loading={run.isPending && run.variables === false} onClick={() => run.mutate(false)}>Apply to {plural(picked.length, "person", "people")}</Button>}
       </>}>
       <div className="space-y-4">
-        {!done && <div className="max-h-48 overflow-y-auto rounded-lg border border-line divide-y divide-line">
+        {!done && <div className="max-h-48 overflow-y-auto overflow-x-hidden rounded-lg border border-line divide-y divide-line">
           {(iacQ.data?.users ?? []).map((u) => <label key={u.userid} className="flex items-center gap-3 px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-(--accent)" checked={picked.includes(u.userid)} onChange={(e) => { setPicked(e.target.checked ? [...picked, u.userid] : picked.filter((x) => x !== u.userid)); setPlans(null); }} /><span className="font-mono">{u.userid}</span><span className="text-ink-3">{u.name}</span></label>)}
         </div>}
         {plans && plans.map((p) => (

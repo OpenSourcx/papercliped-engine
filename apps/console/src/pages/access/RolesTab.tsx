@@ -18,7 +18,7 @@ const groupPrivileges = (privs: Privilege[]) => {
 
 function PrivilegePicker({ privileges, value, onChange, readOnly }: { privileges: Privilege[]; value: string[]; onChange?: (v: string[]) => void; readOnly?: boolean }) {
   return (
-    <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+    <div className="space-y-4 max-h-96 overflow-y-auto overflow-x-hidden pr-1">
       {groupPrivileges(privileges).map(([group, list]) => (
         <fieldset key={group}>
           <legend className="text-xs font-semibold uppercase tracking-label text-ink-3 mb-1.5">{group}</legend>

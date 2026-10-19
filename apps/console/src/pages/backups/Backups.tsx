@@ -206,7 +206,7 @@ function MachinePicker({ all, setAll, vmids, setVmids }: { all: boolean; setAll:
       <legend className="text-compact text-ink-2 mb-2">Machines</legend>
       <Segmented value={all ? "all" : "pick"} onChange={(v) => setAll(v === "all")} options={[{ value: "all", label: "All machines" }, { value: "pick", label: "Choose" }]} />
       {!all && (
-        <div className="mt-2 max-h-[180px] overflow-y-auto rounded-lg border border-line divide-y divide-line">
+        <div className="mt-2 max-h-[180px] overflow-y-auto overflow-x-hidden rounded-lg border border-line divide-y divide-line">
           {data.guests.map((g) => (
             <label key={g.vmid} className="flex items-center gap-3 px-3 h-9 text-compact cursor-pointer hover:bg-surface-2/60">
               <input type="checkbox" checked={vmids.includes(g.vmid)} onChange={(e) => setVmids(e.target.checked ? [...vmids, g.vmid] : vmids.filter((v) => v !== g.vmid))} className="accent-[var(--accent)]" />

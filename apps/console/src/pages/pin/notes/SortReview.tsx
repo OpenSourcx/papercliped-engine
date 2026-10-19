@@ -142,7 +142,7 @@ function Review({ draft, folders, onClose, onFiled, close, autoFiled, onUndoAuto
                     {p.noteId ? <p className="text-xs text-ink-3">Moves an existing note; its text isn't changed.</p> : (
                       <button type="button" onClick={() => setOpen(isOpen ? null : p.key)} aria-expanded={isOpen} className="transition-control inline-flex items-center gap-1 text-compact text-ink-3 hover:text-ink">{isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}{isOpen ? "Hide text" : "Show text"}</button>
                     )}
-                    {isOpen && <div className="rounded-lg border border-line bg-surface p-3 max-h-64 overflow-y-auto"><Markdown text={p.body} /></div>}
+                    {isOpen && <div className="rounded-lg border border-line bg-surface p-3 max-h-64 overflow-y-auto overflow-x-hidden"><Markdown text={p.body} /></div>}
                   </div>
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
                     <Chip tone={tone(p.confidence)}>{pct(p.confidence)} sure</Chip>

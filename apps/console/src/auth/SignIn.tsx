@@ -157,7 +157,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
             )}
             {banner && (
               <div className="rounded-xl border border-line bg-surface p-3" role="group" aria-label="Notice">
-                <p className="text-sm text-ink-2 whitespace-pre-wrap max-h-40 overflow-y-auto">{banner}</p>
+                <p className="text-sm text-ink-2 whitespace-pre-wrap max-h-40 overflow-y-auto overflow-x-hidden">{banner}</p>
                 <label className="flex items-center gap-2 text-sm mt-3"><input type="checkbox" className="h-4 w-4 accent-(--accent)" checked={read} onChange={(e) => setRead(e.target.checked)} />I have read this notice</label>
               </div>
             )}

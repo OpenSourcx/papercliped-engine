@@ -114,7 +114,7 @@ export function Modal({ title, subtitle, icon, onClose, children, size = "md", f
           </button>
         </div>
         {hasBody && (
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 pb-5">
             <InModal.Provider value={true}>{children}</InModal.Provider>
           </div>
         )}
@@ -145,7 +145,7 @@ export function SettingsModal({ sections, active, onSelect, onClose, footer }: {
   }, []);
   return createPortal(
     <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className={cn("fixed inset-0 z-(--z-modal) flex bg-bg outline-none", closing ? "settings-out" : "settings-in")}>
-      <nav aria-label="Settings" className={cn("w-full sm:w-auto sm:flex-[1_0_220px] bg-surface/70 border-r border-line justify-end overflow-y-auto", navOpen ? "flex absolute inset-0 z-(--z-raised) sm:static" : "hidden sm:flex")}>
+      <nav aria-label="Settings" className={cn("w-full sm:w-auto sm:flex-[1_0_220px] bg-surface/70 border-r border-line justify-end overflow-y-auto overflow-x-hidden", navOpen ? "flex absolute inset-0 z-(--z-raised) sm:static" : "hidden sm:flex")}>
         <div className="w-full sm:w-58 pt-16 pb-10 px-3 sm:px-2.5">
           {groups.map((g) => (
             <div key={g} className="mb-5">
@@ -167,7 +167,7 @@ export function SettingsModal({ sections, active, onSelect, onClose, footer }: {
           {footer && <div className="mt-2 pt-3 border-t border-line">{footer}</div>}
         </div>
       </nav>
-      <div className="flex-[1_1_800px] min-w-0 overflow-y-auto">
+      <div className="flex-[1_1_800px] min-w-0 overflow-y-auto overflow-x-hidden">
         <div className="max-w-190 px-4 sm:px-10 pt-16 pb-14 relative">
           <button type="button" onClick={() => setNavOpen(true)} className="sm:hidden mb-5 -ml-1 inline-flex items-center gap-1.5 h-9 px-1 text-compact text-ink-3 hover:text-ink"><ArrowLeft className="h-4 w-4" />All settings</button>
           <h1 id={`${id}-title`} className="sr-only">{current.label}</h1>

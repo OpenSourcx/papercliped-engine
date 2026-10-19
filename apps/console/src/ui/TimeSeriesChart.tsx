@@ -86,7 +86,7 @@ export function TimeSeriesChart({ title, series, times, format, yMax, binary, he
         <button onClick={() => setTable((t) => !t)} aria-pressed={table} className="h-7 px-2 rounded-md text-xs text-ink-3 hover:text-ink hover:bg-surface-2 inline-flex items-center gap-1" title="Show as table"><Table2 className="h-3.5 w-3.5" />Table</button>
       </div>
       {table ? (
-        <div className="max-h-[220px] overflow-y-auto px-4 py-3">
+        <div className="max-h-[220px] overflow-y-auto overflow-x-hidden px-4 py-3">
           <table className="w-full text-xs tabular-nums">
             <thead><tr className="text-ink-3 text-left"><th className="font-normal py-1">Time</th>{series.map((s) => <th key={s.key} className="font-normal py-1 text-right">{s.label}</th>)}</tr></thead>
             <tbody>

@@ -119,7 +119,7 @@ function AddDeviceModal({ ctx, onClose }: { ctx: SCtx; onClose: () => void }) {
           <div>
             <span className="block text-compact text-ink-2 mb-1.5">Devices on this host</span>
             {h?.notes.pci && <p className="text-xs text-ink-3">{h.notes.pci}</p>}
-            <div className="rounded-lg border border-line divide-y divide-line max-h-64 overflow-y-auto">{(h?.pci ?? []).map((d) => (
+            <div className="rounded-lg border border-line divide-y divide-line max-h-64 overflow-y-auto overflow-x-hidden">{(h?.pci ?? []).map((d) => (
               <label key={d.id} className="flex items-center gap-3 px-3 py-2 text-compact cursor-pointer"><input type="checkbox" checked={pciIds.includes(d.id)} onChange={() => toggle(d.id)} /><span className="font-mono">{d.id}</span><span className="flex-1 min-w-0 truncate text-ink-2">{[d.vendor, d.device].filter(Boolean).join(" ")}</span>{d.iommuGroup >= 0 ? <Chip>Group {d.iommuGroup}</Chip> : <Chip tone="warning">No IOMMU group</Chip>}</label>
             ))}</div>
             {pciIds.length === 1 && sameGroup(pciIds[0]).length > 0 && <p className="text-xs text-warning mt-2">This device shares an IOMMU group with {sameGroup(pciIds[0]).join(", ")}. Proxmox usually needs the whole group passed together.</p>}

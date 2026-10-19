@@ -102,7 +102,7 @@ function JobModal({ job, preset, data, onClose }: { job: BackupJob | null; prese
           {sel === "pool" && <Select aria-label="Pool" value={typeof value.pool === "string" ? value.pool : ""} onChange={(e) => set("pool", e.target.value || undefined)}><option value="">Pick a pool</option>{data.pools.map((p) => <option key={p} value={p}>{p}</option>)}</Select>}
           <p className="text-xs text-ink-3">{sel === "list" ? "Tick the machines to back up." : "Tick any machines to leave out."}</p>
           {
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-line divide-y divide-line" role="group" aria-label={sel === "list" ? "Machines to back up" : "Machines to leave out"}>
+            <div className="max-h-48 overflow-y-auto overflow-x-hidden rounded-lg border border-line divide-y divide-line" role="group" aria-label={sel === "list" ? "Machines to back up" : "Machines to leave out"}>
               {guests.length === 0 ? <p className="p-3 text-compact text-ink-3">No machines yet.</p> : guests.map((g) => (
                 <label key={g.id} className="flex items-center gap-3 px-3 h-10 cursor-pointer text-compact">
                   <input type="checkbox" className="h-4 w-4 accent-(--accent)" checked={(sel === "list" ? picked : excluded).includes(g.vmid!)} onChange={() => (sel === "list" ? list("vmid", picked, g.vmid!) : list("exclude", excluded, g.vmid!))} />

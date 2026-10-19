@@ -284,7 +284,7 @@ function PinFiles() {
           <Button size="sm" variant="primary" disabled={!dirty} onClick={() => engine.savePinFile(which, text)}><Save className="h-3.5 w-3.5" />Save</Button>
         </div>
         {preview ? (
-          <div className="flex-1 p-5 overflow-y-auto text-sm leading-relaxed"><MarkdownPreview text={text} /></div>
+          <div className="flex-1 p-5 overflow-y-auto overflow-x-hidden text-sm leading-relaxed"><MarkdownPreview text={text} /></div>
         ) : (
           <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label={file} className="flex-1 w-full resize-none bg-transparent p-5 font-mono text-compact leading-relaxed outline-none" />
         )}

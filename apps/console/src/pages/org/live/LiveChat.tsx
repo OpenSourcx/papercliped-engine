@@ -124,7 +124,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   return (
     <Card className="flex flex-col min-h-[28rem]">
       <div className="flex items-center gap-3 px-5 py-3 border-b border-line"><Avatar name={agent.name} hue={org.hue + 40} size={32} /><div className="flex-1"><div className="text-sm font-medium">{agent.name}</div></div><Status kind={kind} label={label} /></div>
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 max-h-[60vh]" aria-live="polite" aria-label={`Conversation with ${agent.name}`}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 space-y-4 max-h-[60vh]" aria-live="polite" aria-label={`Conversation with ${agent.name}`}>
         {conversationId && comments.isPending && <Loading />}
         {comments.error && <LoadError error={comments.error} retry={() => void comments.refetch()} />}
         {!conversationId && <p className="text-sm text-ink-3">No messages yet. Say hello to {agent.name}.</p>}

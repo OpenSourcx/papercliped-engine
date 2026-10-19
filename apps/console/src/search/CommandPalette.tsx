@@ -107,7 +107,7 @@ function Palette({ onClose }: { onClose: () => void }) {
           }}
         />
       </div>
-      <ul id="palette-list" role="listbox" aria-label="Results" className="mt-3 max-h-80 overflow-y-auto -mx-1">
+      <ul id="palette-list" role="listbox" aria-label="Results" className="mt-3 max-h-80 overflow-y-auto overflow-x-hidden -mx-1">
         {needle.length < 1 && <li className="px-3 py-6 text-center text-sm text-ink-3">Type to search. <Kbd>Esc</Kbd> closes.</li>}
         {needle.length >= 1 && hits.length === 0 && !found.isFetching && <li className="px-3 py-6 text-center text-sm text-ink-3">Nothing matches “{q.trim()}”.</li>}
         {hits.map((h, i) => (

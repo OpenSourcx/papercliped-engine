@@ -76,7 +76,7 @@ function MonitorModal({ vmid, onClose }: { vmid: number; onClose: () => void }) 
   return (
     <Modal size="lg" icon={<TerminalIcon className="h-5 w-5" />} title="QEMU monitor" subtitle="One command at a time, as a Proxmox administrator would type it. Try info status, info block or info version." onClose={onClose}>
       <div className="space-y-3">
-        <div className="rounded-lg bg-surface-2 border border-line p-3 font-mono text-compact min-h-32 max-h-80 overflow-y-auto" aria-live="polite">
+        <div className="rounded-lg bg-surface-2 border border-line p-3 font-mono text-compact min-h-32 max-h-80 overflow-y-auto overflow-x-hidden" aria-live="polite">
           {log.length === 0 && <span className="text-ink-3">Nothing run yet.</span>}
           {log.map((l, i) => <div key={i} className="mb-2"><div className="text-ink-3">(qemu) {l.cmd}</div><pre className={`whitespace-pre-wrap ${l.bad ? "text-critical" : ""}`}>{l.out}</pre></div>)}
         </div>

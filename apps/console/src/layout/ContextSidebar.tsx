@@ -65,7 +65,7 @@ function DeviceSidebar() {
         {/* Only when the datacenter has more than one node; node screens read the choice (docs/NODE.md). */}
         {live && <NodeSwitcher />}
       </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-4">
         <div className="mt-3 space-y-px">
           <Item to={`/${d}/home`} icon={<House className="h-4 w-4" />}>Overview</Item>
           <Item to={`/${d}/summary`} icon={<Gauge className="h-4 w-4" />}>Summary</Item>
@@ -134,7 +134,7 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
         </div>
         <ChevronDown className="h-4 w-4 text-ink-3" />
       </Link>
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-4">
         <div className="mt-3 space-y-px">
           <button onClick={openSearch} className="flex w-full items-center gap-2 h-8 px-2 rounded-md text-sm text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors" aria-label="Search">
             <span className="text-ink-3 shrink-0"><Search className="h-4 w-4" /></span>
@@ -194,7 +194,7 @@ function DemoOrgSidebar({ org }: { org: Org }) {
         </div>
         <ChevronDown className="h-4 w-4 text-ink-3" />
       </Link>
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-4">
         <div className="mt-3 space-y-px">
           <Item to={b} end icon={<LayoutDashboard className="h-4 w-4" />}>Dashboard</Item>
           <Item to={`${b}/inbox`} icon={<Inbox className="h-4 w-4" />} count={org.inbox.filter((i) => !i.read).length}>Inbox</Item>

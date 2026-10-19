@@ -180,7 +180,7 @@ function SyncModal({ realm, onClose }: { realm: Realm; onClose: () => void }) {
         <div className="space-y-3">
           <p className="text-compact text-ink-2">{finished ? (ok ? (task.dryRun ? "Dry run finished. Nothing was changed." : "Sync finished.") : `It didn't finish: ${log.data?.exitstatus}`) : "Working…"}</p>
           {log.error && <p role="alert" className="text-compact text-critical">{errorText(log.error)}</p>}
-          <pre aria-label="Sync log" className="rounded-lg bg-code border border-line p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto">{(log.data?.log ?? []).join("\n") || "Waiting for the first lines…"}</pre>
+          <pre aria-label="Sync log" className="rounded-lg bg-code border border-line p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto overflow-x-hidden">{(log.data?.log ?? []).join("\n") || "Waiting for the first lines…"}</pre>
         </div>
       )}
     </Modal>

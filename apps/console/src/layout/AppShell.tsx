@@ -95,7 +95,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
       </NavLink>
       {nav(`/${d}/pin`, "Pin", <PinOrb size={30} />, setup?.pinMode === "agent" ? "Agent mode" : "Assistant mode")}
       {sep}
-      <div className="flex-1 overflow-y-auto overflow-x-visible flex flex-col gap-2 [scrollbar-width:none]">
+      <div className="flex-1 overflow-y-auto overflow-x-clip flex flex-col gap-2 [scrollbar-width:none]">
         {data.orgs.map((o) => {
           const working = o.agents.filter((a) => a.status === "working").length;
           return nav(

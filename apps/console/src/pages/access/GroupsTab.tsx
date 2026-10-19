@@ -12,7 +12,7 @@ const KEY = ["access", "groups"] as const;
 /** Who is in a group: a checklist of Proxmox users. */
 export function MemberPicker({ users, value, onChange }: { users: string[]; value: string[]; onChange: (v: string[]) => void }) {
   return (
-    <div className="max-h-48 overflow-y-auto rounded-lg border border-line divide-y divide-line" role="group" aria-label="Members">
+    <div className="max-h-48 overflow-y-auto overflow-x-hidden rounded-lg border border-line divide-y divide-line" role="group" aria-label="Members">
       {users.map((u) => (
         <label key={u} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-surface-2/60">
           <input type="checkbox" className="h-4 w-4 accent-(--accent)" checked={value.includes(u)} onChange={(e) => onChange(e.target.checked ? [...value, u] : value.filter((x) => x !== u))} />

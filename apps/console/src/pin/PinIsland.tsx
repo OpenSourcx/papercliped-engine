@@ -280,7 +280,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
         />
       </div>
       {noting ? (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4">
           <div className="text-sm font-medium mb-1">Quick note</div>
           <p className="text-compact text-ink-3 mb-3 text-pretty">Goes to your Notes. Paste a pile and use Sort with Pin to file it with a preview.</p>
           <QuickNote compact onDone={() => setNoting(false)} />
@@ -308,7 +308,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
           }
         />
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-2">
           {engine.data.notices.length === 0 && <p className="text-center text-ink-3 text-sm pt-10">No notifications. Pin tells you here when something needs you.</p>}
           {engine.data.notices.map((n, i) => (
             <div key={n.id} style={{ "--i": i } as React.CSSProperties} className="stagger-in rounded-xl border border-line bg-surface-2/40 p-3">

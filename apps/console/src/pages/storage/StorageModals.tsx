@@ -252,7 +252,7 @@ export function TemplatesModal({ onClose }: { onClose: () => void }) {
           <StoragePicker kind="vztmpl" value={storage} onChange={setStorage} />
         </div>
         {error && <p role="alert" className="text-compact text-critical">{error}</p>}
-        <div className="rounded-xl border border-line max-h-[46vh] overflow-y-auto divide-y divide-line">
+        <div className="rounded-xl border border-line max-h-[46vh] overflow-y-auto overflow-x-hidden divide-y divide-line">
           {list === null && !error && <div className="p-6 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading the catalog…</div>}
           {list !== null && rows.length === 0 && <div className="p-6 text-center text-ink-3 text-sm">Nothing matches.</div>}
           {rows.map((t) => {
