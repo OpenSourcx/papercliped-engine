@@ -11,6 +11,7 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
+import { vaultFor } from "./features/vault-store.ts";
 import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
 import { ConnectService, registerConnect } from "./features/connect-oauth.ts";
 import { connectRoot, isConnectRoot } from "./features/connect.ts";
@@ -892,7 +893,7 @@ export function createApp(d: AppDeps) {
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
-      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body) };
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
       try {
         return await pin.chat(res, prepared, host, gone.signal);
       } finally {

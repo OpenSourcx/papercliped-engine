@@ -58,6 +58,8 @@ export interface PinToolHost {
   engine: <T>(path: string) => Promise<T>;
   /** Creates something in the engine as the person (Agent mode's create_task). */
   enginePost?: (path: string, body: unknown) => Promise<{ id?: string; identifier?: string }>;
+  /** The system vault's variables (no values), or null when the person isn't an administrator. */
+  vault?: () => Promise<{ name: string; description: string; share: "pin" | "ceos"; targets: unknown[] }[] | null>;
 }
 
 export interface ChatMessage {
@@ -122,6 +124,7 @@ export const TOOLS: ToolDef[] = [
   { name: "machine_detail", description: "One machine's status and configuration (cores, memory, disks, network).", parameters: { type: "object", properties: { vmid: { type: "integer", description: "The machine's numeric id" } }, required: ["vmid"], additionalProperties: false } },
   { name: "storage_overview", description: "Storages on this host: type, content kinds, used and total space.", parameters: noArgs },
   { name: "recent_tasks", description: "The host's recent task log (starts, stops, backups, downloads), newest first.", parameters: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false } },
+  { name: "vault_list", description: "The names of the variables in the host's system vault, what each is for, and whether it is Pin only or shared with selected CEOs. Values are never shown to you or to any model; say that if asked to read one. Administrators only.", parameters: noArgs },
   { name: "list_organizations", description: "The organizations (companies of agents in the engine) the person belongs to.", parameters: noArgs },
   { name: "org_summary", description: "One organization's agents, open issues and pending approvals.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "power_machine", action: true, description: "Propose starting, shutting down, stopping or rebooting a machine. The person must confirm; it is not done until they do.", parameters: { type: "object", properties: { vmid: { type: "integer" }, action: { type: "string", enum: ["start", "shutdown", "stop", "reboot"] } }, required: ["vmid", "action"], additionalProperties: false } },
@@ -446,6 +449,11 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
       const limit = Number.isInteger(args.limit) ? Math.min(50, Math.max(1, args.limit as number)) : 20;
       const list = await (await host.pve()).tasks(node, limit);
       return { tasks: list.map((t) => ({ type: t.type, id: t.id ?? null, user: t.user, status: t.status ?? "running", start: t.starttime, end: t.endtime ?? null })) };
+    }
+    case "vault_list": {
+      const items = await host.vault?.();
+      if (!items) throw new PinError("forbidden", "The vault is for Proxmox administrators.");
+      return { variables: items.map((i) => ({ name: i.name, description: i.description || null, sharedWith: i.share === "pin" ? "Pin only" : `${i.targets.length} CEO${i.targets.length === 1 ? "" : "s"}` })), note: "Values are sealed. They are not available to Pin's model." };
     }
     case "list_organizations": {
       const list = await host.engine<{ id: string; name: string; status?: string; description?: string | null }[]>("/api/companies");

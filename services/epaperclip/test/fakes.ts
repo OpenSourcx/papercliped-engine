@@ -128,6 +128,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       return json(res, 200, { enableManagedSandboxOnly: st.managedSandboxOnly });
     }
     const sec = p.match(/^\/api\/companies\/([\w-]+)\/secrets$/);
+    if (sec && req.method === "GET") return json(res, 200, [...st.secrets].filter(([, r]) => r.companyId === sec[1]).map(([id, r]) => ({ id, name: r.name, key: r.name })));
     if (sec && req.method === "POST") {
       if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
       st.secretBodies++;
