@@ -55,7 +55,7 @@ function BulkBody() {
           <Card className="p-5">
             <SectionTitle>Machines on {name}</SectionTitle>
             {guests.length === 0 ? <div className="mt-3"><EmptyState icon={<Monitor className="h-5 w-5" />} title="No machines on this node" body="Create a machine or container, or pick another node." /></div> : (
-              <div className="overflow-x-auto mt-3">
+              <div className="overflow-x-auto edge-fade-x mt-3">
                 <table className="w-full text-compact min-w-[460px]" aria-label="Machines on this node">
                   <thead><tr className="border-b border-line text-ink-3 text-left"><th scope="col" className="px-4 h-10 font-normal w-10"><input type="checkbox" aria-label="Select all machines" className="h-4 w-4 accent-(--accent)" checked={all} onChange={() => setPicked(all ? [] : guests.map((g) => g.vmid!))} /></th><th scope="col" className="px-3 font-normal">Machine</th><th scope="col" className="px-3 font-normal">Kind</th><th scope="col" className="px-3 font-normal">State</th></tr></thead>
                   <tbody>

@@ -108,7 +108,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
       {tab === "services" && (
         <div className="space-y-4">
           {[["Monitors", c.monitors ?? []], ["Managers", c.managers ?? []], ["Metadata servers", c.metadataServers ?? []]].map(([title, rows]) => (
-            <Card key={title as string} className="overflow-x-auto">
+            <Card key={title as string} className="overflow-x-auto edge-fade-x">
               <div className="px-4 pt-3 font-medium">{title as string}</div>
               {(rows as { name: string; host: string | null; addr: string | null; state: string | null }[]).length === 0 ? <p className="px-4 py-3 text-compact text-ink-3">None on this cluster.</p> : (
                 <table className="w-full text-compact min-w-[480px]"><tbody>
@@ -125,7 +125,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
       )}
 
       {tab === "osds" && (
-        <Card className="overflow-x-auto">
+        <Card className="overflow-x-auto edge-fade-x">
           <table className="w-full text-compact min-w-[760px]">
             <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">OSD</th><th className="font-normal px-3">Host</th><th className="font-normal px-3">State</th><th className="font-normal px-3">Class</th><th className="font-normal px-3">Used</th><th className="font-normal px-3">PGs</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
@@ -153,7 +153,7 @@ function Body({ c, node }: { c: CephInfo; node?: string }) {
       {tab === "pools" && (
         <>
           <div><Button variant="primary" onClick={() => setPool(true)}><Plus className="h-4 w-4" />Create pool…</Button></div>
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             <table className="w-full text-compact min-w-[640px]">
               <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Pool</th><th className="font-normal px-3">Copies</th><th className="font-normal px-3">Min</th><th className="font-normal px-3">PGs</th><th className="font-normal px-3">Autoscale</th><th className="font-normal px-3">Used for</th><th className="font-normal px-3">Used</th></tr></thead>
               <tbody>{(c.pools ?? []).map((p) => <tr key={p.name} className="border-b border-line last:border-0"><td className="px-4 py-3 font-mono">{p.name}</td><td className="px-3 tabular-nums">{num(p.size)}</td><td className="px-3 tabular-nums">{num(p.minSize)}</td><td className="px-3 tabular-nums">{num(p.pgNum)}</td><td className="px-3">{p.autoscale ?? "–"}</td><td className="px-3">{p.application ?? "–"}</td><td className="px-3 tabular-nums">{p.used !== null ? formatBytes(p.used) : "–"}</td></tr>)}</tbody>

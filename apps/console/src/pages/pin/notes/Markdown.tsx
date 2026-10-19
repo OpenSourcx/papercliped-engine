@@ -143,7 +143,7 @@ export function Markdown({ text, className, chat }: { text: string; className?: 
             return <CodeBlock key={i} lang={b.lang} text={b.text} />;
           case "table":
             return (
-              <div key={i} className="max-w-full overflow-x-auto rounded-lg border border-line">
+              <div key={i} className="max-w-full overflow-x-auto edge-fade-x rounded-lg border border-line">
                 <table className="w-full text-compact border-collapse">
                   <thead className="bg-surface-2">
                     <tr>{b.head.map((h, c) => <th key={c} scope="col" className={`px-3 py-1.5 font-semibold border-b border-line-strong ${ALIGN[b.align[c] ?? "left"]}`}>{inline(h, `th${i}-${c}`)}</th>)}</tr>

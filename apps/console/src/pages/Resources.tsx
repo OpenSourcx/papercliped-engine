@@ -96,7 +96,7 @@ export function Resources() {
         </div>
         <Segmented value={kind} onChange={setKind} options={[{ value: "all", label: "All" }, { value: "machines", label: "Machines" }, { value: "node", label: "Node" }, { value: "storage", label: "Storage" }]} />
       </div>
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         <table className="w-full text-compact min-w-[880px]">
           <thead>
             <tr className="border-b border-line text-ink-3 text-left">

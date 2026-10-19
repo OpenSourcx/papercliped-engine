@@ -122,7 +122,7 @@ export function SecretOnce({ title, subtitle, secrets, children, onClose }: { ti
 }
 
 export function Table({ children, min = "min-w-[640px]" }: { children: ReactNode; min?: string }) {
-  return <div className="overflow-x-auto rounded-xl border border-line bg-surface"><table className={`w-full text-sm ${min}`}>{children}</table></div>;
+  return <div className="overflow-x-auto edge-fade-x rounded-xl border border-line bg-surface"><table className={`w-full text-sm ${min}`}>{children}</table></div>;
 }
 export const Th = ({ children, className = "" }: { children?: ReactNode; className?: string }) => <th className={`font-normal text-xs text-ink-3 text-left px-4 h-11 ${className}`}>{children}</th>;
 export const Td = ({ children, className = "" }: { children?: ReactNode; className?: string }) => <td className={`px-4 py-3 align-middle ${className}`}>{children}</td>;

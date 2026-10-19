@@ -262,7 +262,7 @@ export function NewMachineModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-5">
         <Segmented value={kind} onChange={(x) => { setKind(x); setSubmitError(null); }} label="Kind of machine" options={[{ value: "lxc", label: "Container" }, { value: "qemu", label: "Virtual machine" }]} />
         <nav aria-label="Steps" className="sticky top-0 z-(--z-raised) -mx-5 px-5 py-2 bg-surface border-b border-line">
-          <ol ref={stepList} className="flex gap-1 overflow-x-auto sm:overflow-visible sm:flex-wrap [scrollbar-width:none]">
+          <ol ref={stepList} className="flex gap-1 overflow-x-auto edge-fade-x sm:overflow-visible sm:flex-wrap [scrollbar-width:none]">
             {steps.map((st, i) => (
               <li key={st.id} className="shrink-0">
                 <button type="button" onClick={() => go(i)} aria-current={i === idx ? "step" : undefined} className={cn("transition-control inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-compact whitespace-nowrap", i === idx ? "bg-surface-3 text-ink font-medium" : "text-ink-3 hover:text-ink hover:bg-surface-2")}>

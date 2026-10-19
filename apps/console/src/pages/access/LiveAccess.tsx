@@ -289,7 +289,7 @@ function UsersTab() {
           {data.users.length === 0 ? (
             <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No users" body="Proxmox didn't list any users for your account." />
           ) : (
-            <Card className="overflow-x-auto mt-3">
+            <Card className="overflow-x-auto edge-fade-x mt-3">
               <table className="w-full text-sm min-w-[760px]">
                 <thead>
                   <tr className="text-xs text-ink-3 border-b border-line text-left">

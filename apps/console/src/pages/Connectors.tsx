@@ -17,7 +17,7 @@ function DemoConnectors() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Connectors" subtitle="System-wide connections, set up once. For each one, choose who can use it: Pin, and any of your organizations. An org's agents only see the connectors granted to it." />
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="text-xs text-ink-3 border-b border-line">

@@ -140,7 +140,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
 
 export function Segmented<T extends string>({ value, options, onChange, size = "md", label }: { value: T; options: { value: T; label: ReactNode }[]; onChange: (v: T) => void; size?: "sm" | "md"; label?: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full overflow-x-auto [scrollbar-width:none] rounded-full bg-surface-2 border border-line p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full overflow-x-auto edge-fade-x [scrollbar-width:none] rounded-full bg-surface-2 border border-line p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -161,7 +161,7 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
 /** A strip of tabs. By default it scrolls sideways; with `wrap` a long strip flows onto more rows so every tab stays visible (use it where there are many). */
 export function Tabs<T extends string>({ value, tabs, onChange, className, wrap }: { value: T; tabs: { id: T; label: ReactNode; count?: number }[]; onChange: (v: T) => void; className?: string; wrap?: boolean }) {
   return (
-    <div role="tablist" className={cn("flex gap-1 border-b border-line", wrap ? "flex-wrap" : "overflow-x-auto overflow-y-hidden [scrollbar-width:none]", className)}>
+    <div role="tablist" className={cn("flex gap-1 border-b border-line", wrap ? "flex-wrap" : "overflow-x-auto overflow-y-hidden edge-fade-x [scrollbar-width:none]", className)}>
       {tabs.map((t) => (
         <button
           key={t.id}

@@ -52,7 +52,7 @@ function DiskList({ disks, error, reload }: { disks: PhysDisk[] | null; error: s
   if (disks.length === 0) return <Card><EmptyState icon={<HardDrive className="h-5 w-5" />} title="No disks reported" body="Proxmox didn't list any physical disks, or your account can't see them (it needs Sys.Audit on the device)." /></Card>;
   return (
     <>
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         <table className="w-full text-compact min-w-[860px]">
           <thead>
             <tr className="border-b border-line text-ink-3 text-left">
@@ -123,7 +123,7 @@ function SmartModal({ disk, onClose }: { disk: PhysDisk; onClose: () => void }) 
         <div className="space-y-4">
           <div className="flex items-center gap-3"><span className="text-compact text-ink-3">Overall</span><Status kind={h.kind} label={h.label} /></div>
           {smart.data.attributes.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border border-line">
+            <div className="overflow-x-auto edge-fade-x rounded-lg border border-line">
               <table className="w-full text-compact min-w-[520px]">
                 <thead><tr className="text-ink-3 text-left border-b border-line"><th className="font-normal px-3 h-9">Attribute</th><th className="font-normal px-3 text-right">Value</th><th className="font-normal px-3 text-right">Worst</th><th className="font-normal px-3 text-right">Threshold</th><th className="font-normal px-3 text-right">Raw</th></tr></thead>
                 <tbody>

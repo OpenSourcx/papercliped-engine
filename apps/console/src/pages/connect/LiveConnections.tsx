@@ -269,7 +269,7 @@ function Usage(): ReactNode {
   return (
     <section className="mt-8">
       <SectionTitle>Usage, last 30 days</SectionTitle>
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {q.isPending && <p className="px-5 py-4 text-sm text-ink-3">Loading…</p>}
         {q.data && q.data.byConnection.length === 0 && <p className="px-5 py-4 text-sm text-ink-3">Nothing yet. Pin's chats show here as tokens, and as a cost for connections with a price.</p>}
         {q.data && q.data.byConnection.length > 0 && (

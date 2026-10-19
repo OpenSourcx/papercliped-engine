@@ -236,6 +236,31 @@ body {
   display: none;
 }
 
+/* A sideways-scrolling strip or table fades at the edge that has more behind it. With no scrollbars this is the only hint.
+   Only while it really overflows (the scroll timeline doesn't exist otherwise), and only in browsers that have scroll-driven
+   animation; the others simply show no fade. */
+@property --edge-l {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --edge-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes edge-fade-x {
+  0% { --edge-l: 0px; --edge-r: 28px; }
+  4% { --edge-l: 28px; --edge-r: 28px; }
+  96% { --edge-l: 28px; --edge-r: 28px; }
+  100% { --edge-l: 28px; --edge-r: 0px; }
+}
+.edge-fade-x {
+  mask-image: linear-gradient(to right, transparent, #000 var(--edge-l), #000 calc(100% - var(--edge-r)), transparent);
+  animation: edge-fade-x linear both;
+  animation-timeline: scroll(self inline);
+}
+
 @layer base {
   /* One focus ring for every control; utilities can still opt out where a parent draws the ring. */
   :focus-visible {

@@ -57,7 +57,7 @@ function MetricsBody() {
       {(d) => (
         <div className="space-y-4">
           <div><Button variant="primary" onClick={() => setEdit("new")}><Plus className="h-4 w-4" />Add metric server…</Button></div>
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             {d.servers.length === 0 ? <EmptyState icon={<Activity className="h-5 w-5" />} title="No metric servers" body="Proxmox can send CPU, memory, disk and network figures for the device and its machines to Graphite, InfluxDB or an OpenTelemetry collector." /> : (
               <table className="w-full text-compact min-w-[520px]">
                 <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Server</th><th className="font-normal px-3">Kind</th><th className="font-normal px-3">Address</th><th className="font-normal px-3">State</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>

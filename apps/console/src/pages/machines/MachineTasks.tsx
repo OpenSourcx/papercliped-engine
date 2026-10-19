@@ -24,7 +24,7 @@ export function MachineTasks({ g }: { g: Guest }) {
   return (
     <div className="fade-in">
       {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {tasks === null && !error ? (
           <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading history…</div>
         ) : !tasks?.length ? (

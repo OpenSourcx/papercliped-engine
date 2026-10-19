@@ -184,7 +184,7 @@ function Body({ info }: { info: HaInfo }) {
       {tab === "resources" && (
         <>
           <div><Button variant="primary" disabled={!free.length} onClick={() => setRes({ edit: null })}><Plus className="h-4 w-4" />Add machine…</Button></div>
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             {!info.resources.length ? <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No machines under high availability" body="Add a machine and the HA manager restarts it, or starts it on another node, when its node fails. Machines should be on shared storage or replicated." /> : (
               <table className="w-full text-compact min-w-[720px]">
                 <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Machine</th><th className="font-normal px-3">Node</th><th className="font-normal px-3">Requested</th><th className="font-normal px-3">Now</th><th className="font-normal px-3">{info.rulesSupported ? "Placement" : "Group"}</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
@@ -215,7 +215,7 @@ function Body({ info }: { info: HaInfo }) {
             {(!info.rulesSupported || legacyGroups) && <Button variant={info.rulesSupported ? "secondary" : "primary"} onClick={() => setGroup({ edit: null })}><Plus className="h-4 w-4" />Add group…</Button>}
           </div>
           {info.rulesSupported && (
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto edge-fade-x">
               {!info.rules.length ? <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No placement rules" body="Without a rule the HA manager may start a machine on any node. Add one to prefer or avoid nodes, or to keep machines together or apart." /> : (
                 <table className="w-full text-compact min-w-[640px]">
                   <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Rule</th><th className="font-normal px-3">Kind</th><th className="font-normal px-3">Machines</th><th className="font-normal px-3">Nodes</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
@@ -233,7 +233,7 @@ function Body({ info }: { info: HaInfo }) {
             </Card>
           )}
           {(!info.rulesSupported || legacyGroups) && (
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto edge-fade-x">
               {!info.groups.length ? <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No groups" body="A group lists the nodes a machine may run on, with priorities. Add one, then pick it when you add a machine." /> : (
                 <table className="w-full text-compact min-w-[560px]">
                   <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Group</th><th className="font-normal px-3">Nodes</th><th className="font-normal px-3">Options</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>

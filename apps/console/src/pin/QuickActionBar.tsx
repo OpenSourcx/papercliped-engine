@@ -69,7 +69,7 @@ export function QuickActionBar({ compact, scroll, onDone }: { compact?: boolean;
 
   return (
     <div className="min-w-0 flex-1">
-      <div className={cn("flex items-center gap-1.5 min-w-0", scroll ? "overflow-x-auto [scrollbar-width:none] -mx-1 px-1" : "flex-wrap")}>
+      <div className={cn("flex items-center gap-1.5 min-w-0", scroll ? "overflow-x-auto edge-fade-x [scrollbar-width:none] -mx-1 px-1" : "flex-wrap")}>
         {main.map((i) => chip(actions.items[i]))}
         {extra.length > 0 && (
           <button onClick={() => setMore((m) => !m)} aria-expanded={more} className={cn("transition-control ml-auto inline-flex items-center gap-1 rounded-full text-compact font-medium whitespace-nowrap text-ink-2 hover:text-ink hover:bg-surface-3 shrink-0", compact ? "h-8 px-2.5" : "h-9 px-3")}>

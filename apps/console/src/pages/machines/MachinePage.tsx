@@ -170,7 +170,7 @@ export function MachinePage() {
         </div>
       </div>
 
-      <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:overflow-y-hidden" role="tablist">
+      <div ref={tablist} className="flex flex-wrap sm:flex-nowrap gap-x-1 border-b border-line mb-5 sm:overflow-x-auto sm:edge-fade-x sm:overflow-y-hidden" role="tablist">
         {TABS.filter((t) => !t.vmOnly || g.type === "qemu").map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-10 px-3 -mb-px border-b-2 text-sm inline-flex items-center gap-2 whitespace-nowrap transition-colors", tab === t.id ? "border-accent text-ink font-medium" : "border-transparent text-ink-3 hover:text-ink-2")}>
             {t.icon}{t.label}
@@ -262,7 +262,7 @@ function MachineBackups({ vmid, name }: { vmid: number; name: string }) {
         <Button size="sm" variant="primary" onClick={backUp}><Archive className="h-3.5 w-3.5" />Back up now</Button>
       </div>
       {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {files === null ? (
           <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
         ) : files.length === 0 ? (

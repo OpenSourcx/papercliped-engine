@@ -180,7 +180,7 @@ export function BackupsPage() {
 
       <h2 className="text-compact font-semibold uppercase tracking-label text-ink-3 mb-2">All backups</h2>
       {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {files === null ? (
           <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading backups…</div>
         ) : files.length === 0 ? (

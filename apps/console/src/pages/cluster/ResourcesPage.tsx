@@ -48,7 +48,7 @@ export function ClusterResourcesPage() {
                 <Segmented<Kind> value={kind} onChange={setKind} label="Show" options={[{ value: "all", label: "All" }, { value: "node", label: "Nodes" }, { value: "vm", label: "Machines" }, { value: "storage", label: "Storage" }]} />
                 <Input aria-label="Filter" placeholder="Filter by name, node, pool or tag" value={needle} onChange={(e) => setNeedle(e.target.value)} className="max-w-xs" />
               </div>
-              <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[760px]">
+              <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[760px]">
                 <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Name</th><th className="font-normal px-3">Kind</th><th className="font-normal px-3">Node</th><th className="font-normal px-3">Status</th><th className="font-normal px-3">CPU</th><th className="font-normal px-3">Memory</th><th className="font-normal px-3">Disk</th></tr></thead>
                 <tbody>{rows.map((r) => (
                   <tr key={r.id + (r.node ?? "")} className="border-b border-line last:border-0">

@@ -138,7 +138,7 @@ function Jobs() {
         <div className="space-y-4">
           <div><Button variant="primary" onClick={() => setEdit("new")}><Plus className="h-4 w-4" />New job…</Button></div>
           {d.jobs.length === 0 ? <p className="text-compact text-ink-3">No scheduled backups yet.</p> : (
-            <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[720px]">
+            <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[720px]">
               <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Job</th><th className="font-normal px-3">Schedule</th><th className="font-normal px-3">Machines</th><th className="font-normal px-3">To</th><th className="font-normal px-3">Options</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{d.jobs.map((j) => (
                 <tr key={j.id} className="border-b border-line last:border-0 align-top">
@@ -168,7 +168,7 @@ function Uncovered() {
       {(d) => d.guests.length === 0 ? <Notice tone="good">Every machine is covered by a backup job.</Notice> : (
         <div className="space-y-3">
           <Notice tone="warning">These machines are not in any scheduled backup job. If they are lost, there is nothing to restore.</Notice>
-          <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[400px]"><tbody>{d.guests.map((g) => <tr key={g.vmid} className="border-b border-line last:border-0"><td className="px-4 py-2.5 font-mono">{g.vmid}</td><td className="px-3">{g.name}</td><td className="px-3"><Chip>{g.type === "lxc" ? "container" : "VM"}</Chip></td><td className="px-3 text-ink-3">{g.node ?? ""}</td></tr>)}</tbody></table></Card>
+          <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[400px]"><tbody>{d.guests.map((g) => <tr key={g.vmid} className="border-b border-line last:border-0"><td className="px-4 py-2.5 font-mono">{g.vmid}</td><td className="px-3">{g.name}</td><td className="px-3"><Chip>{g.type === "lxc" ? "container" : "VM"}</Chip></td><td className="px-3 text-ink-3">{g.node ?? ""}</td></tr>)}</tbody></table></Card>
         </div>
       )}
     </Async>
@@ -233,7 +233,7 @@ function Restore() {
         <div className="space-y-4">
           <Field label="Backups on" htmlFor="rs-store"><Select id="rs-store" value={st} onChange={(e) => setStorage(e.target.value)} className="w-60">{d.storages.map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
           {list.data && (
-            <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[640px]"><tbody>
+            <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[640px]"><tbody>
               {list.data.items.length === 0 && <tr><td className="px-4 py-3 text-ink-3">No backups on this storage.</td></tr>}
               {[...list.data.items].sort((a, b) => (b.ctime ?? 0) - (a.ctime ?? 0)).map((b) => (
                 <tr key={b.volid} className="border-b border-line last:border-0"><td className="px-4 py-2.5 font-mono text-xs break-all">{b.volid.split(":")[1]}</td><td className="px-3 tabular-nums">{b.size ? formatBytes(b.size) : "–"}</td><td className="px-3">{b.protected && <Chip tone="good">Protected</Chip>}</td>

@@ -1010,6 +1010,12 @@ describe("serving the console", () => {
     expect((await fetch(base + "/assets/missing.js")).status).toBe(404);
   });
 
+  it("answers the browser's favicon request quietly", async () => {
+    const r = await fetch(base + "/favicon.ico");
+    expect(r.status).toBe(204);
+    expect(r.headers.get("content-security-policy")).toContain("script-src 'self'");
+  });
+
   it("never serves files outside the console directory", async () => {
     for (const p of ["/../secret.txt", "/%2e%2e/secret.txt", "/assets/..%2f..%2fsecret.txt", "/..%5csecret.txt"]) {
       const r = await fetch(base + p);

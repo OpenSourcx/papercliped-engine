@@ -30,7 +30,7 @@ function Usage({ id }: { id: string }) {
           </Section>
           {u.byGuest.length > 0 && (
             <Section title="By machine">
-              <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[360px]"><tbody>{u.byGuest.map((g) => <tr key={g.vmid} className="border-b border-line last:border-0"><td className="px-4 py-2 font-mono">{g.vmid}</td><td className="px-3 tabular-nums">{g.count} volume{g.count === 1 ? "" : "s"}</td><td className="px-3 tabular-nums">{formatBytes(g.bytes)}</td></tr>)}</tbody></table></Card>
+              <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[360px]"><tbody>{u.byGuest.map((g) => <tr key={g.vmid} className="border-b border-line last:border-0"><td className="px-4 py-2 font-mono">{g.vmid}</td><td className="px-3 tabular-nums">{g.count} volume{g.count === 1 ? "" : "s"}</td><td className="px-3 tabular-nums">{formatBytes(g.bytes)}</td></tr>)}</tbody></table></Card>
             </Section>
           )}
           {u.largest.length > 0 && (
@@ -84,7 +84,7 @@ function Retention({ id }: { id: string }) {
           <Notice tone={p.counts.remove ? "warning" : "info"}>
             Using {p.using}: keep {p.counts.keep}, remove {p.counts.remove}{p.counts.protected ? `, ${p.counts.protected} protected` : ""}. {p.counts.remove ? `Frees about ${formatBytes(p.bytesToFree)}.` : "Nothing would be removed."} {p.note}
           </Notice>
-          <Card className="overflow-x-auto max-h-72 overflow-y-auto"><table className="w-full text-compact min-w-[520px]"><tbody>
+          <Card className="overflow-x-auto edge-fade-x max-h-72 overflow-y-auto"><table className="w-full text-compact min-w-[520px]"><tbody>
             {p.items.map((i) => <tr key={i.volid} className="border-b border-line last:border-0"><td className="px-4 py-2 font-mono text-xs break-all">{i.volid}</td><td className="px-3 tabular-nums">{i.size ? formatBytes(i.size) : "–"}</td><td className="px-3"><Chip tone={i.mark === "remove" ? "critical" : i.mark === "protected" ? "good" : "neutral"}>{i.mark === "remove" ? "Remove" : i.mark === "protected" ? "Protected" : i.mark === "renamed" ? "Renamed" : "Keep"}</Chip></td></tr>)}
           </tbody></table></Card>
           <Button variant="danger" disabled={p.counts.remove === 0} onClick={() => setArmed(true)}>Prune {p.counts.remove} backup{p.counts.remove === 1 ? "" : "s"}…</Button>

@@ -167,7 +167,7 @@ function TagsBody() {
             <Field label="Order" htmlFor="tag-order"><Select id="tag-order" value={d.style.ordering} onChange={(e) => save.mutate({ ordering: e.target.value })}><option value="alphabetical">Alphabetical</option><option value="config">As set on the machine</option></Select></Field>
           </Card>
           {d.tags.length === 0 ? <Card><EmptyState icon={<Palette className="h-5 w-5" />} title="No tags yet" body="Tags added to machines show up here, where you can give them colors." /></Card> : (
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto edge-fade-x">
               <table className="w-full text-compact min-w-[560px]">
                 <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Tag</th><th className="font-normal px-3">Machines</th><th className="font-normal px-3">Colors</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>{d.tags.map((t) => <TagRow key={`${t.tag}:${t.color?.background}:${t.color?.foreground}`} t={t} busy={save.isPending} onSave={(bg, fg) => save.mutate({ colors: { [t.tag]: bg ? { background: bg, foreground: fg } : null } })} />)}</tbody>
@@ -274,7 +274,7 @@ function TasksBody() {
         {(d) => d.tasks.length === 0 ? (
           <Card><EmptyState icon={<ListChecks className="h-5 w-5" />} title="No tasks match" body="Change the filters, or wait: tasks show up here as Proxmox runs them." /></Card>
         ) : (
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             <table className="w-full text-compact min-w-[820px]">
               <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Started</th><th className="font-normal px-3">Task</th><th className="font-normal px-3">Node</th><th className="font-normal px-3">User</th><th className="font-normal px-3 text-right">Took</th><th className="font-normal px-3">Status</th><th className="px-3 w-px"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>

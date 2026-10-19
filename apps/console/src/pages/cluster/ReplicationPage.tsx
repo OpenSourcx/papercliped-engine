@@ -85,7 +85,7 @@ export function ReplicationTable({ guest, list }: { guest?: number; list: ReplLi
       {list.statusUnavailable.length > 0 && <Notice tone="warning">No status from {list.statusUnavailable.join(", ")}: {list.statusUnavailable.length === 1 ? "it is" : "they are"} offline or can't be read. The schedule still shows.</Notice>}
       <div><Button variant="primary" disabled={!canAdd} onClick={() => setEdit({ job: null })}><Plus className="h-4 w-4" />Add job…</Button></div>
       {run.error && <p role="alert" className="text-compact text-critical">{errorText(run.error)}</p>}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {!list.jobs.length ? <EmptyState icon={<RefreshCw className="h-5 w-5" />} title="No replication jobs" body="A job copies a machine's disks to another node every few minutes, so a failed node loses at most that much. It is what makes high availability work without shared storage." /> : (
           <table className="w-full text-compact min-w-[780px]">
             <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Job</th>{guest === undefined && <th className="font-normal px-3">Machine</th>}<th className="font-normal px-3">From to</th><th className="font-normal px-3">Schedule</th><th className="font-normal px-3">Last copy</th><th className="font-normal px-3">State</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>

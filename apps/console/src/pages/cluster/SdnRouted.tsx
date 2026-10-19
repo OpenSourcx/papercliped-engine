@@ -29,7 +29,7 @@ function FormModal({ title, subtitle, onClose, onSubmit, busy, error, disabled, 
 function Table({ head, rows, empty }: { head: string[]; rows: ReactNode[][]; empty: string }) {
   if (rows.length === 0) return <p className="text-compact text-ink-3 px-1">{empty}</p>;
   return (
-    <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[560px]">
+    <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[560px]">
       <thead><tr className="border-b border-line text-ink-3 text-left">{head.map((h, i) => <th key={i} className="font-normal px-4 h-10">{h}</th>)}</tr></thead>
       <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-line last:border-0 align-top">{r.map((c, j) => <td key={j} className="px-4 py-2.5">{c}</td>)}</tr>)}</tbody>
     </table></Card>

@@ -66,7 +66,7 @@ export function TasksPage() {
     <PageFrame width="6xl">
       <PageHeader title="Tasks" subtitle="What this device has been doing: downloads, uploads, starts, backups. Open one for its log." actions={<Button onClick={() => setTick((n) => n + 1)}><RefreshCw className="h-4 w-4" />Refresh</Button>} />
       {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
-      <Card className="overflow-x-auto">
+      <Card className="overflow-x-auto edge-fade-x">
         {tasks === null && !error ? (
           <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading the task log…</div>
         ) : !tasks?.length ? (

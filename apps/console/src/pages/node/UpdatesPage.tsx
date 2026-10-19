@@ -122,7 +122,7 @@ function RepositoriesTab() {
           {r.errors.map((e) => <Notice key={e.path} tone="critical" title={e.path}>{e.error}</Notice>)}
           {sw.isSuccess && <Notice tone="good">The enterprise repository is off and the no-subscription repository is on. Refresh the package list to use it.</Notice>}
           {err && <Notice tone="critical" title="Proxmox didn't change the repositories">{errorText(err)}</Notice>}
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             <table className="w-full text-compact min-w-[680px]">
               <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Repository</th><th className="font-normal px-3">Suite and components</th><th className="font-normal px-3 w-px">On</th></tr></thead>
               <tbody>

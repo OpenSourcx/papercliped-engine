@@ -1751,6 +1751,11 @@ export function createApp(d: AppDeps) {
     }
     // The console is a single-page app: unknown paths without an extension get index.html and route in the browser.
     if (!isFile) {
+      // Browsers ask for this even though the page names its own icon; answer quietly instead of logging a 404.
+      if (rel === "favicon.ico") {
+        res.writeHead(204, { "Cache-Control": "public, max-age=86400" });
+        return res.end();
+      }
       if (extname(rel)) return sendJson(res, 404, { error: "Not found", code: "not_found" });
       file = join(root, "index.html");
     }

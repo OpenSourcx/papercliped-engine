@@ -179,7 +179,7 @@ function Body({ o }: { o: ClusterOverview }) {
           {o.denied.config && <Notice tone="info">Your Proxmox account can't read the cluster configuration (it needs Sys.Audit), so addresses and votes are missing.</Notice>}
           <section>
             <SectionTitle>Nodes</SectionTitle>
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto edge-fade-x">
               <table className="w-full text-compact min-w-[640px]">
                 <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Node</th><th className="font-normal px-3">State</th><th className="font-normal px-3">ID</th><th className="font-normal px-3">Votes</th><th className="font-normal px-3">Link addresses</th><th className="font-normal px-3">Machines</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>

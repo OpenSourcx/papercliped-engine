@@ -113,7 +113,7 @@ export function StorageDetail() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3 mb-3">
-            <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
+            <div className="max-w-full overflow-x-auto edge-fade-x [scrollbar-width:none]">
               <Segmented value={tab!.kind} onChange={(k) => setParams((p) => { const n = new URLSearchParams(p); n.set("tab", k); return n; }, { replace: true })} options={tabs.map((t) => ({ value: t.kind, label: <span className="whitespace-nowrap">{t.label}{items ? <span className="text-ink-3 tabular-nums"> {counts(t.kind)}</span> : null}</span> }))} />
             </div>
             <div className="relative flex-1 min-w-[180px] max-w-xs ml-auto">
@@ -122,7 +122,7 @@ export function StorageDetail() {
             </div>
           </div>
           {error && <p role="alert" className="text-compact text-critical mb-3">{error}</p>}
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             {items === null && !error ? (
               <div className="p-8 text-center text-ink-3 text-sm inline-flex items-center justify-center gap-2 w-full"><Loader2 className="h-4 w-4 animate-spin" />Reading {s.id}…</div>
             ) : rows.length === 0 ? (

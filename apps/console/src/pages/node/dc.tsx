@@ -19,7 +19,7 @@ export function Fact({ label, children }: { label: string; children: ReactNode }
 /** A table that scrolls sideways on a phone instead of breaking the page. */
 export function DataTable({ head, children, min = 520, label }: { head: ReactNode[]; children: ReactNode; min?: number; label: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto edge-fade-x">
       <table className="w-full text-compact" style={{ minWidth: min }} aria-label={label}>
         <thead>
           <tr className="border-b border-line text-ink-3 text-left">

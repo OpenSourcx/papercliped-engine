@@ -94,7 +94,7 @@ function NotificationsBody() {
           {tab === "targets" ? (
             <>
               <div><Button variant="primary" onClick={() => setEdit({ kind: "target", type: null, name: null })}><Plus className="h-4 w-4" />Add target…</Button></div>
-              <Card className="overflow-x-auto">
+              <Card className="overflow-x-auto edge-fade-x">
                 {d.targets.length === 0 ? <EmptyState icon={<BellRing className="h-5 w-5" />} title="No targets" body="A target is where notifications go: an email address, a Gotify server or a webhook." /> : (
                   <table className="w-full text-compact min-w-[560px]">
                     <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Target</th><th className="font-normal px-3">Kind</th><th className="font-normal px-3">State</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>
@@ -119,7 +119,7 @@ function NotificationsBody() {
           ) : (
             <>
               <div><Button variant="primary" onClick={() => setEdit({ kind: "matcher", name: null })}><Plus className="h-4 w-4" />Add matcher…</Button></div>
-              <Card className="overflow-x-auto">
+              <Card className="overflow-x-auto edge-fade-x">
                 {d.matchers.length === 0 ? <EmptyState icon={<BellRing className="h-5 w-5" />} title="No matchers" body="A matcher sends the notifications that fit it (by severity, type or time) to its targets." /> : (
                   <table className="w-full text-compact min-w-[560px]">
                     <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Matcher</th><th className="font-normal px-3">Sends to</th><th className="font-normal px-3">State</th><th className="px-3"><span className="sr-only">Actions</span></th></tr></thead>

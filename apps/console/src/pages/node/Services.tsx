@@ -41,7 +41,7 @@ function ServicesBody() {
           {dialog}
           {note && <Notice tone="good" className="mb-4">{note}</Notice>}
           {run.error && !asking && <Notice tone="critical" className="mb-4" title="Proxmox didn't do that">{errorText(run.error)}</Notice>}
-          <Card className="overflow-x-auto">
+          <Card className="overflow-x-auto edge-fade-x">
             <table className="w-full text-compact min-w-[640px]">
               <thead>
                 <tr className="border-b border-line text-ink-3 text-left">

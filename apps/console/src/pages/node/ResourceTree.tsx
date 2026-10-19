@@ -82,7 +82,7 @@ function Body() {
             {groups.length === 0 ? <EmptyState icon={<Search className="h-5 w-5" />} title="Nothing matches" body="Change the filters to see more." /> : groups.map(([name, list]) => (
               <Card key={name}>
                 <div className="px-5 pt-4 pb-2 flex items-center gap-2"><SectionTitle>{name}</SectionTitle><Chip>{list.length}</Chip></div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto edge-fade-x">
                   <table className="w-full text-compact min-w-[640px]" aria-label={`Resources: ${name}`}>
                     <tbody>
                       {list.map((r) => {

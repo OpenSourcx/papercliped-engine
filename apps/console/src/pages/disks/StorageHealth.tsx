@@ -19,7 +19,7 @@ function HistoryModal({ disk, onClose }: { disk: string; onClose: () => void }) 
     <Modal title={`History of ${disk}`} subtitle="Proxmox keeps no SMART history, so ePaperclip notes the figures while someone has this page open" size="lg" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
       <Async q={q}>
         {(d) => d.samples.length === 0 ? <p className="text-compact text-ink-3">No samples yet.</p> : (
-          <div className="overflow-x-auto"><table className="w-full text-compact min-w-[520px]">
+          <div className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[520px]">
             <thead><tr className="text-left text-ink-3 border-b border-line"><th className="font-normal py-2 pr-3">Date</th><th className="font-normal pr-3">Life left</th><th className="font-normal pr-3">Temperature</th><th className="font-normal pr-3">Hours on</th><th className="font-normal pr-3">Remapped</th><th className="font-normal">Health</th></tr></thead>
             <tbody>{[...d.samples].reverse().map((s) => <tr key={s.t} className="border-b border-line last:border-0"><td className="py-2 pr-3">{fmtTime(s.t)}</td><td className="pr-3 tabular-nums">{s.wear === null ? "–" : `${s.wear}%`}</td><td className="pr-3 tabular-nums">{s.temperature === null ? "–" : `${s.temperature} °C`}</td><td className="pr-3 tabular-nums">{s.hours?.toLocaleString() ?? "–"}</td><td className="pr-3 tabular-nums">{s.reallocated ?? "–"}</td><td>{s.health ?? "–"}</td></tr>)}</tbody>
           </table></div>
@@ -75,7 +75,7 @@ function PoolBody({ p, freeDisks }: { p: ZfsPool; freeDisks: string[] }) {
       </dl>
       <Section title="Datasets and zvols" hint="Machine disks are zvols; container volumes are datasets. Shown for the storages that use this pool.">
         {p.volumes.length === 0 ? <p className="text-compact text-ink-3">{p.storages.length ? "Nothing stored yet." : "No Proxmox storage uses this pool."}</p> : (
-          <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[480px]"><tbody>
+          <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[480px]"><tbody>
             {p.volumes.map((v) => <tr key={v.volid} className="border-b border-line last:border-0"><td className="px-4 py-2 font-mono text-xs">{v.dataset}</td><td className="px-3"><Chip>{v.kind === "zvol" ? "zvol" : "dataset"}</Chip></td><td className="px-3 tabular-nums">{v.sizeBytes ? formatBytes(v.sizeBytes) : "–"}</td><td className="px-3 text-ink-3">{v.vmid ? `machine ${v.vmid}` : ""}</td></tr>)}
           </tbody></table></Card>
         )}
@@ -132,7 +132,7 @@ function Body({ d }: { d: DiskHealth }) {
       </Card>
 
       <Section title="Disks" hint="Life left counts down from 100 for SSDs. Hard disks report health and sector counts only.">
-        <Card className="overflow-x-auto"><table className="w-full text-compact min-w-[760px]">
+        <Card className="overflow-x-auto edge-fade-x"><table className="w-full text-compact min-w-[760px]">
           <thead><tr className="border-b border-line text-ink-3 text-left"><th className="font-normal px-4 h-10">Disk</th><th className="font-normal px-3">Health</th><th className="font-normal px-3">Life left</th><th className="font-normal px-3">Temperature</th><th className="font-normal px-3">Hours on</th><th className="font-normal px-3">Remapped</th><th className="px-3"><span className="sr-only">History</span></th></tr></thead>
           <tbody>{d.disks.map((x) => (
             <tr key={x.devpath} className="border-b border-line last:border-0">
