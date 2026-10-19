@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error plain ESM script with no types
-import { tokens, files, faviconSvg, manifest, ico, conicAt } from "../../../brand/build.mjs";
+import { tokens, files, faviconSvg, manifest, ico, conicAt } from "../../../brand/lib.mjs";
 
 const ROOT = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");

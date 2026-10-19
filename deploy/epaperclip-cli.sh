@@ -55,20 +55,30 @@ case "$cmd" in
     done
     installed="$(tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null || true)"; installed="${installed#v}"
     case "$installed" in *-*) pre=1 ;; esac   # on a release candidate: follow candidates
+    downloads="${EPC_DOWNLOADS:-https://github.com/$REPO/releases/download}"
+    # A tag counts only when its release was really published: a failed build leaves a bare tag that the feed still lists.
+    published() { curl -fsIL --max-time 20 -o /dev/null "$downloads/$1/get.sh" 2>/dev/null; }
     if [ -z "$tag" ]; then
-      # The newest tag first in the project's public release feed; a release candidate has a hyphen in its tag.
-      tag="$(curl -fsSL --max-time 20 "${EPC_FEED:-https://github.com/$REPO/releases.atom}" 2>/dev/null | grep -o 'releases/tag/v[0-9][0-9A-Za-z.+-]*' | sed 's|releases/tag/||' | awk '!seen[$0]++' | while read -r t; do case "$t" in *-*) [ "$pre" = 1 ] || continue ;; esac; echo "$t"; break; done)"
-      if [ -z "$tag" ]; then
+      # The newest release first in the project's public release feed; a release candidate has a hyphen in its tag.
+      candidates="$(curl -fsSL --max-time 20 "${EPC_FEED:-https://github.com/$REPO/releases.atom}" 2>/dev/null | grep -o 'releases/tag/v[0-9][0-9A-Za-z.+-]*' | sed 's|releases/tag/||' | awk '!seen[$0]++' | while read -r t; do case "$t" in *-*) [ "$pre" = 1 ] || continue ;; esac; echo "$t"; done)"
+      if [ -z "$candidates" ]; then
         [ "$pre" = 1 ] && die "couldn't find a release (is this host online?). Try: epaperclip update --tag vX"
         die "no final release has been published yet. Release candidates are installed with: epaperclip update --pre"
       fi
+      for t in $candidates; do
+        if published "$t"; then tag="$t"; break; fi
+        echo "epaperclip: skipping $t, it has no published release (its build may have failed)" >&2
+      done
+      [ -n "$tag" ] || die "found release tags, but none has a published installer. Try again later, or see https://github.com/$REPO/releases"
     fi
     [[ "$tag" =~ ^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || die "that isn't a release tag (like v1.0.0 or v1.0.0-rc5)"
     if [ "${tag#v}" = "$installed" ]; then echo "epaperclip: already on $tag"; exit 0; fi
+    published "$tag" || die "$tag has no published release (its build may have failed, or the tag is wrong). Releases are listed at https://github.com/$REPO/releases"
     echo "epaperclip: installing $tag${installed:+ (you have v$installed)}"
     [ -z "${EPC_UPDATE_DRY:-}" ] || exit 0
-    base="https://github.com/$REPO/releases/download/$tag"
-    curl -fsSL "$base/get.sh" | EPC_RELEASE_BASE="$base" bash ;;
+    base="$downloads/$tag"
+    script="$(curl -fsSL --max-time 60 "$base/get.sh")" || die "couldn't download the installer for $tag from $base; nothing was changed"
+    printf '%s\n' "$script" | EPC_RELEASE_BASE="$base" bash ;;
   help|-h|--help) usage ;;
   install) die "to install or upgrade, use: epaperclip update" ;;
   *) usage >&2; exit 2 ;;
