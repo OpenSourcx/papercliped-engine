@@ -33,6 +33,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Proxmox API conformance (every call against Proxmox's own schema)
+        run: node scripts/check-pve-api.mjs
       - name: Release script tests (key generator, signer, get.sh build)
         run: node --test scripts/release-signing.test.mjs
       - name: Proxmox sandbox provider (tests, then the build the release ships)

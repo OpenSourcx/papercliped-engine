@@ -110,6 +110,23 @@ Agent mode plans can now also come from connected apps (`createdBy: "app"`, titl
 
 `POST /api/mcp` with `Authorization: Bearer epc_...` speaks MCP's streamable HTTP in its simplest form (one JSON-RPC message per POST, one JSON answer): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are Pin's read tools (host status, machines, one machine, storage, tasks, organizations, one organization), run as the token's person with the token's own Proxmox permissions, so a privilege-separated token sees only what it was given. It offers no tool that changes anything and never accepts the console's cookie. For a token with the least reach, create one with **Separate privileges** and give it `PVEAuditor` on the paths to share. (A read-only token can't be used: it may only make GET requests, and MCP is a POST.) The full Papercliped bridge (OAuth at `/oauth/*`, `POST /mcp`, write tools through plans) is described in [CONNECTORS.md](CONNECTORS.md).
 
+## Chats and memory
+
+Pin's conversations are kept on the device, per person, sealed like Notes. In the console a chat is saved as you talk, and the browser then sends only the new message: the device already has what was said, what Pin did and what failed. API tokens and the stateless call (`POST /api/pin/chat` without `save` or `chatId`) keep nothing.
+
+| Route | |
+| --- | --- |
+| `GET/POST /api/pin/chats`, `GET/PATCH/DELETE /api/pin/chats/:id` | list, start, open, rename, delete |
+| `GET /api/pin/memory` | SOUL.md, MEMORY.md and their revision |
+| `PUT /api/pin/memory/soul`, `/memory` | save; a stale `baseRev` is refused with 409 |
+| `GET /api/pin/memory/history`, `POST /api/pin/memory/restore` | earlier versions, put one back |
+
+SOUL.md and MEMORY.md are added to Pin's instructions, capped, and can never change its rules. Pin writes MEMORY.md itself only when your message asks it to ("remember this", "forget that"): the `remember` and `forget` tools are refused otherwise, whatever a page or document tells the model. Each save is a revision, so Pin's edits can be undone like yours. Revisions follow Paperclip's agent instruction files (versioned, with a conflict when the base is stale).
+
+## The system vault
+
+Host-wide variables, Pin only or shared with selected CEOs. Pin can list their names, never their values. See [VAULT.md](VAULT.md).
+
 ## State and limits
 
 Everything is in `state.json` in the host service's state directory (written atomically): `pin.automations`, `pin.runs` (300), `pin.plans` (200), per person `pin.inbox:<user>` (200), `pin.prefs:<user>`, `pin.cursor:<user>`, `pin.nodeStates`, `pin.update.cache`, `pin.update.enabled`. Automation token secrets are in the vault as `pin.automation.<id>`.

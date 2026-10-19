@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Maximize2, NotebookPen, Settings2, Sparkles, X } from "lucide-react";
+import { Bell, Maximize2, MessageSquarePlus, NotebookPen, Settings2, Sparkles, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { Button, IconButton, Segmented } from "../ui/primitives.tsx";
@@ -262,6 +262,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
           <div className="text-body font-semibold leading-tight">Pin</div>
           <div className="text-xs text-ink-3 truncate">{modelLabel}</div>
         </div>
+        {engine.live && pin.messages.length > 0 && <IconButton size="sm" label="New chat" onClick={() => { pin.newChat(); setNoting(false); }}><MessageSquarePlus className="h-4 w-4" /></IconButton>}
         {engine.live && <IconButton size="sm" label={noting ? "Back to Pin" : "Quick note"} onClick={() => setNoting(!noting)} className={noting ? "text-accent" : undefined}><NotebookPen className="h-4 w-4" /></IconButton>}
         <Link to={`/${device}/pin?tab=settings`} onClick={() => pin.setState("rest")} aria-label="Pin's settings" title="Pin's settings" className="transition-control h-8 w-8 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Settings2 className="h-4 w-4" /></Link>
         <Link to={`/${device}/pin?tab=chat`} onClick={() => pin.setState("rest")} aria-label="Open Pin's page" title="Open Pin's page" className="transition-control h-8 w-8 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><Maximize2 className="h-3.5 w-3.5" /></Link>
