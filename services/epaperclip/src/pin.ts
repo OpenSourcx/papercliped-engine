@@ -112,10 +112,33 @@ export const TOOLS: ToolDef[] = [
 /** A failure Pin reports in the stream as `event: error`. */
 export class PinError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  /** What the provider said beyond the words: how long to wait before asking again, and how many output tokens the account can pay for. */
+  readonly info: { retryAfterMs?: number; afford?: number };
+  constructor(code: string, message: string, info: { retryAfterMs?: number; afford?: number } = {}) {
     super(message);
     this.code = code;
+    this.info = info;
   }
+}
+
+/** How a chat turn rides out a provider that is briefly rate-limiting or overloaded: wait, ask again, and only then give up or fall back. Tests set the waits to zero. */
+export const providerRetry = { delaysMs: [1500, 4000], maxWaitMs: 8000 };
+
+const sleepFor = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (ms <= 0 || signal.aborted) return resolve();
+    const done = () => { clearTimeout(t); signal.removeEventListener("abort", done); resolve(); };
+    const t = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+
+/** A `Retry-After` header (seconds, or a date) as milliseconds. */
+function retryAfterMs(r: Response): number | undefined {
+  const h = r.headers.get("retry-after");
+  if (!h) return undefined;
+  const secs = Number(h);
+  const ms = Number.isFinite(secs) ? secs * 1000 : Date.parse(h) - Date.now();
+  return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, 60_000) : undefined;
 }
 
 // ---- Server-sent events from providers
@@ -195,8 +218,11 @@ async function post(fetchImpl: HttpFetch, provider: ProviderRef, key: string, pa
     throw abortProblem(provider, e);
   }
   if (!r.ok) {
-    const p = providerProblem(provider, r.status, redact(errorDetail(await r.text().catch(() => "")), key));
-    throw new PinError(p.code, p.message);
+    const raw = errorDetail(await r.text().catch(() => ""));
+    const p = providerProblem(provider, r.status, redact(raw, key));
+    // OpenRouter: "This request requires more credits, or fewer max_tokens. You requested up to 2048 tokens, but can only afford 900."
+    const afford = r.status === 402 ? Number(/can only afford (\d+)/i.exec(raw ?? "")?.[1]) : NaN;
+    throw new PinError(p.code, p.message, { retryAfterMs: retryAfterMs(r), ...(Number.isFinite(afford) ? { afford } : {}) });
   }
   if (!r.body) throw new PinError("provider_error", `${refLabel(provider)} sent an empty answer.`);
   return r.body as unknown as AsyncIterable<Uint8Array>;
@@ -268,16 +294,26 @@ async function openaiTurn(fetchImpl: HttpFetch, provider: ProviderRef, t: TurnIn
     else if (x.role === "assistant") messages.push({ role: "assistant", content: x.text || null, ...(x.calls.length ? { tool_calls: x.calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.args) } })) } : {}) });
     else for (const r of x.results) messages.push({ role: "tool", tool_call_id: r.id, content: r.content });
   }
-  const body = await post(fetchImpl, provider, t.key, "/chat/completions", {
-    model: t.model,
-    messages,
-    tools: t.tools.map((d) => ({ type: "function", function: { name: d.name, description: d.description, parameters: d.parameters } })),
-    tool_choice: t.allowTools ? "auto" : "none",
-    stream: true,
-    // OpenAI's current name for the output cap; OpenRouter and most compatible servers take the older one.
-    ...(provider === "openai" || (typeof provider !== "string" && provider.modern) ? { max_completion_tokens: MAX_TOKENS } : { max_tokens: MAX_TOKENS }),
-    stream_options: { include_usage: true },
-  }, t.signal);
+  const ask = (cap: number) =>
+    post(fetchImpl, provider, t.key, "/chat/completions", {
+      model: t.model,
+      messages,
+      tools: t.tools.map((d) => ({ type: "function", function: { name: d.name, description: d.description, parameters: d.parameters } })),
+      tool_choice: t.allowTools ? "auto" : "none",
+      stream: true,
+      // OpenAI's current name for the output cap; OpenRouter and most compatible servers take the older one.
+      ...(provider === "openai" || (typeof provider !== "string" && provider.modern) ? { max_completion_tokens: cap } : { max_tokens: cap }),
+      stream_options: { include_usage: true },
+    }, t.signal);
+  let body: AsyncIterable<Uint8Array>;
+  try {
+    body = await ask(MAX_TOKENS);
+  } catch (e) {
+    // A small balance can't pay for the full reply length: ask again for what it can afford rather than failing.
+    const afford = e instanceof PinError && e.code === "provider_no_credit" ? e.info.afford : undefined;
+    if (afford === undefined || afford < 256) throw e;
+    body = await ask(Math.min(MAX_TOKENS, afford - 32));
+  }
   let text = "";
   let stop: string | null = null;
   const slots: { id: string; name: string; args: string }[] = [];
@@ -612,7 +648,16 @@ export class Pin {
         .filter((m: any) => typeof m?.name === "string" && (!Array.isArray(m.supportedGenerationMethods) || m.supportedGenerationMethods.includes("generateContent")))
         .map((m: any) => ({ id: m.name.replace(/^models\//, ""), label: typeof m.displayName === "string" ? m.displayName : m.name.replace(/^models\//, "") }));
     } else {
-      models = (Array.isArray(j.data) ? j.data : []).filter((m: any) => typeof m?.id === "string").map((m: any) => ({ id: m.id, label: typeof m.display_name === "string" ? m.display_name : typeof m.name === "string" ? m.name : m.id }));
+      const openrouter = pid === "openrouter";
+      models = (Array.isArray(j.data) ? j.data : [])
+        .filter((m: any) => typeof m?.id === "string")
+        // Pin works through tool calls in every mode, so a model that can't make them only produces errors. OpenRouter says which can.
+        .filter((m: any) => !openrouter || !Array.isArray(m.supported_parameters) || m.supported_parameters.includes("tools"))
+        .map((m: any) => {
+          const base = typeof m.display_name === "string" ? m.display_name : typeof m.name === "string" ? m.name : m.id;
+          const free = openrouter && (/:free$/.test(m.id) || (m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0));
+          return { id: m.id, label: free && !/\bfree\b/i.test(base) ? `${base} (free)` : base };
+        });
       // Anthropic lists newest first, which is the useful order; the others come in no particular order.
       if (proto !== "anthropic") models.sort((a, b) => a.label.localeCompare(b.label));
     }
@@ -688,10 +733,20 @@ export class Pin {
         let r: TurnResult;
         let used = { pid: p.provider, ref: p.ref, model: p.model };
         try {
-          r = await run(p.ref, p.key, p.model);
+          // A provider that is briefly rate-limiting or overloaded usually answers a moment later; nothing is shown until it does.
+          for (let tries = 0; ; tries++) {
+            try {
+              r = await run(p.ref, p.key, p.model);
+              break;
+            } catch (e) {
+              if (!(e instanceof PinError) || sent || tries >= providerRetry.delaysMs.length || !/^provider_(rate_limited|overloaded|unreachable)$/.test(e.code)) throw e;
+              await sleepFor(Math.min(e.info.retryAfterMs ?? providerRetry.delaysMs[tries], providerRetry.maxWaitMs), signal);
+              if (signal.aborted) throw e;
+            }
+          }
         } catch (e) {
           // The chosen provider couldn't answer and nothing was shown yet: try the fallbacks the administrator set, in order.
-          const retryable = e instanceof PinError && /^provider_(auth|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
+          const retryable = e instanceof PinError && /^provider_(auth|no_credit|no_tools|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
           if (!retryable || sent || !this.extra) throw e;
           let ok: TurnResult | null = null;
           for (const f of this.extra.fallbacks(p.provider)) {

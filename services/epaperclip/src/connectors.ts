@@ -110,9 +110,13 @@ export function redact(text: string | undefined, key?: string | null): string | 
 export function providerProblem(id: ProviderRef, status: number, rawDetail?: string): { code: string; message: string } {
   const label = refLabel(id);
   const detail = redact(rawDetail);
+  const why = detail ? ` (${detail.replace(/[.\s]+$/, "")})` : "";
   if (status === 401 || status === 403) return { code: "provider_auth", message: `${label} rejected the API key. An administrator can replace it in Connectors.` };
-  if (status === 429) return { code: "provider_rate_limited", message: `${label} is rate-limiting this key, or its quota ran out. Try again shortly.` };
-  if (status === 529 || status === 503 || status === 502) return { code: "provider_overloaded", message: `${label} is overloaded right now. Try again in a moment.` };
+  if (status === 402) return { code: "provider_no_credit", message: `${label} says this account is out of credit${why}. ${refId(id) === "openrouter" ? "Add credit at openrouter.ai/settings/credits, or pick a free model in Pin's settings." : "Add credit with the provider, or pick another model in Pin's settings."}` };
+  if (status === 429) return { code: "provider_rate_limited", message: `${label} is rate-limiting this key or model${why}. Wait a minute and try again, or pick another model in Pin's settings.` };
+  if (status === 529 || status === 503 || status === 502) return { code: "provider_overloaded", message: `${label} is overloaded right now${why}. Try again in a moment.` };
+  // Pin leans on tool calls in every mode; some models (and some providers' endpoints for them) can't make them.
+  if ((status === 400 || status === 404) && /\btools?\b|function[ _]call/i.test(detail ?? "")) return { code: "provider_no_tools", message: `${label} says this model can't use tools, which Pin needs${why}. Pick another model in Pin's settings.` };
   if (status === 404) return { code: "provider_rejected", message: `${label} doesn't know that model${detail ? `: ${detail}` : "."}` };
   if (status >= 400 && status < 500) return { code: "provider_rejected", message: `${label} refused the request${detail ? `: ${detail}` : "."}` };
   return { code: "provider_error", message: `${label} answered ${status}.` };

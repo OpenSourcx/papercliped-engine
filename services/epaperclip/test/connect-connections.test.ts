@@ -143,16 +143,20 @@ describe("Pin and the connections", () => {
     await add({ catalog: "lmstudio", baseUrl: b.base.replace("/v1", "/v1"), model: "qwen2.5", apiKey: "gsk_hosted_0123456789abcdefghij" });
     expect((await h.call("PUT", "/api/connect/fallbacks", { cookie: h.sam }, { order: ["x:lmstudio"] })).status).toBe(200);
     await h.call("PUT", "/api/pin/settings", { cookie: h.sam }, { provider: "x:ollama", model: "llama3.2" });
-    a.st.fail = 1;
+    // The chosen service is asked three times (once, then two retries) before the chain is followed.
+    a.st.fail = 3;
     const ev = await chat();
     expect(ev.find((e) => e.event === "error")).toBeUndefined();
     expect(ev.at(-1)).toMatchObject({ event: "done", data: { via: "LM Studio" } });
     expect(JSON.parse(b.st.asked.filter((x) => x.url.includes("chat")).at(-1)!.body).model).toBe("qwen2.5");
     // Without a chain the error is shown, in words.
     await h.call("PUT", "/api/connect/fallbacks", { cookie: h.sam }, { order: [] });
-    a.st.fail = 1;
+    a.st.fail = 3;
     const ev2 = await chat();
     expect(ev2.find((e) => e.event === "error")!.data.code).toBe("provider_overloaded");
+    // A single hiccup never reaches the person: the service answers on the retry.
+    a.st.fail = 1;
+    expect((await chat()).find((e) => e.event === "error")).toBeUndefined();
   });
 
   it("only accepts a fallback that has a default model, and only known connections", async () => {

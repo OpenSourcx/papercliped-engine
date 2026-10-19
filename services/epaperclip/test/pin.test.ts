@@ -375,3 +375,87 @@ describe("chat cost and load limits", () => {
     expect((await send("PUT", "/api/pin/settings", { mode: "agent" }, { Cookie: c })).status).toBe(200); // other routes unaffected
   });
 });
+
+describe("when the model provider struggles", () => {
+  const okStream = (res: import("node:http").ServerResponse, text = "All good.") => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+  const fail = (res: import("node:http").ServerResponse, status: number, message: string, headers: Record<string, string> = {}) => {
+    res.writeHead(status, { "Content-Type": "application/json", ...headers });
+    res.end(JSON.stringify({ error: { message } }));
+  };
+  const completions = () => prov.asked.filter((a) => a.url.endsWith("/chat/completions"));
+
+  it("asks again after a brief rate limit, and shows nothing until it answers", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    let n = 0;
+    prov.set((_r, res) => (++n === 1 ? fail(res, 429, "slow down", { "Retry-After": "0" }) : okStream(res, "Here you go.")));
+    const events = await chat(c);
+    expect(text(events)).toBe("Here you go.");
+    expect(events.some((e) => e.event === "error")).toBe(false);
+    expect(completions()).toHaveLength(2);
+  });
+
+  it("gives up after two more tries and passes on what the provider said", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((_r, res) => fail(res, 429, "Provider returned error: free-models-per-day limit reached"));
+    const last = (await chat(c)).at(-1)!;
+    expect(last.event).toBe("error");
+    expect(last.data.code).toBe("provider_rate_limited");
+    expect(last.data.message).toContain("free-models-per-day limit reached");
+    expect(last.data.message).toMatch(/pick another model/i);
+    expect(completions()).toHaveLength(3);
+  });
+
+  it("says plainly when an account is out of credit, with where to fix it", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((_r, res) => fail(res, 402, "Insufficient credits"));
+    const last = (await chat(c)).at(-1)!;
+    expect(last.data.code).toBe("provider_no_credit");
+    expect(last.data.message).toContain("out of credit (Insufficient credits)");
+    expect(last.data.message).toContain("openrouter.ai/settings/credits");
+    expect(completions()).toHaveLength(1); // no point asking again
+  });
+
+  it("asks for a shorter reply when the balance can't pay for the full length", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((r, res) => (JSON.parse(r.body).max_tokens > 900 ? fail(res, 402, "This request requires more credits, or fewer max_tokens. You requested up to 2048 tokens, but can only afford 900.") : okStream(res, "Short and sweet.")));
+    const events = await chat(c);
+    expect(text(events)).toBe("Short and sweet.");
+    expect(completions().map((a) => JSON.parse(a.body).max_tokens)).toEqual([2048, 868]);
+  });
+
+  it("tells you when a model can't use tools instead of showing a raw refusal", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/no-tools");
+    prov.set((_r, res) => fail(res, 404, 'No endpoints found that support tool use. Try disabling "tools".'));
+    const last = (await chat(c)).at(-1)!;
+    expect(last.data.code).toBe("provider_no_tools");
+    expect(last.data.message).toMatch(/can't use tools, which Pin needs/);
+    expect(last.data.message).toMatch(/pick another model/i);
+  });
+
+  it("offers OpenRouter models that can call tools, and marks the free ones", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter");
+    prov.set((_r, res) =>
+      res.end(JSON.stringify({ data: [
+        { id: "vendor/chat-only", name: "Chat Only", supported_parameters: ["temperature"], pricing: { prompt: "0.000001", completion: "0.000002" } },
+        { id: "vendor/with-tools", name: "With Tools", supported_parameters: ["temperature", "tools"], pricing: { prompt: "0.000001", completion: "0.000002" } },
+        { id: "vendor/gratis:free", name: "Gratis", supported_parameters: ["tools"], pricing: { prompt: "0", completion: "0" } },
+        { id: "vendor/unknown", name: "Unknown" },
+      ] })),
+    );
+    const models = (await j(await get("/api/pin/models?provider=openrouter", c))).models;
+    expect(models.map((m: { id: string }) => m.id)).toEqual(["vendor/gratis:free", "vendor/unknown", "vendor/with-tools"]);
+    expect(models.find((m: { id: string }) => m.id === "vendor/gratis:free").label).toBe("Gratis (free)");
+  });
+});
