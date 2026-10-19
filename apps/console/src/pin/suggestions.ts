@@ -130,7 +130,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     network: [ask("Which machines are on which bridge?"), ...goFirst("firewall", "machines", "resources")],
     firewall: [ask("Is anything exposed that shouldn't be?"), ...goFirst("network", "summary")],
     backups: [ask("When did the last backup run?"), ...goFirst("storage", "machines")],
-    automations: [{ id: "new-automation", label: "New automation", icon: "zap", group: "ask", ask: "If a container uses more than 50% of its memory, shut it down" }, ask("What did my automations do today?"), ...goFirst("machines", "summary")],
+    automations: [{ id: "new-automation", label: "New automation", icon: "zap", group: "do", to: "?modal=new-automation" }, ask("What did my automations do today?"), ...goFirst("machines", "summary")],
   };
   return { context: ref.device, items: page[ref.page] ?? [newMachine, ...goFirst()] };
 }

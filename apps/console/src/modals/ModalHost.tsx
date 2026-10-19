@@ -15,6 +15,7 @@ import { MachineActionModal } from "../pages/machines/MachineActions.tsx";
 import { BackupJobModal, BackupNowModal, RestoreModal } from "../pages/backups/Backups.tsx";
 import { StoreItemModal } from "../pages/store/Store.tsx";
 import { Settings } from "../pages/Settings.tsx";
+import { NewAutomationModal } from "../pages/pin/runtime.tsx";
 import { Updates } from "../pages/Updates.tsx";
 import { Vault } from "../pages/Vault.tsx";
 import { SettingsModal, type SettingsSection } from "../ui/Modal.tsx";
@@ -39,6 +40,7 @@ export function ModalHost() {
   return (
     <>
       {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
+      {m.modal === "new-automation" && <NewAutomationModal onClose={m.close} />}
       {m.modal === "new-org" && <NewOrgModal onClose={m.close} />}
       {m.modal === "new-machine" && <NewMachineModal onClose={m.close} />}
       {m.modal === "upload" && <UploadModal onClose={m.close} />}

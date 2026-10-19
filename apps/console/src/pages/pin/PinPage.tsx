@@ -7,6 +7,7 @@ import { useEngine } from "../../data/store.tsx";
 import { DEFAULT_MEMORY, DEFAULT_SOUL } from "../../data/pin.ts";
 import type { PinLogEntry } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
+import { useModals } from "../../modals/useModals.ts";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinIsland.tsx";
 import { Button, Card, Chip, PageFrame, Segmented, Spinner, Tabs, Toggle } from "../../ui/primitives.tsx";
@@ -51,6 +52,7 @@ export function PinPage() {
   const engine = useEngine();
   const pin = usePin();
   const nav = useNavigate();
+  const { openModal } = useModals();
   const [params, setParams] = useSearchParams();
   const tabs = TABS.filter((t) => !("live" in t) || engine.live);
   const tab: Tab = tabs.some((t) => t.id === params.get("tab")) ? (params.get("tab") as Tab) : "overview";
@@ -67,7 +69,7 @@ export function PinPage() {
     context: "Pin",
     items: [
       { id: "pin-chat", label: "Chat", icon: <Sparkles className="h-4 w-4" />, group: "do", run: () => setTab("chat") },
-      { id: "pin-automation", label: "New automation", icon: <Zap className="h-4 w-4" />, group: "do", run: () => { setTab("chat"); pin.send("If a container uses more than 50% of its memory, shut it down", { inPlace: true }); } },
+      { id: "pin-automation", label: "New automation", icon: <Zap className="h-4 w-4" />, group: "do", run: () => openModal("new-automation") },
       { id: "pin-memory", label: "Edit memory", icon: <BookOpen className="h-4 w-4" />, group: "do", run: () => setTab("memory") },
       { id: "pin-status", label: "How is my server?", icon: <Sparkles className="h-4 w-4" />, group: "ask", run: () => { setTab("chat"); pin.send("How is my server?", { inPlace: true }); } },
     ],
@@ -166,7 +168,7 @@ export function PinPage() {
             <Card className="p-5">
               <div className="flex items-center justify-between mb-2"><h2 className="font-medium">Automations</h2><button onClick={() => setTab("automations")} className="text-compact text-ink-3 hover:text-ink">Open</button></div>
               <p className="text-compact text-ink-2">{activeRules} on, {engine.data.rules.length - activeRules} off.</p>
-              <Button size="sm" className="mt-3" onClick={() => { setTab("chat"); pin.send("If a container uses more than 50% of its memory, shut it down", { inPlace: true }); }}><Zap className="h-3.5 w-3.5" />New with Pin</Button>
+              <Button size="sm" className="mt-3" onClick={() => openModal("new-automation")}><Zap className="h-3.5 w-3.5" />New with Pin</Button>
             </Card>
           </div>
         </div>
@@ -182,7 +184,7 @@ export function PinPage() {
         <div className="space-y-3 fade-in">
           <div className="flex items-center justify-between">
             <p className="text-compact text-ink-3">Rules Pin runs for you. {mode === "assistant" ? "In Assistant mode, a firing rule asks you first." : "In Agent mode, a firing rule acts and tells you after."}</p>
-            <Button size="sm" variant="primary" onClick={() => { setTab("chat"); pin.send("If a container uses more than 50% of its memory, shut it down", { inPlace: true }); }}><Sparkles className="h-3.5 w-3.5" />New with Pin</Button>
+            <Button size="sm" variant="primary" onClick={() => openModal("new-automation")}><Sparkles className="h-3.5 w-3.5" />New with Pin</Button>
           </div>
           {engine.data.rules.length === 0 && <Card className="p-8 text-center text-ink-3 text-sm">No automations yet. Tell Pin what you want in plain words.</Card>}
           {engine.data.rules.map((r) => (

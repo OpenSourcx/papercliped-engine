@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Bell, BellOff, Check, ChevronDown, ChevronRight, ClipboardList, Pause, Play, Plus, RotateCcw, Trash2, Workflow, Zap } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
+import { usePin } from "../../pin/PinContext.tsx";
 import { errorMessage, pinRt, type AutomationInput, type AutomationView, type InboxNotice, type NoticeKind, type Plan, type PlanStep, type Run, type StepState, type UpdateInfo } from "../../data/engine/pinRuntimeApi.ts";
 import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
@@ -334,6 +335,49 @@ function RunHistory({ id }: { id: string }) {
 
 const METRICS = [["memory_percent", "its memory use"], ["cpu_percent", "its CPU use"], ["disk_percent", "its disk use"]] as const;
 const ACTIONS = [["notify", "Notify me"], ["shutdown", "Shut it down"], ["stop", "Stop it"], ["start", "Start it"], ["snapshot", "Take a snapshot"]] as const;
+
+const EXAMPLES = [
+  "If a container uses more than 50% of its memory, shut it down",
+  "Snapshot every container tagged prod each night at 2:30",
+  "Tell me when any machine's disk is over 90% full",
+  "Stop the test containers every evening",
+];
+
+/**
+ * "New automation" from anywhere (`?modal=new-automation`): say what should happen in your own words and Pin sets it up
+ * and reads it back before anything is saved, or build it by hand with the form. Not to be confused with a task, which is
+ * work for an organization's agents; an automation is a rule this device runs by itself.
+ */
+export function NewAutomationModal({ onClose }: { onClose: () => void }) {
+  const engine = useEngine();
+  const pin = usePin();
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const [form, setForm] = useState(false);
+  if (form) return <NewAutomation onClose={onClose} onCreated={() => { void qc.invalidateQueries({ queryKey: ["pin", "automations"] }); onClose(); }} />;
+  const ask = () => {
+    if (!text.trim()) return;
+    pin.send(`Set up an automation: ${text.trim()}`);
+    onClose();
+  };
+  return (
+    <Modal size="md" icon={<Zap className="h-5 w-5" />} title="New automation" subtitle="A rule this device runs by itself. Say what should happen; Pin reads it back before anything is saved." onClose={onClose}
+      footer={<>{engine.live && <Button variant="ghost" className="mr-auto" onClick={() => setForm(true)}>Build it with a form</Button>}<Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!text.trim()} onClick={ask}>Set it up with Pin</Button></>}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+        <Field label="What should happen?" htmlFor="na-text">
+          <textarea id="na-text" autoFocus rows={4} value={text} maxLength={500} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); }} placeholder="When a container uses most of its memory for 5 minutes, shut it down and tell me" className="w-full resize-none rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm outline-none focus:border-accent" />
+        </Field>
+        <div>
+          <div className="text-xs text-ink-3 mb-2">Or start from one of these</div>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLES.map((q) => <button key={q} type="button" onClick={() => setText(q)} className="transition-control text-compact text-left px-3 py-1.5 rounded-full border border-line bg-surface-2/60 hover:bg-surface-3 text-ink-2 hover:text-ink">{q}</button>)}
+          </div>
+        </div>
+        <p className="text-xs text-ink-3 text-pretty">Automations can notify, shut down, stop, start or take snapshots. They can never delete anything, and machines tagged <span className="font-mono">protected</span> only ever get a notification.</p>
+      </form>
+    </Modal>
+  );
+}
 
 function NewAutomation({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
