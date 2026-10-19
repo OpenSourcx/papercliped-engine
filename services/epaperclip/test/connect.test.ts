@@ -181,7 +181,7 @@ describe("authorizing in the console", () => {
     expect(list.tokens.map((x: any) => x.name)).toContain("App: Claude (Full control)");
     // At rest: hashes and sealed values only.
     const disk = stateText();
-    for (const secret of [t.access.split("_")[2], t.refresh.split("_")[2], toks[0][1].secret]) expect(disk).not.toContain(secret);
+    for (const secret of [t.access.split("_").slice(2).join("_"), t.refresh.split("_").slice(2).join("_"), toks[0][1].secret]) expect(disk).not.toContain(secret);
   });
 
   it("carries a refusal back as access_denied", async () => {
@@ -575,8 +575,8 @@ describe("connected apps in the console", () => {
     expect(act.calls[0]).toMatchObject({ client: "Claude", user: "sam@pve", control: true, ok: true });
     expect(act.events.map((e: any) => e.action)).toEqual(expect.arrayContaining(["oauth.consent", "app.tool", "oauth.token"]));
     const text = JSON.stringify(act);
-    expect(text).not.toContain(t.access.split("_")[2]);
-    expect(text).not.toContain(t.refresh.split("_")[2]);
+    expect(text).not.toContain(t.access.split("_").slice(2).join("_"));
+    expect(text).not.toContain(t.refresh.split("_").slice(2).join("_"));
     expect(text).not.toContain("Secret-ish title");
     expect((await j(await h.call("GET", "/api/connect/activity", { cookie: h.lee }))).calls).toEqual([]);
   });
