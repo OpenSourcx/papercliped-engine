@@ -3,8 +3,9 @@ import { useLocation } from "react-router-dom";
 import type { QuickAction, QuickActions } from "./quickActions.ts";
 import { useEngine } from "../data/store.tsx";
 import { think, type PinCard } from "./brain.ts";
-import { streamChat, type PinChatError, type PinPermission, type PinSettings, type PinToolEvent } from "./live.ts";
+import { fixFor, streamChat, type PinChatError, type PinPermission, type PinSettings, type PinToolEvent } from "./live.ts";
 import { pinRt } from "../data/engine/pinRuntimeApi.ts";
+import { pinLibrary, type ChatMeta, type StoredMessage } from "../data/engine/pinLibraryApi.ts";
 import { demoSettingsSource, liveSettingsSource, type PinSettingsSource } from "./settings.ts";
 import { pageOf } from "./suggestions.ts";
 import { prefersReducedMotion } from "../ui/spring.ts";
@@ -54,6 +55,15 @@ interface PinCtx {
   /** A risky action waiting for the user to confirm. Lives here so it survives the island collapsing. */
   confirm: QuickAction | null;
   setConfirm: (a: QuickAction | null) => void;
+  /** Saved chats (live only): newest first, the one on screen, and what to do with them. */
+  chats: ChatMeta[];
+  chatId: string | null;
+  loadingChat: boolean;
+  /** Starts an empty conversation; the next message becomes a new saved chat. */
+  newChat: () => void;
+  openChat: (id: string) => Promise<void>;
+  deleteChat: (id: string) => Promise<void>;
+  renameChat: (id: string, title: string) => Promise<void>;
   /** Pin's provider, model, mode and connectors, once known (live: from the host service). */
   settings: PinSettings | null;
   setSettings: (s: PinSettings) => void;
@@ -68,6 +78,17 @@ interface PinCtx {
 
 const Ctx = createContext<PinCtx | null>(null);
 let seq = 0;
+
+/** A saved message back as the thread draws it. A proposal that was waiting when the chat was saved can't be answered any more. */
+function fromStored(m: StoredMessage): PinMessage {
+  if (m.tool) {
+    const t = m.tool;
+    const waiting = t.status === "proposed" || t.status === "approval" || t.status === "running";
+    return { id: m.id, from: "pin", text: "", tool: { id: t.id, name: t.name, args: t.args ?? {}, status: (waiting ? "proposed" : t.status === "failed" ? "failed" : "done") as PinToolState["status"], ...(t.label ? { label: t.label } : {}), ...(t.result ? { result: t.result } : {}), ...(t.error ? { error: t.error } : {}), ...(t.vmid ? { vmid: t.vmid } : {}), ...(waiting ? { resolved: "cancelled" as const, note: "Not answered before this chat was saved." } : {}) } };
+  }
+  if (m.error) return { id: m.id, from: "pin", text: "", error: { message: m.error.message, ...(m.error.code ? { code: m.error.code } : {}), ...(fixFor(m.error.code, m.error.message) ? { fix: fixFor(m.error.code, m.error.message) } : {}) } };
+  return { id: m.id, from: m.from, text: m.text };
+}
 const newId = (p: string) => `${p}-${Date.now().toString(36)}-${++seq}`;
 
 export function PinProvider({ children }: { children: ReactNode }) {
@@ -85,6 +106,11 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const latestBySource = useRef(new Map<string, QuickActions | null>());
   const [actions, setActions] = useState<QuickActions | null>(null);
   const [activeSource, setActiveSource] = useState<string | null>(null);
+  const [chats, setChats] = useState<ChatMeta[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const chatIdRef = useRef<string | null>(null);
+  chatIdRef.current = chatId;
+  const [loadingChat, setLoadingChat] = useState(false);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const abort = useRef<AbortController | null>(null);
@@ -194,6 +220,14 @@ export function PinProvider({ children }: { children: ReactNode }) {
     timers.current.forEach(clearTimeout);
   }, []);
 
+  const refreshChats = useCallback(() => {
+    if (!engineRef.current.live) return Promise.resolve();
+    return pinLibrary.chats().then((r) => setChats(r.chats), () => undefined);
+  }, []);
+  useEffect(() => {
+    if (engine.live) void refreshChats();
+  }, [engine.live, refreshChats]);
+
   const patch = (id: string, fn: (m: PinMessage) => PinMessage) => setMessages((list) => list.map((m) => (m.id === id ? fn(m) : m)));
 
   const stop = useCallback(() => {
@@ -232,10 +266,17 @@ export function PinProvider({ children }: { children: ReactNode }) {
       const ctl = new AbortController();
       abort.current = ctl;
       const ref = pageOf(locRef.current, e.data.orgs.map((o) => o.slug));
+      // The device keeps the conversation: it already has what was said, so only the new message is sent.
+      const saved = chatIdRef.current;
       void streamChat(
-        { messages: [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) } },
+        { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) }, ...(saved ? { chatId: saved } : { save: true }) },
         (ev) => {
           if (ctl.signal.aborted) return;
+          if (ev.type === "chat") {
+            setChatId(ev.id);
+            void refreshChats();
+            return;
+          }
           if (ev.type === "delta") {
             setThinking(false);
             patch(replyId, (m) => ({ ...m, text: m.text + ev.text }));
@@ -250,12 +291,17 @@ export function PinProvider({ children }: { children: ReactNode }) {
             });
           } else if (ev.type === "error") {
             patch(replyId, (m) => ({ ...m, error: ev.error }));
+            if (ev.error.code === "chat_not_found") {
+              setChatId(null);
+              void refreshChats();
+            }
           }
         },
         { signal: ctl.signal },
       ).finally(() => {
         if (abort.current === ctl) abort.current = null;
         if (!ctl.signal.aborted) finish();
+        void refreshChats();
       });
       return;
     }
@@ -282,11 +328,40 @@ export function PinProvider({ children }: { children: ReactNode }) {
       };
       tick();
     }, start));
-  }, []);
+  }, [refreshChats]);
+
+  const newChat = useCallback(() => {
+    stop();
+    setMessages([]);
+    setChatId(null);
+  }, [stop]);
+  const openChat = useCallback(async (id: string) => {
+    stop();
+    setLoadingChat(true);
+    try {
+      const { chat } = await pinLibrary.chat(id);
+      setMessages(chat.messages.map(fromStored));
+      setChatId(chat.id);
+      setTab("chat");
+    } catch {
+      void refreshChats();
+    } finally {
+      setLoadingChat(false);
+    }
+  }, [stop, refreshChats]);
+  const deleteChat = useCallback(async (id: string) => {
+    await pinLibrary.remove(id);
+    if (chatIdRef.current === id) newChat();
+    await refreshChats();
+  }, [newChat, refreshChats]);
+  const renameChat = useCallback(async (id: string, title: string) => {
+    await pinLibrary.rename(id, title);
+    await refreshChats();
+  }, [refreshChats]);
 
   const value = useMemo<PinCtx>(
     () => ({
-      state, setState, messages, thinking, streaming, stop, peek, send,
+      state, setState, messages, thinking, streaming, stop, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat,
       markDone: (id) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, done: true } : x))),
       resolveTool: (id, p) => setMessages((m) => m.map((x) => (x.id === id && x.tool ? { ...x, tool: { ...x.tool, ...p } } : x))),
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
@@ -312,7 +387,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [state, messages, thinking, streaming, stop, peek, send, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
+    [state, messages, thinking, streaming, stop, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

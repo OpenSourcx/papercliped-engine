@@ -1,19 +1,23 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { describeRule } from "@papercliped-engine/automations";
-import { Archive, BookOpen, Boxes, Building2, Cable, Check, Eye, FileText, HardDrive, Lightbulb, Network, Pencil, RotateCcw, Save, Sparkles, Workflow, Zap, Cpu } from "lucide-react";
+import { Archive, BookOpen, History, Boxes, Building2, Cable, Check, Eye, FileText, HardDrive, Lightbulb, Network, Pencil, RotateCcw, Save, Sparkles, Workflow, Zap, Cpu } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { DEFAULT_MEMORY, DEFAULT_SOUL } from "../../data/pin.ts";
 import type { PinLogEntry } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
 import { usePin, usePinActions } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinIsland.tsx";
-import { Button, Card, Chip, PageFrame, Segmented, Tabs, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, PageFrame, Segmented, Spinner, Tabs, Toggle } from "../../ui/primitives.tsx";
 import { PinSettingsPanel } from "../../pin/PinSettings.tsx";
-import { useConnectors } from "../../data/engine/queries.ts";
+import { errorText, useConnectors } from "../../data/engine/queries.ts";
+import { NodeApiError } from "../../data/engine/nodeApi.ts";
+import { pinLibrary, type MemoryFile, type MemoryView } from "../../data/engine/pinLibraryApi.ts";
 import { AutomationsLive, InboxTab, PlansTab, UpdatesTab } from "./runtime.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
 import { PermissionPicker } from "../../pin/PermissionPicker.tsx";
+import { ChatList } from "../../pin/ChatList.tsx";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -234,7 +238,9 @@ function PinChat() {
   const engine = useEngine();
   const samples = ["How is my server?", ...(engine.data.orgs.length ? ["Which agents are idle?"] : ["Which machines use the most memory?"]), "If a VM uses more than 80% CPU for 5 minutes, notify me", ...(engine.live ? [] : ["Create a company called Lumen"])];
   return (
-    <Card className="flex flex-col h-[min(680px,calc(100dvh-340px))] min-h-96 overflow-hidden fade-in">
+    <div className={cn("fade-in", engine.live && "grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4")}>
+    {engine.live && <ChatList className="lg:h-[min(680px,calc(100dvh-340px))] max-h-52 lg:max-h-none" />}
+    <Card className="flex flex-col h-[min(680px,calc(100dvh-340px))] min-h-96 overflow-hidden">
       <PinThread
         inPlace
         autoFocus
@@ -252,11 +258,98 @@ function PinChat() {
         }
       />
     </Card>
+    </div>
+  );
+}
+
+/** SOUL.md and MEMORY.md: on a device they live on the device (and Pin writes MEMORY.md when asked); in the demo, in this browser. */
+function PinFiles() {
+  return useEngine().live ? <LivePinFiles /> : <DemoPinFiles />;
+}
+
+const FILES = [["soul", "SOUL.md", "Who Pin is: its character, its rules, what it cares about."], ["memory", "MEMORY.md", "What Pin knows about you and this device. It reads this before every conversation. Tell Pin \"remember this\" and it adds a line here."]] as const;
+
+function LivePinFiles() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["pin", "memory"], queryFn: pinLibrary.memory, retry: 1 });
+  const hist = useQuery({ queryKey: ["pin", "memory", "history"], queryFn: pinLibrary.history, retry: 0 });
+  const [which, setWhich] = useState<MemoryFile>("soul");
+  const [text, setText] = useState<string | null>(null);
+  const [baseRev, setBaseRev] = useState<number | undefined>(undefined);
+  const [preview, setPreview] = useState(false);
+  const [note, setNote] = useState<{ tone: "good" | "critical"; text: string } | null>(null);
+  const view = q.data;
+  const saved = view ? view[which] : "";
+  const current = text ?? saved;
+  const dirty = view !== undefined && text !== null && text !== saved;
+  const file = which === "soul" ? "SOUL.md" : "MEMORY.md";
+  const max = view?.limits[which] ?? 0;
+  const apply = (v: MemoryView) => {
+    qc.setQueryData(["pin", "memory"], v);
+    void qc.invalidateQueries({ queryKey: ["pin", "memory", "history"] });
+    setText(null);
+    setBaseRev(undefined);
+  };
+  const save = useMutation({
+    mutationFn: () => pinLibrary.save(which, current, baseRev ?? view?.rev),
+    onSuccess: (v) => { apply(v); setNote({ tone: "good", text: `${file} saved.` }); },
+    onError: (e) => setNote({ tone: "critical", text: e instanceof NodeApiError && e.status === 409 ? `${file} changed since you opened it (Pin may have added to it). Reload to see the new text; your edits stay in the box until then.` : errorText(e) }),
+  });
+  const restore = useMutation({
+    mutationFn: (rev: number) => pinLibrary.restore(rev),
+    onSuccess: (v) => { apply(v); setNote({ tone: "good", text: "That version is back." }); },
+    onError: (e) => setNote({ tone: "critical", text: errorText(e) }),
+  });
+  const reload = () => { setText(null); setBaseRev(undefined); setNote(null); void q.refetch(); };
+  if (q.isPending) return <div className="py-10 flex justify-center"><Spinner /></div>;
+  if (q.error || !view) return <p role="alert" className="text-compact text-critical">{errorText(q.error)}</p>;
+  const revs = (hist.data?.revisions ?? []).filter((r) => r.file === which).slice(0, 8);
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5 fade-in">
+      <div className="space-y-2">
+        {FILES.map(([k, f, body]) => (
+          <button key={k} onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) { setWhich(k); setText(null); setNote(null); } }} aria-pressed={which === k} className={cn("w-full text-left rounded-xl border p-3.5 transition", which === k ? "border-accent/50 bg-accent-soft" : "border-line hover:border-line-strong")}>
+            <div className="font-mono text-compact flex items-center gap-2"><FileText className="h-4 w-4 text-ink-3" />{f}</div>
+            <p className="text-xs text-ink-3 mt-1">{body}</p>
+          </button>
+        ))}
+        <p className="text-xs text-ink-3 px-1">These live on the device, sealed, not in an AI provider's account. What's here is sent to your model provider with each chat, so keep secrets in the Vault, not here.</p>
+        {revs.length > 0 && (
+          <div className="pt-2">
+            <div className="text-xs font-medium text-ink-2 px-1 mb-1 flex items-center gap-1.5"><History className="h-3.5 w-3.5" />Earlier versions</div>
+            {revs.map((r) => (
+              <div key={r.rev} className="flex items-center gap-2 px-1 py-1 text-xs text-ink-3">
+                <span className="flex-1 truncate">{ago(new Date(r.at).toISOString())} · {r.by}</span>
+                <button type="button" disabled={restore.isPending} onClick={() => { if (!dirty || confirm("Replace your unsaved changes?")) restore.mutate(r.rev); }} className="text-accent hover:underline disabled:opacity-50">Restore</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <Card className="flex flex-col min-h-[460px]">
+        <div className="flex items-center gap-2 px-4 h-11 border-b border-line">
+          <span className="font-mono text-compact flex-1 truncate">{file}{dirty && <span className="text-warning"> · unsaved</span>}{(which === "soul" ? view.soulIsDefault : view.memoryIsDefault) && !dirty && <span className="text-ink-3"> · starting text</span>}</span>
+          <Button size="sm" variant="ghost" onClick={() => setPreview((p) => !p)}><Eye className="h-3.5 w-3.5" />{preview ? "Edit" : "Preview"}</Button>
+          <Button size="sm" variant="ghost" onClick={() => { setText(which === "soul" ? DEFAULT_SOUL : DEFAULT_MEMORY); setBaseRev(view.rev); }} title="Back to the starting text"><RotateCcw className="h-3.5 w-3.5" />Reset</Button>
+          <Button size="sm" variant="primary" disabled={!dirty || current.length > max} loading={save.isPending} onClick={() => save.mutate()}><Save className="h-3.5 w-3.5" />Save</Button>
+        </div>
+        {preview ? (
+          <div className="flex-1 p-5 overflow-y-auto overflow-x-hidden text-sm leading-relaxed"><MarkdownPreview text={current} /></div>
+        ) : (
+          <textarea value={current} onChange={(e) => { setText(e.target.value); setBaseRev((r) => r ?? view.rev); }} spellCheck={false} aria-label={file} className="flex-1 w-full resize-none bg-transparent p-5 font-mono text-compact leading-relaxed outline-none" />
+        )}
+        <div className="flex items-center gap-3 px-4 py-2 border-t border-line text-xs">
+          <span className={cn("tabular-nums", current.length > max ? "text-critical" : "text-ink-3")}>{current.length.toLocaleString("en")} / {max.toLocaleString("en")}</span>
+          {note && <span role={note.tone === "critical" ? "alert" : "status"} className={cn("flex-1 min-w-0", note.tone === "critical" ? "text-critical" : "text-good")}>{note.text}</span>}
+          {note?.tone === "critical" && <button type="button" onClick={reload} className="text-accent hover:underline shrink-0">Reload</button>}
+        </div>
+      </Card>
+    </div>
   );
 }
 
 /** SOUL.md and MEMORY.md, editable side by side with a preview. */
-function PinFiles() {
+function DemoPinFiles() {
   const engine = useEngine();
   const [which, setWhich] = useState<"soul" | "memory">("soul");
   const saved = engine.pin[which];

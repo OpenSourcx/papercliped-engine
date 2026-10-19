@@ -145,11 +145,14 @@ export interface PinChatError {
   fix?: { label: string; to: string };
 }
 
-export type PinStreamEvent = { type: "delta"; text: string } | { type: "tool"; tool: PinToolEvent } | { type: "done" } | { type: "error"; error: PinChatError };
+export type PinStreamEvent = { type: "delta"; text: string } | { type: "tool"; tool: PinToolEvent } | { type: "chat"; id: string; title: string } | { type: "done" } | { type: "error"; error: PinChatError };
 
 export interface PinChatRequest {
   messages: { role: "user" | "assistant"; content: string }[];
   context: { page: string; device: string; org?: string };
+  /** Keep this conversation on the device: `save` starts a saved chat, `chatId` continues one (then only the new message is sent). */
+  save?: boolean;
+  chatId?: string;
 }
 
 /** The fix for the errors we can name, so every error says what to do next. */
@@ -158,6 +161,7 @@ export function fixFor(code: string | undefined, message: string): PinChatError[
   if (/no_provider|provider_missing|no provider|model provider|not configured|missing.*key/.test(t)) return { label: "Add a model provider in Connectors", to: "?settings=connectors" };
   if (/no_model|model_missing|choose a model|no model/.test(t)) return { label: "Choose a model in Pin's settings", to: "pin?tab=settings" };
   if (/provider_auth|invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the provider's key in Connectors", to: "?settings=connectors" };
+  if (/chat_not_found/.test(t)) return undefined;
   if (/provider_(rejected|no_tools|rate_limited|no_credit|empty)/.test(t)) return { label: "Choose another model in Pin's settings", to: "pin?tab=settings" };
   return undefined;
 }
@@ -218,6 +222,8 @@ export function toStreamEvent(e: { event: string; data: string }): PinStreamEven
         },
       };
     }
+    case "chat":
+      return j && typeof j.id === "string" ? { type: "chat", id: j.id, title: typeof j.title === "string" ? j.title : "" } : null;
     case "done":
       return { type: "done" };
     case "error": {
