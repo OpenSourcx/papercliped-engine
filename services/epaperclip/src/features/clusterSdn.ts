@@ -420,7 +420,7 @@ export function clusterSdnRoutes(): Route[] {
         for (const k of ["digest", "redistribute"]) delete rest[k];
         await c.asUser(async (pve) => {
           const known = await loadKnown(pve);
-          const cur = asRecord(await pve.call<unknown>("GET", `/cluster/sdn/fabrics/fabric/${seg(id)}`, { pending: 1 }));
+          const cur = asRecord(await pve.call<unknown>("GET", `/cluster/sdn/fabrics/fabric/${seg(id)}`));
           const protocol = String(cur.protocol ?? "");
           if (!FABRIC_FIELDS[protocol]) throw new HttpError(409, "unsupported", `Fabrics of type ${protocol} can't be edited here`);
           const { set, unset } = check(rest, FABRIC_FIELDS[protocol], known);
@@ -461,7 +461,7 @@ export function clusterSdnRoutes(): Route[] {
         await c.asUser(async (pve) => {
           const nodes = await knownNodes(pve);
           const node = requireNode(decodeURIComponent(m[2]), nodes);
-          const cur = asRecord(await pve.call<unknown>("GET", `/cluster/sdn/fabrics/fabric/${seg(fabric)}`, { pending: 1 }));
+          const cur = asRecord(await pve.call<unknown>("GET", `/cluster/sdn/fabrics/fabric/${seg(fabric)}`));
           const protocol = String(cur.protocol ?? "");
           if (!FABRIC_FIELDS[protocol]) throw new HttpError(409, "unsupported", `Fabrics of type ${protocol} can't be edited here`);
           if (body.ip !== undefined && body.ip !== "" && (typeof body.ip !== "string" || isIP(body.ip) !== 4)) bad("The node address is an IPv4 address, like 10.10.0.1");

@@ -189,7 +189,7 @@ export function backupToolsRoutes(): Route[] {
       re: /^\/api\/backup-tools\/jobs$/,
       run: async (c) => {
         const out = await c.asUser(async (pve) => {
-          const [jobs, nodes, pools, storages] = await Promise.all([jobsList(pve), knownNodes(pve), soft(pve.call<Json[]>("GET", "/pools")), soft(pve.call<Json[]>("GET", "/storage", { content: "backup" }))]);
+          const [jobs, nodes, pools, storages] = await Promise.all([jobsList(pve), knownNodes(pve), soft(pve.call<Json[]>("GET", "/pools")), soft(pve.call<Json[]>("GET", `/nodes/${seg(c.node)}/storage`, { content: "backup" }))]);
           return { jobs, nodes: nodes.map((n) => n.node), pools: (pools.data ?? []).map((p) => String(p.poolid)), storages: (storages.data ?? []).map((s) => String(s.storage)) };
         });
         c.json(200, out);

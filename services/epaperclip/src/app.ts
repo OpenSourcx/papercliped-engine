@@ -888,7 +888,7 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && path === "/api/pin/chat") {
       requireSameSite(req);
       const s = requireSession(req);
-      const prepared = pin.prepare(s.username, await readJson(req, 512 * 1024));
+      const prepared = pin.prepare(s.username, await readJson(req, 512 * 1024), { persist: !s.apiToken });
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
