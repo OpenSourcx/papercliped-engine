@@ -127,6 +127,10 @@ SOUL.md and MEMORY.md are added to Pin's instructions, capped, and can never cha
 
 Host-wide variables, Pin only or shared with selected CEOs. Pin can list their names, never their values. See [VAULT.md](VAULT.md).
 
+## Seeing what Pin is doing
+
+Every chat leaves a trace in the journal and in `GET /api/activity` (which model, how long each answer took, retries, tool timings, how it ended), and `GET /api/status` sums up the last hour. See [ACTIVITY.md](ACTIVITY.md).
+
 ## State and limits
 
 Everything is in `state.json` in the host service's state directory (written atomically): `pin.automations`, `pin.runs` (300), `pin.plans` (200), per person `pin.inbox:<user>` (200), `pin.prefs:<user>`, `pin.cursor:<user>`, `pin.nodeStates`, `pin.update.cache`, `pin.update.enabled`. Automation token secrets are in the vault as `pin.automation.<id>`.

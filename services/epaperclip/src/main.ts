@@ -1,3 +1,4 @@
+import { activity } from "./activity.ts";
 import { readFileSync } from "node:fs";
 import { createServer as createHttp } from "node:http";
 import { createServer as createHttps } from "node:https";
@@ -85,14 +86,14 @@ server.timeout = 120_000;
 const sweep = setInterval(() => sessions.sweep(), 60_000);
 sweep.unref();
 
-server.listen(port, host, () => console.log(`epaperclip: listening on ${devHttp ? "http" : "https"}://${listen}`));
+server.listen(port, host, () => activity.info("host", "host.start", `listening on ${devHttp ? "http" : "https"}://${listen}`));
 // Settle the engine's service account in the background, retrying while the engine starts.
 // Once the engine is up, keep agents off the host: it refuses to run them anywhere but in a container (docs/ENGINE.md).
 // Then keep organizations' container environments in step (new organizations, new agents) every minute.
-void handle.engine?.start().then(async () => {
+void handle.engine?.start((m) => activity.info("engine", "engine.start", m)).then(async () => {
   const enforce = async () => {
     const r = await handle.containers.enforce();
-    if (!r.ok) console.warn(`epaperclip: couldn't set the engine's managed-sandbox-only policy: ${r.error}`);
+    if (!r.ok) activity.warn("engine", "engine.policy", `Couldn't set the engine's managed-sandbox-only policy: ${r.error}`);
   };
   await enforce();
   const tick = setInterval(() => {

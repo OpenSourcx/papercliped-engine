@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import { ProxmoxError, type ClusterResource, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { Connectors, errorDetail, isProvider, providerLabel, providerProblem, providerRequest, PROVIDERS, redact, refId, refLabel, refProtocol, type Endpoint, type HttpFetch, type ProviderId, type ProviderRef } from "./connectors.ts";
+import { activity } from "./activity.ts";
 import { HttpError } from "./http.ts";
 import { AGENT_TOOLS, proposeFromChat } from "./features/pin-agent.ts";
 import { ACT_TOOLS, DEFAULT_PERMISSION, PERMISSIONS, READ_NAMES, READ_TOOLS, actFailure, runRead, type Permission } from "./features/pin-act.ts";
@@ -796,11 +797,18 @@ export class Pin {
     let via: string | null = null;
     // A model that goes quiet after its tool calls is asked once to answer in words (with tools off) before it is reported as failing.
     let forceWords = false;
+    const t0 = Date.now();
+    let toolCalls = 0;
+    let steps = 0;
+    activity.info("pin", "pin.chat.start", `${p.provider} / ${p.model}`, { user: host.username, provider: p.provider, model: p.model, permission: p.settings.permission, saved: p.chatId !== undefined, history: p.messages.length, tools: tools.length });
     try {
       for (let step = 0; step < maxSteps; step++) {
+        steps = step + 1;
+        const turnAt = Date.now();
         const signal = AbortSignal.any([clientGone, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
         let sent = false;
         const run = async (ref: ProviderRef, key: string, model: string): Promise<TurnResult> => {
+          activity.info("pin", "pin.model.call", `Asking ${refId(ref)} / ${model}`, { provider: refId(ref), model, step: steps, turns: turns.length });
           const input: TurnInput = { ref, key, model, system, turns, tools: refProtocol(ref) === "gemini" ? [] : tools, allowTools: !forceWords && step < maxSteps - 1, onText: (text) => { sent = true; send("delta", { text }); }, signal };
           const proto = refProtocol(ref);
           return proto === "anthropic" ? anthropicTurn(this.fetch, input) : proto === "gemini" ? geminiTurn(this.fetch, input) : openaiTurn(this.fetch, ref, input);
@@ -815,13 +823,16 @@ export class Pin {
               break;
             } catch (e) {
               if (!(e instanceof PinError) || sent || tries >= providerRetry.delaysMs.length || !/^provider_(rate_limited|overloaded|unreachable)$/.test(e.code)) throw e;
-              await sleepFor(Math.min(e.info.retryAfterMs ?? providerRetry.delaysMs[tries], providerRetry.maxWaitMs), signal);
+              const wait = Math.min(e.info.retryAfterMs ?? providerRetry.delaysMs[tries], providerRetry.maxWaitMs);
+              activity.warn("pin", "pin.model.retry", e.message, { code: e.code, provider: p.provider, model: p.model, waitMs: wait, attempt: tries + 1, step: steps });
+              await sleepFor(wait, signal);
               if (signal.aborted) throw e;
             }
           }
         } catch (e) {
           // The chosen provider couldn't answer and nothing was shown yet: try the fallbacks the administrator set, in order.
           const retryable = e instanceof PinError && /^provider_(auth|no_credit|no_tools|empty|rate_limited|overloaded|timeout|unreachable|error)$/.test(e.code);
+          if (e instanceof PinError) activity.warn("pin", "pin.model.failed", e.message, { code: e.code, provider: p.provider, model: p.model, ms: Date.now() - turnAt, step: steps, willFallBack: retryable && !sent && !!this.extra });
           if (!retryable || sent || !this.extra) throw e;
           let ok: TurnResult | null = null;
           for (const f of this.extra.fallbacks(p.provider)) {
@@ -830,6 +841,7 @@ export class Pin {
             try {
               ok = await run(t.ref, t.key, f.model);
               used = { pid: f.pid, ref: t.ref, model: f.model };
+              activity.info("pin", "pin.model.fallback", `Answered by ${f.pid} / ${f.model}`, { provider: f.pid, model: f.model });
               break;
             } catch (e2) {
               if (!(e2 instanceof PinError) || sent || !/^provider_/.test(e2.code)) throw e2;
@@ -838,10 +850,12 @@ export class Pin {
           if (!ok) throw e;
           r = ok;
         }
+        activity.info("pin", "pin.model.turn", `${used.pid} / ${used.model} answered`, { provider: used.pid, model: used.model, ms: Date.now() - turnAt, step: steps, calls: r.calls.length, textChars: r.text.length, tokensIn: r.usage?.in ?? null, tokensOut: r.usage?.out ?? null, stop: r.stop ?? null });
         if (r.usage && (r.usage.in || r.usage.out)) this.extra?.usage(used.pid, used.model, r.usage);
         via = used.pid === p.provider ? null : refLabel(used.ref);
         if (!r.calls.length && !r.text.trim()) {
           if (!forceWords) {
+            activity.warn("pin", "pin.model.quiet", "The model sent nothing after its tool calls; asking it once to answer in words", { provider: used.pid, model: used.model, step: steps });
             forceWords = true;
             turns.push({ role: "user", text: "Please answer the person now, in words, using what you have already found. Don't call any more tools." });
             continue;
@@ -850,11 +864,14 @@ export class Pin {
         }
         turns.push({ role: "assistant", text: r.text, calls: r.calls });
         if (!r.calls.length) {
+          activity.info("pin", "pin.chat.done", "Answered", { user: host.username, ms: Date.now() - t0, steps, toolCalls });
           send("done", { stopReason: r.stop, ...(via ? { via } : {}) });
           return;
         }
         const results: { id: string; name: string; content: string }[] = [];
         for (const call of r.calls) {
+          toolCalls++;
+          const callAt = Date.now();
           const def = tools.find((d) => d.name === call.name);
           const args = JSON.stringify(call.args).length <= 6144 ? call.args : {};
           if (def && (call.name === "remember" || call.name === "forget")) {
@@ -875,6 +892,7 @@ export class Pin {
           if (acting && def) {
             const out = await handleActCall(actEnv, { id: call.id, name: call.name, args });
             if (out !== null) {
+              activity.info("pin", "pin.tool", `${call.name} (acting)`, { tool: call.name, ms: Date.now() - callAt, permission: p.settings.permission });
               results.push({ id: call.id, name: call.name, content: out });
               continue;
             }
@@ -913,19 +931,25 @@ export class Pin {
           try {
             if (!def) throw new PinError("unknown_tool", `There is no tool called ${call.name}.`);
             const out = call.name === "search_notes" ? searchNotesTool(this.state, host.username, args) : await Promise.race([READ_NAMES.includes(call.name) ? runRead(call.name, args, { node: host.node, username: host.username, pve: host.pve }) : runTool(call.name, args, host), new Promise((_, reject) => setTimeout(() => reject(new PinError("tool_timeout", "The tool took too long.")), TOOL_TIMEOUT_MS).unref())]);
+            activity.info("pin", "pin.tool", `${call.name} ok`, { tool: call.name, ms: Date.now() - callAt });
             send("tool", { id: call.id, name: call.name, args, status: "done" });
             results.push({ id: call.id, name: call.name, content: cap(out) });
           } catch (e) {
             const message = READ_NAMES.includes(call.name) ? actFailure(e) : toolFailure(e);
+            activity.warn("pin", "pin.tool", `${call.name} failed: ${message}`, { tool: call.name, ms: Date.now() - callAt, code: e instanceof PinError ? e.code : null });
             send("tool", { id: call.id, name: call.name, args, status: "error", error: message });
             results.push({ id: call.id, name: call.name, content: cap({ error: message }) });
           }
         }
         turns.push({ role: "tool", results });
       }
+      activity.warn("pin", "pin.chat.error", `Stopped after ${maxSteps} steps`, { code: "too_many_steps", ms: Date.now() - t0, steps, toolCalls });
       send("error", { code: "too_many_steps", message: `Pin stopped after ${maxSteps} steps without finishing. Try a narrower question.` });
     } catch (e) {
       const err = e instanceof PinError ? e : new PinError("internal", "Pin hit an unexpected problem.");
+      if (!(e instanceof PinError)) activity.error("pin", "pin.chat.crash", e instanceof Error ? `${e.name}: ${e.message}` : "unknown", { user: host.username });
+      if (err.code === "cancelled" || clientGone.aborted) activity.info("pin", "pin.chat.stopped", "The person stopped it or left", { ms: Date.now() - t0, steps, toolCalls });
+      else activity.error("pin", "pin.chat.error", err.message, { code: err.code, provider: p.provider, model: p.model, ms: Date.now() - t0, steps, toolCalls });
       if (err.code !== "cancelled") send("error", { code: err.code, message: err.message });
     } finally {
       if (chat) {

@@ -498,3 +498,69 @@ describe("when the model provider struggles", () => {
     expect(models.find((m: { id: string }) => m.id === "vendor/gratis:free").label).toBe("Gratis (free)");
   });
 });
+
+describe("what the service is doing (activity and status)", () => {
+  const okStream = (res: import("node:http").ServerResponse, text = "Fine.") => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+  beforeEach(async () => {
+    const { activity } = await import("../src/activity.ts");
+    activity.clear();
+  });
+
+  it("records a chat: which model, how long, and how it ended, without what was said", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((_r, res) => okStream(res, "A private answer about project Zebra."));
+    await chat(c, [{ role: "user", content: "Tell me about project Zebra" }]);
+    const r = await j(await get("/api/activity?source=pin", c));
+    const names = r.events.map((e: any) => e.event);
+    expect(names).toEqual(expect.arrayContaining(["pin.chat.start", "pin.model.call", "pin.model.turn", "pin.chat.done"]));
+    const start = r.events.find((e: any) => e.event === "pin.chat.start");
+    expect(start.data).toMatchObject({ provider: "openrouter", model: "vendor/model-x", user: "sam@pve" });
+    expect(r.events.find((e: any) => e.event === "pin.model.turn").data.ms).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(r)).not.toMatch(/Zebra|sk-test/);
+  });
+
+  it("records why a chat failed, so it is visible without the browser", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((_r, res) => { res.writeHead(429, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "free-models-per-day limit reached" } })); });
+    await chat(c);
+    const r = await j(await get("/api/activity?level=warn", c));
+    expect(r.events.map((e: any) => e.event)).toEqual(expect.arrayContaining(["pin.model.retry", "pin.model.failed", "pin.chat.error"]));
+    expect(r.events.find((e: any) => e.event === "pin.chat.error")).toMatchObject({ level: "error", data: { code: "provider_rate_limited", model: "vendor/model-x" } });
+    const st = await j(await get("/api/status", c));
+    expect(st.pin.lastHour).toMatchObject({ chats: 1, failed: 1, answered: 0, errorsByCode: { provider_rate_limited: 1 } });
+    expect(st.pin.lastError.message).toContain("rate-limiting");
+    expect(st.pin.inFlight).toBe(0);
+    expect(st.service.node).toBe("pve");
+    expect(st.problems.length).toBeGreaterThan(0);
+  });
+
+  it("can be read from where you left off", async () => {
+    const c = await signIn();
+    await configure(c, "openrouter", "vendor/model-x");
+    prov.set((_r, res) => okStream(res));
+    await chat(c);
+    const first = await j(await get("/api/activity", c));
+    await chat(c);
+    const next = await j(await get(`/api/activity?after=${first.latest}`, c));
+    expect(next.events.length).toBeGreaterThan(0);
+    expect(next.events.every((e: any) => e.n > first.latest)).toBe(true);
+  });
+
+  it("is for administrators, and validates its filters", async () => {
+    const lee = await signIn("lee");
+    expect((await get("/api/activity", lee)).status).toBe(403);
+    expect((await get("/api/status", lee)).status).toBe(403);
+    expect((await fetch(base + "/api/activity")).status).toBe(401);
+    const sam = await signIn();
+    expect((await get("/api/activity?level=loud", sam)).status).toBe(400);
+    expect((await get("/api/activity?source=nope", sam)).status).toBe(400);
+  });
+});

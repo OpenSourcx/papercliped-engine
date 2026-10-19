@@ -12,6 +12,7 @@ import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
 import { vaultFor } from "./features/vault-store.ts";
+import { activity } from "./activity.ts";
 import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
 import { ConnectService, registerConnect } from "./features/connect-oauth.ts";
 import { connectRoot, isConnectRoot } from "./features/connect.ts";
@@ -482,7 +483,7 @@ export function createApp(d: AppDeps) {
     gateway
       ?.loginFor(s)
       .then(async () => gateway!.syncAdmin(s, await isNodeAdmin(await clientFor(s))))
-      .catch((e: Error) => console.warn(`epaperclip: no engine session yet for ${username}: ${e.message}`));
+      .catch((e: Error) => activity.warn("engine", "engine.session", `No engine session yet for ${username}: ${e.message}`, { user: username }));
   };
 
   /** The Store's signed catalog, fetched and checked at most once an hour. Shared by the Store route and the adapter installer. */
@@ -1916,17 +1917,21 @@ export function createApp(d: AppDeps) {
       // A refused upload: answer and drop the connection instead of reading gigabytes nobody wants.
       if (!req.complete && !res.headersSent) res.setHeader("Connection", "close");
       if (res.headersSent) return void res.destroy();
-      if (e instanceof HttpError) return sendJson(res, e.status, { error: e.message, code: e.code });
+      if (e instanceof HttpError) {
+        if (e.status >= 500) activity.warn("host", "http.error", e.message, { status: e.status, code: e.code, route: `${req.method} ${(req.url ?? "").split("?")[0]}` });
+        return sendJson(res, e.status, { error: e.message, code: e.code });
+      }
       // Proxmox's own reasons ("file exists", "checksum mismatch", "storage does not support content type") help the
       // user fix the request, and they could read them in Proxmox's UI anyway.
       if (e instanceof ProxmoxError && e.detail) return sendJson(res, e.status >= 400 && e.status < 500 ? 400 : 502, { error: e.detail.slice(0, 500), code: "proxmox_rejected" });
       if (e instanceof ProxmoxError) {
         // For the host's log (journalctl -u epaperclip): what Proxmox said, never what was sent. Messages carry only the method, path and status.
-        console.error(`epaperclip: ${e.message}`);
+        activity.error("host", "proxmox.error", e.message, { status: e.status, route: `${req.method} ${(req.url ?? "").split("?")[0]}` });
         return sendJson(res, 502, { error: "Proxmox didn't answer as expected", code: "proxmox_error" });
       }
       const net = (e as { code?: unknown })?.code;
       if (typeof net === "string" && /^E[A-Z]+|CERT|SELF_SIGNED|UNABLE_TO_VERIFY/.test(net)) return sendJson(res, 502, { error: `Can't reach Proxmox (${net})`, code: "proxmox_unreachable" });
+      activity.error("host", "http.crash", e instanceof Error ? `${e.name}: ${e.message}` : "unknown", { route: `${req.method} ${(req.url ?? "").split("?")[0]}` });
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
