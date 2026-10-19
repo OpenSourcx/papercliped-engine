@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useEngine } from "../../data/store.tsx";
-import { Button, Input } from "../../ui/primitives.tsx";
+import { Button, Input, Select } from "../../ui/primitives.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import type { Org } from "../../data/types.ts";
 import { errorText, useCreateGoal, useCreateProject } from "../../data/engine/queries.ts";
@@ -57,17 +57,17 @@ export function QuickCreateModal({ kind, onClose }: { kind: QuickKind; onClose: 
         {kind === "new-routine" && (
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Runs</span>
-            <select value={schedule} onChange={(e) => setSchedule(e.target.value)} className={select}>{SCHEDULES.map((s) => <option key={s}>{s}</option>)}</select>
+            <Select value={schedule} onChange={(e) => setSchedule(e.target.value)}>{SCHEDULES.map((s) => <option key={s}>{s}</option>)}</Select>
           </label>
         )}
         {kind !== "new-goal" && (
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">{kind === "new-project" ? "Lead" : "Agent"}</span>
             {org.agents.length ? (
-              <select value={agent} onChange={(e) => setAgent(e.target.value)} className={select}>
+              <Select value={agent} onChange={(e) => setAgent(e.target.value)}>
                 {kind === "new-project" && <option value="">No lead yet</option>}
                 {org.agents.map((a) => <option key={a.id} value={a.name}>{a.name} · {a.role}</option>)}
-              </select>
+              </Select>
             ) : (
               <p className="text-compact text-ink-3">No agents in {org.name} yet.</p>
             )}

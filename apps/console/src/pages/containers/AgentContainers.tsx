@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Circle, Container, Loader2, RefreshCw, Shi
 import { errorText, useAgentContainers, useContainersJob, useContainersSetup, useContainersTeardown } from "../../data/engine/queries.ts";
 import type { ContainersJob, ContainersParams, ContainersStatus } from "../../data/engine/host.ts";
 import { useEngine } from "../../data/store.tsx";
-import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Status } from "../../ui/primitives.tsx";
+import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Select } from "../../ui/primitives.tsx";
 
 export const TEARDOWN_PHRASE = "remove agent containers";
 
@@ -131,9 +131,9 @@ export function AgentContainers() {
                 <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Template storage</span><Input value={form.templateStorage} onChange={(e) => set({ templateStorage: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Template storage" /><span className="block text-xs text-ink-3 mt-1">Where Proxmox keeps container templates, for example local.</span></label>
                 <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Network bridge</span><Input value={form.bridge} onChange={(e) => set({ bridge: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Network bridge" /><span className="block text-xs text-ink-3 mt-1">Containers get an address by DHCP on this bridge.</span></label>
                 <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Container size</span>
-                  <select className={field} value={sizeId(form.size)} onChange={(e) => set({ size: SIZES.find((x) => x.id === e.target.value)!.size })} disabled={running} aria-label="Container size">
+                  <Select value={sizeId(form.size)} onChange={(e) => set({ size: SIZES.find((x) => x.id === e.target.value)!.size })} disabled={running} aria-label="Container size">
                     {SIZES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                  </select>
+                  </Select>
                   <span className="block text-xs text-ink-3 mt-1">The most a container gets; an organization's resource group can make it smaller.</span>
                 </label>
               </div>

@@ -8,7 +8,7 @@ import { agentStatusOf } from "../../../data/engine/labels.tsx";
 import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
-import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -98,31 +98,31 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
           <Field label="Name"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Forge" /></Field>
           <Field label="Title" hint="(optional)"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Backend engineer" /></Field>
           <Field label="Role">
-            <select value={role} onChange={(e) => setRole(e.target.value as AgentRole)} className={selectClass}>
+            <Select value={role} onChange={(e) => setRole(e.target.value as AgentRole)}>
               {AGENT_ROLES.map((r) => <option key={r} value={r}>{AGENT_ROLE_LABEL[r]}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Reports to">
-            <select value={reportsTo} onChange={(e) => setReportsTo(e.target.value)} className={selectClass}>
+            <Select value={reportsTo} onChange={(e) => setReportsTo(e.target.value)}>
               <option value="">You</option>
               {(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Runs with">
             {adapters.isPending ? <p className="text-compact text-ink-3 h-10 flex items-center">Loading…</p> : adapters.error ? <LoadError error={adapters.error} retry={() => void adapters.refetch()} /> : (
-              <select value={adapter} onChange={(e) => setAdapter(e.target.value)} className={selectClass}>
+              <Select value={adapter} onChange={(e) => setAdapter(e.target.value)}>
                 {usable.map((a) => <option key={a.type} value={a.type}>{a.label || a.type}</option>)}
-              </select>
+              </Select>
             )}
           </Field>
           {info && info.modelsCount > 0 && (
             <Field label="Model">
-              <select value={model} onChange={(e) => setModel(e.target.value)} className={selectClass} disabled={models.isPending}>
+              <Select value={model} onChange={(e) => setModel(e.target.value)} disabled={models.isPending}>
                 <option value="">{models.isPending ? "Loading…" : "Default"}</option>
                 {(models.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.label || m.id}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           {adapter === "process" && <Field label="Command" hint="(optional)"><Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="The program the agent runs" className="font-mono text-compact" /></Field>}

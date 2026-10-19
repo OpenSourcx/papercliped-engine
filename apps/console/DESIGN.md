@@ -142,6 +142,10 @@ Anything that isn't a main view opens in a `Modal` over the page it came from. R
 7. **Secrets are write-only.** A value field is a password input with `autoComplete="new-password"`, is cleared after saving, and the hint says it won't be shown again.
 8. **Errors stay in the modal.** A failure shows under the fields with what to do next; the modal does not close and nothing typed is lost.
 
+## Dropdowns
+
+Never a bare `<select>`: the browser draws its list, so it can't match the console. Use `Select` (`ui/Select.tsx`), which keeps a real `<select>` underneath for forms, labels and assistive technology and shows our list on top. Pass `<option>` and `<optgroup>` as children and `onChange` as usual; pick a `size` instead of writing heights. Anything with more than about seven choices or that people search by name is a candidate for a searchable list later, not for a native control.
+
 ## Scrolling
 
 There are no visible scrollbars anywhere: `* { scrollbar-width: none }` and `*::-webkit-scrollbar { display: none }` in `src/index.css`. Everything still scrolls with the wheel, touch, keys and drag.
@@ -177,6 +181,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `Skeleton` / `Spinner` | loading | skeletons keep the layout; spinners have a label |
 | `Kbd` | a key | mono |
 | `Modal` (`ui/Modal.tsx`) | anything that isn't a main view | `sm`/`md`/`lg`; bottom-aligned on phones; focus moves in, Tab wraps, Esc closes the top one, focus returns to the opener |
+| `Select` (`ui/Select.tsx`) | every dropdown | a real `<select>` underneath, our list on top (never the browser's); sizes `xs` `sm` `md` `lg` `xl`; Up/Down/Home/End/type-ahead, Enter or Space opens and chooses, Esc closes; the list follows the field when the page scrolls |
 | `NewAutomationModal` (`pages/pin/runtime.tsx`) | the model for "describe it or fill the form" creation | open question, example chips, hand-off to Pin, form behind a ghost button |
 | `SettingsModal` | the full-screen settings | categories left, section right; phone shows one at a time |
 | `ArcMeter` / `BarMeter` (`ui/meters.tsx`) | one ratio against a limit | value in ink, never in the series colour; exact value in caption and tooltip |

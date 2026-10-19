@@ -4,7 +4,7 @@ import { api, ApiError, type LiveUser, type Realm, type TfaMethods } from "../da
 import { answerChallenge, webauthnAvailable } from "../pages/access/webauthn.ts";
 import { cn } from "../lib/storage.ts";
 import { PinOrb } from "../pin/PinOrb.tsx";
-import { controlClass } from "../ui/primitives.tsx";
+import { controlClass, Select } from "../ui/primitives.tsx";
 
 const inputCls = cn(controlClass, "h-12 px-4 text-body rounded-xl");
 
@@ -150,9 +150,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
             {realms.length > 1 && (
               <label className="block">
                 <span className="block text-sm font-medium mb-2">Realm</span>
-                <select value={realm} onChange={(e) => setRealm(e.target.value)} className={cn(inputCls, "appearance-none")}>
+                <Select value={realm} onChange={(e) => setRealm(e.target.value)} size="xl">
                   {realms.map((r) => <option key={r.realm} value={r.realm}>{r.comment ? `${r.comment} (${r.realm})` : r.realm}</option>)}
-                </select>
+                </Select>
               </label>
             )}
             {banner && (

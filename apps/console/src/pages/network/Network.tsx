@@ -7,7 +7,7 @@ import { useEngine } from "../../data/store.tsx";
 import { cn } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 
 const TYPE_LABEL: Record<string, string> = { bridge: "Linux bridge", eth: "Network card", bond: "Bond", vlan: "VLAN", OVSBridge: "OVS bridge", OVSPort: "OVS port", OVSIntPort: "OVS port", alias: "Alias", unknown: "Other" };
 const q = () => new URLSearchParams(window.location.search);
@@ -355,7 +355,7 @@ function SdnForm({ form, zones, onClose, onSave }: { form: { kind: "zone" } | { 
         )}
         {form.kind === "vnet" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="block"><span className="block text-compact text-ink-2 mb-2">Zone</span><select value={zone} onChange={(e) => setZone(e.target.value)} className="h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm">{zones.map((z) => <option key={z}>{z}</option>)}</select></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">Zone</span><Select value={zone} onChange={(e) => setZone(e.target.value)} >{zones.map((z) => <option key={z}>{z}</option>)}</Select></label>
             <label className="block"><span className="block text-compact text-ink-2 mb-2">VLAN tag <span className="text-ink-3">(VLAN zones)</span></span><Input type="number" min={1} max={4094} value={tag} onChange={(e) => setTag(e.target.value)} /></label>
             <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Description</span><Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Northwind Labs network" /></label>
           </div>
@@ -462,7 +462,7 @@ export function IfaceModal({ onClose }: { onClose: () => void }) {
         {!editing && <Segmented value={type} onChange={setType} options={[{ value: "bridge", label: "Bridge" }, { value: "vlan", label: "VLAN" }, { value: "bond", label: "Bond" }]} />}
         {type === "vlan" && !editing ? (
           <div className="grid grid-cols-2 gap-4">
-            <label className="block"><span className="block text-compact text-ink-2 mb-2">On</span><select value={vlanRaw} onChange={(e) => setVlanRaw(e.target.value)} className={select}>{(list ?? []).filter((i) => i.type !== "vlan").map((i) => <option key={i.iface}>{i.iface}</option>)}</select></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">On</span><Select value={vlanRaw} onChange={(e) => setVlanRaw(e.target.value)}>{(list ?? []).filter((i) => i.type !== "vlan").map((i) => <option key={i.iface}>{i.iface}</option>)}</Select></label>
             <label className="block"><span className="block text-compact text-ink-2 mb-2">VLAN id</span><Input type="number" min={1} max={4094} value={vlanId} onChange={(e) => setVlanId(e.target.value)} placeholder="20" /></label>
           </div>
         ) : (
@@ -482,7 +482,7 @@ export function IfaceModal({ onClose }: { onClose: () => void }) {
         {type === "bond" && (
           <>
             <fieldset><legend className="text-compact text-ink-2 mb-2">Members</legend><div className="flex flex-wrap gap-2">{nics.filter((n) => n.type === "eth").map((n) => <label key={n.iface} className={cn("inline-flex items-center gap-2 h-9 px-3 rounded-lg border text-compact font-mono cursor-pointer", slaves.includes(n.iface) ? "border-accent/60 bg-accent-soft" : "border-line")}><input type="checkbox" className="accent-[var(--accent)]" checked={slaves.includes(n.iface)} onChange={(e) => setSlaves(e.target.checked ? [...slaves, n.iface] : slaves.filter((x) => x !== n.iface))} />{n.iface}</label>)}</div></fieldset>
-            <label className="block"><span className="block text-compact text-ink-2 mb-2">Mode</span><select value={bondMode} onChange={(e) => setBondMode(e.target.value)} className={select}>{BOND_MODES.map((m) => <option key={m}>{m}</option>)}</select></label>
+            <label className="block"><span className="block text-compact text-ink-2 mb-2">Mode</span><Select value={bondMode} onChange={(e) => setBondMode(e.target.value)}>{BOND_MODES.map((m) => <option key={m}>{m}</option>)}</Select></label>
           </>
         )}
         <label className="block"><span className="block text-compact text-ink-2 mb-2">Comment</span><Input value={comments} onChange={(e) => setComments(e.target.value)} maxLength={200} /></label>

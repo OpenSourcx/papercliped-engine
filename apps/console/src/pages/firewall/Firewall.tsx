@@ -6,7 +6,7 @@ import { useEngine } from "../../data/store.tsx";
 import { cn } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 
 const select = selectClass;
 const ACTION_STYLE: Record<string, string> = { ACCEPT: "text-good", DROP: "text-critical", REJECT: "text-warning" };
@@ -224,16 +224,16 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
           {type !== "group" && <Segmented value={action} onChange={setAction} options={[{ value: "ACCEPT", label: "Allow" }, { value: "DROP", label: "Drop" }, { value: "REJECT", label: "Reject" }]} />}
         </div>
         {type === "group" ? (
-          <label className="block"><span className="block text-compact text-ink-2 mb-2">Group</span>{groups.length ? <select value={action} onChange={(e) => setAction(e.target.value)} className={select}>{groups.map((g) => <option key={g}>{g}</option>)}</select> : <p className="text-compact text-ink-3">No security groups yet. Create one on the Security groups tab.</p>}</label>
+          <label className="block"><span className="block text-compact text-ink-2 mb-2">Group</span>{groups.length ? <Select value={action} onChange={(e) => setAction(e.target.value)}>{groups.map((g) => <option key={g}>{g}</option>)}</Select> : <p className="text-compact text-ink-3">No security groups yet. Create one on the Security groups tab.</p>}</label>
         ) : (
           <>
             <fieldset>
               <legend className="text-compact text-ink-2 mb-2">Traffic</legend>
               <Segmented size="sm" value={how} onChange={setHow} options={[{ value: "macro", label: "A service" }, { value: "ports", label: "Protocol and port" }, { value: "all", label: "Everything" }]} />
-              {how === "macro" && <select value={macro} onChange={(e) => setMacro(e.target.value)} className={cn(select, "mt-2")}>{(macros.length ? macros : [{ macro, descr: "" }]).map((m) => <option key={m.macro} value={m.macro}>{m.macro}{m.descr ? ` — ${m.descr}` : ""}</option>)}</select>}
+              {how === "macro" && <Select value={macro} onChange={(e) => setMacro(e.target.value)} className="mt-2">{(macros.length ? macros : [{ macro, descr: "" }]).map((m) => <option key={m.macro} value={m.macro}>{m.macro}{m.descr ? ` — ${m.descr}` : ""}</option>)}</Select>}
               {how === "ports" && (
                 <div className="grid grid-cols-[140px_1fr] gap-3 mt-2">
-                  <select value={proto} onChange={(e) => setProto(e.target.value)} className={select}>{["tcp", "udp", "icmp", "icmpv6", "sctp", "gre", "esp"].map((p) => <option key={p} value={p}>{p.toUpperCase()}</option>)}</select>
+                  <Select value={proto} onChange={(e) => setProto(e.target.value)}>{["tcp", "udp", "icmp", "icmpv6", "sctp", "gre", "esp"].map((p) => <option key={p} value={p}>{p.toUpperCase()}</option>)}</Select>
                   <Input value={dport} onChange={(e) => setDport(e.target.value)} placeholder={proto === "tcp" || proto === "udp" ? "Port: 443, or 80,443, or 8000:8100" : "No ports for this protocol"} disabled={proto !== "tcp" && proto !== "udp" && proto !== "sctp"} className="font-mono" />
                 </div>
               )}
@@ -248,7 +248,7 @@ function RuleModal({ scope, rule, onClose, onDone }: { scope: string; rule: FwRu
         )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Interface <span className="text-ink-3">(optional)</span></span><Input value={iface} onChange={(e) => setIface(e.target.value)} placeholder={scope.startsWith("guest-") ? "net0" : "vmbr0"} className="font-mono" /></label>
-          {type !== "group" && <label className="block"><span className="block text-compact text-ink-2 mb-2">Log</span><select value={log} onChange={(e) => setLog(e.target.value)} className={select}><option value="nolog">Don't log</option><option value="info">Info</option><option value="warning">Warning</option><option value="debug">Debug</option></select></label>}
+          {type !== "group" && <label className="block"><span className="block text-compact text-ink-2 mb-2">Log</span><Select value={log} onChange={(e) => setLog(e.target.value)}><option value="nolog">Don't log</option><option value="info">Info</option><option value="warning">Warning</option><option value="debug">Debug</option></Select></label>}
           <div className="flex items-end justify-between h-full pb-2"><span className="text-sm">On</span><Toggle checked={enable} onChange={setEnable} label="Rule on" /></div>
         </div>
         <label className="block"><span className="block text-compact text-ink-2 mb-2">Comment</span><Input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={200} placeholder="Why this rule exists" /></label>
@@ -280,8 +280,8 @@ export function FirewallOptions({ scope }: { scope: string }) {
       {control}
     </div>
   );
-  const policy = (k: string) => <select value={String(opts[k] ?? (k === "policy_in" ? "DROP" : "ACCEPT"))} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-compact"><option value="ACCEPT">Allow</option><option value="DROP">Drop</option><option value="REJECT">Reject</option></select>;
-  const logLevel = (k: string) => <select value={String(opts[k] ?? "nolog")} onChange={(e) => set({ [k]: e.target.value })} className="h-9 rounded-lg bg-surface-2 border border-line px-2 text-compact">{["nolog", "info", "notice", "warning", "err", "debug"].map((l) => <option key={l} value={l}>{l === "nolog" ? "Don't log" : l}</option>)}</select>;
+  const policy = (k: string) => <Select value={String(opts[k] ?? (k === "policy_in" ? "DROP" : "ACCEPT"))} onChange={(e) => set({ [k]: e.target.value })} size="sm"><option value="ACCEPT">Allow</option><option value="DROP">Drop</option><option value="REJECT">Reject</option></Select>;
+  const logLevel = (k: string) => <Select value={String(opts[k] ?? "nolog")} onChange={(e) => set({ [k]: e.target.value })} size="sm">{["nolog", "info", "notice", "warning", "err", "debug"].map((l) => <option key={l} value={l}>{l === "nolog" ? "Don't log" : l}</option>)}</Select>;
   return (
     <Card className="p-5 divide-y divide-line">
       {row(level === "cluster" ? "Firewall for the whole device" : level === "node" ? "Firewall on this host" : "Firewall for this machine", level === "cluster" ? "The master switch. Off means no machine or host rules apply." : level === "node" ? "Rules for traffic to the host itself." : "Also needs the firewall switch on the machine's network device (Hardware tab).", <Toggle checked={on("enable", level === "node" ? 1 : 0)} onChange={(v) => set({ enable: v })} label="Firewall on" />)}

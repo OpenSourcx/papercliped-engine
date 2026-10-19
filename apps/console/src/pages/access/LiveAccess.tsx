@@ -19,7 +19,7 @@ import { AField as Field, IAC_KEY, useIac, dateOf, plural } from "./shared.tsx";
 import { errorText } from "../../data/engine/queries.ts";
 import { iac, type DeviceRole, type IacOverview, type IacUser, type IacUserSpec, type OrgRole } from "../../data/engine/host.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Input, Notice, PageFrame, PageHeader, Tabs, Toggle } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Input, Notice, PageFrame, PageHeader, Tabs, Toggle, Select } from "../../ui/primitives.tsx";
 
 const select = "h-10 w-full rounded-lg bg-surface-2 border border-line px-3 text-sm outline-none focus:border-line-strong";
 
@@ -186,10 +186,10 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
 
         <label className="block">
           <span className="block text-compact text-ink-2 mb-2">Device access</span>
-          <select className={select} value={deviceRole} onChange={(e) => setDeviceRole(e.target.value as DeviceRole)}>
+          <Select value={deviceRole} onChange={(e) => setDeviceRole(e.target.value as DeviceRole)}>
             {deviceRole === "custom" && <option value="custom">{DEVICE_LABEL.custom}</option>}
             {(["admin", "operator", "viewer", "none"] as const).map((r) => <option key={r} value={r}>{DEVICE_LABEL[r]}</option>)}
-          </select>
+          </Select>
           <span className="block text-xs text-ink-3 mt-1.5">{deviceRole === "custom" ? "Their Proxmox permissions don't match a standard role, so they're left as they are. Choosing a role here replaces them. See Roles & permissions for the details." : DEVICE_HELP[deviceRole]}</span>
         </label>
 
@@ -208,9 +208,9 @@ function UserModal({ overview, user, onClose, onDone }: { overview: IacOverview;
               {overview.orgs.map((o) => (
                 <div key={o.companyId} className="flex items-center gap-3 px-3 py-2.5">
                   <div className="min-w-0 flex-1"><div className="text-sm truncate">{o.name}</div><div className="text-xs text-ink-3 font-mono truncate">{o.pool ? `pool ${o.pool}` : "no resource group yet"}</div></div>
-                  <select className={`${select} !w-48`} value={orgRoles[o.companyId] ?? ""} onChange={(e) => setOrgRoles((r) => ({ ...r, [o.companyId]: e.target.value as OrgRole | "" }))} aria-label={`Role in ${o.name}`}>
+                  <Select className="!w-48" value={orgRoles[o.companyId] ?? ""} onChange={(e) => setOrgRoles((r) => ({ ...r, [o.companyId]: e.target.value as OrgRole | "" }))} aria-label={`Role in ${o.name}`}>
                     {ORG_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
+                  </Select>
                 </div>
               ))}
             </div>

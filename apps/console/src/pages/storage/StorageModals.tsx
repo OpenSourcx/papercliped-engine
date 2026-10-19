@@ -4,7 +4,7 @@ import { ApiError, type CatalogTemplate } from "../../data/api.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Input, Segmented, Toggle, selectClass } from "../../ui/primitives.tsx";
+import { Button, Input, Segmented, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 import { fileNameError, nameFromUrl, storagesWith, volName } from "./content.ts";
 
 const select = selectClass;
@@ -17,9 +17,9 @@ function StoragePicker({ kind, value, onChange }: { kind: "iso" | "vztmpl"; valu
     <label className="block">
       <span className="block text-compact text-ink-2 mb-2">Storage</span>
       {list.length ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={select}>
+        <Select value={value} onChange={(e) => onChange(e.target.value)}>
           {list.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}
-        </select>
+        </Select>
       ) : (
         <p className="text-compact text-ink-3">No storage on this device is set up for {kind === "iso" ? "ISO images" : "container templates"}.</p>
       )}
@@ -185,7 +185,7 @@ export function DownloadUrlModal({ onClose }: { onClose: () => void }) {
         <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4">
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Checksum</span>
-            <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)} className={select}>{["sha256", "sha512", "sha1", "md5", "sha224", "sha384"].map((a) => <option key={a}>{a}</option>)}</select>
+            <Select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>{["sha256", "sha512", "sha1", "md5", "sha224", "sha384"].map((a) => <option key={a}>{a}</option>)}</Select>
           </label>
           <label className="block">
             <span className="block text-compact text-ink-2 mb-2">Value <span className="text-ink-3">(optional, recommended)</span></span>

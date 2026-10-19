@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { BIOS, CACHE_MODES, CPU_TYPE_HINTS, DISK_BUSES, OS_GROUPS, SCSI_CONTROLLERS, VGA_TYPES, BUS_MAX, osDefaults, type OsType } from "@papercliped-engine/proxmox-client/wizard-schema";
 import { formatBytes } from "../../../lib/storage.ts";
-import { Field, Notice, Segmented, selectClass } from "../../../ui/primitives.tsx";
+import { Field, Notice, Segmented, selectClass, Select } from "../../../ui/primitives.tsx";
 import { AddButton, Grid, ListItem, Num, Pick, Section, SwitchRow, patch, without } from "./fields.tsx";
 import { applyOsDefaults, defaultDisk, nextKey, storageById, type DiskForm, type VmForm } from "./state.ts";
 import type { StepProps } from "./types.ts";
@@ -49,19 +49,19 @@ export function OsStep({ f, set, o, err, device, onClose }: P & { device: string
           {o.isos.length === 0 ? (
             <p className="text-compact text-ink-2">No ISO images on {device} yet. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Upload one or download it from a URL</Link> in Storage.</p>
           ) : (
-            <select id="wz-iso" value={f.iso} onChange={(e) => set(osForIso(f, e.target.value, o.isos.find((t) => t.volid === e.target.value)?.name ?? ""))} className={selectClass}>
+            <Select id="wz-iso" value={f.iso} onChange={(e) => set(osForIso(f, e.target.value, o.isos.find((t) => t.volid === e.target.value)?.name ?? ""))}>
               <option value="">Choose an image…</option>
               {o.isos.map((t) => <option key={t.volid} value={t.volid}>{t.name}{t.size ? ` · ${formatBytes(t.size)}` : ""}</option>)}
-            </select>
+            </Select>
           )}
         </Field>
       )}
       {f.media === "cdrom" && <Notice>The machine gets the device's own CD or DVD drive. Boot from it to install.</Notice>}
       {f.media === "none" && <Notice>No install media. The machine boots from its disk or the network.</Notice>}
       <Field label="Guest operating system" htmlFor="wz-os" error={err("os.ostype")} hint="Sets the recommended hardware for it; you can change every choice in the next steps.">
-        <select id="wz-os" value={f.ostype} onChange={(e) => set(applyOsDefaults(f, e.target.value as OsType))} className={selectClass}>
+        <Select id="wz-os" value={f.ostype} onChange={(e) => set(applyOsDefaults(f, e.target.value as OsType))}>
           {OS_GROUPS.map((g) => <optgroup key={g.group} label={g.group}>{g.items.map((i) => <option key={i.value} value={i.value}>{i.label}</option>)}</optgroup>)}
-        </select>
+        </Select>
       </Field>
       {d.note && <Notice tone="info" title="Recommended for this system">{d.note}</Notice>}
     </div>
@@ -199,11 +199,11 @@ export function CpuStep({ f, set, o, err }: P) {
         </Field>
       </Grid>
       <Field label="CPU type" htmlFor="wz-cpu" error={err("cpu.type")} hint={CPU_TYPE_HINTS[f.cpuType]}>
-        <select id="wz-cpu" value={f.cpuType} onChange={(e) => set({ cpuType: e.target.value })} className={selectClass}>
+        <Select id="wz-cpu" value={f.cpuType} onChange={(e) => set({ cpuType: e.target.value })}>
           <optgroup label="Common">{o.cpuTypes.common.map((c) => <option key={c} value={c}>{c}</option>)}</optgroup>
           {o.cpuTypes.custom.length > 0 && <optgroup label="Custom models">{o.cpuTypes.custom.map((c) => <option key={c} value={c}>{c}</option>)}</optgroup>}
           {more.length > 0 && <optgroup label="Other models on this device">{more.map((c) => <option key={c} value={c}>{c}</option>)}</optgroup>}
-        </select>
+        </Select>
       </Field>
       <Grid cols={2}>
         <Field label="CPU limit" htmlFor="wz-limit" error={err("cpu.limit")} hint="Optional. Cores' worth of time the machine may use, like 2.5. Empty is unlimited."><Num id="wz-limit" value={f.cpuLimit} onChange={(v) => set({ cpuLimit: v })} placeholder="Unlimited" /></Field>

@@ -8,7 +8,7 @@ import type { Agent, Org, TaskStatus } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind } from "../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind, Select } from "../../ui/primitives.tsx";
 import { LiveAgents } from "./live/LiveAgents.tsx";
 import { LiveTasks } from "./live/LiveTasks.tsx";
 import { LiveRoutines } from "./live/LiveRoutines.tsx";
@@ -95,9 +95,9 @@ function DemoTasks() {
                   {t.project && <Chip>{t.project}</Chip>}
                   {t.priority === "high" && <Chip tone="warning">High</Chip>}
                   <span className="text-compact text-ink-2 w-20 truncate">{t.agent ?? "Unassigned"}</span>
-                  <select value={t.status} onChange={(e) => setTaskStatus(org.slug, t.id, e.target.value as TaskStatus)} className="bg-surface-2 border border-line rounded-md h-7 text-xs px-1.5" aria-label={`Status of ${t.id}`}>
+                  <Select value={t.status} onChange={(e) => setTaskStatus(org.slug, t.id, e.target.value as TaskStatus)} size="xs" aria-label={`Status of ${t.id}`}>
                     {(Object.keys(TASK_LABEL) as TaskStatus[]).map((s) => <option key={s} value={s}>{TASK_LABEL[s]}</option>)}
-                  </select>
+                  </Select>
                 </div>
               ))}
             </Card>
@@ -106,10 +106,10 @@ function DemoTasks() {
                 <div className="space-y-3">
                   <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Title</span><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="What needs doing?" /></label>
                   <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Assign to</span>
-                    <select value={agent} onChange={(e) => setAgent(e.target.value)} className="h-11 w-full rounded-lg bg-surface-2 border border-line px-3 text-body">
+                    <Select value={agent} onChange={(e) => setAgent(e.target.value)} size="lg">
                       <option value="">Unassigned</option>
                       {org.agents.map((a) => <option key={a.id} value={a.name}>{a.name} · {a.role}</option>)}
-                    </select>
+                    </Select>
                   </label>
                 </div>
               </Modal>

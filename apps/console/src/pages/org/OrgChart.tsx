@@ -4,7 +4,7 @@ import { useEngine } from "../../data/store.tsx";
 import type { Agent, Org } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Avatar, Input, PageFrame, PageHeader, Status, type StatusKind } from "../../ui/primitives.tsx";
+import { Avatar, Input, PageFrame, PageHeader, Status, type StatusKind, Select } from "../../ui/primitives.tsx";
 import { useOrg } from "./OrgPages.tsx";
 
 const W = 216; // node width
@@ -234,7 +234,7 @@ export function OrgChart() {
             <dt className="text-ink-3">Harness</dt><dd>{selected.adapter} · {selected.engine === "native" ? "native" : "container sessions"}</dd>
             <dt className="text-ink-3">Reports to</dt>
             <dd>
-              <select
+              <Select
                 value={selected.reportsTo ?? ""}
                 onChange={(e) => {
                   const r = setReportsTo(org.slug, selected.id, e.target.value || null);
@@ -245,7 +245,7 @@ export function OrgChart() {
               >
                 <option value="">You</option>
                 {org.agents.filter((x) => x.id !== selected.id && !isDescendant(x.id, selected.id)).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}
-              </select>
+              </Select>
             </dd>
             <dt className="text-ink-3">Direct reports</dt><dd>{org.agents.filter((x) => x.reportsTo === selected.id).map((x) => x.name).join(", ") || "None"}</dd>
           </dl>

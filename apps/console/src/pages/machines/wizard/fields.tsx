@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { cn } from "../../../lib/storage.ts";
-import { Button, Input, Toggle, selectClass } from "../../../ui/primitives.tsx";
+import { Button, Input, Toggle, selectClass, Select } from "../../../ui/primitives.tsx";
 
 /** Small building blocks the wizard steps share. Tokens only; the shared form primitives do the rest. */
 
@@ -48,9 +48,9 @@ export function Num({ value, onChange, id, placeholder, suffix, min, max }: { va
 
 export function Pick<T extends string>({ value, onChange, options, id, disabled }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; disabled?: boolean }[]; id?: string; disabled?: boolean }) {
   return (
-    <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)} className={selectClass}>
+    <Select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)}>
       {options.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
-    </select>
+    </Select>
   );
 }
 

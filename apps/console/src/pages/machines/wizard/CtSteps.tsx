@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { formatBytes } from "../../../lib/storage.ts";
-import { Field, Input, Notice, selectClass } from "../../../ui/primitives.tsx";
+import { Field, Input, Notice, selectClass, Select } from "../../../ui/primitives.tsx";
 import { AddButton, Grid, ListItem, Num, Pick, SwitchRow } from "./fields.tsx";
 import { nextKey, type CtForm, type DeviceForm, type MountForm } from "./state.ts";
 import type { StepProps } from "./types.ts";
@@ -14,9 +14,9 @@ export function TemplateStep({ f, set, o, err, device, onClose }: P & { device: 
         <Notice tone="warning" title="No container templates yet">There are none on {device}. <Link onClick={onClose} to={`/${device}/storage`} className="text-accent hover:underline">Get one from the template catalog</Link> in Storage, then come back.</Notice>
       ) : (
         <Field label="Template" htmlFor="wz-tpl" error={err("template")} hint="The system the container starts with.">
-          <select id="wz-tpl" value={f.template} onChange={(e) => set({ template: e.target.value })} className={selectClass}>
+          <Select id="wz-tpl" value={f.template} onChange={(e) => set({ template: e.target.value })}>
             {o.templates.map((t) => <option key={t.volid} value={t.volid}>{t.name}{t.size ? ` · ${formatBytes(t.size)}` : ""}</option>)}
-          </select>
+          </Select>
         </Field>
       )}
     </div>

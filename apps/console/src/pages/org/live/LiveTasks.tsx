@@ -7,7 +7,7 @@ import { ago } from "../../../data/engine/map.ts";
 import { ISSUE_ICON, ISSUE_LABEL, PRIORITY_LABEL, isOpen } from "../../../data/engine/labels.tsx";
 import { useAddComment, useAgents, useComments, useCreateIssue, useIssue, useIssues, useProjects, useUpdateIssue } from "../../../data/engine/queries.ts";
 import { Modal } from "../../../ui/Modal.tsx";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Select } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 import { TaskExtras } from "./LiveTaskExtras.tsx";
@@ -40,10 +40,10 @@ export function LiveTasks() {
       <PageHeader title="Tasks" subtitle={issues.data ? `${openCount} open in ${org.name}.` : undefined} actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New task</Button>} />
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented value={filter === "open" || filter === "done" || filter === "all" ? filter : "all"} onChange={(v) => setFilter(v)} options={[{ value: "open", label: "Open" }, { value: "done", label: "Closed" }, { value: "all", label: "All" }]} />
-        <select aria-label="Status" value={ISSUE_STATUSES.includes(filter as IssueStatus) ? filter : ""} onChange={(e) => setFilter((e.target.value || "all") as Filter)} className="bg-surface-2 border border-line rounded-full h-9 text-compact px-3">
+        <Select aria-label="Status" value={ISSUE_STATUSES.includes(filter as IssueStatus) ? filter : ""} onChange={(e) => setFilter((e.target.value || "all") as Filter)} size="sm" className="rounded-full w-auto">
           <option value="">Any status</option>
           {ISSUE_STATUSES.map((s) => <option key={s} value={s}>{ISSUE_LABEL[s]}</option>)}
-        </select>
+        </Select>
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="h-4 w-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
           <Input aria-label="Search tasks" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or key" className="h-9 pl-9 text-sm" />
@@ -95,23 +95,23 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
         <Field label="Description" hint="(optional)"><textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} className={textareaClass} placeholder="Context, links, what done looks like" /></Field>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Assign to">
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectClass}>
+            <Select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
               <option value="">Unassigned</option>
               {(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Priority">
-            <select value={priority} onChange={(e) => setPriority(e.target.value as IssuePriority)} className={selectClass}>
+            <Select value={priority} onChange={(e) => setPriority(e.target.value as IssuePriority)}>
               {ISSUE_PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         {(projects.data ?? []).length > 0 && (
           <Field label="Project" hint="(optional)">
-            <select value={project} onChange={(e) => setProject(e.target.value)} className={selectClass}>
+            <Select value={project} onChange={(e) => setProject(e.target.value)}>
               <option value="">None</option>
               {(projects.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         <ActionError error={create.error} />
@@ -183,20 +183,20 @@ export function LiveTaskDetail() {
             </div>
             <Card className="p-4 space-y-3 h-fit">
               <Field label="Status">
-                <select aria-label="Status" value={t.status} onChange={(e) => change({ status: e.target.value as IssueStatus })} className={selectClass} disabled={update.isPending}>
+                <Select aria-label="Status" value={t.status} onChange={(e) => change({ status: e.target.value as IssueStatus })} disabled={update.isPending}>
                   {ISSUE_STATUSES.map((s) => <option key={s} value={s}>{ISSUE_LABEL[s]}</option>)}
-                </select>
+                </Select>
               </Field>
               <Field label="Priority">
-                <select aria-label="Priority" value={t.priority} onChange={(e) => change({ priority: e.target.value as IssuePriority })} className={selectClass} disabled={update.isPending}>
+                <Select aria-label="Priority" value={t.priority} onChange={(e) => change({ priority: e.target.value as IssuePriority })} disabled={update.isPending}>
                   {ISSUE_PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
-                </select>
+                </Select>
               </Field>
               <Field label="Assignee">
-                <select aria-label="Assignee" value={t.assigneeAgentId ?? ""} onChange={(e) => change({ assigneeAgentId: e.target.value || null })} className={selectClass} disabled={update.isPending}>
+                <Select aria-label="Assignee" value={t.assigneeAgentId ?? ""} onChange={(e) => change({ assigneeAgentId: e.target.value || null })} disabled={update.isPending}>
                   <option value="">{t.assigneeUserId ? names.user(t.assigneeUserId) : "Unassigned"}</option>
                   {(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
+                </Select>
               </Field>
               <ActionError error={update.error} />
               <p className="text-xs text-ink-3">Updated {ago(t.updatedAt)}</p>

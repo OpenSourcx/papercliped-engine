@@ -7,7 +7,7 @@ import { useEngine } from "../../data/store.tsx";
 import { formatBytes } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass } from "../../ui/primitives.tsx";
+import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 import { volName } from "../storage/content.ts";
 
 const select = selectClass;
@@ -259,7 +259,7 @@ export function BackupNowModal({ onClose }: { onClose: () => void }) {
         {!single && <MachinePicker all={all} setAll={setAll} vmids={vmids} setVmids={setVmids} />}
         <label className="block">
           <span className="block text-compact text-ink-2 mb-2">Storage</span>
-          {stores.length ? <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</select> : <p className="text-compact text-ink-3">No storage here is set up for backups.</p>}
+          {stores.length ? <Select value={storage} onChange={(e) => setStorage(e.target.value)}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</Select> : <p className="text-compact text-ink-3">No storage here is set up for backups.</p>}
         </label>
         <fieldset>
           <legend className="text-compact text-ink-2 mb-2">Mode</legend>
@@ -347,13 +347,13 @@ export function BackupJobModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block">
               <span className="block text-compact text-ink-2 mb-2">When</span>
-              <select value={preset} onChange={(e) => setPreset(e.target.value)} className={select}>{PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
+              <Select value={preset} onChange={(e) => setPreset(e.target.value)}>{PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</Select>
               {preset === "custom" && <Input className="mt-2 font-mono text-compact" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="sat 02:00" spellCheck={false} />}
               {scheduleErr && <span className="block text-xs mt-1.5 text-critical">{scheduleErr}</span>}
             </label>
             <label className="block">
               <span className="block text-compact text-ink-2 mb-2">Storage</span>
-              <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</select>
+              <Select value={storage} onChange={(e) => setStorage(e.target.value)}>{stores.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}</Select>
             </label>
           </div>
           <MachinePicker all={all} setAll={setAll} vmids={vmids} setVmids={setVmids} />
@@ -442,7 +442,7 @@ export function RestoreModal({ onClose }: { onClose: () => void }) {
         )}
         <label className="block">
           <span className="block text-compact text-ink-2 mb-2">Restore disks to</span>
-          <select value={storage} onChange={(e) => setStorage(e.target.value)} className={select}>{targets.map((t) => <option key={t.storage} value={t.storage}>{t.storage}{t.avail !== null ? ` · ${formatBytes(t.avail)} free` : ""}</option>)}</select>
+          <Select value={storage} onChange={(e) => setStorage(e.target.value)}>{targets.map((t) => <option key={t.storage} value={t.storage}>{t.storage}{t.avail !== null ? ` · ${formatBytes(t.avail)} free` : ""}</option>)}</Select>
         </label>
         <div className="flex items-center justify-between"><span className="text-sm">Start it when done</span><Toggle checked={start} onChange={setStart} label="Start it when done" /></div>
         <p className="text-micro text-ink-3 font-mono break-all">{volName(volid)}</p>

@@ -1,4 +1,4 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { AlertTriangle, CheckCircle2, CircleDashed, CirclePause, Info, Loader2, XCircle } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { useInModal } from "./Modal.tsx";
@@ -114,9 +114,7 @@ export const Input = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLI
   return <input ref={ref} {...rest} className={cn(controlClass, size === "lg" ? "h-12 px-4 text-body rounded-xl" : "h-10 px-3", className)} />;
 });
 
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...rest} className={cn(selectClass, className)}>{children}</select>;
-}
+export { Select } from "./Select.tsx";
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} className={cn(controlClass, "px-3 py-2.5 leading-relaxed resize-y min-h-24", className)} />;

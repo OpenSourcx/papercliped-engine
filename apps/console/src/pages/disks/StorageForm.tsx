@@ -262,7 +262,7 @@ function ScanPicker({ kind, values, def, onPick }: { kind: ScanKind; values: Val
     <div className="flex flex-wrap items-center gap-2">
       <Button size="sm" variant="secondary" onClick={scan} loading={busy}><Search className="h-3.5 w-3.5" />Find {noun}</Button>
       {items && items.length > 0 && (
-        <Select aria-label={`Found ${noun}`} className="h-8 w-auto max-w-full" defaultValue="" onChange={(e) => e.target.value && onPick(meta.fills, e.target.value)}>
+        <Select aria-label={`Found ${noun}`} size="sm" className="w-auto max-w-full" defaultValue="" onChange={(e) => e.target.value && onPick(meta.fills, e.target.value)}>
           <option value="">Pick one of {items.length}…</option>
           {items.map((r) => <option key={meta.value(r)} value={meta.value(r)}>{meta.label(r)}</option>)}
         </Select>

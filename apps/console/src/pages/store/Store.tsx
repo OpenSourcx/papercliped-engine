@@ -11,7 +11,7 @@ import { errorText } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, selectClass } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, selectClass, Select } from "../../ui/primitives.tsx";
 import { storagesWith } from "../storage/content.ts";
 import { CATEGORIES, filterItems, statusLabel, tileHue, type Category, type StoreItem } from "./catalog.ts";
 import { useStoreItems } from "./useStore.ts";
@@ -210,9 +210,9 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {needsStorage && installable && (
           storages.length ? (
             <label className="block"><span className="block text-compact text-ink-2 mb-2">Install to</span>
-              <select value={storage} onChange={(e) => setPick(e.target.value)} className={cn(select)} disabled={started}>
+              <Select value={storage} onChange={(e) => setPick(e.target.value)} disabled={started}>
                 {storages.map((s) => <option key={s.id} value={s.id}>{s.id} · {formatBytes(Math.max(0, s.total - s.used))} free</option>)}
-              </select>
+              </Select>
             </label>
           ) : <p className="text-compact text-warning">No storage on this device is set up for {kindOfStorage === "iso" ? "ISO images" : "container templates"}.</p>
         )}

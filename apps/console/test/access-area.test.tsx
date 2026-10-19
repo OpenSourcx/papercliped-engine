@@ -387,7 +387,7 @@ describe("resource groups", () => {
     fireEvent.click(await screen.findByText("team"));
     await screen.findByText("web");
     fireEvent.change(screen.getByLabelText("Add a machine"), { target: { value: "200" } });
-    fireEvent.click(within(screen.getByLabelText("Add a machine").closest("div")!).getByText("Add"));
+    fireEvent.click(within(screen.getByLabelText("Add a machine").closest("div")!.parentElement!).getByText("Add"));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/api/access/pools/team")).toBe(true));
     expect(calls.find((c) => c.method === "PUT")!.body).toEqual({ addVms: ["200"] });
     fireEvent.click(screen.getByLabelText("Remove web from the group"));

@@ -236,6 +236,11 @@ body {
   display: none;
 }
 
+/* The dropdown's visible field shows the chosen option's text from its own data-label (so it isn't duplicated in the DOM). */
+.select-display::after {
+  content: attr(data-label);
+}
+
 /* A sideways-scrolling strip or table fades at the edge that has more behind it. With no scrollbars this is the only hint.
    Only while it really overflows (the scroll timeline doesn't exist otherwise), and only in browsers that have scroll-driven
    animation; the others simply show no fade. */

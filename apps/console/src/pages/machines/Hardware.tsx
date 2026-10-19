@@ -5,7 +5,7 @@ import { useGuestApi } from "../../data/engine/guestApi.ts";
 import { useEngine } from "../../data/store.tsx";
 import type { Guest } from "../../data/types.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, SectionTitle, Toggle, selectClass } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, Input, SectionTitle, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 import { useLoad } from "../disks/common.tsx";
 import { DisksCard } from "./HardwareDisks.tsx";
 import { VmItemsCard } from "./MachineItems.tsx";
@@ -176,7 +176,7 @@ function OptionsModal({ g, hw, onClose, onDone }: { g: Guest; hw: GuestHardware;
           <label className="block"><span className="block text-compact text-ink-2 mb-2">{hw.type === "lxc" ? "Hostname" : "Name"}</span><Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} className="font-mono" />{nameErr && <span className="block text-xs mt-1.5 text-critical">{nameErr}</span>}</label>
           <label className="block"><span className="block text-compact text-ink-2 mb-2">Tags</span><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="web prod" /></label>
           {vm && (
-            <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Operating system</span><select value={ostype} onChange={(e) => setOstype(e.target.value)} className={select}>{Object.entries(OS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Operating system</span><Select value={ostype} onChange={(e) => setOstype(e.target.value)}>{Object.entries(OS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
           )}
           <label className="block sm:col-span-2"><span className="block text-compact text-ink-2 mb-2">Notes</span><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm outline-none focus:border-line-strong" /></label>
         </div>

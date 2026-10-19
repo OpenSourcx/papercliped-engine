@@ -5,7 +5,7 @@ import { useEngine } from "../data/store.tsx";
 import { Modal } from "../ui/Modal.tsx";
 import type { Role, User } from "../data/types.ts";
 import { cn } from "../lib/storage.ts";
-import { Avatar, Button, Card, Chip, PageHeader, Segmented, Status, PageFrame } from "../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, PageHeader, Segmented, Status, PageFrame, Select } from "../ui/primitives.tsx";
 
 const TOOLS: [string, string][] = [
   ["tasks", "Create and work on tasks"],
@@ -59,9 +59,9 @@ function UserPanel({ user, onClose }: { user: User; onClose: () => void }) {
                     <Avatar name={o.name} hue={o.hue} size={22} />
                     <span className="flex-1 text-sm truncate">{o.name}</span>
                     {m && (
-                      <select value={m.role} disabled={owner} onChange={(e) => updateUser(user.id, { orgs: user.orgs.map((x) => (x.slug === o.slug ? { ...x, role: e.target.value as Role } : x)) })} className="bg-surface-2 border border-line rounded-md h-7 text-xs px-1.5" aria-label={`Role in ${o.name}`}>
+                      <Select value={m.role} disabled={owner} onChange={(e) => updateUser(user.id, { orgs: user.orgs.map((x) => (x.slug === o.slug ? { ...x, role: e.target.value as Role } : x)) })} size="xs" aria-label={`Role in ${o.name}`}>
                         {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      </Select>
                     )}
                   </div>
                 );

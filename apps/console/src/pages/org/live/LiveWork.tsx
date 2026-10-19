@@ -7,7 +7,7 @@ import { useActivity, useAgents, useApprovals, useCosts, useCreateGoal, useCreat
 import { formatBytes } from "../../../lib/storage.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Select } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { describeActivity, memberName, realEmail, useNames } from "./names.ts";
 
@@ -51,8 +51,8 @@ export function LiveGoals() {
             <Field label="Goal"><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="e.g. Ship the beta to 50 users" /></Field>
             <Field label="Description" hint="(optional)"><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className={textareaClass} /></Field>
             <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="Level"><select value={level} onChange={(e) => setLevel(e.target.value as GoalLevel)} className={selectClass}>{(Object.keys(GOAL_LEVEL) as GoalLevel[]).map((l) => <option key={l} value={l}>{GOAL_LEVEL[l]}</option>)}</select></Field>
-              <Field label="Owner"><select value={owner} onChange={(e) => setOwner(e.target.value)} className={selectClass}><option value="">Nobody yet</option>{(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+              <Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as GoalLevel)}>{(Object.keys(GOAL_LEVEL) as GoalLevel[]).map((l) => <option key={l} value={l}>{GOAL_LEVEL[l]}</option>)}</Select></Field>
+              <Field label="Owner"><Select value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Nobody yet</option>{(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
             </div>
             <ActionError error={create.error} />
           </div>
@@ -102,7 +102,7 @@ export function LiveProjects() {
           <div className="space-y-3">
             <Field label="Name"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="e.g. Customer portal" /></Field>
             <Field label="Description" hint="(optional)"><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className={textareaClass} /></Field>
-            <Field label="Lead"><select value={lead} onChange={(e) => setLead(e.target.value)} className={selectClass}><option value="">No lead yet</option>{(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+            <Field label="Lead"><Select value={lead} onChange={(e) => setLead(e.target.value)}><option value="">No lead yet</option>{(agents.data ?? []).filter((a) => a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
             <ActionError error={create.error} />
           </div>
         </Modal>

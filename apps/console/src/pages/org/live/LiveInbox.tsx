@@ -7,7 +7,7 @@ import { ago } from "../../../data/engine/map.ts";
 import { APPROVAL_TYPE_LABEL, ISSUE_ICON, ISSUE_LABEL } from "../../../data/engine/labels.tsx";
 import { useApprovals } from "../../../data/engine/queries.ts";
 import { useAttention, useInboxWrites, useIssueInteractions, useMine } from "../../../data/engine/more.ts";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Tabs, Textarea } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Tabs, Textarea, Select } from "../../../ui/primitives.tsx";
 import { useDecide } from "../../../data/engine/queries.ts";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -231,10 +231,10 @@ export function LiveDecisions() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Segmented value={view} onChange={setView} options={[{ value: "waiting", label: `Waiting${feed.data ? ` (${feed.data.totalCount})` : ""}` }, { value: "history", label: "History" }]} />
         {view === "waiting" && kinds.length > 1 && (
-          <select aria-label="Kind" value={filter} onChange={(e) => setFilter(e.target.value)} className="bg-surface-2 border border-line rounded-full h-9 text-compact px-3">
+          <Select aria-label="Kind" value={filter} onChange={(e) => setFilter(e.target.value)} size="sm" className="rounded-full w-auto">
             <option value="all">Everything</option>
             {kinds.map(([k, n]) => <option key={k} value={k}>{SOURCE_LABEL[k] ?? k} ({n})</option>)}
-          </select>
+          </Select>
         )}
       </div>
       {view === "waiting" ? (
