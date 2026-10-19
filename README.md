@@ -50,6 +50,10 @@ Then open `https://<host>/` and sign in with any Proxmox account (pam, pve, LDAP
 
 `pnpm --filter @papercliped-engine/console dev` runs the console on its own, on demo data.
 
+## Brand
+
+Pin's mark, the orb, has a kit: SVGs, PNGs, favicon files, colors and usage rules in [brand/](brand/README.md). It is generated from one tokens file, and a test keeps it in step with the console's CSS.
+
 ## Run the broker
 
 See [services/host-broker/README.md](services/host-broker/README.md) for the Proxmox permissions it needs and an example configuration.
