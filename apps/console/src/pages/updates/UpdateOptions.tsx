@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { RebootDialog } from "../node/Power.tsx";
 import { History, Hourglass, PauseCircle, Power, Rocket, ShieldCheck, Timer } from "lucide-react";
 import { errorText } from "../../data/engine/queries.ts";
 import { pinRt, type UpdateInfo, type UpdateWindowDay } from "../../data/engine/pinRuntimeApi.ts";
@@ -36,11 +38,13 @@ function Option({ icon, title, body, children }: { icon: React.ReactNode; title:
 }
 
 /** Proxmox installed a kernel that isn't running yet: say so plainly, with what to do and where. */
-export function RestartNotice({ u, device }: { u: UpdateInfo; device: string }) {
+export function RestartNotice({ u }: { u: UpdateInfo; device?: string }) {
   const policy = usePolicy();
+  const [asking, setAsking] = useState(false);
   if (!u.system.rebootRequired) return null;
   return (
-    <Notice tone="warning" title="Restart needed to finish updating Proxmox" action={<Link to={`/${device}/host/power`} className="transition-control inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-line bg-surface-2/60 text-compact font-medium hover:bg-surface-3"><Power className="h-3.5 w-3.5" />Restart…</Link>}>
+    <Notice tone="warning" title="Restart needed to finish updating Proxmox" action={<Button size="sm" variant="primary" onClick={() => setAsking(true)}><Power className="h-3.5 w-3.5" />Restart now…</Button>}>
+      {asking && <RebootDialog onClose={() => setAsking(false)} />}
       <span className="text-pretty">A new kernel (<span className="font-mono">{u.system.newestInstalled}</span>) is installed, but this device is still running <span className="font-mono">{u.system.running}</span>. Machines keep running until you restart; do it when nobody is relying on them.</span>
       <span className="block mt-1">
         {u.snoozed ? <span className="text-ink-3">Reminders are snoozed until {u.policy.snoozedUntil ? when(u.policy.snoozedUntil) : "later"}.</span> : <button type="button" className="text-accent hover:underline" disabled={policy.isPending} onClick={() => policy.mutate({ snoozeHours: 24 })}>Remind me tomorrow</button>}

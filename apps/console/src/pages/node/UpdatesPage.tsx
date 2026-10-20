@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, CheckCircle2, FileText, Package, RefreshCw, TerminalSquare } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, FileText, Package, RefreshCw, RotateCcw, TerminalSquare } from "lucide-react";
 import { nodeApi, type RepoEntry, type UpdatePackage } from "../../data/engine/nodeApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
@@ -9,6 +9,7 @@ import { Terminal } from "../../terminal/LazyTerminal.tsx";
 import { LiveTransport } from "../../terminal/transport.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Toggle } from "../../ui/primitives.tsx";
+import { RebootDialog } from "./Power.tsx";
 import { Async, LiveOnly, NodeSwitcher, TasksLink, TypedConfirm, useNodeName, useTaskRunner } from "./common.tsx";
 
 type Tab = "updates" | "repositories";
@@ -40,6 +41,7 @@ function UpdatesTab() {
   const runner = useTaskRunner(() => void qc.invalidateQueries({ queryKey: ["node", "updates"] }));
   const [log, setLog] = useState<UpdatePackage | null>(null);
   const [upgrading, setUpgrading] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [terminal, setTerminal] = useState(false);
   const [filter, setFilter] = useState("");
   return (
@@ -48,7 +50,7 @@ function UpdatesTab() {
         const shown = u.packages.filter((p) => !filter.trim() || p.package.includes(filter.trim().toLowerCase()));
         return (
           <div className="space-y-4">
-            {u.rebootRequired && <Notice tone="warning" title="Reboot required">The newest installed kernel ({u.newestInstalledKernel}) is not the one running ({u.runningKernel}). Reboot {u.packages.length ? "after the upgrade" : "when it suits you"} to start using it.</Notice>}
+            {u.rebootRequired && <Notice tone="warning" title="Reboot required" action={<Button size="sm" variant="primary" onClick={() => setRestarting(true)}><RotateCcw className="h-3.5 w-3.5" />Restart now…</Button>}>The newest installed kernel ({u.newestInstalledKernel}) is not the one running ({u.runningKernel}). Reboot {u.packages.length ? "after the upgrade" : "when it suits you"} to start using it.</Notice>}
             {u.listDenied && <Notice tone="info" title="Your Proxmox account can't list updates">Proxmox needs the Sys.Modify permission on the device to read or refresh the update list.</Notice>}
             {u.listError && <Notice tone="critical" title="Proxmox couldn't list updates">{u.listError}</Notice>}
             {runner.error && <Notice tone="critical">{runner.error}</Notice>}
@@ -84,6 +86,7 @@ function UpdatesTab() {
             )}
             {u.packages.length === 0 && !u.listDenied && !u.listError && <Card><EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="Nothing to install" body="Press Refresh list to ask Proxmox's package servers again." /></Card>}
             {log && <Changelog pkg={log} onClose={() => setLog(null)} />}
+            {restarting && <RebootDialog onClose={() => setRestarting(false)} />}
             {upgrading && (
               <TypedConfirm title={`Upgrade ${u.packages.length} ${u.packages.length === 1 ? "package" : "packages"} on ${u.node}?`} phrase="upgrade" action="Open upgrade terminal" onClose={() => setUpgrading(false)} onConfirm={() => { setUpgrading(false); setTerminal(true); }}>
                 <div className="space-y-3">

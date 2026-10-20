@@ -6,6 +6,7 @@ import { errorText } from "../../data/engine/queries.ts";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Status } from "../../ui/primitives.tsx";
 import { Async, LiveOnly, NodeSwitcher, TypedConfirm, useNodeName } from "./common.tsx";
 import { httpUrl } from "../../lib/safeUrl";
+import { Modal } from "../../ui/Modal.tsx";
 
 function PowerCard({ info }: { info: PowerInfo }) {
   const { node } = useNodeName();
@@ -52,6 +53,42 @@ function PowerCard({ info }: { info: PowerInfo }) {
         </TypedConfirm>
       )}
     </Card>
+  );
+}
+
+/**
+ * "Restart now" from anywhere (the Updates pages after a new kernel is installed): the same checks as the Power page, in one
+ * dialog. It lists what is running, says what restarting means for this console, and asks for the device's name.
+ */
+export function RebootDialog({ onClose }: { onClose: () => void }) {
+  const { node, name } = useNodeName();
+  const q = useQuery({ queryKey: ["node", "power", name], queryFn: () => nodeApi.power(node), retry: 1 });
+  const [done, setDone] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: () => nodeApi.powerCommand(node, "reboot", q.data!.node),
+    onSuccess: (r) => setDone(r.selfAffected ? `Restarting ${q.data!.node}. This page loses its connection until the device is back, usually within a few minutes. Sign in again when it returns.` : `Restart sent to ${q.data!.node}.`),
+  });
+  if (q.isPending) return <Modal size="sm" icon={<RotateCcw className="h-5 w-5" />} title="Restart this device" onClose={onClose}><p className="text-compact text-ink-3">Checking what is running…</p></Modal>;
+  if (q.error || !q.data) return <Modal size="sm" icon={<RotateCcw className="h-5 w-5" />} title="Restart this device" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}><p role="alert" className="text-compact text-critical">{errorText(q.error)}</p></Modal>;
+  const info = q.data;
+  if (done) return <Modal size="sm" icon={<RotateCcw className="h-5 w-5" />} title={`Restarting ${info.node}`} onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}><Notice tone="good">{done}</Notice></Modal>;
+  const n = info.running.length;
+  return (
+    <TypedConfirm title={`Restart ${info.node}?`} subtitle="To start using the newly installed kernel." phrase={info.node} action="Restart device" busy={run.isPending} error={run.error ? errorText(run.error) : null} onClose={onClose} onConfirm={() => run.mutate()}>
+      <div className="space-y-3">
+        <Notice tone="warning" title="Everything on this device stops for a few minutes.">
+          {info.local ? "This is the device you are signed in to, so ePaperclip, its console and Pin go away with it. " : ""}Machines set to start at boot come back on their own.
+        </Notice>
+        {n > 0 && (
+          <div>
+            <div className="text-compact font-medium text-ink-2 mb-1.5">Running now</div>
+            <ul className="rounded-lg border border-line divide-y divide-line max-h-48 overflow-auto">
+              {info.running.map((g) => <li key={g.vmid} className="flex items-center gap-2 px-3 py-2 text-compact"><span className="font-mono text-ink-3 tabular-nums">{g.vmid}</span><span className="truncate">{g.name}</span></li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </TypedConfirm>
   );
 }
 

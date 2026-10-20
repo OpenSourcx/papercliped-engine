@@ -228,6 +228,25 @@ describe("update options, restart and history", () => {
     await waitFor(() => expect(sent("PUT", "/api/pin/update/settings")[0].body).toEqual({ snoozeHours: 24 }));
   });
 
+  it("restarts the device from the notice, after listing what is running and asking for its name", async () => {
+    const restart = { running: [{ vmid: 100, name: "agent-dev", type: "lxc" }, { vmid: 101, name: "secretstore", type: "lxc" }], runningUnknown: false };
+    handlers["GET /api/pin/update"] = () => info({ system: { running: "6.8.12-4-pve", newestInstalled: "6.8.12-9-pve", rebootRequired: true } });
+    handlers["GET /api/node/nodes"] = () => ({ local: "pve", nodes: [{ node: "pve", online: true }] });
+    handlers["GET /api/node/power"] = () => ({ node: "pve", local: true, thisService: "pve", wakeOnLan: "not set", others: [], ...restart });
+    handlers["POST /api/node/power"] = () => ({ ok: true, selfAffected: true });
+    wrap(<UpdatesTab />);
+    fireEvent.click(await screen.findByRole("button", { name: "Restart now…" }));
+    expect(await screen.findByText("Restart pve?")).toBeTruthy();
+    expect(screen.getByText("agent-dev")).toBeTruthy();
+    expect(screen.getByText("secretstore")).toBeTruthy();
+    const go = screen.getByRole("button", { name: "Restart device" });
+    expect((go as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "pve" } });
+    fireEvent.click(go);
+    await waitFor(() => expect(sent("POST", "/api/node/power")[0].body).toMatchObject({ command: "reboot", confirm: "pve" }));
+    expect(await screen.findByText(/loses its connection until the device is back/)).toBeTruthy();
+  });
+
   it("warns when the running version was withdrawn", async () => {
     handlers["GET /api/pin/update"] = () => info({ installedWithdrawn: "Updates could not restart the engine." });
     wrap(<UpdatesTab />);
