@@ -1086,7 +1086,12 @@ export function createApp(d: AppDeps) {
       // UPID:node:pid:pstart:starttime:type:id:user: — the id can hold a volume id with ":" and "/", so only the fixed
       // fields are pinned. It is URL-encoded on the way to Proxmox, and must name this node.
       if (!/^UPID:[\w.-]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[0-9A-Fa-f]+:[\w-]+:\S*$/.test(upid) || upid.length > 400 || upid.split(":")[1] !== hn(req)) throw new HttpError(400, "bad_request", "Unknown task");
-      const [status, log] = await asUser(req, res, (pve) => Promise.all([pve.taskStatus(hn(req), upid), pve.taskLog(hn(req), upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))]));
+      // Status first, then the log: read the other way round (or at once), a task that finishes in between is reported as
+      // finished with the log from before it finished, and a watcher that stops at "finished" never sees the last lines.
+      const [status, log] = await asUser(req, res, async (pve) => {
+        const st = await pve.taskStatus(hn(req), upid);
+        return [st, await pve.taskLog(hn(req), upid, Math.min(2000, Number(url.searchParams.get("lines") ?? 500) || 500))] as const;
+      });
       return sendJson(res, 200, { status: status.status, exitstatus: (status as { exitstatus?: string }).exitstatus ?? null, log: log.map((l) => l.t) });
     }
 

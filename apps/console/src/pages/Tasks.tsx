@@ -91,6 +91,7 @@ export function TaskLogModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let alive = true;
+    let rereads = 0;
     let timer: ReturnType<typeof setTimeout>;
     const load = () =>
       engine.backend.task(upid).then(
@@ -98,6 +99,11 @@ export function TaskLogModal({ onClose }: { onClose: () => void }) {
           if (!alive) return;
           setDetail(d);
           if (d.status === "running") timer = setTimeout(load, 1500);
+          // A finished task always ends with a TASK line. Without one the log was read a moment too early: read it once more.
+          else if (!d.log.some((l) => /^TASK /.test(l)) && rereads < 2) {
+            rereads++;
+            timer = setTimeout(load, 700);
+          }
         },
         (e) => alive && setError(e instanceof ApiError ? e.message : "Couldn't read this task"),
       );
