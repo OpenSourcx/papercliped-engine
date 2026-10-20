@@ -21,10 +21,10 @@ const client = (transport: Transport) => new ProxmoxClient({ baseUrl: "https://p
 
 describe("ProxmoxClient", () => {
   it("doesn't show Proxmox's empty-log placeholder as output", async () => {
-    const empty = recorder([{ status: 200, body: { data: [{ n: 0, t: "no content" }] } }]);
+    const empty = recorder([{ status: 200, body: { data: [{ n: 0, t: "no content" }, { n: 1, t: "no content" }, { n: 2, t: "no content" }] } }]);
     expect(await client(empty.transport).taskLog("pve", "UPID:x")).toEqual([]);
-    const real = recorder([{ status: 200, body: { data: [{ n: 1, t: "starting" }, { n: 2, t: "no content" }] } }]);
-    expect((await client(real.transport).taskLog("pve", "UPID:x")).map((l) => l.t)).toEqual(["starting", "no content"]);
+    const real = recorder([{ status: 200, body: { data: [{ n: 1, t: "starting" }, { n: 2, t: "no content" }, { n: 3, t: "Get:1 http://deb.debian.org" }] } }]);
+    expect((await client(real.transport).taskLog("pve", "UPID:x")).map((l) => l.t)).toEqual(["starting", "Get:1 http://deb.debian.org"]);
   });
 
   it("refuses plain http", () => {

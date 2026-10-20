@@ -485,10 +485,10 @@ export class ProxmoxClient {
     return this.call<string | null>("POST", `/nodes/${seg(node)}/${type}/${seg(vmid)}/template`);
   }
 
-  /** A task's log lines. Proxmox answers a task that has written nothing yet with one placeholder line, `{n: 0, t: "no content"}`; that isn't output, so it is dropped. */
+  /** A task's log lines. Proxmox fills a log that has nothing in it yet with placeholder lines whose text is "no content" (with line numbers, not only 0); those aren't output, so they are dropped. */
   async taskLog(node: string, upid: string, limit = 500) {
     const lines = await this.call<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/log`, { start: 0, limit });
-    return lines.filter((l) => !(l.n === 0 && l.t === "no content"));
+    return lines.filter((l) => l.t.trim() !== "no content");
   }
 
   createVm(node: string, params: Record<string, string | number | boolean | undefined>) {

@@ -490,7 +490,7 @@ export function UpdatesTab() {
             <div className="text-xs font-semibold uppercase tracking-label text-ink-3">ePaperclip</div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <div><span className="text-compact text-ink-3">Installed </span><span className="font-mono text-lead">{u.installed ?? "unknown"}</span></div>
-              <div><span className="text-compact text-ink-3">{u.channel === "rc" ? "Newest, including candidates " : "Latest "}</span><span className="font-mono text-lead">{u.latest?.version ?? "none yet"}</span></div>
+              {u.state !== "current" && <div><span className="text-compact text-ink-3">{u.channel === "rc" ? "Newest, including candidates " : "Latest "}</span><span className="font-mono text-lead">{u.latest?.version ?? "none yet"}</span></div>}
             </div>
             <div className="mt-2"><Status kind={u.state === "available" ? "warning" : u.state === "current" ? "good" : "idle"} label={stateLabel} /></div>
             {u.checkedAt && <p className="text-xs text-ink-3 mt-1">Checked {ago(u.checkedAt)}</p>}

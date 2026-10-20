@@ -116,7 +116,7 @@ export function TaskLogModal({ onClose }: { onClose: () => void }) {
       {error ? (
         <p role="alert" className="text-compact text-critical">{error}</p>
       ) : (
-        <pre ref={box} className="rounded-lg bg-code border border-line p-3 text-xs leading-relaxed font-mono text-ink-2 max-h-[50vh] overflow-auto whitespace-pre-wrap break-all">{detail ? detail.log.join("\n") || "(no output)" : "…"}</pre>
+        <pre ref={box} className="rounded-lg bg-code border border-line p-3 text-xs leading-relaxed font-mono text-ink-2 max-h-[50vh] overflow-auto whitespace-pre-wrap break-all">{detail ? detail.log.join("\n") || (detail.status === "running" ? "Waiting for output…" : "(no output)") : "…"}</pre>
       )}
       <p className="text-micro text-ink-3 font-mono mt-2 break-all">{upid}</p>
     </Modal>
