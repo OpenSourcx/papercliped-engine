@@ -4,6 +4,7 @@ import type { FeatureCtx } from "./index.ts";
 import { PlanProblem, createPlan } from "./pin-agent.ts";
 import { PinRuntime, automationSecret, configurePinRuntime, isConfigured, newId, runtimeFor, type Automation, type PinRuntimeOpts, type Run, type RunStep } from "./pin-core.ts";
 import { pushNotice } from "./pin-notify.ts";
+import { updateTick } from "./pin-update.ts";
 
 /**
  * The automation runner. Automations (rules that watch machines, and schedules) run here, on the host service, with no
@@ -98,6 +99,8 @@ export class AutomationRunner {
     if (this.ticking || !isConfigured(this.rt)) return;
     this.ticking = true;
     try {
+      // Updates ride the same tick: reminders, the maintenance window, and writing down what the helper finished.
+      await updateTick(this.rt).catch(() => {});
       const now = this.rt.now();
       for (const a of Object.values(this.rt.store.automations())) {
         // Tokens end. A day or more before, the owner is told; when it ends the automation stops (not fails) until renewed.

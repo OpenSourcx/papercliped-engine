@@ -427,3 +427,143 @@ describe("read-only MCP endpoint", () => {
     expect((await h.call("GET", "/api/mcp", { bearer: token })).status).toBe(405);
   });
 });
+
+describe("update policy, reminders, schedule and history", () => {
+  const setPolicy = (b: unknown, cookie = sam) => h.call("PUT", "/api/pin/update/settings", { cookie }, b);
+  const inbox = async () => (await j(await h.call("GET", "/api/pin/notifications", { cookie: sam }))).notifications as { key: string; kind: string; title: string }[];
+  const requestFile = () => join(h.stateDir, "update", "request");
+
+  it("validates what can be set, for administrators only", async () => {
+    expect((await setPolicy({ pauseDays: 36 })).status).toBe(400);
+    expect((await setPolicy({ pauseDays: -1 })).status).toBe(400);
+    expect((await setPolicy({ mode: "always" })).status).toBe(400);
+    expect((await setPolicy({ window: { at: "25:00" } })).status).toBe(400);
+    expect((await setPolicy({ window: { day: 9 } })).status).toBe(400);
+    expect((await setPolicy({ window: { hours: 12 } })).status).toBe(400);
+    expect((await setPolicy({ nope: 1 })).status).toBe(400);
+    expect((await setPolicy({ mode: "window" }, lee)).status).toBe(403);
+    const ok = await j(await setPolicy({ mode: "window", window: { day: 0, at: "04:30", hours: 3 }, pauseDays: 7 }));
+    expect(ok.policy).toMatchObject({ mode: "window", window: { day: 0, at: "04:30", hours: 3 } });
+    expect(ok.paused).toBe(true);
+    expect(ok.policy.pausedUntil - h.clock.t).toBe(7 * 86_400_000);
+    expect((await j(await setPolicy({ pauseDays: 0 }))).paused).toBe(false);
+  });
+
+  it("reminds administrators who looked, once a day, and not while snoozed or paused", async () => {
+    await h.call("GET", "/api/pin/update", { cookie: sam }); // sam looks, so sam is who gets reminded
+    await h.runner.tick();
+    const first = (await inbox()).filter((n) => n.kind === "update");
+    expect(first.length).toBeGreaterThan(0);
+    await h.runner.tick();
+    expect((await inbox()).filter((n) => n.kind === "update")).toHaveLength(first.length);
+    await setPolicy({ snoozeHours: 48 });
+    h.clock.t += 86_400_000;
+    sam = await h.signIn("sam"); // a day on, the earlier sign-in has timed out
+    await h.runner.tick();
+    expect((await inbox()).filter((n) => n.kind === "update")).toHaveLength(first.length);
+    await setPolicy({ snoozeHours: 0, pauseDays: 5 });
+    await h.runner.tick();
+    expect((await inbox()).filter((n) => n.kind === "update")).toHaveLength(first.length);
+    await setPolicy({ pauseDays: 0 });
+    await h.runner.tick();
+    expect((await inbox()).filter((n) => n.kind === "update").length).toBe(first.length + 1);
+  });
+
+  it("installs by itself only inside the maintenance window, and not when paused", async () => {
+    await h.call("GET", "/api/pin/update", { cookie: sam });
+    await setPolicy({ mode: "window", window: { day: "daily", at: "03:00", hours: 2 } }); // the harness clock is noon
+    await h.runner.tick();
+    expect(existsSync(requestFile())).toBe(false);
+    await setPolicy({ window: { at: "11:30", hours: 2 }, pauseDays: 2 });
+    await h.runner.tick();
+    expect(existsSync(requestFile())).toBe(false);
+    await setPolicy({ pauseDays: 0 });
+    await h.runner.tick();
+    expect(readFileSync(requestFile(), "utf8")).toMatch(/^action=update\nversion=0\.2\.0\nrequestedBy=schedule\n/);
+  });
+
+  it("writes down what happened, and never retries a failed scheduled update on its own", async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    await h.call("GET", "/api/pin/update", { cookie: sam });
+    await setPolicy({ mode: "window", window: { day: "daily", at: "11:30", hours: 2 } });
+    await h.runner.tick();
+    expect(existsSync(requestFile())).toBe(true);
+    rmSync(requestFile());
+    mkdirSync(join(h.stateDir, "update"), { recursive: true });
+    writeFileSync(join(h.stateDir, "update", "status"), `phase=failed\nmessage=The download was refused\nversion=0.2.0\nat=${Math.floor((h.clock.t + 60_000) / 1000)}\n`);
+    h.clock.t += 120_000;
+    await h.runner.tick();
+    const hist = (await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).entries;
+    expect(hist).toHaveLength(1);
+    expect(hist[0]).toMatchObject({ action: "update", from: "0.1.0", to: "0.2.0", by: "schedule", result: "failed" });
+    h.clock.t += 60_000;
+    await h.runner.tick();
+    expect(existsSync(requestFile())).toBe(false);
+    expect((await inbox()).some((n) => /didn't finish/.test(n.title))).toBe(true);
+    expect((await h.call("GET", "/api/pin/update/history", { cookie: lee })).status).toBe(403);
+  });
+
+  it("records an update done in the host's shell", async () => {
+    const { writeFileSync } = await import("node:fs");
+    await h.call("GET", "/api/pin/update", { cookie: sam });
+    writeFileSync(h.versionFile, "0.2.0\n");
+    const hist = (await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).entries;
+    expect(hist[0]).toMatchObject({ from: "0.1.0", to: "0.2.0", by: "host shell", result: "done" });
+  });
+});
+
+describe("what Proxmox did: restart needed and package history", () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
+  const { tmpdir } = require("node:os") as typeof import("node:os");
+  const point = (release: string, kernels: string[], apt?: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "epc-kern-"));
+    for (const k of kernels) mkdirSync(join(dir, k));
+    const hist = join(dir, "history.log");
+    if (apt !== undefined) writeFileSync(hist, apt);
+    h.rt.opts.update = { ...h.rt.opts.update, modulesDir: dir, kernelRelease: release, aptHistory: hist };
+  };
+  const status = async () => j(await h.call("GET", "/api/pin/update", { cookie: sam }));
+
+  it("knows when the installed kernel is newer than the running one", async () => {
+    point("6.8.12-4-pve", ["6.8.12-4-pve", "6.8.12-9-pve", "6.5.13-5-pve"]);
+    expect((await status()).system).toMatchObject({ running: "6.8.12-4-pve", newestInstalled: "6.8.12-9-pve", rebootRequired: true });
+    point("6.8.12-9-pve", ["6.8.12-4-pve", "6.8.12-9-pve"]);
+    expect((await status()).system.rebootRequired).toBe(false);
+    point("6.8.12-4-pve", []);
+    expect((await status()).system).toMatchObject({ newestInstalled: null, rebootRequired: false });
+  });
+
+  it("reminds about the restart, loudly once and then quietly each day", async () => {
+    point("6.8.12-4-pve", ["6.8.12-4-pve", "6.8.12-9-pve"]);
+    await h.call("GET", "/api/pin/update", { cookie: sam });
+    const n = async () => ((await j(await h.call("GET", "/api/pin/notifications", { cookie: sam }))).notifications as { key: string; level: string }[]).filter((x) => x.key.startsWith("reboot:"));
+    await h.runner.tick();
+    const first = await n();
+    expect(first).toHaveLength(1);
+    expect(first[0].level).toBe("warning");
+    await h.runner.tick();
+    expect(await n()).toHaveLength(1);
+    h.clock.t += 86_400_000;
+    sam = await h.signIn("sam");
+    await h.runner.tick();
+    const next = await n();
+    expect(next).toHaveLength(2);
+    expect(next[0].level).toBe("info");
+  });
+
+  it("reads Debian's apt history without changing it", async () => {
+    const log = [
+      "Start-Date: 2026-10-14  08:01:22", "Commandline: apt-get dist-upgrade", "Upgrade: pve-manager:amd64 (9.2.1, 9.2.3), proxmox-kernel-6.8:amd64 (6.8.12-4, 6.8.12-9)", "End-Date: 2026-10-14  08:03:40", "",
+      "Start-Date: 2026-10-15  09:00:00", "Commandline: apt-get update", "End-Date: 2026-10-15  09:00:05", "",
+      "Start-Date: 2026-10-16  10:00:00", "Commandline: apt install htop", "Install: htop:amd64 (3.3.0)", "End-Date: 2026-10-16  10:00:09", "",
+    ].join("\n");
+    point("6.8.12-4-pve", [], log);
+    const r = (await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).system as { command: string; upgraded: number; installed: number; kernel: boolean; packages: string[] }[];
+    expect(r).toHaveLength(2);
+    expect(r[0]).toMatchObject({ command: "apt install htop", installed: 1, upgraded: 0, kernel: false });
+    expect(r[1]).toMatchObject({ command: "apt-get dist-upgrade", upgraded: 2, kernel: true });
+    expect(r[1].packages).toEqual(["pve-manager", "proxmox-kernel-6.8"]);
+    point("6.8.12-4-pve", []);
+    expect((await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).system).toEqual([]);
+  });
+});

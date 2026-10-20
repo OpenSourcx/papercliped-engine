@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import type { FeatureCtx } from "./index.ts";
 import { runtimeFor, type PinRuntime } from "./pin-core.ts";
 import { pushNotice } from "./pin-notify.ts";
+import { aptHistory, kernelState } from "./pin-update-system.ts";
+import { applyPolicy, failedBefore, inWindow, isPaused, isSnoozed, nextWindow, readHistory, readPolicy, setPending, syncHistory, watch, watchers } from "./pin-update-policy.ts";
 
 /**
  * Update awareness. The host service reads the project's public release feed (one plain HTTPS GET from the server,
@@ -150,7 +152,7 @@ export function readStatus(file: string | null): UpdateStatus | null {
 
 const TERMINAL = new Set(["done", "failed", "rolled_back"]);
 
-async function check(rt: PinRuntime, force: boolean): Promise<Cache> {
+export async function check(rt: PinRuntime, force: boolean): Promise<Cache> {
   const cached = rt.state.getSetting<Cache & { latest?: unknown }>("pin.update.cache");
   const usable = cached && Array.isArray(cached.releases) ? cached : undefined;
   if (!force && usable && rt.now() - usable.checkedAt < TTL_MS) return usable;
@@ -176,7 +178,7 @@ function channelOf(rt: PinRuntime, installed: Version | null): Channel {
   return set === "stable" || set === "rc" ? set : installed?.pre ? "rc" : "stable";
 }
 
-function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, canManage: boolean) {
+export function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, canManage: boolean) {
   const p = paths(rt);
   const raw = readTrim(p.versionFile);
   const installed = parseVersion(raw);
@@ -192,7 +194,16 @@ function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, can
   // A newer release candidate than what this device is on, for a device that follows final releases only.
   const preview = channel === "stable" ? offered(releases, "rc") : null;
   const previewV = preview ? parseVersion(preview.version) : null;
+  const policy = readPolicy(rt);
+  const now = rt.now();
   return {
+    policy,
+    /** Whether Proxmox has installed a kernel that isn't running yet: a restart is needed to finish updating. */
+    system: kernelState(rt),
+    paused: isPaused(policy, now),
+    snoozed: isSnoozed(policy, now),
+    /** When the maintenance window next opens, for devices set to install by themselves. */
+    nextWindowAt: policy.mode === "window" ? nextWindow(policy, now) : null,
     installed: installed ? text(installed) : raw,
     channel,
     latest: latest ? { version: latest.version, notes: latest.notes, url: latest.url, publishedAt: latest.publishedAt } : null,
@@ -211,6 +222,59 @@ function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, can
   };
 }
 
+/** Leaves the root helper a request. Plain KEY=VALUE lines with fixed shapes, written whole then renamed, so it never reads half of one. */
+export function writeRequest(rt: PinRuntime, r: { action: "update" | "rollback"; version: string; by: string; from: string | null; previous?: string | null }) {
+  const p = paths(rt);
+  if (!p.dir) throw new Error("There is no folder to leave the request in.");
+  mkdirSync(p.dir, { recursive: true, mode: 0o770 });
+  const tmp = join(p.dir, `.request.${process.pid}.tmp`);
+  writeFileSync(tmp, `action=${r.action}\nversion=${r.version}\nrequestedBy=${r.by}\nat=${Math.floor(rt.now() / 1000)}\n`, { mode: 0o640 });
+  renameSync(tmp, join(p.dir, "request"));
+  setPending(rt, { action: r.action, from: r.from, to: r.action === "rollback" ? (r.previous ?? null) : r.version, by: r.by, at: rt.now() });
+  rt.audit(r.by, `pin.update.${r.action}`, undefined, r.version);
+}
+
+/**
+ * The background half, run on the runner's tick: write down what the helper finished, look for a new release, remind
+ * administrators once a day (unless snoozed or paused), and, when the device is set to, install it inside the
+ * maintenance window. An update that failed on schedule is not tried again by itself.
+ */
+export async function updateTick(rt: PinRuntime): Promise<void> {
+  if (rt.state.getSetting<boolean>("pin.update.enabled") === false) return;
+  const cache = await check(rt, false);
+  const sum = summary(rt, cache, true, true);
+  syncHistory(rt, sum.installed, sum.status);
+  const now = rt.now();
+  const policy = readPolicy(rt);
+  // A new Proxmox kernel only takes effect after a reboot. Reminders ignore "pause" (it holds back installs), not "snooze".
+  if (sum.system.rebootRequired && sum.system.newestInstalled && !isSnoozed(policy, now)) {
+    const k = sum.system.newestInstalled;
+    for (const u of watchers(rt)) {
+      const told = pushNotice(rt, u, { key: `reboot:${k}:first`, kind: "update", level: "warning", title: "Proxmox needs a restart to finish updating", body: `Kernel ${k} is installed but ${sum.system.running ?? "the old one"} is still running. Restart when no one is relying on this device.`, link: "pin?tab=updates" });
+      const today = new Date(now).toISOString().slice(0, 10);
+      const firstAt = rt.store.inbox(u).find((x) => x.key === `reboot:${k}:first`)?.at;
+      if (!told && firstAt !== undefined && new Date(firstAt).toISOString().slice(0, 10) !== today) pushNotice(rt, u, { key: `reboot:${k}:${today}`, kind: "update", level: "info", title: "Reminder: Proxmox is waiting for a restart", body: `Kernel ${k} is installed; ${sum.system.running ?? "the old one"} is still running.`, link: "pin?tab=updates" });
+    }
+  }
+  if (sum.state !== "available" || !sum.latest || sum.inProgress) return;
+  if (isPaused(policy, now)) return;
+  const version = sum.latest.version;
+  const day = new Date(now).toISOString().slice(0, 10);
+  if (policy.mode === "window") {
+    if (failedBefore(rt, version)) {
+      for (const u of watchers(rt)) pushNotice(rt, u, { key: `update:${version}:failed`, kind: "update", level: "warning", title: `The scheduled update to ${version} didn't finish`, body: "It won't be tried again on its own. Open Updates to see what happened and try again.", link: "pin?tab=updates" });
+      return;
+    }
+    if (sum.canUpdate && inWindow(policy, now)) {
+      writeRequest(rt, { action: "update", version, by: "schedule", from: sum.installed, previous: sum.previous });
+      return;
+    }
+  }
+  if (isSnoozed(policy, now)) return;
+  const when = policy.mode === "window" ? `It installs by itself ${new Date(nextWindow(policy, now)).toLocaleString()}.` : "Open Updates to review it and install when it suits you.";
+  for (const u of watchers(rt)) pushNotice(rt, u, { key: `update:${version}:${policy.mode === "window" ? "scheduled" : day}`, kind: "update", level: "info", title: `ePaperclip ${version} is available`, body: `You have ${sum.installed ?? "an unknown version"}. ${when}`, link: "pin?tab=updates" });
+}
+
 export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
   if (!ctx.path.startsWith("/api/pin/update")) return false;
   const { HttpError, method, path } = ctx;
@@ -223,6 +287,10 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
     // Looking is allowed for everyone signed in; only an administrator makes the first (or a forced) request to the feed.
     const cache = enabled ? (isAdmin ? await check(rt, false) : rt.state.getSetting<Cache>("pin.update.cache")) : undefined;
     const sum = summary(rt, cache, enabled, isAdmin);
+    if (isAdmin) {
+      watch(rt, s.username);
+      syncHistory(rt, sum.installed, sum.status);
+    }
     if (isAdmin && sum.state === "available" && sum.latest) pushNotice(rt, s.username, { key: `update:${sum.latest.version}`, kind: "update", level: "info", title: `ePaperclip ${sum.latest.version} is available`, body: `You have ${sum.installed ?? "an unknown version"}. Open Pin's Updates tab to review it.`, link: "pin?tab=updates" });
     return ctx.json(200, sum), true;
   }
@@ -238,7 +306,16 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
     ctx.sameSite();
     if (!isAdmin) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change this");
     const b = await ctx.readJson();
-    if (Object.keys(b).some((k) => k !== "check" && k !== "channel") || (b.check === undefined && b.channel === undefined) || (b.check !== undefined && typeof b.check !== "boolean") || (b.channel !== undefined && b.channel !== "stable" && b.channel !== "rc")) throw new HttpError(400, "bad_request", 'Send {check: true or false} and/or {channel: "stable" or "rc"}');
+    const KEYS = new Set(["check", "channel", "mode", "window", "pauseDays", "snoozeHours"]);
+    if (!Object.keys(b).length || Object.keys(b).some((k) => !KEYS.has(k))) throw new HttpError(400, "bad_request", "Send any of: check, channel, mode, window, pauseDays, snoozeHours.");
+    if (b.check !== undefined && typeof b.check !== "boolean") throw new HttpError(400, "bad_request", "check is true or false.");
+    if (b.channel !== undefined && b.channel !== "stable" && b.channel !== "rc") throw new HttpError(400, "bad_request", 'channel is "stable" or "rc".');
+    try {
+      applyPolicy(rt, b);
+    } catch (e) {
+      throw new HttpError(400, "bad_request", (e as Error).message);
+    }
+    for (const k of ["mode", "window", "pauseDays", "snoozeHours"]) if (b[k] !== undefined) rt.audit(s.username, `pin.update.${k}`, undefined, JSON.stringify(b[k]).slice(0, 120));
     if (b.channel !== undefined) {
       rt.state.setSetting("pin.update.channel", b.channel);
       rt.audit(s.username, "pin.update.channel", undefined, String(b.channel));
@@ -249,6 +326,13 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
     }
     const on = rt.state.getSetting<boolean>("pin.update.enabled") !== false;
     return ctx.json(200, summary(rt, rt.state.getSetting<Cache>("pin.update.cache"), on, isAdmin)), true;
+  }
+
+  if (path === "/api/pin/update/history" && method === "GET") {
+    if (!isAdmin) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can see the update history");
+    const sum = summary(rt, rt.state.getSetting<Cache>("pin.update.cache"), enabled, true);
+    syncHistory(rt, sum.installed, sum.status);
+    return ctx.json(200, { entries: readHistory(rt), system: aptHistory(rt) }), true;
   }
 
   if (path === "/api/pin/update" && method === "POST") {
@@ -272,12 +356,7 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
       version = "previous";
     } else throw new HttpError(400, "bad_request", "action is update or rollback");
     if (!/^[\w.@-]{1,100}$/.test(s.username)) throw new HttpError(400, "bad_request", "This account name can't be recorded in an update request.");
-    mkdirSync(p.dir, { recursive: true, mode: 0o770 });
-    // Plain KEY=VALUE lines with fixed shapes, written whole then renamed, so the helper never reads half a request.
-    const tmp = join(p.dir, `.request.${process.pid}.tmp`);
-    writeFileSync(tmp, `action=${b.action}\nversion=${version}\nrequestedBy=${s.username}\nat=${Math.floor(rt.now() / 1000)}\n`, { mode: 0o640 });
-    renameSync(tmp, join(p.dir, "request"));
-    rt.audit(s.username, `pin.update.${b.action}`, undefined, version);
+    writeRequest(rt, { action: b.action as "update" | "rollback", version, by: s.username, from: sum.installed, previous: sum.previous });
     return ctx.json(202, { requested: true, action: b.action, version }), true;
   }
   throw new HttpError(405, "method", "Method not allowed");
