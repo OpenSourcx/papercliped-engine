@@ -189,7 +189,66 @@ describe("automations", () => {
   });
 });
 
-const info = (over: Record<string, unknown> = {}) => ({ installed: "0.1.0", latest: { version: "0.2.0", notes: "A calmer inbox.\n<script>x</script>", url: "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v0.2.0", publishedAt: null }, state: "available", checkedAt: NOW, error: null, checkEnabled: true, canManage: true, canUpdate: true, previous: "0.0.9", status: null, inProgress: false, manual: "sudo ./deploy/install.sh", ...over });
+const info = (over: Record<string, unknown> = {}) => ({ installed: "0.1.0", channel: "stable", preview: null, policy: { mode: "remind", window: { day: "daily", at: "03:00", hours: 2 }, pausedUntil: null, snoozedUntil: null }, paused: false, snoozed: false, nextWindowAt: null, system: { running: "6.8.12-4-pve", newestInstalled: "6.8.12-4-pve", rebootRequired: false }, source: "feed", feedNote: null, installedWithdrawn: null, latest: { version: "0.2.0", notes: "A calmer inbox.\n<script>x</script>", url: "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v0.2.0", publishedAt: null }, state: "available", checkedAt: NOW, error: null, checkEnabled: true, canManage: true, canUpdate: true, previous: "0.0.9", status: null, inProgress: false, manual: "sudo ./deploy/install.sh", ...over });
+
+describe("update options, restart and history", () => {
+  const policy = (over: Record<string, unknown> = {}) => ({ mode: "remind", window: { day: "daily", at: "03:00", hours: 2 }, pausedUntil: null, snoozedUntil: null, ...over });
+  it("follows release candidates, pauses and resumes, and sets a maintenance window", async () => {
+    handlers["GET /api/pin/update"] = () => info();
+    handlers["PUT /api/pin/update/settings"] = (c) => {
+      if (c.body.channel) return info({ channel: c.body.channel });
+      if (c.body.pauseDays) return info({ paused: true, policy: policy({ pausedUntil: NOW + 7 * 86_400_000 }) });
+      return info({ policy: policy({ mode: c.body.mode ?? "remind" }), nextWindowAt: NOW + 3_600_000 });
+    };
+    wrap(<UpdatesTab />);
+    fireEvent.click(await screen.findByRole("switch", { name: "Follow release candidates" }));
+    await waitFor(() => expect(sent("PUT", "/api/pin/update/settings")[0].body).toEqual({ channel: "rc" }));
+    fireEvent.change(screen.getByLabelText("Pause updates for"), { target: { value: "14" } });
+    await waitFor(() => expect(sent("PUT", "/api/pin/update/settings").some((c) => c.body.pauseDays === 14)).toBe(true));
+    fireEvent.click(screen.getByRole("radio", { name: "Install in a window" }));
+    await waitFor(() => expect(sent("PUT", "/api/pin/update/settings").some((c) => c.body.mode === "window")).toBe(true));
+    expect(await screen.findByLabelText("Start time")).toBeTruthy();
+  });
+
+  it("offers no automatic installs without the update helper", async () => {
+    handlers["GET /api/pin/update"] = () => info({ canUpdate: false });
+    wrap(<UpdatesTab />);
+    await screen.findByText("Update history");
+    expect(screen.queryByRole("radio", { name: "Install in a window" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "Remind me" })).toBeTruthy();
+  });
+
+  it("says a restart is needed after a new Proxmox kernel, and snoozes the reminder", async () => {
+    handlers["GET /api/pin/update"] = () => info({ system: { running: "6.8.12-4-pve", newestInstalled: "6.8.12-9-pve", rebootRequired: true } });
+    handlers["PUT /api/pin/update/settings"] = () => info({ snoozed: true, policy: policy({ snoozedUntil: NOW + 86_400_000 }), system: { running: "6.8.12-4-pve", newestInstalled: "6.8.12-9-pve", rebootRequired: true } });
+    wrap(<UpdatesTab />);
+    expect(await screen.findByText("Restart needed to finish updating Proxmox")).toBeTruthy();
+    expect(screen.getByText("6.8.12-9-pve")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remind me tomorrow" }));
+    await waitFor(() => expect(sent("PUT", "/api/pin/update/settings")[0].body).toEqual({ snoozeHours: 24 }));
+  });
+
+  it("warns when the running version was withdrawn", async () => {
+    handlers["GET /api/pin/update"] = () => info({ installedWithdrawn: "Updates could not restart the engine." });
+    wrap(<UpdatesTab />);
+    expect(await screen.findByText("The version you're running was withdrawn")).toBeTruthy();
+    expect(screen.getByText(/could not restart the engine/)).toBeTruthy();
+  });
+
+  it("shows ePaperclip's history and Proxmox's package runs", async () => {
+    handlers["GET /api/pin/update/history"] = () => ({
+      entries: [{ id: "1", at: NOW - 3600_000, action: "update", from: "0.1.0", to: "0.2.0", by: "schedule", result: "failed", message: "The download was refused." }],
+      system: [{ at: NOW - 86_400_000, command: "apt-get dist-upgrade", upgraded: 12, installed: 1, removed: 0, packages: ["pve-manager", "proxmox-kernel-6.8"], kernel: true }],
+    });
+    const { UpdateHistoryModal } = await import("../src/pages/updates/UpdateOptions.tsx");
+    wrap(<UpdateHistoryModal onClose={() => undefined} />);
+    expect(await screen.findByText("Didn't finish")).toBeTruthy();
+    expect(screen.getByText(/by the maintenance window/)).toBeTruthy();
+    expect(screen.getByText("The download was refused.")).toBeTruthy();
+    expect(screen.getByText("12 upgraded, 1 installed")).toBeTruthy();
+    expect(screen.getByText("New kernel")).toBeTruthy();
+  });
+});
 
 describe("updates", () => {
   it("shows installed against latest, the notes as plain text, and updates only after the typed phrase", async () => {

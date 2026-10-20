@@ -18,6 +18,7 @@ import { Settings } from "../pages/Settings.tsx";
 import { NewAutomationModal } from "../pages/pin/runtime.tsx";
 import { Updates } from "../pages/Updates.tsx";
 import { Vault } from "../pages/Vault.tsx";
+import { UpdateHistoryModal } from "../pages/updates/UpdateOptions.tsx";
 import { SettingsModal, type SettingsSection } from "../ui/Modal.tsx";
 import { useModals } from "./useModals.ts";
 
@@ -40,6 +41,7 @@ export function ModalHost() {
   return (
     <>
       {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
+      {m.modal === "update-history" && <UpdateHistoryModal onClose={m.close} />}
       {m.modal === "new-automation" && <NewAutomationModal onClose={m.close} />}
       {m.modal === "new-org" && <NewOrgModal onClose={m.close} />}
       {m.modal === "new-machine" && <NewMachineModal onClose={m.close} />}

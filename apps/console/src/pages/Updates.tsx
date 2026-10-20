@@ -9,7 +9,8 @@ import { proxmoxVersion } from "../lib/version.ts";
 import { usePin } from "../pin/PinContext.tsx";
 import { ago } from "./pin/runtime.tsx";
 import { useNodeName } from "./node/common.tsx";
-import { Button, Card, PageHeader, Status, PageFrame } from "../ui/primitives.tsx";
+import { Button, Card, Notice, PageHeader, Status, PageFrame } from "../ui/primitives.tsx";
+import { RestartNotice, UpdateOptions } from "./updates/UpdateOptions.tsx";
 
 /**
  * Updates, in the manner of the system's own update page: one answer first ("You're up to date" or what is waiting), when it
@@ -69,7 +70,12 @@ function LiveUpdates() {
           <Button variant="primary" loading={check.isPending} onClick={lookBack}><RefreshCw className="h-4 w-4" />Check for updates</Button>
         </div>
         {meNow?.error && <p role="alert" className="text-compact text-warning mt-4 text-pretty">The release feed didn't answer ({meNow.error}). Your installed version is unaffected.</p>}
+        {meNow?.paused && meNow.policy.pausedUntil && <p className="text-compact text-ink-2 mt-4">Updates are paused until {new Date(meNow.policy.pausedUntil).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}.</p>}
       </Card>
+      {meNow && <div className="mb-4 space-y-3">
+        {meNow.installedWithdrawn && <Notice tone="critical" title="The version you're running was withdrawn">{meNow.installedWithdrawn} Update to a newer version as soon as you can.</Notice>}
+        <RestartNotice u={meNow} device={device} />
+      </div>}
 
       <Card className="divide-y divide-line">
         <Row
@@ -89,6 +95,7 @@ function LiveUpdates() {
           action={packages > 0 ? "Open updates" : "Details"}
         />
       </Card>
+      {meNow && <div className="mt-6"><UpdateOptions u={meNow} device={device} /></div>}
     </>
   );
 }

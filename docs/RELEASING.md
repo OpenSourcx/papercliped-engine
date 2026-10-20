@@ -55,6 +55,24 @@ its own output before it writes it).
 Before tagging: the version in the tag is what gets signed, so it must be the one you mean. Versions are `MAJOR.MINOR.PATCH`,
 optionally `-rc1`, `-beta1`. After it is out, check one release by hand (see SECURITY.md) or run `get.sh` on a test host.
 
+## What users get from a release
+
+A release is not only the tag. After the GitHub release is published, CI:
+
+1. publishes the signed APT repository (final releases only),
+2. publishes the **signed update feed** (`updates/feed.json` and `feed.sig` on the Pages site) with every release, its channel and notes. The step never fails a release; devices fall back to GitHub's release list,
+3. publishes the npm package.
+
+Installed devices read the feed on their channel, so the order that matters to users is: **tag a release candidate, let people on the candidate channel try it, then tag the final release** (same commit or later). A final tag (no hyphen) is what everyone on the default channel is offered. See [UPDATES.md](UPDATES.md).
+
+### Pulling a bad release
+
+Add its version and a reason to `deploy/withdrawn-releases.txt`, push, and tag the next release. The feed then marks the version withdrawn: devices never offer it and warn any that run it. The GitHub release itself can stay (a pulled release's files still verify); withdrawing is about what devices are told.
+
+### Before the first final release
+
+`1.0.0` is the first release that moves devices on the default channel. Until then devices on it see "No final release yet" and only people who opt in to release candidates are offered anything.
+
 ## Rotating the key
 
 Installed hosts only trust the key they were installed with, so a new key must ride in a release the old key signed.

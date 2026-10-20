@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Bell, BellOff, Check, ChevronDown, ChevronRight, ClipboardList, Pause, Play, Plus, RotateCcw, Trash2, Workflow, Zap } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { usePin } from "../../pin/PinContext.tsx";
+import { RemindLater, RestartNotice, UpdateOptions } from "../updates/UpdateOptions.tsx";
 import { errorMessage, pinRt, type AutomationInput, type AutomationView, type InboxNotice, type NoticeKind, type Plan, type PlanStep, type Run, type StepState, type UpdateInfo } from "../../data/engine/pinRuntimeApi.ts";
 import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
@@ -468,11 +469,10 @@ function NewAutomation({ onClose, onCreated }: { onClose: () => void; onCreated:
 
 export function UpdatesTab() {
   const qc = useQueryClient();
+  const device = useEngine().setup?.deviceName ?? "pve";
   const q = useQuery({ queryKey: ["pin", "update"], queryFn: pinRt.update, refetchInterval: (query) => (query.state.data?.inProgress ? 3000 : 600_000), retry: 1 });
   const set = (d: UpdateInfo) => qc.setQueryData(["pin", "update"], d);
   const check = useMutation({ mutationFn: pinRt.checkUpdate, onSuccess: set });
-  const toggle = useMutation({ mutationFn: pinRt.setUpdateCheck, onSuccess: set });
-  const channel = useMutation({ mutationFn: pinRt.setUpdateChannel, onSuccess: set });
   const [confirm, setConfirm] = useState<"update" | "rollback" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const start = useMutation({ mutationFn: pinRt.startUpdate, onSuccess: () => { setConfirm(null); void q.refetch(); }, onError: (e) => setError(errorMessage(e)) });
@@ -502,7 +502,7 @@ export function UpdatesTab() {
         {u.preview && u.channel === "stable" && u.canManage && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3">
             <p className="text-compact text-ink-2 text-pretty">A release candidate, <span className="font-mono">{u.preview.version}</span>, is available for people who want to try it early.</p>
-            <Button size="sm" loading={channel.isPending} onClick={() => channel.mutate("rc")}>Follow release candidates</Button>
+            <Button size="sm" onClick={() => void pinRt.setUpdateChannel("rc").then(set)}>Follow release candidates</Button>
           </div>
         )}
         {u.latest && u.state === "available" && (
@@ -520,6 +520,8 @@ export function UpdatesTab() {
         </Notice>
       )}
 
+      {u.installedWithdrawn && <Notice tone="critical" title="The version you're running was withdrawn">{u.installedWithdrawn} Update to a newer version as soon as you can.</Notice>}
+      <RestartNotice u={u} device={device} />
       {u.canManage ? (
         <Card className="p-5 space-y-4">
           <div>
@@ -529,23 +531,17 @@ export function UpdatesTab() {
           {u.canUpdate ? (
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" disabled={u.state !== "available" || u.inProgress} onClick={() => { setError(null); setConfirm("update"); }}><ArrowUpCircle className="h-4 w-4" />Update to {u.latest?.version ?? "latest"}</Button>
+              <RemindLater u={u} />
               <Button disabled={!u.previous || u.inProgress} onClick={() => { setError(null); setConfirm("rollback"); }}><RotateCcw className="h-4 w-4" />Go back to {u.previous ?? "the previous version"}</Button>
             </div>
           ) : (
             <Notice tone="info" title="Update from the shell on this device">This device doesn't have the update helper, so the console can't start an update. Run <span className="font-mono">{u.manual}</span>.</Notice>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-            <span className="text-pretty">Which releases<span className="block text-xs text-ink-3">Final releases are tested and safe for everyday use. Release candidates arrive sooner and may have rough edges; you can switch back any time.</span></span>
-            <Segmented label="Release channel" value={u.channel} onChange={(v) => channel.mutate(v)} options={[{ value: "stable", label: "Final releases" }, { value: "rc", label: "Release candidates" }]} />
-          </div>
-          <label className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-            <span className="text-pretty">Check for updates<span className="block text-xs text-ink-3">The device asks the project's public release feed on GitHub for the newest version. It sends nothing about you or this device. Your browser never contacts it.</span></span>
-            <Toggle label="Check for updates" checked={u.checkEnabled} onChange={(v) => toggle.mutate(v)} />
-          </label>
         </Card>
       ) : (
         <p className="text-compact text-ink-3">Only Proxmox administrators can update ePaperclip.</p>
       )}
+      <UpdateOptions u={u} device={device} />
 
       {confirm === "update" && u.latest && (
         <TypedConfirm title={`Update to ${u.latest.version}`} subtitle="This restarts ePaperclip for a minute or two." phrase={`update ${u.latest.version}`} action="Start the update" busy={start.isPending} error={error} onClose={() => setConfirm(null)} onConfirm={() => start.mutate({ action: "update", confirm: `update ${u.latest!.version}` })}>

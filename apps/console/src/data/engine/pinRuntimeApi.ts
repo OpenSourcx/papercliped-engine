@@ -103,6 +103,33 @@ export interface AutomationInput {
 }
 
 export type UpdateChannel = "stable" | "rc";
+export type UpdateWindowDay = "daily" | 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export interface UpdatePolicy {
+  /** "remind": tell me and I install; "window": install by itself inside the maintenance window. */
+  mode: "remind" | "window";
+  window: { day: UpdateWindowDay; at: string; hours: number };
+  pausedUntil: number | null;
+  snoozedUntil: number | null;
+}
+export interface UpdateHistoryEntry {
+  id: string;
+  at: number;
+  action: "update" | "rollback";
+  from: string | null;
+  to: string | null;
+  by: string;
+  result: "done" | "failed" | "rolled_back";
+  message: string;
+}
+export interface AptRun {
+  at: number | null;
+  command: string;
+  upgraded: number;
+  installed: number;
+  removed: number;
+  packages: string[];
+  kernel: boolean;
+}
 export interface UpdateInfo {
   installed: string | null;
   /** Which releases this device follows: final ones only, or release candidates too. */
@@ -110,6 +137,16 @@ export interface UpdateInfo {
   latest: { version: string; notes: string; url: string; publishedAt: string | null } | null;
   /** A release candidate newer than this device, for one that follows final releases only. */
   preview: { version: string; publishedAt: string | null } | null;
+  policy: UpdatePolicy;
+  paused: boolean;
+  snoozed: boolean;
+  nextWindowAt: number | null;
+  /** Proxmox installed a kernel that isn't running yet: a restart is needed to finish updating. */
+  system: { running: string | null; newestInstalled: string | null; rebootRequired: boolean };
+  source: "feed" | "github" | null;
+  feedNote: string | null;
+  /** Why the project pulled the release this device runs, when it did. */
+  installedWithdrawn: string | null;
   state: "off" | "unchecked" | "unknown" | "available" | "current" | "no_stable" | "no_release";
   checkedAt: number | null;
   error: string | null;
@@ -179,6 +216,9 @@ export const pinRt = {
   checkUpdate: () => call<UpdateInfo>("POST", "/api/pin/update/check"),
   setUpdateCheck: (check: boolean) => call<UpdateInfo>("PUT", "/api/pin/update/settings", { check }),
   setUpdateChannel: (channel: UpdateChannel) => call<UpdateInfo>("PUT", "/api/pin/update/settings", { channel }),
+  /** Any of: mode, window {day, at, hours}, pauseDays (0 resumes), snoozeHours (0 stops snoozing). */
+  setUpdatePolicy: (b: { mode?: UpdatePolicy["mode"]; window?: Partial<UpdatePolicy["window"]>; pauseDays?: number; snoozeHours?: number }) => call<UpdateInfo>("PUT", "/api/pin/update/settings", b),
+  updateHistory: () => call<{ entries: UpdateHistoryEntry[]; system: AptRun[] }>("GET", "/api/pin/update/history"),
   startUpdate: (b: { action: "update" | "rollback"; confirm: string }) => call<{ requested: true }>("POST", "/api/pin/update", b),
 
   testModel: (provider?: string | null, model?: string | null) => call<ModelTest>("POST", "/api/pin/settings/test", { ...(provider ? { provider } : {}), ...(model ? { model } : {}) }),
