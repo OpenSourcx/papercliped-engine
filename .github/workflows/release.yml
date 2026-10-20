@@ -36,7 +36,7 @@ jobs:
       - name: Proxmox API conformance (every call against Proxmox's own schema)
         run: node scripts/check-pve-api.mjs
       - name: Release script tests (key generator, signer, get.sh build)
-        run: node --test scripts/release-signing.test.mjs scripts/update-feed.test.mjs
+        run: node --test scripts/release-signing.test.mjs scripts/update-feed.test.mjs scripts/release-notes.test.mjs
       - name: Proxmox sandbox provider (tests, then the build the release ships)
         run: |
           npm --prefix plugins/proxmox-sandbox ci
@@ -70,7 +70,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          flags=(--generate-notes)
+          # The notes come from CHANGELOG.md or the commit messages since the last release (scripts/release-notes.mjs); GitHub's own
+          # generated notes (a bare compare link, since our commits aren't pull requests) are only the fallback.
+          if node scripts/release-notes.mjs --tag "${GITHUB_REF_NAME}" --out release/notes.md; then flags=(--notes-file release/notes.md); else flags=(--generate-notes); fi
           case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
           gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/epaperclip.manifest.json release/epaperclip.manifest.sig release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" "${flags[@]}"
       - name: Publish the APT repository (stable releases only)

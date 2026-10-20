@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Bell, BellOff, Check, ChevronDown, ChevronRight, ClipboardList, Pause, Play, Plus, RotateCcw, Trash2, Workflow, Zap } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { usePin } from "../../pin/PinContext.tsx";
+import { Markdown } from "./notes/Markdown.tsx";
 import { RemindLater, RestartNotice, UpdateOptions } from "../updates/UpdateOptions.tsx";
 import { errorMessage, pinRt, type AutomationInput, type AutomationView, type InboxNotice, type NoticeKind, type Plan, type PlanStep, type Run, type StepState, type UpdateInfo } from "../../data/engine/pinRuntimeApi.ts";
 import { cn } from "../../lib/storage.ts";
@@ -508,7 +509,7 @@ export function UpdatesTab() {
         {u.latest && u.state === "available" && (
           <div className="mt-4">
             <div className="text-sm font-medium">What's new in {u.latest.version}</div>
-            <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-code border border-line p-3 text-compact font-mono whitespace-pre-wrap text-ink-2">{u.latest.notes || "No release notes were published."}</pre>
+            <div className="mt-2 max-h-72 overflow-y-auto overflow-x-hidden rounded-lg border border-line p-4 text-compact text-ink-2">{u.latest.notes ? <Markdown text={u.latest.notes} chat /> : "No release notes were published."}</div>
             <a href={httpUrl(u.latest.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="text-compact text-accent hover:underline mt-2 inline-block">Release page on GitHub</a>
           </div>
         )}
