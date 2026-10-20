@@ -25,7 +25,7 @@ export interface PinRuntimeOpts {
   now?: () => number;
   sleep?: Sleep;
   /** Where the installed version is written and where the release feed is; tests and unusual installs move them. */
-  update?: { versionFile?: string; feedUrl?: string; helperDir?: string; modulesDir?: string; aptHistory?: string; kernelRelease?: string };
+  update?: { versionFile?: string; feedUrl?: string; signedFeedUrl?: string; pubKeyFile?: string; helperDir?: string; modulesDir?: string; aptHistory?: string; kernelRelease?: string };
 }
 
 export interface Automation {

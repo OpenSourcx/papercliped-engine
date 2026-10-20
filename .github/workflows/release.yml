@@ -36,7 +36,7 @@ jobs:
       - name: Proxmox API conformance (every call against Proxmox's own schema)
         run: node scripts/check-pve-api.mjs
       - name: Release script tests (key generator, signer, get.sh build)
-        run: node --test scripts/release-signing.test.mjs
+        run: node --test scripts/release-signing.test.mjs scripts/update-feed.test.mjs
       - name: Proxmox sandbox provider (tests, then the build the release ships)
         run: |
           npm --prefix plugins/proxmox-sandbox ci
@@ -81,6 +81,14 @@ jobs:
         run: |
           command -v dpkg-scanpackages >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev >/dev/null; }
           bash scripts/publish-apt.sh
+      - name: Publish the signed update feed (what installed devices read to find updates)
+        if: startsWith(github.ref, 'refs/tags/')
+        # A failure here never fails the release: devices fall back to GitHub's own release list.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: bash scripts/publish-update-feed.sh
       - name: Publish the npm package (Trusted Publishing; the GitHub release above is the artifact, so this never fails the run)
         if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true

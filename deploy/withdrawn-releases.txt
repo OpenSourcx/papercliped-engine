@@ -1,0 +1,3 @@
+# Releases pulled from the update feed. One per line: the version, then # and the reason people will see.
+# A withdrawn version is never offered, and a device running one is told to update. Example:
+#   1.0.0-rc3 # Updates could not restart the engine on some hosts; use 1.0.0-rc4 or newer.

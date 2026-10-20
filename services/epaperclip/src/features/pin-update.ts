@@ -1,3 +1,4 @@
+import { createPublicKey, verify } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { FeatureCtx } from "./index.ts";
@@ -17,6 +18,12 @@ import { applyPolicy, failedBefore, inWindow, isPaused, isSnoozed, nextWindow, r
  * test-starts the new version, swaps it in and rolls back by itself if it doesn't come up healthy. A "go back" button asks
  * the same helper to run the installer's `--rollback`. The installer is not changed in what it checks or promises.
  */
+
+/**
+ * The signed update feed: every release with its channel, notes and whether it was withdrawn, signed with the release key
+ * that every installation pins. It is what lets a bad release be pulled; GitHub's own list is the fallback.
+ */
+export const SIGNED_FEED = "https://opensourcx.github.io/papercliped-engine/updates/feed.json";
 
 /** Every published release, newest first, so the final releases and the release candidates come from one request. */
 export const FEED = "https://api.github.com/repos/OpenSourcx/papercliped-engine/releases?per_page=30";
@@ -56,11 +63,17 @@ export interface Latest {
 export type Channel = "stable" | "rc";
 export interface Release extends Latest {
   channel: Channel;
+  /** Set (with the reason) when the project pulled this release; it is never offered and a device running it is told to move on. */
+  withdrawn?: string;
 }
 interface Cache {
   checkedAt: number;
   /** Newest first. Empty when nothing has been published. */
   releases: Release[];
+  /** Where the list came from. */
+  source?: "feed" | "github";
+  /** Set when the signed feed was ignored, and why. */
+  feedNote?: string;
   error?: string;
 }
 
@@ -103,7 +116,24 @@ export function readFeed(raw: string): Latest {
 
 /** The release a channel offers: the newest final release, or for release candidates the newest of everything. */
 export function offered(releases: Release[], channel: Channel): Release | null {
-  return (channel === "rc" ? releases : releases.filter((r) => r.channel === "stable"))[0] ?? null;
+  const live = releases.filter((r) => !r.withdrawn);
+  return (channel === "rc" ? live : live.filter((r) => r.channel === "stable"))[0] ?? null;
+}
+
+/** The signed feed's answer, after its signature checked out: reduced to our own Release shape. Channels are decided here, not taken on trust. */
+export function readSignedFeed(raw: string): Release[] {
+  const j = JSON.parse(raw) as { format?: unknown; releases?: unknown };
+  if (j.format !== 1 || !Array.isArray(j.releases)) throw new Error("The update feed isn't in a format this version understands.");
+  const out: Release[] = [];
+  for (const e of j.releases.slice(0, 100)) {
+    const o = e && typeof e === "object" ? (e as Record<string, unknown>) : null;
+    if (!o) continue;
+    const r = readEntry({ tag_name: o.version, body: o.notes, html_url: o.url, published_at: o.publishedAt, prerelease: false, draft: false });
+    if (!r) continue;
+    if (o.withdrawn === true) r.withdrawn = (typeof o.withdrawnReason === "string" ? o.withdrawnReason : "").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 200) || "This release was withdrawn.";
+    out.push(r);
+  }
+  return out.sort((a, b) => compareVersions(parseVersion(b.version)!, parseVersion(a.version)!));
 }
 
 const paths = (rt: PinRuntime) => {
@@ -152,21 +182,63 @@ export function readStatus(file: string | null): UpdateStatus | null {
 
 const TERMINAL = new Set(["done", "failed", "rolled_back"]);
 
+/** Reads the signed feed and checks it against the release key installed with this version (root's copy, not anything downloaded). */
+async function readSigned(rt: PinRuntime, f: NonNullable<PinRuntime["opts"]["fetch"]>, url: string): Promise<Release[]> {
+  const keyFile = rt.opts.update?.pubKeyFile ?? join(dirname(paths(rt).versionFile), "update", "release-signing.pub");
+  let pem: string;
+  try {
+    pem = readFileSync(keyFile, "utf8");
+  } catch {
+    throw new Error("This device has no release key pinned, so the signed feed can't be checked.");
+  }
+  const get = async (u: string) => {
+    const r = await f(u, { method: "GET", headers: { Accept: "application/json", "User-Agent": "epaperclip-update-check" }, signal: AbortSignal.timeout(10_000), redirect: "error" });
+    if (!r.ok) throw new Error(`The update feed answered ${r.status}.`);
+    const t = await r.text();
+    if (t.length > MAX_FEED) throw new Error("The update feed's answer was too large.");
+    return t;
+  };
+  const [body, sig] = await Promise.all([get(url), get(url.replace(/feed\.json$/, "feed.sig"))]);
+  let ok = false;
+  try {
+    ok = verify(null, Buffer.from(body), createPublicKey(pem), Buffer.from(sig.trim(), "base64"));
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw new Error("The update feed's signature didn't check out, so it was ignored.");
+  return readSignedFeed(body);
+}
+
 export async function check(rt: PinRuntime, force: boolean): Promise<Cache> {
   const cached = rt.state.getSetting<Cache & { latest?: unknown }>("pin.update.cache");
   const usable = cached && Array.isArray(cached.releases) ? cached : undefined;
   if (!force && usable && rt.now() - usable.checkedAt < TTL_MS) return usable;
   const f = rt.opts.fetch ?? ((u, i) => fetch(u, i));
   let next: Cache;
+  // The signed feed first, when this device uses the project's own feed (a different feed address is read as GitHub's list).
+  let feedNote: string | undefined;
+  const signedUrl = rt.opts.update?.signedFeedUrl ?? (rt.opts.update?.feedUrl ? null : SIGNED_FEED);
+  if (signedUrl) {
+    try {
+      const releases = await readSigned(rt, f, signedUrl);
+      next = { checkedAt: rt.now(), releases: releases.slice(0, 60), source: "feed" };
+      rt.state.setSetting("pin.update.cache", next);
+      return next;
+    } catch (e) {
+      const m = (e as Error).message;
+      // An unreachable feed is ordinary; a feed that fails its signature is worth saying.
+      if (/signature|format|key/i.test(m)) feedNote = m.slice(0, 200);
+    }
+  }
   try {
     const r = await f(rt.opts.update?.feedUrl ?? FEED, { method: "GET", headers: { Accept: "application/vnd.github+json", "User-Agent": "epaperclip-update-check" }, signal: AbortSignal.timeout(10_000), redirect: "error" });
     const body = await r.text();
     if (!r.ok) throw new Error(r.status === 404 ? "The release feed wasn't found (404)." : r.status === 403 || r.status === 429 ? "The release feed is rate-limiting this address. Try again later." : `The release feed answered ${r.status}.`);
     if (body.length > MAX_FEED) throw new Error("The release feed's answer was too large.");
-    next = { checkedAt: rt.now(), releases: readReleases(body).slice(0, 30) };
+    next = { checkedAt: rt.now(), releases: readReleases(body).slice(0, 30), source: "github", ...(feedNote ? { feedNote } : {}) };
   } catch (e) {
     const name = (e as Error).name;
-    next = { checkedAt: rt.now(), releases: usable?.releases ?? [], error: name === "TimeoutError" || name === "AbortError" ? "The release feed didn't answer within 10 seconds." : (e instanceof SyntaxError ? "The release feed's answer couldn't be read." : e instanceof TypeError ? "Couldn't reach the release feed." : (e as Error).message).slice(0, 300) };
+    next = { checkedAt: rt.now(), releases: usable?.releases ?? [], ...(feedNote ? { feedNote } : {}), error: name === "TimeoutError" || name === "AbortError" ? "The release feed didn't answer within 10 seconds." : (e instanceof SyntaxError ? "The release feed's answer couldn't be read." : e instanceof TypeError ? "Couldn't reach the release feed." : (e as Error).message).slice(0, 300) };
   }
   rt.state.setSetting("pin.update.cache", next);
   return next;
@@ -209,6 +281,10 @@ export function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boole
     latest: latest ? { version: latest.version, notes: latest.notes, url: latest.url, publishedAt: latest.publishedAt } : null,
     preview: preview && previewV && preview.channel === "rc" && (!installed || compareVersions(installed, previewV) < 0) ? { version: preview.version, publishedAt: preview.publishedAt } : null,
     state,
+    source: cache?.source ?? null,
+    feedNote: cache?.feedNote ?? null,
+    /** The project pulled the release this device is running: it should move on. */
+    installedWithdrawn: installed ? (releases.find((r) => r.version === text(installed) && r.withdrawn)?.withdrawn ?? null) : null,
     checkedAt: cache?.checkedAt ?? null,
     error: cache?.error ?? null,
     checkEnabled: enabled,
@@ -256,6 +332,7 @@ export async function updateTick(rt: PinRuntime): Promise<void> {
       if (!told && firstAt !== undefined && new Date(firstAt).toISOString().slice(0, 10) !== today) pushNotice(rt, u, { key: `reboot:${k}:${today}`, kind: "update", level: "info", title: "Reminder: Proxmox is waiting for a restart", body: `Kernel ${k} is installed; ${sum.system.running ?? "the old one"} is still running.`, link: "pin?tab=updates" });
     }
   }
+  if (sum.installedWithdrawn && sum.installed) for (const u of watchers(rt)) pushNotice(rt, u, { key: `withdrawn:${sum.installed}`, kind: "update", level: "critical", title: `ePaperclip ${sum.installed} was withdrawn`, body: `${sum.installedWithdrawn} Open Updates to move to a newer version.`, link: "pin?tab=updates" });
   if (sum.state !== "available" || !sum.latest || sum.inProgress) return;
   if (isPaused(policy, now)) return;
   const version = sum.latest.version;

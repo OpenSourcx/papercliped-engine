@@ -567,3 +567,62 @@ describe("what Proxmox did: restart needed and package history", () => {
     expect((await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).system).toEqual([]);
   });
 });
+
+describe("the signed update feed", () => {
+  const { generateKeyPairSync, sign } = require("node:crypto") as typeof import("node:crypto");
+  const { mkdtempSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
+  const { tmpdir } = require("node:os") as typeof import("node:os");
+  const keys = generateKeyPairSync("ed25519");
+  const other = generateKeyPairSync("ed25519");
+  const pem = keys.publicKey.export({ type: "spki", format: "pem" }) as string;
+  const feed = (releases: unknown[]) => JSON.stringify({ format: 1, generatedAt: "2026-10-20T00:00:00Z", channels: {}, releases });
+  const entry = (version: string, channel: "stable" | "rc", extra: Record<string, unknown> = {}) => ({ version, channel, publishedAt: "2026-10-01T00:00:00Z", notes: `notes ${version}`, url: `https://github.com/OpenSourcx/papercliped-engine/releases/tag/v${version}`, withdrawn: false, ...extra });
+  const serve = (body: string, key = keys.privateKey, github = FEED_BODY("v0.2.0")) => {
+    const keyFile = join(mkdtempSync(join(tmpdir(), "epc-key-")), "release-signing.pub");
+    writeFileSync(keyFile, pem);
+    const seen: string[] = [];
+    h.rt.opts.update = { ...h.rt.opts.update, signedFeedUrl: "https://feed.test/updates/feed.json", pubKeyFile: keyFile };
+    h.rt.opts.fetch = async (url: string) => {
+      seen.push(url);
+      if (url.endsWith("feed.json")) return new Response(body);
+      if (url.endsWith("feed.sig")) return new Response(sign(null, Buffer.from(body), key).toString("base64"));
+      return new Response(github);
+    };
+    return seen;
+  };
+  const check = async () => j(await h.call("POST", "/api/pin/update/check", { cookie: sam }));
+
+  it("uses the feed when its signature verifies, and never offers a withdrawn release", async () => {
+    serve(feed([entry("0.4.0", "stable", { withdrawn: true, withdrawnReason: "It broke restarts." }), entry("0.3.0", "stable"), entry("0.5.0-rc1", "rc")]));
+    const r = await check();
+    expect(r).toMatchObject({ source: "feed", feedNote: null, state: "available" });
+    expect(r.latest.version).toBe("0.3.0");
+    expect(r.latest.notes).toBe("notes 0.3.0");
+  });
+
+  it("ignores a feed signed by some other key, says so, and falls back to GitHub's list", async () => {
+    serve(feed([entry("9.9.9", "stable")]), other.privateKey);
+    const r = await check();
+    expect(r).toMatchObject({ source: "github", state: "available" });
+    expect(r.latest.version).toBe("0.2.0");
+    expect(r.feedNote).toMatch(/signature/);
+  });
+
+  it("falls back quietly when the feed is simply unreachable, and when no release key is pinned", async () => {
+    serve(feed([]));
+    h.rt.opts.fetch = async (url: string) => (url.includes("/updates/") ? new Response("nope", { status: 503 }) : new Response(FEED_BODY("v0.2.0")));
+    expect(await check()).toMatchObject({ source: "github", feedNote: null, error: null });
+    h.rt.opts.update = { ...h.rt.opts.update, pubKeyFile: "/nonexistent/key.pub" };
+    expect(await check()).toMatchObject({ source: "github" });
+  });
+
+  it("tells a device running a withdrawn release to move on", async () => {
+    serve(feed([entry("0.1.0", "stable", { withdrawn: true, withdrawnReason: "Updates could not restart the engine." }), entry("0.2.0", "stable")]));
+    await h.call("GET", "/api/pin/update", { cookie: sam });
+    const r = await check();
+    expect(r.installedWithdrawn).toBe("Updates could not restart the engine.");
+    await h.runner.tick();
+    const n = ((await j(await h.call("GET", "/api/pin/notifications", { cookie: sam }))).notifications as { key: string; level: string }[]).find((x) => x.key === "withdrawn:0.1.0");
+    expect(n?.level).toBe("critical");
+  });
+});
