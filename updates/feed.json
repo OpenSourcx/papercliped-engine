@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-20T22:38:35.790Z",
+  "generatedAt": "2026-10-20T22:48:23.239Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc14"
+    "rc": "1.0.0-rc15"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc15",
+      "channel": "rc",
+      "publishedAt": "2026-10-20T22:48:21Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc14...v1.0.0-rc15",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc15",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc14",
       "channel": "rc",
