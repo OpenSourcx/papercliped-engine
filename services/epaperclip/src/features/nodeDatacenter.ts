@@ -401,9 +401,15 @@ export function datacenterRoutes(_d: Deps): Route[] {
         if (!Number.isInteger(start) || start < 0 || start > 10_000_000) bad("Bad start line");
         const out = await c.asUser(async (pve) => {
           const node = await resolveNode(c, pve, { node: t.node });
-          const [status, log] = await Promise.all([pve.taskStatus(node, t.upid), pve.callFull<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(t.upid)}/log`, { start, limit: 1000 })]);
-          const lines = (log.data ?? []).map((l) => l.t);
-          return { node, status: status.status, exitstatus: status.exitstatus ?? null, lines, next: start + lines.length, total: typeof log.extra.total === "number" ? log.extra.total : null };
+          // Status first, then the log, so a task that ends in between is never reported finished with a log from before its last line.
+          const status = await pve.taskStatus(node, t.upid);
+          const log = await pve.callFull<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(t.upid)}/log`, { start, limit: 1000 });
+          // Proxmox answers an empty log with a placeholder line ("no content") so its own table isn't empty. It isn't output: it is
+          // dropped, and the next read continues from the last real line number, not from a count that includes the placeholder
+          // (which moved the cursor past lines that hadn't been written yet and lost them).
+          const real = (log.data ?? []).filter((l) => l.t.trim() !== "no content");
+          const next = real.length ? Math.max(...real.map((l) => l.n)) : start;
+          return { node, status: status.status, exitstatus: status.exitstatus ?? null, lines: real.map((l) => l.t), next, total: typeof log.extra.total === "number" ? log.extra.total : null };
         });
         c.json(200, out);
       },

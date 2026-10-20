@@ -247,6 +247,8 @@ export function fakeNodePve() {
       if (m === "DELETE") return t.end !== undefined ? fail(500, "task already finished") : ((t.end = t.start + 1), (t.status = "interrupted"), ok(null));
       if (td[3] === "log") {
         const start = Number(q.get("start") ?? 0);
+        // Like Proxmox: a log with nothing in it is answered with one placeholder line.
+        if (!t.log.length) return ok([{ n: 1, t: "no content" }], { total: 0 });
         return ok(t.log.slice(start).map((l, i) => ({ n: start + i + 1, t: l })), { total: t.log.length });
       }
       return ok({ status: t.end === undefined ? "running" : "stopped", exitstatus: t.status });

@@ -563,6 +563,28 @@ describe("tasks", () => {
     expect((await send(sam, "GET", `/api/node/tasks/${encodeURIComponent("UPID:ghost:1:1:1:x::sam@pve:")}`)).status).toBe(404);
   });
 
+  it("doesn't show Proxmox's empty-log placeholder, and doesn't lose the first real line that follows it", async () => {
+    const sam = await signIn("sam");
+    const t = pve.st.tasks[2];
+    t.log = [];
+    const url = (start: number) => `/api/node/tasks/${encodeURIComponent(t.upid)}?start=${start}`;
+    // Polled several times while it has written nothing: no lines, and the cursor stays where it was.
+    let next = 0;
+    for (let i = 0; i < 4; i++) {
+      const r = await send(sam, "GET", url(next));
+      expect(r.json.lines).toEqual([]);
+      next = r.json.next;
+    }
+    expect(next).toBe(0);
+    // The first real line arrives: it is returned, whole.
+    t.log.push("Get:1 http://deb.debian.org trixie InRelease");
+    const first = await send(sam, "GET", url(next));
+    expect(first.json).toMatchObject({ lines: ["Get:1 http://deb.debian.org trixie InRelease"], next: 1 });
+    t.log.push("TASK OK");
+    const last = await send(sam, "GET", url(first.json.next));
+    expect(last.json).toMatchObject({ lines: ["TASK OK"], next: 2 });
+  });
+
   it("stops a running task as the signed-in person, and Proxmox decides who may", async () => {
     const sam = await signIn("sam");
     const t = pve.st.tasks[2];
