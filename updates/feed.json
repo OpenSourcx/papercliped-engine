@@ -1,0 +1,90 @@
+{
+  "format": 1,
+  "generatedAt": "2026-10-20T13:39:36.675Z",
+  "channels": {
+    "stable": null,
+    "rc": "1.0.0-rc13"
+  },
+  "releases": [
+    {
+      "version": "1.0.0-rc13",
+      "channel": "rc",
+      "publishedAt": "2026-10-20T13:39:35Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc12...v1.0.0-rc13",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc13",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc12",
+      "channel": "rc",
+      "publishedAt": "2026-10-20T00:22:57Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc11...v1.0.0-rc12",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc12",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc11",
+      "channel": "rc",
+      "publishedAt": "2026-10-19T22:09:05Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc10...v1.0.0-rc11",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc11",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc10",
+      "channel": "rc",
+      "publishedAt": "2026-10-19T03:45:45Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc9...v1.0.0-rc10",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc10",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc9",
+      "channel": "rc",
+      "publishedAt": "2026-10-19T03:09:35Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc7...v1.0.0-rc9",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc9",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc7",
+      "channel": "rc",
+      "publishedAt": "2026-10-18T17:58:21Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc4...v1.0.0-rc7",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc7",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc4",
+      "channel": "rc",
+      "publishedAt": "2026-10-18T14:26:34Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc3...v1.0.0-rc4",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc4",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc3",
+      "channel": "rc",
+      "publishedAt": "2026-10-18T03:48:17Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc1...v1.0.0-rc3",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc3",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc2",
+      "channel": "rc",
+      "publishedAt": "2026-10-18T03:13:42Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/commits/v1.0.0-rc2",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc2",
+      "withdrawn": false
+    },
+    {
+      "version": "1.0.0-rc1",
+      "channel": "rc",
+      "publishedAt": "2026-10-18T02:47:14Z",
+      "notes": "**Full Changelog**: https://github.com/OpenSourcx/papercliped-engine/commits/v1.0.0-rc1",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc1",
+      "withdrawn": false
+    }
+  ]
+}
