@@ -49,7 +49,35 @@ export function compareVersions(a: Version, b: Version): number {
   if (a.pre === b.pre) return 0;
   if (a.pre === null) return 1;
   if (b.pre === null) return -1;
-  return a.pre < b.pre ? -1 : 1;
+  return comparePre(a.pre, b.pre);
+}
+
+/**
+ * Pre-release labels in release order, the way a person reads them: rc2 comes before rc10, and rc13 is newer than rc9.
+ * (Comparing them as plain text puts "rc13" before "rc9", which made the newest candidate look like the oldest.)
+ * Dot-separated parts are compared one by one; inside a part, runs of digits compare as numbers and the rest as text.
+ */
+function comparePre(a: string, b: string): number {
+  const pa = a.split(".");
+  const pb = b.split(".");
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if (pa[i] === undefined) return -1;
+    if (pb[i] === undefined) return 1;
+    const x = pa[i].match(/\d+|\D+/g) ?? [];
+    const y = pb[i].match(/\d+|\D+/g) ?? [];
+    for (let j = 0; j < Math.max(x.length, y.length); j++) {
+      if (x[j] === undefined) return -1;
+      if (y[j] === undefined) return 1;
+      const nx = /^\d/.test(x[j]);
+      const ny = /^\d/.test(y[j]);
+      if (nx && ny) {
+        const d = Number(x[j]) - Number(y[j]);
+        if (d !== 0) return d < 0 ? -1 : 1;
+      } else if (nx !== ny) return nx ? -1 : 1;
+      else if (x[j] !== y[j]) return x[j] < y[j] ? -1 : 1;
+    }
+  }
+  return 0;
 }
 const text = (v: Version) => `${v.major}.${v.minor}.${v.patch}${v.pre ? `-${v.pre}` : ""}`;
 
@@ -117,7 +145,9 @@ export function readFeed(raw: string): Latest {
 /** The release a channel offers: the newest final release, or for release candidates the newest of everything. */
 export function offered(releases: Release[], channel: Channel): Release | null {
   const live = releases.filter((r) => !r.withdrawn);
-  return (channel === "rc" ? live : live.filter((r) => r.channel === "stable"))[0] ?? null;
+  // Picked by version, not by position: a list saved by an older build may be in the wrong order.
+  const pool = channel === "rc" ? live : live.filter((r) => r.channel === "stable");
+  return pool.reduce<Release | null>((best, r) => (!best || compareVersions(parseVersion(r.version)!, parseVersion(best.version)!) > 0 ? r : best), null);
 }
 
 /** The signed feed's answer, after its signature checked out: reduced to our own Release shape. Channels are decided here, not taken on trust. */

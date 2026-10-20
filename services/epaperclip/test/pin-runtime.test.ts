@@ -384,6 +384,14 @@ describe("update awareness", () => {
   it("compares versions and cleans the feed", () => {
     expect(compareVersions(parseVersion("0.9.0")!, parseVersion("v0.10.0")!)).toBeLessThan(0);
     expect(compareVersions(parseVersion("1.0.0-rc1")!, parseVersion("1.0.0")!)).toBeLessThan(0);
+    // Release candidates are numbered, not spelled: rc13 is newer than rc9, and rc2 older than rc10.
+    const v = (x: string) => parseVersion(x)!;
+    expect(compareVersions(v("1.0.0-rc9"), v("1.0.0-rc13"))).toBeLessThan(0);
+    expect(compareVersions(v("1.0.0-rc13"), v("1.0.0-rc9"))).toBeGreaterThan(0);
+    expect(compareVersions(v("1.0.0-rc2"), v("1.0.0-rc10"))).toBeLessThan(0);
+    expect(compareVersions(v("1.0.0-rc10"), v("1.0.0-rc10"))).toBe(0);
+    expect(compareVersions(v("1.0.0-beta1"), v("1.0.0-rc1"))).toBeLessThan(0);
+    expect(["1.0.0-rc9", "1.0.0-rc13", "1.0.0", "1.0.0-rc10", "0.9.0"].sort((a, b) => compareVersions(v(b), v(a)))).toEqual(["1.0.0", "1.0.0-rc13", "1.0.0-rc10", "1.0.0-rc9", "0.9.0"]);
     expect(parseVersion("dev")).toBeNull();
     const l = readFeed(FEED_BODY("v1.2.3", { html_url: "https://evil.test/x", body: "a\u0000b" }));
     expect(l.url).not.toContain("evil");
@@ -565,6 +573,20 @@ describe("what Proxmox did: restart needed and package history", () => {
     expect(r[1].packages).toEqual(["pve-manager", "proxmox-kernel-6.8"]);
     point("6.8.12-4-pve", []);
     expect((await j(await h.call("GET", "/api/pin/update/history", { cookie: sam }))).system).toEqual([]);
+  });
+});
+
+describe("candidate numbering in the feed", () => {
+  it("offers the highest-numbered candidate, and a device on it is up to date", async () => {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(h.versionFile, "1.0.0-rc13\n");
+    h.feed.current = { status: 200, body: JSON.stringify(["v1.0.0-rc9", "v1.0.0-rc13", "v1.0.0-rc10", "v1.0.0-rc12"].map((t) => JSON.parse(FEED_BODY(t, { prerelease: true })))) };
+    await h.call("PUT", "/api/pin/update/settings", { cookie: sam }, { channel: "rc" });
+    const r = await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }));
+    expect(r.latest.version).toBe("1.0.0-rc13");
+    expect(r.state).toBe("current");
+    writeFileSync(h.versionFile, "1.0.0-rc9\n");
+    expect((await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }))).state).toBe("available");
   });
 });
 
