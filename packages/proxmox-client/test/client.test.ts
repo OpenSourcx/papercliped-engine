@@ -20,6 +20,13 @@ function recorder(responses: { status: number; body: unknown }[]) {
 const client = (transport: Transport) => new ProxmoxClient({ baseUrl: "https://pve.test:8006/", tokenId: "broker@pve!engine", tokenSecret: "s3cret", transport });
 
 describe("ProxmoxClient", () => {
+  it("doesn't show Proxmox's empty-log placeholder as output", async () => {
+    const empty = recorder([{ status: 200, body: { data: [{ n: 0, t: "no content" }] } }]);
+    expect(await client(empty.transport).taskLog("pve", "UPID:x")).toEqual([]);
+    const real = recorder([{ status: 200, body: { data: [{ n: 1, t: "starting" }, { n: 2, t: "no content" }] } }]);
+    expect((await client(real.transport).taskLog("pve", "UPID:x")).map((l) => l.t)).toEqual(["starting", "no content"]);
+  });
+
   it("refuses plain http", () => {
     expect(() => new ProxmoxClient({ baseUrl: "http://pve.test:8006", tokenId: "a@pve!b", tokenSecret: "x" })).toThrow(/https/);
   });

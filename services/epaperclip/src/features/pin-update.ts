@@ -16,7 +16,8 @@ import { pushNotice } from "./pin-notify.ts";
  * the same helper to run the installer's `--rollback`. The installer is not changed in what it checks or promises.
  */
 
-export const FEED = "https://api.github.com/repos/OpenSourcx/papercliped-engine/releases/latest";
+/** Every published release, newest first, so the final releases and the release candidates come from one request. */
+export const FEED = "https://api.github.com/repos/OpenSourcx/papercliped-engine/releases?per_page=30";
 export const RELEASE_PAGE = "https://github.com/OpenSourcx/papercliped-engine/";
 const TTL_MS = 6 * 3600_000;
 const MAX_FEED = 1024 * 1024;
@@ -49,25 +50,58 @@ export interface Latest {
   url: string;
   publishedAt: string | null;
 }
+/** Which releases a device follows: only final ones, or release candidates too. */
+export type Channel = "stable" | "rc";
+export interface Release extends Latest {
+  channel: Channel;
+}
 interface Cache {
   checkedAt: number;
-  latest: Latest | null;
+  /** Newest first. Empty when nothing has been published. */
+  releases: Release[];
   error?: string;
 }
 
-/** The release feed's answer, reduced to what is safe to show: plain text, our own repository's links, a bounded size. */
-export function readFeed(raw: string): Latest {
-  const j = JSON.parse(raw) as Record<string, unknown>;
-  if (j.draft === true || j.prerelease === true) throw new Error("The newest entry in the release feed isn't a final release.");
+const cleanNotes = (v: unknown) => (typeof v === "string" ? v : "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").slice(0, MAX_NOTES);
+
+/** One feed entry, reduced to what is safe to show: plain text, our own repository's links, a bounded size. Null when it isn't a published release we can read. */
+function readEntry(j: Record<string, unknown>): Release | null {
+  if (j.draft === true) return null;
   const v = parseVersion(j.tag_name);
-  if (!v || v.pre) throw new Error("The release feed's newest version isn't one this page can read.");
+  if (!v) return null;
   const url = typeof j.html_url === "string" && j.html_url.startsWith(RELEASE_PAGE) ? j.html_url : `${RELEASE_PAGE}releases`;
   return {
     version: text(v),
-    notes: (typeof j.body === "string" ? j.body : "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").slice(0, MAX_NOTES),
+    channel: j.prerelease === true || v.pre ? "rc" : "stable",
+    notes: cleanNotes(j.body),
     url,
     publishedAt: typeof j.published_at === "string" && !Number.isNaN(Date.parse(j.published_at)) ? j.published_at : null,
   };
+}
+
+/** The feed's answer: a list of releases (GitHub's list), or one release object. Newest first; unreadable entries are skipped. */
+export function readReleases(raw: string): Release[] {
+  const j = JSON.parse(raw) as unknown;
+  const entries = Array.isArray(j) ? j : j && typeof j === "object" ? [j] : [];
+  const out: Release[] = [];
+  for (const e of entries.slice(0, 100)) {
+    const r = e && typeof e === "object" ? readEntry(e as Record<string, unknown>) : null;
+    if (r) out.push(r);
+  }
+  return out.sort((a, b) => compareVersions(parseVersion(b.version)!, parseVersion(a.version)!));
+}
+
+/** The newest final release in a feed answer. Throws when there is none. */
+export function readFeed(raw: string): Latest {
+  const r = readReleases(raw).find((x) => x.channel === "stable");
+  if (!r) throw new Error("The newest entry in the release feed isn't a final release.");
+  const { channel: _channel, ...latest } = r;
+  return latest;
+}
+
+/** The release a channel offers: the newest final release, or for release candidates the newest of everything. */
+export function offered(releases: Release[], channel: Channel): Release | null {
+  return (channel === "rc" ? releases : releases.filter((r) => r.channel === "stable"))[0] ?? null;
 }
 
 const paths = (rt: PinRuntime) => {
@@ -117,36 +151,52 @@ export function readStatus(file: string | null): UpdateStatus | null {
 const TERMINAL = new Set(["done", "failed", "rolled_back"]);
 
 async function check(rt: PinRuntime, force: boolean): Promise<Cache> {
-  const cached = rt.state.getSetting<Cache>("pin.update.cache");
-  if (!force && cached && rt.now() - cached.checkedAt < TTL_MS) return cached;
+  const cached = rt.state.getSetting<Cache & { latest?: unknown }>("pin.update.cache");
+  const usable = cached && Array.isArray(cached.releases) ? cached : undefined;
+  if (!force && usable && rt.now() - usable.checkedAt < TTL_MS) return usable;
   const f = rt.opts.fetch ?? ((u, i) => fetch(u, i));
   let next: Cache;
   try {
     const r = await f(rt.opts.update?.feedUrl ?? FEED, { method: "GET", headers: { Accept: "application/vnd.github+json", "User-Agent": "epaperclip-update-check" }, signal: AbortSignal.timeout(10_000), redirect: "error" });
     const body = await r.text();
-    if (!r.ok) throw new Error(r.status === 404 ? "No final release has been published yet, only release candidates. Release candidates are not offered here; to move to a newer one, run on the host, as root: epaperclip update --tag <tag> (tags are listed on the releases page)." : r.status === 403 || r.status === 429 ? "The release feed is rate-limiting this address. Try again later." : `The release feed answered ${r.status}.`);
+    if (!r.ok) throw new Error(r.status === 404 ? "The release feed wasn't found (404)." : r.status === 403 || r.status === 429 ? "The release feed is rate-limiting this address. Try again later." : `The release feed answered ${r.status}.`);
     if (body.length > MAX_FEED) throw new Error("The release feed's answer was too large.");
-    next = { checkedAt: rt.now(), latest: readFeed(body) };
+    next = { checkedAt: rt.now(), releases: readReleases(body).slice(0, 30) };
   } catch (e) {
     const name = (e as Error).name;
-    next = { checkedAt: rt.now(), latest: cached?.latest ?? null, error: name === "TimeoutError" || name === "AbortError" ? "The release feed didn't answer within 10 seconds." : (e instanceof SyntaxError ? "The release feed's answer couldn't be read." : e instanceof TypeError ? "Couldn't reach the release feed." : (e as Error).message).slice(0, 200) };
+    next = { checkedAt: rt.now(), releases: usable?.releases ?? [], error: name === "TimeoutError" || name === "AbortError" ? "The release feed didn't answer within 10 seconds." : (e instanceof SyntaxError ? "The release feed's answer couldn't be read." : e instanceof TypeError ? "Couldn't reach the release feed." : (e as Error).message).slice(0, 300) };
   }
   rt.state.setSetting("pin.update.cache", next);
   return next;
+}
+
+/** Following release candidates is opt-in, but a device already on one follows them until told otherwise. */
+function channelOf(rt: PinRuntime, installed: Version | null): Channel {
+  const set = rt.state.getSetting<string>("pin.update.channel");
+  return set === "stable" || set === "rc" ? set : installed?.pre ? "rc" : "stable";
 }
 
 function summary(rt: PinRuntime, cache: Cache | undefined, enabled: boolean, canManage: boolean) {
   const p = paths(rt);
   const raw = readTrim(p.versionFile);
   const installed = parseVersion(raw);
-  const latest = cache?.latest ? parseVersion(cache.latest.version) : null;
-  const state = !enabled ? "off" : !cache ? "unchecked" : !latest ? "unknown" : !installed ? "unknown" : compareVersions(installed, latest) < 0 ? "available" : "current";
+  const channel = channelOf(rt, installed);
+  const releases = cache && Array.isArray(cache.releases) ? cache.releases : [];
+  const latest = offered(releases, channel);
+  const latestV = latest ? parseVersion(latest.version) : null;
+  // "Nothing final yet" and "nothing at all" are facts about the project, not failures of the feed.
+  const state = !enabled ? "off" : !cache ? "unchecked" : cache.error && !latest ? "unknown" : !latest ? (releases.length ? "no_stable" : "no_release") : !installed || !latestV ? "unknown" : compareVersions(installed, latestV) < 0 ? "available" : "current";
   const helper = existsSync(p.helper);
   const status = readStatus(p.dir ? join(p.dir, "status") : null);
   const prevVersion = readTrim(join(p.prev, "VERSION"));
+  // A newer release candidate than what this device is on, for a device that follows final releases only.
+  const preview = channel === "stable" ? offered(releases, "rc") : null;
+  const previewV = preview ? parseVersion(preview.version) : null;
   return {
     installed: installed ? text(installed) : raw,
-    latest: cache?.latest ?? null,
+    channel,
+    latest: latest ? { version: latest.version, notes: latest.notes, url: latest.url, publishedAt: latest.publishedAt } : null,
+    preview: preview && previewV && preview.channel === "rc" && (!installed || compareVersions(installed, previewV) < 0) ? { version: preview.version, publishedAt: preview.publishedAt } : null,
     state,
     checkedAt: cache?.checkedAt ?? null,
     error: cache?.error ?? null,
@@ -172,12 +222,9 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
   if (path === "/api/pin/update" && method === "GET") {
     // Looking is allowed for everyone signed in; only an administrator makes the first (or a forced) request to the feed.
     const cache = enabled ? (isAdmin ? await check(rt, false) : rt.state.getSetting<Cache>("pin.update.cache")) : undefined;
-    if (cache?.latest && isAdmin) {
-      const inst = parseVersion(readTrim(paths(rt).versionFile));
-      const lat = parseVersion(cache.latest.version);
-      if (inst && lat && compareVersions(inst, lat) < 0) pushNotice(rt, s.username, { key: `update:${cache.latest.version}`, kind: "update", level: "info", title: `ePaperclip ${cache.latest.version} is available`, body: `You have ${text(inst)}. Open Pin's Updates tab to review it.`, link: "pin?tab=updates" });
-    }
-    return ctx.json(200, summary(rt, cache, enabled, isAdmin)), true;
+    const sum = summary(rt, cache, enabled, isAdmin);
+    if (isAdmin && sum.state === "available" && sum.latest) pushNotice(rt, s.username, { key: `update:${sum.latest.version}`, kind: "update", level: "info", title: `ePaperclip ${sum.latest.version} is available`, body: `You have ${sum.installed ?? "an unknown version"}. Open Pin's Updates tab to review it.`, link: "pin?tab=updates" });
+    return ctx.json(200, sum), true;
   }
 
   if (path === "/api/pin/update/check" && method === "POST") {
@@ -191,10 +238,17 @@ export async function updateRoutes(ctx: FeatureCtx): Promise<boolean> {
     ctx.sameSite();
     if (!isAdmin) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change this");
     const b = await ctx.readJson();
-    if (Object.keys(b).some((k) => k !== "check") || typeof b.check !== "boolean") throw new HttpError(400, "bad_request", "Send {check: true or false}");
-    rt.state.setSetting("pin.update.enabled", b.check);
-    rt.audit(s.username, "pin.update.check", undefined, b.check ? "on" : "off");
-    return ctx.json(200, summary(rt, rt.state.getSetting<Cache>("pin.update.cache"), b.check, isAdmin)), true;
+    if (Object.keys(b).some((k) => k !== "check" && k !== "channel") || (b.check === undefined && b.channel === undefined) || (b.check !== undefined && typeof b.check !== "boolean") || (b.channel !== undefined && b.channel !== "stable" && b.channel !== "rc")) throw new HttpError(400, "bad_request", 'Send {check: true or false} and/or {channel: "stable" or "rc"}');
+    if (b.channel !== undefined) {
+      rt.state.setSetting("pin.update.channel", b.channel);
+      rt.audit(s.username, "pin.update.channel", undefined, String(b.channel));
+    }
+    if (b.check !== undefined) {
+      rt.state.setSetting("pin.update.enabled", b.check);
+      rt.audit(s.username, "pin.update.check", undefined, b.check ? "on" : "off");
+    }
+    const on = rt.state.getSetting<boolean>("pin.update.enabled") !== false;
+    return ctx.json(200, summary(rt, rt.state.getSetting<Cache>("pin.update.cache"), on, isAdmin)), true;
   }
 
   if (path === "/api/pin/update" && method === "POST") {

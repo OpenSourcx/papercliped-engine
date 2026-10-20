@@ -321,13 +321,40 @@ describe("update awareness", () => {
   it("says so when the feed is unreachable, the entry isn't a release, or checks are off", async () => {
     h.feed.current = "unreachable";
     expect((await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }))).error).toMatch(/Couldn't reach/);
+    // Only release candidates so far is a fact about the project, not a broken feed.
     h.feed.current = { status: 200, body: FEED_BODY("v9.9.9", { prerelease: true }) };
-    expect((await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }))).error).toMatch(/final release/);
+    const onlyRc = await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }));
+    expect(onlyRc).toMatchObject({ error: null, state: "no_stable", latest: null, channel: "stable" });
+    expect(onlyRc.preview.version).toBe("9.9.9");
     await h.call("PUT", "/api/pin/update/settings", { cookie: sam }, { check: false });
     const n = h.feed.requests.length;
     const r = await j(await h.call("GET", "/api/pin/update", { cookie: sam }));
     expect(r.state).toBe("off");
     expect(h.feed.requests.length).toBe(n);
+  });
+
+  it("offers final releases to a stable device and release candidates only to one that opted in", async () => {
+    const list = JSON.stringify([JSON.parse(FEED_BODY("v0.3.0-rc2", { prerelease: true })), JSON.parse(FEED_BODY("v0.2.0")), JSON.parse(FEED_BODY("v0.3.0-rc1", { prerelease: true })), JSON.parse(FEED_BODY("v0.1.5", { draft: true }))]);
+    h.feed.current = { status: 200, body: list };
+    const stable = await j(await h.call("POST", "/api/pin/update/check", { cookie: sam }));
+    expect(stable).toMatchObject({ channel: "stable", state: "available" });
+    expect(stable.latest.version).toBe("0.2.0");
+    expect(stable.preview.version).toBe("0.3.0-rc2");
+    const rc = await j(await h.call("PUT", "/api/pin/update/settings", { cookie: sam }, { channel: "rc" }));
+    expect(rc).toMatchObject({ channel: "rc", state: "available", preview: null });
+    expect(rc.latest.version).toBe("0.3.0-rc2");
+    expect((await h.call("PUT", "/api/pin/update/settings", { cookie: sam }, { channel: "nightly" })).status).toBe(400);
+    expect((await h.call("PUT", "/api/pin/update/settings", { cookie: lee }, { channel: "rc" })).status).toBe(403);
+    // A release candidate can be handed to the helper once the device follows them, and only then.
+    const ok = await h.call("POST", "/api/pin/update", { cookie: sam }, { action: "update", confirm: "update 0.3.0-rc2" });
+    expect(ok.status).toBe(202);
+    expect(readFileSync(join(h.stateDir, "update", "request"), "utf8")).toMatch(/^action=update\nversion=0\.3\.0-rc2\n/);
+  });
+
+  it("does not offer a candidate to a device that follows final releases only", async () => {
+    h.feed.current = { status: 200, body: JSON.stringify([JSON.parse(FEED_BODY("v0.3.0-rc2", { prerelease: true })), JSON.parse(FEED_BODY("v0.2.0"))]) };
+    await h.call("POST", "/api/pin/update/check", { cookie: sam });
+    expect((await h.call("POST", "/api/pin/update", { cookie: sam }, { action: "update", confirm: "update 0.3.0-rc2" })).status).toBe(409);
   });
 
   it("hands a confirmed request to the root helper; refuses everyone else and everything unconfirmed", async () => {

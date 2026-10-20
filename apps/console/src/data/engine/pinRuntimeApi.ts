@@ -102,10 +102,15 @@ export interface AutomationInput {
   allowOwnerPermissions?: boolean;
 }
 
+export type UpdateChannel = "stable" | "rc";
 export interface UpdateInfo {
   installed: string | null;
+  /** Which releases this device follows: final ones only, or release candidates too. */
+  channel: UpdateChannel;
   latest: { version: string; notes: string; url: string; publishedAt: string | null } | null;
-  state: "off" | "unchecked" | "unknown" | "available" | "current";
+  /** A release candidate newer than this device, for one that follows final releases only. */
+  preview: { version: string; publishedAt: string | null } | null;
+  state: "off" | "unchecked" | "unknown" | "available" | "current" | "no_stable" | "no_release";
   checkedAt: number | null;
   error: string | null;
   checkEnabled: boolean;
@@ -173,6 +178,7 @@ export const pinRt = {
   update: () => call<UpdateInfo>("GET", "/api/pin/update"),
   checkUpdate: () => call<UpdateInfo>("POST", "/api/pin/update/check"),
   setUpdateCheck: (check: boolean) => call<UpdateInfo>("PUT", "/api/pin/update/settings", { check }),
+  setUpdateChannel: (channel: UpdateChannel) => call<UpdateInfo>("PUT", "/api/pin/update/settings", { channel }),
   startUpdate: (b: { action: "update" | "rollback"; confirm: string }) => call<{ requested: true }>("POST", "/api/pin/update", b),
 
   testModel: (provider?: string | null, model?: string | null) => call<ModelTest>("POST", "/api/pin/settings/test", { ...(provider ? { provider } : {}), ...(model ? { model } : {}) }),

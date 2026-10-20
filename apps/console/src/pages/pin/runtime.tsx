@@ -472,6 +472,7 @@ export function UpdatesTab() {
   const set = (d: UpdateInfo) => qc.setQueryData(["pin", "update"], d);
   const check = useMutation({ mutationFn: pinRt.checkUpdate, onSuccess: set });
   const toggle = useMutation({ mutationFn: pinRt.setUpdateCheck, onSuccess: set });
+  const channel = useMutation({ mutationFn: pinRt.setUpdateChannel, onSuccess: set });
   const [confirm, setConfirm] = useState<"update" | "rollback" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const start = useMutation({ mutationFn: pinRt.startUpdate, onSuccess: () => { setConfirm(null); void q.refetch(); }, onError: (e) => setError(errorMessage(e)) });
@@ -480,7 +481,7 @@ export function UpdatesTab() {
   if (q.error && !q.data) return <Failed error={q.error} retry={() => q.refetch()} />;
   const u = q.data!;
   const s = u.status;
-  const stateLabel = { off: "Checks are off", unchecked: "Not checked yet", unknown: "Couldn't compare versions", available: "An update is available", current: "You're up to date" }[u.state];
+  const stateLabel = { off: "Checks are off", unchecked: "Not checked yet", unknown: "Couldn't compare versions", available: "An update is available", current: "You're up to date", no_stable: "No final release yet", no_release: "Nothing published yet" }[u.state];
   return (
     <div className="space-y-4 fade-in max-w-3xl">
       <Card className="p-5">
@@ -489,7 +490,7 @@ export function UpdatesTab() {
             <div className="text-xs font-semibold uppercase tracking-label text-ink-3">ePaperclip</div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
               <div><span className="text-compact text-ink-3">Installed </span><span className="font-mono text-lead">{u.installed ?? "unknown"}</span></div>
-              <div><span className="text-compact text-ink-3">Latest </span><span className="font-mono text-lead">{u.latest?.version ?? "not known"}</span></div>
+              <div><span className="text-compact text-ink-3">{u.channel === "rc" ? "Newest, including candidates " : "Latest "}</span><span className="font-mono text-lead">{u.latest?.version ?? "none yet"}</span></div>
             </div>
             <div className="mt-2"><Status kind={u.state === "available" ? "warning" : u.state === "current" ? "good" : "idle"} label={stateLabel} /></div>
             {u.checkedAt && <p className="text-xs text-ink-3 mt-1">Checked {ago(u.checkedAt)}</p>}
@@ -497,6 +498,13 @@ export function UpdatesTab() {
           {u.canManage && <Button loading={check.isPending} disabled={!u.checkEnabled} onClick={() => check.mutate()}><RotateCcw className="h-3.5 w-3.5" />Check now</Button>}
         </div>
         {(u.error || check.error) && <Notice tone="warning" className="mt-4" title="The release feed didn't answer">{u.error ?? errorMessage(check.error)} Your installed version is unaffected.</Notice>}
+        {u.state === "no_stable" && !u.error && <Notice tone="info" className="mt-4" title="No final release has been published yet">Only release candidates exist so far. Final releases are what this device follows by default; turn on release candidates below to try the newer builds.</Notice>}
+        {u.preview && u.channel === "stable" && u.canManage && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3">
+            <p className="text-compact text-ink-2 text-pretty">A release candidate, <span className="font-mono">{u.preview.version}</span>, is available for people who want to try it early.</p>
+            <Button size="sm" loading={channel.isPending} onClick={() => channel.mutate("rc")}>Follow release candidates</Button>
+          </div>
+        )}
         {u.latest && u.state === "available" && (
           <div className="mt-4">
             <div className="text-sm font-medium">What's new in {u.latest.version}</div>
@@ -526,6 +534,10 @@ export function UpdatesTab() {
           ) : (
             <Notice tone="info" title="Update from the shell on this device">This device doesn't have the update helper, so the console can't start an update. Run <span className="font-mono">{u.manual}</span>.</Notice>
           )}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
+            <span className="text-pretty">Which releases<span className="block text-xs text-ink-3">Final releases are tested and safe for everyday use. Release candidates arrive sooner and may have rough edges; you can switch back any time.</span></span>
+            <Segmented label="Release channel" value={u.channel} onChange={(v) => channel.mutate(v)} options={[{ value: "stable", label: "Final releases" }, { value: "rc", label: "Release candidates" }]} />
+          </div>
           <label className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm">
             <span className="text-pretty">Check for updates<span className="block text-xs text-ink-3">The device asks the project's public release feed on GitHub for the newest version. It sends nothing about you or this device. Your browser never contacts it.</span></span>
             <Toggle label="Check for updates" checked={u.checkEnabled} onChange={(v) => toggle.mutate(v)} />

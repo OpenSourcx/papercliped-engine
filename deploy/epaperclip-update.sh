@@ -64,7 +64,7 @@ field() { sed -n "s/^$1=//p" "$WORK/request" | head -n1; }
 action="$(field action)"; version="$(field version)"; who="$(field requestedBy)"
 [[ "$who" =~ ^[A-Za-z0-9._@-]{1,100}$ ]] || who="unknown"
 case "$action" in
-  update) [[ "$version" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$ ]] || { status failed "The update request had no valid version, so it was ignored."; exit 0; } ;;
+  update) [[ "$version" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$ ]] || { status failed "The update request had no valid version, so it was ignored."; exit 0; } ;;
   rollback) version="" ;;
   *) status failed "The update request was not understood, so it was ignored."; exit 0 ;;
 esac

@@ -77,7 +77,7 @@ function LiveUpdates() {
           icon={<Paperclip className="h-5 w-5" />}
           name="ePaperclip"
           detail={me.isPending ? "Checking…" : <>Installed <span className="font-mono">{meNow?.installed ?? "unknown"}</span>{meNew && meNow?.latest ? <> · newer <span className="font-mono">{meNow.latest.version}</span></> : null}</>}
-          status={me.isPending ? <Status kind="idle" label="Checking" /> : meNew ? <Status kind="warning" label="Update available" /> : meNow?.state === "current" ? <Status kind="good" label="Up to date" /> : <Status kind="idle" label={meNow?.state === "off" ? "Checks are off" : "Not compared yet"} />}
+          status={me.isPending ? <Status kind="idle" label="Checking" /> : meNew ? <Status kind="warning" label="Update available" /> : meNow?.state === "current" ? <Status kind="good" label="Up to date" /> : <Status kind="idle" label={meNow?.state === "off" ? "Checks are off" : meNow?.state === "no_stable" ? "No final release yet" : meNow?.state === "no_release" ? "Nothing published yet" : "Not compared yet"} />}
           action={meNew ? "Update" : "Details"}
         />
         <Row
