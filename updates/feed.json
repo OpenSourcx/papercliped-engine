@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-21T00:57:09.572Z",
+  "generatedAt": "2026-10-21T02:05:18.857Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc16"
+    "rc": "1.0.0-rc17"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc17",
+      "channel": "rc",
+      "publishedAt": "2026-10-21T02:05:17Z",
+      "notes": "## What's new in 1.0.0-rc17\n\n- **Restart button for a device that needs a reboot.** The node Updates banner and Settings > Updates notice now open a Restart dialog that lists what is running and asks for the device name before rebooting, instead of sending you to the Power page.\n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc16...v1.0.0-rc17\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc17",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc16",
       "channel": "rc",
