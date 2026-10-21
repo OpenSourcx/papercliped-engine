@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-20T22:48:23.239Z",
+  "generatedAt": "2026-10-21T00:57:09.572Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc15"
+    "rc": "1.0.0-rc16"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc16",
+      "channel": "rc",
+      "publishedAt": "2026-10-21T00:57:08Z",
+      "notes": "## What's new in 1.0.0-rc16\n\n- **Task log in the node pages: no 'no content' lines, and no lost first line.** The viewer opened from Updates (and every other node task) polled for new lines and appended them. Proxmox answers an empty log with a placeholder line, so each poll added one, and each also moved the 'continue from line N' cursor past lines that weren't written yet. The real first line ('TASK OK') was never shown. The route now drops the placeholder and continues from the last real line number, and reads the status \n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc15...v1.0.0-rc16\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc16",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc15",
       "channel": "rc",
