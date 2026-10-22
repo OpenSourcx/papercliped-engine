@@ -11,6 +11,7 @@
  *   layer      z-[60] and zIndex numbers; use the z tokens, z-(--z-modal)
  *   shape      rounded-[..], tracking-[..], leading-[..]; use the radius, tracking and type tokens
  *   spacing    arbitrary padding, margin, gap and inset values (p-[13px]); use the spacing scale
+ *   control    a bare <select>, <input type=range|color> or window.confirm/alert/prompt; use Select, Slider, ColorPicker and Modal
  *
  * Exceptions are allowlisted by path in the "DESIGN ALLOWLIST" block of src/index.css, each with its gates and a
  * reason:   * allow <path> | <gate,gate|*> | <reason>
@@ -35,6 +36,7 @@ export const GATES = {
   motion: [/cubic-bezier\(/g, /["'`][^"'`\n]*\b\d+m?s\b[^"'`\n]*["'`]/g, /\b(?:duration|delay)-\d+\b/g, /\banimate-\[/g],
   layer: [/\bz-\[\d+\]/g, /\bzIndex:\s*\d/g],
   shape: [/\brounded(?:-[a-z]{1,2})?-\[(?!inherit\])[^\]]+\]/g, /\btracking-\[[^\]]+\]/g, /\bleading-\[[^\]]+\]/g],
+  control: [/<select\b/g, /\btype=["'](?:range|color)["']/g, /\bwindow\.(?:confirm|alert|prompt)\(/g],
   spacing: [/(?<![\w-])-?(?:p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y|inset|inset-x|inset-y|top|left|right|bottom)-\[[^\]]*\d(?:px|rem)[^\]]*\]/g],
 };
 

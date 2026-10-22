@@ -716,5 +716,7 @@ body {
  * Read by scripts/check-design.mjs. One line per exception: path substring | gates | why.
  * allow src/theme/theme.tsx | colour | the theme presets are the runtime half of the token layer
  * allow src/pages/Appearance.tsx | colour | the accent swatches and colour picker are literal colours the user chooses
+ * allow src/ui/Select.tsx | control | the dropdown is a real <select> underneath, by design
+ * allow src/ui/Slider.tsx | control | the slider is a real range input underneath, by design
  * allow src/data/brandIcons.ts | colour | third-party brand marks keep their own colours
  */

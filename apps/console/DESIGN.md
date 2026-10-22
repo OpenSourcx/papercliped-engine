@@ -234,6 +234,10 @@ Our vocabulary, one name per concept:
 - **Reduced motion:** see "Motion".
 - **Touch:** targets at least 40px; editable text is 16px on coarse pointers so phones don't zoom; hover-only affordances (the island's quick actions) are also reachable by tapping into the panel.
 
+## One definition per control
+
+Every control on every page is a reference to one component in `src/ui/`, the way Paperclip's UI is built from a shared set: a page never re-draws a button, field, dropdown, slider, colour, modal or notice. If a page needs something the inventory lacks, add it to `src/ui/` (and to the inventory above) first, then use it. A control that exists in two looks is a bug in the inventory, not a page's choice. The `control` gate fails on the native controls we replaced.
+
 ## Changing the UI
 
 1. **Change how something looks everywhere:** edit the token in `src/index.css` (or the presets), then check Warm and Daylight at 1440, 1024 and 390.
@@ -251,6 +255,7 @@ Our vocabulary, one name per concept:
 - **layer:** `z-[60]` and numeric `zIndex`
 - **shape:** `rounded-[..]`, `tracking-[..]`, `leading-[..]`
 - **spacing:** arbitrary padding, margin, gap and inset values
+- **control:** a bare `<select>`, `<input type="range">`, `<input type="color">`, or `window.confirm/alert/prompt`
 
 Exceptions are listed by path in the "DESIGN ALLOWLIST" block at the end of `src/index.css`, each with its gates and a reason. Today: the theme presets (the runtime half of the token layer), Appearance's accent swatches (colours the user picks), third-party brand marks, and the files the engine-data work owns this run (`src/data/`, `src/pages/org/`, `OrgDashboard.tsx`, `NewOrg.tsx`, `Connectors.tsx`), which convert with `scripts/codemod-tokens.mjs` once that work merges.
 

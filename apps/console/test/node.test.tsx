@@ -333,7 +333,8 @@ describe("datacenter", () => {
     wrap(<TagsPage />);
     expect(await screen.findByText("prod")).toBeTruthy();
     expect(screen.getByText("Protected")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Background for prod"), { target: { value: "#00ff00" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Background for prod/ }));
+    fireEvent.change(screen.getByLabelText("Background for prod (hex)"), { target: { value: "#00ff00" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(posted("PUT", "/api/node/datacenter/tags")[0]?.body).toEqual({ colors: { prod: { background: "00ff00", foreground: null } } }));
   });
