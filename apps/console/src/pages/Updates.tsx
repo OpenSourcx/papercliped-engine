@@ -106,7 +106,7 @@ export function Updates() {
   const updates = data.notices.filter((n) => n.kind === "update");
   return (
     <PageFrame width="3xl">
-      <PageHeader title="Updates" subtitle="Pin follows Proxmox and ePaperclip releases and tells you when something new lands. Updates are applied only when you approve, after snapshots." actions={<Button onClick={() => pin.send("Are there any updates?")}><RefreshCw className="h-4 w-4" />Ask Pin</Button>} />
+      <PageHeader title="Updates" subtitle="Pin follows Proxmox and ePaperclip releases and tells you when something new lands. Updates are applied only when you approve, after snapshots." actions={<Button onClick={() => pin.send("Are there any updates?")}>Ask Pin</Button>} />
       {live ? (
         <LiveUpdates />
       ) : (

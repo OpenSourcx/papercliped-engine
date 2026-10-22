@@ -9,7 +9,7 @@ How an ePaperclip device learns about updates, installs them, and what it keeps 
 | Who installs | the device, through a small root-owned helper (`epaperclip-update`), after an administrator approves or inside a maintenance window | the administrator, in a shell the console opens, after a backup warning |
 | Automatic | optional, off by default, only inside the window you set | never. Proxmox has no upgrade API, and an unattended `dist-upgrade` on a hypervisor can restart services under running machines |
 | Rollback | yes: "Go back to the previous version" (the installer keeps the last version and the engine's database from before) | no. apt has no undo; take a backup or snapshot first. Older kernels stay installed so one can be chosen at boot |
-| Restart | ePaperclip restarts for a minute or two by itself | a new kernel needs a reboot; the device says so and reminds you |
+| Restart | ePaperclip restarts for a minute or two by itself | a new kernel needs a reboot; the device says so and reminds you. The notice has a **Restart now…** button: it lists what is running, asks you to type the device name, then reboots |
 
 ## Where updates come from
 
