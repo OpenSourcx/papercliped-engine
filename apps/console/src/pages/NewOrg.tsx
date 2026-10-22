@@ -8,17 +8,8 @@ import { errorText, useCanCreateOrgs, useCreateOrg, useEngineStatus, type Create
 import { EngineUnavailable, Loading, textareaClass } from "./org/live/common.tsx";
 import { formatBytes, slugify } from "../lib/storage.ts";
 import { suggestSize } from "../pin/brain.ts";
-import { Button, Card, Input, SectionTitle, Toggle } from "../ui/primitives.tsx";
+import { Button, Card, Input, SectionTitle, Slider, Toggle } from "../ui/primitives.tsx";
 import { Modal } from "../ui/Modal.tsx";
-
-function Slider({ label, value, min, max, step, onChange, format }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format: (v: number) => string }) {
-  return (
-    <label className="block">
-      <div className="flex justify-between text-compact mb-2"><span className="text-ink-2">{label}</span><span className="tabular-nums">{format(value)}</span></div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[var(--accent)]" />
-    </label>
-  );
-}
 
 export function NewOrgModal({ onClose }: { onClose: () => void }) {
   const engine = useEngine();

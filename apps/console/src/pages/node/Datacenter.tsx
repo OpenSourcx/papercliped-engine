@@ -7,7 +7,7 @@ import { nodeApi, type MappingGroup, type TagInfo, type TaskRow, type Values } f
 import { errorText } from "../../data/engine/queries.ts";
 import { formatBytes, formatUptime } from "../../lib/storage.ts";
 import { BarMeter } from "../../ui/meters.tsx";
-import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Status } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Status, ColorPicker } from "../../ui/primitives.tsx";
 import { Async, changedValues, Denied, LiveOnly, NodeSwitcher, SaveBar, SchemaForm, TaskModal, TasksLink, useNodeName, useSelectedNode } from "./common.tsx";
 
 /* ── Cluster summary ───────────────────────────────────────────────────────────────── */
@@ -143,8 +143,8 @@ function TagRow({ t, onSave, busy }: { t: TagInfo; onSave: (bg: string | null, f
       <td className="px-3 tabular-nums text-ink-2">{t.count}</td>
       <td className="px-3">
         <div className="flex items-center gap-2">
-          <Input type="color" aria-label={`Background for ${t.tag}`} value={bg || PICKER_BG} onChange={(e) => setBg(e.target.value)} className="w-14 p-1" />
-          <Input type="color" aria-label={`Text color for ${t.tag}`} value={fg || PICKER_FG} onChange={(e) => setFg(e.target.value)} className="w-14 p-1" />
+          <ColorPicker label={`Background for ${t.tag}`} value={bg || PICKER_BG} onChange={setBg} />
+          <ColorPicker label={`Text color for ${t.tag}`} value={fg || PICKER_FG} onChange={setFg} />
         </div>
       </td>
       <td className="px-3"><div className="flex gap-1.5 justify-end"><Button size="sm" variant="primary" disabled={!changed || !bg} loading={busy} onClick={() => onSave(hex(bg), fg ? hex(fg) : null)}>Save</Button>{t.color && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onSave(null, null)}>Clear</Button>}</div></td>

@@ -1,18 +1,9 @@
 import { Check, RotateCcw } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { PRESETS, useTheme } from "../theme/theme.tsx";
-import { Button, Card, PageHeader, SectionTitle, PageFrame } from "../ui/primitives.tsx";
+import { Button, Card, ColorPicker, PageHeader, SectionTitle, PageFrame, Slider } from "../ui/primitives.tsx";
 
 const ACCENTS = ["#e8b25c", "#e9776a", "#7aa2ff", "#8e7cf0", "#4cc38a", "#f2f2f2"];
-
-function Range({ label, value, min, max, step, onChange, format }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; format: (v: number) => string }) {
-  return (
-    <label className="block">
-      <div className="flex justify-between text-compact mb-2"><span className="text-ink-2">{label}</span><span className="tabular-nums text-ink-3">{format(value)}</span></div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[var(--accent)]" />
-    </label>
-  );
-}
 
 /** The design framework's user surface: pick a preset, then tune accent, corners, glass and type. */
 export function Appearance() {
@@ -40,22 +31,22 @@ export function Appearance() {
       </Card>
       <Card className="p-5 mt-4">
         <SectionTitle>Accent</SectionTitle>
-        <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => update({ accent: null })} className={cn("h-9 px-3 rounded-full border text-compact", settings.accent === null ? "border-accent/60" : "border-line")}>Theme default</button>
+        <div role="radiogroup" aria-label="Accent" className="flex flex-wrap items-center gap-3">
+          <button role="radio" aria-checked={settings.accent === null} onClick={() => update({ accent: null })} className={cn("transition-control h-9 rounded-full border px-3 text-compact", settings.accent === null ? "border-accent/60 text-ink" : "border-line text-ink-2 hover:border-line-strong")}>Theme default</button>
           {ACCENTS.map((a) => (
-            <button key={a} onClick={() => update({ accent: a })} aria-label={`Accent ${a}`} aria-pressed={settings.accent === a} className={cn("h-9 w-9 rounded-full border-2 transition", settings.accent === a ? "border-ink scale-110" : "border-transparent")} style={{ background: a }} />
+            <button key={a} role="radio" aria-checked={settings.accent === a} onClick={() => update({ accent: a })} aria-label={`Accent ${a}`} className={cn("transition-control h-9 w-9 rounded-full border-2", settings.accent === a ? "border-ink" : "border-transparent hover:border-line-strong")} style={{ background: a }} />
           ))}
-          <label className="inline-flex items-center gap-2 text-compact text-ink-2">
+          <span className="inline-flex items-center gap-2 text-compact text-ink-2">
             Custom
-            <input type="color" value={settings.accent ?? "#e8b25c"} onChange={(e) => update({ accent: e.target.value })} className="h-9 w-12 rounded-md bg-transparent border border-line" />
-          </label>
+            <ColorPicker label="Custom accent" value={settings.accent ?? ACCENTS[0]} onChange={(accent) => update({ accent })} className={settings.accent !== null && !ACCENTS.includes(settings.accent) ? "border-ink" : undefined} />
+          </span>
         </div>
       </Card>
       <Card className="p-5 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <Range label="Corner radius" value={settings.radius} min={0.25} max={1.25} step={0.125} onChange={(v) => update({ radius: v })} format={(v) => `${Math.round(v * 16)}px`} />
-        <Range label="Text size" value={settings.fontScale} min={0.9} max={1.15} step={0.05} onChange={(v) => update({ fontScale: v })} format={(v) => `${Math.round(v * 100)}%`} />
-        <Range label="Glass blur" value={settings.glassBlur} min={0} max={40} step={2} onChange={(v) => update({ glassBlur: v })} format={(v) => `${v}px`} />
-        <Range label="Glass opacity" value={settings.glassAlpha} min={0.3} max={0.95} step={0.05} onChange={(v) => update({ glassAlpha: v })} format={(v) => `${Math.round(v * 100)}%`} />
+        <Slider label="Corner radius" value={settings.radius} min={0.25} max={1.25} step={0.125} onChange={(v) => update({ radius: v })} format={(v) => `${Math.round(v * 16)}px`} />
+        <Slider label="Text size" value={settings.fontScale} min={0.9} max={1.15} step={0.05} onChange={(v) => update({ fontScale: v })} format={(v) => `${Math.round(v * 100)}%`} />
+        <Slider label="Glass blur" value={settings.glassBlur} min={0} max={40} step={2} onChange={(v) => update({ glassBlur: v })} format={(v) => `${v}px`} />
+        <Slider label="Glass opacity" value={settings.glassAlpha} min={0.3} max={0.95} step={0.05} onChange={(v) => update({ glassAlpha: v })} format={(v) => `${Math.round(v * 100)}%`} />
       </Card>
     </PageFrame>
   );
