@@ -661,7 +661,7 @@ export class AgentContainers {
     const text = readFileSync(join(this.pluginDir, "template", "versions.sh"), "utf8");
     const out: Record<string, string> = {};
     for (const m of text.matchAll(/^([A-Z0-9_]+)="([^"\n]*)"$/gm)) out[m[1]] = m[2];
-    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64", "CLAUDE_CODE_VERSION", "CODEX_VERSION", "GEMINI_CLI_VERSION"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
+    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64", "CLAUDE_CODE_VERSION", "CODEX_VERSION", "GEMINI_CLI_VERSION", "OPENCODE_VERSION", "MIMO_CLI_VERSION", "PI_VERSION", "GROK_CLI_VERSION"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
     return out;
   }
 

@@ -58,6 +58,10 @@ Usage: build-template.sh [options]
   --claude-code-version V  npm version of @anthropic-ai/claude-code (default: the one in versions.sh)
   --codex-version V        npm version of @openai/codex (default: the one in versions.sh)
   --gemini-cli-version V   npm version of @google/gemini-cli (default: the one in versions.sh)
+  --opencode-version V    npm version of opencode-ai (default: the one in versions.sh)
+  --mimo-cli-version V    npm version of @mimo-ai/cli (default: the one in versions.sh)
+  --pi-version V          npm version of @mariozechner/pi-coding-agent (default: the one in versions.sh)
+  --grok-cli-version V    npm version of @xai-official/grok (default: the one in versions.sh)
   --rebuild                Replace an existing template built by this script
   -h, --help               Show this help
 EOF
@@ -85,6 +89,10 @@ while [[ $# -gt 0 ]]; do
     --claude-code-version) need_value "$@"; CLAUDE_CODE_VERSION="$2"; shift 2 ;;
     --codex-version) need_value "$@"; CODEX_VERSION="$2"; shift 2 ;;
     --gemini-cli-version) need_value "$@"; GEMINI_CLI_VERSION="$2"; shift 2 ;;
+    --opencode-version) need_value "$@"; OPENCODE_VERSION="$2"; shift 2 ;;
+    --mimo-cli-version) need_value "$@"; MIMO_CLI_VERSION="$2"; shift 2 ;;
+    --pi-version) need_value "$@"; PI_VERSION="$2"; shift 2 ;;
+    --grok-cli-version) need_value "$@"; GROK_CLI_VERSION="$2"; shift 2 ;;
     --rebuild) REBUILD=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
@@ -108,6 +116,10 @@ done
 [[ "$CLAUDE_CODE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--claude-code-version looks wrong"
 [[ "$CODEX_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--codex-version looks wrong"
 [[ "$GEMINI_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--gemini-cli-version looks wrong"
+[[ "$OPENCODE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--opencode-version looks wrong"
+[[ "$MIMO_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--mimo-cli-version looks wrong"
+[[ "$PI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--pi-version looks wrong"
+[[ "$GROK_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--grok-cli-version looks wrong"
 pvesm status --storage "$ROOTFS_STORAGE" >/dev/null 2>&1 || die "storage '$ROOTFS_STORAGE' not found (see pvesm status)"
 pvesm status --storage "$TEMPLATE_STORAGE" >/dev/null 2>&1 || die "storage '$TEMPLATE_STORAGE' not found (see pvesm status)"
 [[ -d "/sys/class/net/$BRIDGE" ]] || die "bridge '$BRIDGE' not found on this host"
@@ -216,6 +228,10 @@ pct exec "$VMID" -- env \
   CLAUDE_CODE_VERSION="$CLAUDE_CODE_VERSION" \
   CODEX_VERSION="$CODEX_VERSION" \
   GEMINI_CLI_VERSION="$GEMINI_CLI_VERSION" \
+  OPENCODE_VERSION="$OPENCODE_VERSION" \
+  MIMO_CLI_VERSION="$MIMO_CLI_VERSION" \
+  PI_VERSION="$PI_VERSION" \
+  GROK_CLI_VERSION="$GROK_CLI_VERSION" \
   AGENT_USER="$AGENT_USER" \
   bash /root/provision.sh
 pct exec "$VMID" -- rm -f /root/provision.sh

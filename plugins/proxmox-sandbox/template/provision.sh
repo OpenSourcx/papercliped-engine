@@ -26,7 +26,8 @@ rm -f "/tmp/${tarball}"
 
 step "Installing agent CLIs"
 /usr/local/bin/npm install -g --no-fund --no-audit --loglevel=error \
-  "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" "@google/gemini-cli@${GEMINI_CLI_VERSION}"
+  "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
+ "opencode-ai@${OPENCODE_VERSION}" "@mimo-ai/cli@${MIMO_CLI_VERSION}" "@mariozechner/pi-coding-agent@${PI_VERSION}" "@xai-official/grok@${GROK_CLI_VERSION}"
 
 step "Creating user ${AGENT_USER}"
 if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
@@ -80,13 +81,17 @@ truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 
 step "Self-test"
-for cmd in sh bash tar git curl node npm claude codex gemini sshd setsid; do
+for cmd in sh bash tar git curl node npm claude codex gemini opencode mimo pi grok sshd setsid; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing: $cmd" >&2; exit 1; }
 done
 printf '     node %s, npm %s, git %s\n' "$(node --version)" "$(npm --version)" "$(git --version | awk '{print $3}')"
 printf '     claude %s\n' "$(claude --version 2>/dev/null | head -n 1 || echo '?')"
 printf '     codex %s\n' "$(codex --version 2>/dev/null | head -n 1 || echo '?')"
 printf '     gemini %s\n' "$(gemini --version 2>/dev/null | head -n 1 || echo '?')"
+printf '     opencode %s\n' "$(opencode --version 2>/dev/null | head -n 1 || echo '?')"
+printf '     mimo %s\n' "$(mimo --version 2>/dev/null | head -n 1 || echo '?')"
+printf '     pi %s\n' "$(pi --version 2>/dev/null | head -n 1 || echo '?')"
+printf '     grok %s\n' "$(grok --version 2>/dev/null | head -n 1 || echo '?')"
 
 step "Cleaning up"
 apt-get -y -qq autoremove --purge
