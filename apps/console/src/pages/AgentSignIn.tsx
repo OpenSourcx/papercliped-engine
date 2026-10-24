@@ -4,6 +4,7 @@ import { ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { LOGIN_ADAPTERS, type LoginAdapter, type LoginSession } from "@papercliped-engine/engine-client";
 import { useEngine } from "../data/store.tsx";
 import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
+import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, Spinner } from "../ui/primitives.tsx";
 
@@ -15,11 +16,16 @@ import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHe
  * See docs/AGENT-AUTH.md.
  */
 
-export const HARNESSES: { adapter: LoginAdapter | "gemini_local"; name: string; login: boolean; how: string }[] = [
+export type Harness = LoginAdapter | "gemini_local";
+
+/** The environment variable each harness reads its API key from. */
+export const KEY_ENV: Record<Harness, string> = { claude_local: "ANTHROPIC_API_KEY", codex_local: "OPENAI_API_KEY", grok_local: "XAI_API_KEY", gemini_local: "GEMINI_API_KEY" };
+
+export const HARNESSES: { adapter: Harness; name: string; login: boolean; how: string }[] = [
   { adapter: "claude_local", name: "Claude Code", login: true, how: "Sign in with your Claude account, then paste the code Claude shows you." },
   { adapter: "codex_local", name: "Codex", login: true, how: "Sign in with your ChatGPT account: open the page and enter the code shown here." },
   { adapter: "grok_local", name: "Grok", login: true, how: "Sign in with your Grok account: open the page and enter the code shown here." },
-  { adapter: "gemini_local", name: "Gemini CLI", login: false, how: "Gemini has no account sign-in for agents. Add a GEMINI_API_KEY in the Vault and share it with the agents that use Gemini." },
+  { adapter: "gemini_local", name: "Gemini CLI", login: false, how: "Gemini has no account sign-in for agents. Use a Gemini API key." },
 ];
 
 export function AgentSignIn() {
@@ -35,6 +41,7 @@ function LiveSignIn() {
   const orgs = useOrgs();
   const containers = useAgentContainers();
   const [flow, setFlow] = useState<{ companyId: string; org: string; adapter: LoginAdapter; environmentId: string } | null>(null);
+  const [keyFlow, setKeyFlow] = useState<{ companyId: string; org: string; adapter: Harness } | null>(null);
   const envs = containers.data?.environments ?? [];
   return (
     <PageFrame width="4xl">
@@ -53,20 +60,21 @@ function LiveSignIn() {
               <h3 className="text-body font-medium mb-3">{c.name}</h3>
               <div className="divide-y divide-line">
                 {HARNESSES.map((h) => (
-                  <HarnessRow key={h.adapter} companyId={c.id} h={h} environmentId={environmentId} onSignIn={(adapter) => environmentId && setFlow({ companyId: c.id, org: c.name, adapter, environmentId })} />
+                  <HarnessRow key={h.adapter} companyId={c.id} h={h} environmentId={environmentId} onSignIn={(adapter) => environmentId && setFlow({ companyId: c.id, org: c.name, adapter, environmentId })} onKey={() => setKeyFlow({ companyId: c.id, org: c.name, adapter: h.adapter })} />
                 ))}
               </div>
             </Card>
           );
         })}
       </div>
-      <p className="text-xs text-ink-3 mt-4 flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5" aria-hidden />Prefer an API key? Add it in Settings → Vault and share it with the agents that should use it; an API key always wins over a signed-in account.</p>
+      <p className="text-xs text-ink-3 mt-4 flex items-center gap-1.5"><KeyRound className="h-3.5 w-3.5" aria-hidden />An API key always wins over a signed-in account. Keys are kept in the Vault and shared with the agents that use them.</p>
       {flow && <SignInModal {...flow} onClose={() => setFlow(null)} />}
+      {keyFlow && <ApiKeyModal {...keyFlow} onClose={() => setKeyFlow(null)} />}
     </PageFrame>
   );
 }
 
-function HarnessRow({ companyId, h, environmentId, onSignIn }: { companyId: string; h: (typeof HARNESSES)[number]; environmentId: string | null; onSignIn: (a: LoginAdapter) => void }) {
+function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyId: string; h: (typeof HARNESSES)[number]; environmentId: string | null; onSignIn: (a: LoginAdapter) => void; onKey: () => void }) {
   const adapter = h.adapter === "gemini_local" ? null : h.adapter;
   // Claude and Codex can say whether an account is already signed in; for the others the engine answers "unknown".
   const signal = useQuery({ queryKey: ["agent-auth", companyId, h.adapter, environmentId], enabled: !!adapter && !!environmentId, retry: false, queryFn: () => engine.agentAuth.signal(companyId, adapter!, environmentId ?? undefined) });
@@ -77,6 +85,7 @@ function HarnessRow({ companyId, h, environmentId, onSignIn }: { companyId: stri
         <div className="flex items-center gap-2 font-medium text-compact">{h.name}{signed && <Chip tone="good">Signed in</Chip>}</div>
         <p className="text-compact text-ink-3 mt-0.5 text-pretty">{h.how}</p>
       </div>
+      <Button size="sm" variant="ghost" onClick={onKey}><KeyRound className="h-4 w-4" />Use an API key</Button>
       {adapter && <Button size="sm" disabled={!environmentId} title={environmentId ? undefined : "This organization has no agent container yet"} onClick={() => onSignIn(adapter)}>{signed ? "Sign in again" : "Sign in"}</Button>}
     </div>
   );
@@ -178,3 +187,62 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose }:
 
 // LOGIN_ADAPTERS is re-exported so a test can check the page covers every account harness the client knows.
 export { LOGIN_ADAPTERS };
+
+/**
+ * Gives an organization's agents of one harness an API key. The key goes in the host's Vault under the variable the
+ * harness reads (ANTHROPIC_API_KEY ...), shared with exactly those agents; leaving the key blank keeps the one already saved.
+ */
+export function ApiKeyModal({ companyId, org, adapter, onClose }: { companyId: string; org: string; adapter: Harness; onClose: () => void }) {
+  const qc = useQueryClient();
+  const h = HARNESSES.find((x) => x.adapter === adapter)!;
+  const name = KEY_ENV[adapter];
+  const agents = useQuery({ queryKey: ["agents", companyId], queryFn: () => engine.agents.list(companyId), retry: false });
+  const vault = useQuery({ queryKey: ["vault"], queryFn: vaultApi.list, retry: false });
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const mine = (agents.data ?? []).filter((a) => a.adapterType === adapter && a.status !== "terminated");
+  const existing = vault.data?.items.find((i) => i.name === name) ?? null;
+  const shared = existing ? existing.targets.filter((t) => t.companyId === companyId) : [];
+  const ready = agents.data !== undefined && vault.data !== undefined;
+  const canSave = ready && vault.data!.canManage && mine.length > 0 && (existing !== null || value.trim() !== "");
+
+  const save = async (remove = false) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const others = (existing?.targets ?? []).filter((t) => t.companyId !== companyId);
+      const targets = remove ? others : [...others, ...mine.map((a) => ({ companyId, agentId: a.id }))];
+      const body = { share: "ceos" as const, targets, ...(value.trim() ? { value: value.trim() } : {}) };
+      const r = existing ? await vaultApi.update(existing.id, body) : await vaultApi.create({ name, description: `${h.name} API key, from Agent sign-in`, ...body, value: value.trim() });
+      void qc.invalidateQueries({ queryKey: ["vault"] });
+      setDone(r.problems.length ? `Saved, but ${r.problems.join("; ")}` : remove ? `${org}'s ${h.name} agents no longer use this key.` : `${org}'s ${h.name} agents will use this key on their next run.`);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`${h.name} API key`} subtitle={`For the ${h.name} agents in ${org}.`} icon={<KeyRound className="h-5 w-5" />} onClose={onClose} size="sm"
+      footer={done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={onClose}>Cancel</Button>{shared.length > 0 && <Button variant="ghost" disabled={busy} onClick={() => void save(true)}>Stop using it here</Button>}<Button variant="primary" loading={busy} disabled={!canSave} onClick={() => void save()}>Save</Button></>}>
+      <div className="space-y-4">
+        {(agents.isPending || vault.isPending) && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Loading…</p>}
+        {(agents.error || vault.error) && <p role="alert" className="text-compact text-critical">{errorText(agents.error ?? vault.error)}</p>}
+        {vault.data && !vault.data.canManage && <Notice tone="warning">Only Proxmox administrators can add keys.</Notice>}
+        {ready && mine.length === 0 && <Notice>{org} has no {h.name} agents yet. Add one first; the key is shared with agents that exist.</Notice>}
+        {ready && mine.length > 0 && !done && (
+          <>
+            <p className="text-compact text-ink-2">Shared as <code className="font-mono text-ink">{name}</code> with: {mine.map((a) => a.name).join(", ")}.</p>
+            {existing && <p className="text-compact text-ink-3">A key is already saved{existing.last4 ? ` (ending ${existing.last4})` : ""}. Leave this blank to keep it, or paste a new one to replace it everywhere it is used.</p>}
+            <Field label={existing ? "New key (optional)" : "API key"} htmlFor="agent-api-key"><Input id="agent-api-key" type="password" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /></Field>
+          </>
+        )}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+        {done && <Notice tone="good">{done}</Notice>}
+      </div>
+    </Modal>
+  );
+}

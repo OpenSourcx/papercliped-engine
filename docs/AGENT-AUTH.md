@@ -10,7 +10,7 @@ Agents run harness programs (Claude Code, Codex, Gemini CLI, OpenCode, MiMo Code
 | Gemini CLI | none (Paperclip has no sign-in for it) | `GEMINI_API_KEY` |
 | OpenCode, Pi, MiMo Code | none | the provider's key (`OPENROUTER_API_KEY`, ...) |
 
-For an API key, add the variable in Settings → Vault and share it with the agents that should use it. The key is sealed on the device; agents get it as a secret reference, never the value.
+For an API key, press **Use an API key** next to the harness in Settings → Agent sign-in. The key is saved in the Vault under the variable above and shared with that organization's agents of that harness (a blank key field keeps the one already saved; **Stop using it here** removes only this organization). It is sealed on the device; agents get it as a secret reference, never the value. Only Proxmox administrators can add keys.
 
 ## How the sign-in works
 

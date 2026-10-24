@@ -46,7 +46,8 @@ describe("agent sign-in", () => {
     expect(await screen.findByText("Acme")).toBeTruthy();
     expect(await screen.findByText("Signed in")).toBeTruthy();
     expect(screen.getByText("Gemini CLI")).toBeTruthy();
-    expect(screen.getByText(/Add a GEMINI_API_KEY in the Vault/)).toBeTruthy();
+    expect(screen.getByText(/Gemini has no account sign-in/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Use an API key/ })).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: /Sign in/ })).toHaveLength(3);
   });
 
@@ -97,4 +98,40 @@ describe("agent sign-in", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(sent("POST", `${A}/adapters/grok_local/login-sessions/s3/cancel`)).toHaveLength(1), { timeout: 4000 });
   }, 20_000);
+
+  it("gives an organization's Gemini agents an API key through the Vault, keeping other organizations' shares", async () => {
+    handlers[`GET ${A}/agents`] = () => [
+      { id: "g1", name: "Researcher", adapterType: "gemini_local", status: "idle" },
+      { id: "x1", name: "Coder", adapterType: "claude_local", status: "idle" },
+      { id: "g2", name: "Old", adapterType: "gemini_local", status: "terminated" },
+    ];
+    handlers["GET /api/vault"] = () => ({ canManage: true, items: [{ id: "v1", name: "GEMINI_API_KEY", description: "", share: "ceos", targets: [{ companyId: "other", agentId: "o1" }], last4: "wxyz", createdAt: 1, updatedAt: 1, updatedBy: "root@pam", syncedTo: ["other"] }] });
+    handlers["PATCH /api/vault/v1"] = () => ({ item: {}, problems: [] });
+    wrap();
+    await screen.findByText("Acme");
+    fireEvent.click(screen.getAllByRole("button", { name: /Use an API key/ })[3]);
+    expect(await screen.findByText(/Shared as/)).toBeTruthy();
+    expect(screen.getByText(/Researcher/)).toBeTruthy();
+    expect(screen.queryByText(/Coder/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("New key (optional)"), { target: { value: "AIza-new" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent("PATCH", "/api/vault/v1")).toHaveLength(1));
+    expect(sent("PATCH", "/api/vault/v1")[0].body).toEqual({ share: "ceos", value: "AIza-new", targets: [{ companyId: "other", agentId: "o1" }, { companyId: "c1", agentId: "g1" }] });
+    expect(await screen.findByText(/will use this key on their next run/)).toBeTruthy();
+  });
+
+  it("creates the Vault item the first time and refuses to save with nothing typed", async () => {
+    handlers[`GET ${A}/agents`] = () => [{ id: "x1", name: "Coder", adapterType: "claude_local", status: "idle" }];
+    handlers["GET /api/vault"] = () => ({ canManage: true, items: [] });
+    handlers["POST /api/vault"] = () => ({ item: {}, problems: [] });
+    wrap();
+    await screen.findByText("Acme");
+    fireEvent.click(screen.getAllByRole("button", { name: /Use an API key/ })[0]);
+    await screen.findByText(/Shared as/);
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-ant-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent("POST", "/api/vault")).toHaveLength(1));
+    expect(sent("POST", "/api/vault")[0].body).toMatchObject({ name: "ANTHROPIC_API_KEY", share: "ceos", value: "sk-ant-1", targets: [{ companyId: "c1", agentId: "x1" }] });
+  });
 });
