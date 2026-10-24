@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-21T02:05:18.857Z",
+  "generatedAt": "2026-10-24T18:45:58.717Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc17"
+    "rc": "1.0.0-rc18"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc18",
+      "channel": "rc",
+      "publishedAt": "2026-10-24T18:45:57Z",
+      "notes": "## What's new in 1.0.0-rc18\n\n- **Agent template: OpenCode, MiMo Code, Pi and Grok CLIs.** The template now installs opencode-ai, @mimo-ai/cli (MiMo Code, an OpenCode fork), @mariozechner/pi-coding-agent and @xai-official/grok next to Claude Code, Codex and Gemini CLI, each pinned in template/versions.sh. The build's self-test checks every command exists and prints its version.\n- **Agent template: Gemini CLI alongside Claude Code and Codex, all three pinned.** The agent container template now installs @google/gemini-cli next to Claude Code and Codex, so gemini_local agents have their command. The three versions are pinned in template/versions.sh instead of 'latest', so a template built later matches what this release was tested with; the host service's guided setup reads them from there too.\n- **Design gate: native controls are refused outside the shared components.** A new 'control' gate fails on a bare select, range or colour input and on window.confirm/alert/prompt, so every page uses Select, Slider, ColorPicker and Modal. DESIGN.md states the one-definition-per-control rule. The tag colour test follows the new picker.\n- **Our own slider and colour picker instead of the browser's.** Slider draws a real range input from tokens (accent fill, round thumb, focus ring) with the label left and the value right. ColorPicker is a round swatch that opens our popover with hue, saturation and lightness sliders and a hex field. Appearance, the new-organization sizes and the Proxmox tag colours use them; DESIGN.md gets the rule and the inventory entries.\n- **Updates: no refresh icon on Ask Pin; docs describe the Restart button.**\n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc17...v1.0.0-rc18\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc18",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc17",
       "channel": "rc",
