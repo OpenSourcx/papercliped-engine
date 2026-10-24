@@ -36,6 +36,8 @@ const manifest: PaperclipPluginManifestV1 = {
         "Clones an LXC template into a Proxmox pool for each run (or reuses one per agent and workspace), then runs commands over SSH.",
       // Clone, boot, DHCP and SSH share this budget when the config has no timeoutMs.
       defaultAcquireTimeoutMs: DEFAULT_TIMEOUT_MS,
+      // A real terminal can be opened in a container for Claude, Codex and Grok sign-in (login-pty.ts).
+      supportsLoginPty: true,
       sandboxCapabilities: {
         // resume, release and destroy are implemented; release keeps the container when reuseLease is on.
         reusableLeases: true,

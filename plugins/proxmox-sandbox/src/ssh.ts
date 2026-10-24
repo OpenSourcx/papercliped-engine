@@ -138,10 +138,12 @@ export function buildSshArgs(input: {
   knownHostsFile: string;
   acceptNewHostKey: boolean;
   command: string;
+  /** Ask for a remote pseudo-terminal (`-tt`, forced even though our own stdin is a pipe) instead of none (`-T`). */
+  tty?: boolean;
 }): string[] {
   const { target } = input;
   return [
-    "-T",
+    input.tty ? "-tt" : "-T",
     "-o", "BatchMode=yes",
     "-o", `StrictHostKeyChecking=${input.acceptNewHostKey ? "accept-new" : "yes"}`,
     "-o", `UserKnownHostsFile=${input.knownHostsFile}`,
@@ -292,4 +294,66 @@ export const DETECT_CONTEXT_SCRIPT =
 
 export function mkdirScript(dir: string): string {
   return `mkdir -p -- ${shellQuote(dir)}`;
+}
+
+/** One live interactive command on a remote pseudo-terminal: the shape the SDK's login hooks expect. */
+export interface PtySession {
+  onData(listener: (chunk: string) => void): void;
+  write(data: string): void;
+  wait(): Promise<{ exitCode: number | null }>;
+  kill(): void;
+  close(): Promise<void>;
+}
+
+export type PtyOpener = (target: SshTarget, command: string) => Promise<PtySession>;
+
+/**
+ * Opens `command` on a remote pseudo-terminal with the system ssh client (`-tt`). The host key must already be
+ * recorded for the container (a login only ever runs in a container the provider has already connected to), so an
+ * unknown key is refused rather than learned. The key file lives in a 0700 temporary directory until `close()`.
+ */
+export function createPtyOpener(options: { sshBinary?: string } = {}): PtyOpener {
+  const sshBinary = options.sshBinary ?? "ssh";
+  return async (target, command) => {
+    if (!target.knownHosts) throw new Error("The container's host key isn't recorded yet, so a login can't start in it.");
+    const dir = await mkdtemp(path.join(tmpdir(), "epaperclip-proxmox-pty-"));
+    let closed = false;
+    const cleanup = async () => {
+      if (closed) return;
+      closed = true;
+      await rm(dir, { recursive: true, force: true });
+    };
+    try {
+      await chmod(dir, 0o700);
+      const identityFile = path.join(dir, "id");
+      const knownHostsFile = path.join(dir, "known_hosts");
+      const key = target.privateKey.endsWith("\n") ? target.privateKey : `${target.privateKey}\n`;
+      await writeFile(identityFile, key, { mode: 0o600 });
+      await chmod(identityFile, 0o600);
+      await writeFile(knownHostsFile, target.knownHosts, { mode: 0o600 });
+      const child = spawn(sshBinary, buildSshArgs({ target, identityFile, knownHostsFile, acceptNewHostKey: false, command, tty: true }), { stdio: ["pipe", "pipe", "pipe"] });
+      const listeners: ((chunk: string) => void)[] = [];
+      for (const stream of [child.stdout, child.stderr]) {
+        stream.setEncoding("utf8");
+        stream.on("data", (chunk: string) => listeners.forEach((l) => l(chunk)));
+      }
+      const exited = new Promise<{ exitCode: number | null }>((resolve) => {
+        child.on("error", () => resolve({ exitCode: null }));
+        child.on("close", (code) => resolve({ exitCode: code }));
+      });
+      return {
+        onData: (l) => void listeners.push(l),
+        write: (data) => void (child.stdin.writable && child.stdin.write(data)),
+        wait: () => exited,
+        kill: () => void child.kill("SIGTERM"),
+        close: async () => {
+          child.kill("SIGKILL");
+          await cleanup();
+        },
+      };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+  };
 }

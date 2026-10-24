@@ -62,7 +62,7 @@ describe("manifest", () => {
     expect(manifest.apiVersion).toBe(1);
     expect(manifest.capabilities).toEqual(["environment.drivers.register"]);
     const driver = manifest.environmentDrivers![0]!;
-    expect(driver).toMatchObject({ driverKey: "proxmox", kind: "sandbox_provider", sandboxCapabilities: { reusableLeases: true } });
+    expect(driver).toMatchObject({ driverKey: "proxmox", kind: "sandbox_provider", supportsLoginPty: true, sandboxCapabilities: { reusableLeases: true } });
     const props = (driver.configSchema as { properties: Record<string, Record<string, unknown>> }).properties;
     expect(props.apiTokenSecret!.format).toBe("secret-ref");
     expect(props.sshPrivateKey!.format).toBe("secret-ref");

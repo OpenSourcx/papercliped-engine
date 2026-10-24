@@ -18,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { definePlugin } from "@paperclipai/plugin-sdk";
+import { loginCommandLine } from "./login-pty.js";
 import type {
   PluginContext,
   PluginEnvironmentAcquireLeaseParams,
@@ -51,9 +52,12 @@ import {
   DETECT_CONTEXT_SCRIPT,
   buildExecScript,
   buildKillScript,
+  createPtyOpener,
   createSshRunner,
   mkdirScript,
   shCommand,
+  type PtyOpener,
+  type PtySession,
   type SshResult,
   type SshRunner,
   type SshTarget,
@@ -71,6 +75,8 @@ export interface ProviderDeps {
   /** Runs one command in a container (default: the system ssh client). */
   ssh?: SshRunner;
   sleep?: (ms: number) => Promise<void>;
+  /** Opens a command on a remote pseudo-terminal (default: the system ssh client with -tt). */
+  openPty?: PtyOpener;
   /** Grace period between SIGTERM and SIGKILL when a command times out. */
   killGraceSeconds?: number;
 }
@@ -184,6 +190,11 @@ function staticIpFromConfig(config: Record<string, unknown>): string | null {
 export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
   const ssh = deps.ssh ?? createSshRunner();
   const sleep = deps.sleep ?? defaultSleep;
+  const openPty = deps.openPty ?? createPtyOpener();
+  /** How to reach each live lease again, for a login that arrives with only the lease id. Lost on a worker restart. */
+  const reachable = new Map<string, SshTarget>();
+  const logins = new Map<string, { host: string; session: PtySession }>();
+  const loginByWorker = new Map<string, PtySession>();
   let ctx: PluginContext | null = null;
 
   const log = (level: "info" | "warn", message: string, meta?: Record<string, unknown>) => {
@@ -339,6 +350,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     const ip = await discoverIp(api, ref, deadline);
     const remote = await waitForSsh(sshTarget(config, ref, ip, input.knownHosts), deadline);
     const target = sshTarget(config, ref, ip, remote.knownHosts);
+    reachable.set(`${ref.node}/${ref.vmid}`, target);
     const remoteCwd = input.requestedCwd || path.posix.join(remote.homeDir, WORKSPACE_DIRNAME);
     await runChecked(target, mkdirScript(remoteCwd), "create the workspace");
     return {
@@ -769,6 +781,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
       const config = runtimeConfig(params.config);
       const knownHosts = str(params.lease.metadata?.knownHosts);
       const target = sshTarget(config, ref, ip, knownHosts);
+      reachable.set(`${ref.node}/${ref.vmid}`, target);
       const execId = randomUUID();
       let script: string;
       try {
@@ -809,6 +822,44 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         stderr,
         metadata: { provider: PROVIDER_KEY, node: ref.node, vmid: ref.vmid },
       };
+    },
+
+    // Sign-in for Claude, Codex and Grok inside a container: a real terminal over ssh -tt, streamed to Paperclip.
+    async onLoginPtyOpen(params) {
+      const target = reachable.get(params.providerLeaseId);
+      if (!target) throw new Error("This container isn't connected to the provider any more (it restarted or the lease ended). Start the login again.");
+      const command = loginCommandLine(params.loginCommandKey, params.sessionHome);
+      logins.get(params.hostRouteId)?.session.kill();
+      const session = await openPty(target, command);
+      const workerSessionId = randomUUID();
+      logins.set(params.hostRouteId, { host: params.hostRouteId, session });
+      loginByWorker.set(workerSessionId, session);
+      session.onData((chunk) => ctx?.loginPty.output(params.hostRouteId, workerSessionId, chunk));
+      void session.wait().then(async ({ exitCode }) => {
+        ctx?.loginPty.exit(params.hostRouteId, workerSessionId, exitCode);
+        loginByWorker.delete(workerSessionId);
+        if (logins.get(params.hostRouteId)?.session === session) logins.delete(params.hostRouteId);
+        await session.close();
+      });
+      return { workerSessionId };
+    },
+
+    async onLoginPtyInput(params) {
+      loginByWorker.get(params.workerSessionId)?.write(params.data);
+    },
+
+    async onLoginPtyStop(params) {
+      loginByWorker.get(params.workerSessionId)?.kill();
+    },
+
+    async onLoginPtyClose(params) {
+      const entry = logins.get(params.hostRouteId);
+      logins.delete(params.hostRouteId);
+      if (entry) {
+        entry.session.kill();
+        await entry.session.close();
+      }
+      return { hostRouteId: params.hostRouteId };
     },
   });
 }
