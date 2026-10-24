@@ -661,7 +661,7 @@ export class AgentContainers {
     const text = readFileSync(join(this.pluginDir, "template", "versions.sh"), "utf8");
     const out: Record<string, string> = {};
     for (const m of text.matchAll(/^([A-Z0-9_]+)="([^"\n]*)"$/gm)) out[m[1]] = m[2];
-    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
+    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64", "CLAUDE_CODE_VERSION", "CODEX_VERSION", "GEMINI_CLI_VERSION"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
     return out;
   }
 
@@ -746,7 +746,7 @@ export class AgentContainers {
       const v = this.versions();
       const script = [
         "set -e",
-        ...Object.entries({ ...v, CLAUDE_CODE_VERSION: "latest", CODEX_VERSION: "latest", AGENT_USER }).map(([k, val]) => `export ${k}='${val}'`),
+        ...Object.entries({ ...v, AGENT_USER }).map(([k, val]) => `export ${k}='${val}'`),
         `umask 077; printf '%s\\n' '${pub}' > /root/engine_key.pub`,
         readFileSync(join(this.pluginDir, "template", "provision.sh"), "utf8"),
       ].join("\n");

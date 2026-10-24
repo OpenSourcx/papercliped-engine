@@ -36,8 +36,6 @@ CORES=2
 HOSTNAME_VALUE="epaperclip-agent-template"
 AGENT_USER="agent"
 SSH_PUBLIC_KEY_FILE=""
-CLAUDE_CODE_VERSION="latest"
-CODEX_VERSION="latest"
 REBUILD=0
 
 usage() {
@@ -57,8 +55,9 @@ Usage: build-template.sh [options]
   --cores N                Cores while building (default 2)
   --hostname NAME          Hostname of the template (default epaperclip-agent-template)
   --agent-user NAME        Unprivileged user created for agents (default agent)
-  --claude-code-version V  npm version of @anthropic-ai/claude-code (default latest)
-  --codex-version V        npm version of @openai/codex (default latest)
+  --claude-code-version V  npm version of @anthropic-ai/claude-code (default: the one in versions.sh)
+  --codex-version V        npm version of @openai/codex (default: the one in versions.sh)
+  --gemini-cli-version V   npm version of @google/gemini-cli (default: the one in versions.sh)
   --rebuild                Replace an existing template built by this script
   -h, --help               Show this help
 EOF
@@ -85,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     --agent-user) need_value "$@"; AGENT_USER="$2"; shift 2 ;;
     --claude-code-version) need_value "$@"; CLAUDE_CODE_VERSION="$2"; shift 2 ;;
     --codex-version) need_value "$@"; CODEX_VERSION="$2"; shift 2 ;;
+    --gemini-cli-version) need_value "$@"; GEMINI_CLI_VERSION="$2"; shift 2 ;;
     --rebuild) REBUILD=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
@@ -107,6 +107,7 @@ done
 [[ "$HOSTNAME_VALUE" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] || die "--hostname must be a DNS label"
 [[ "$CLAUDE_CODE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--claude-code-version looks wrong"
 [[ "$CODEX_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--codex-version looks wrong"
+[[ "$GEMINI_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--gemini-cli-version looks wrong"
 pvesm status --storage "$ROOTFS_STORAGE" >/dev/null 2>&1 || die "storage '$ROOTFS_STORAGE' not found (see pvesm status)"
 pvesm status --storage "$TEMPLATE_STORAGE" >/dev/null 2>&1 || die "storage '$TEMPLATE_STORAGE' not found (see pvesm status)"
 [[ -d "/sys/class/net/$BRIDGE" ]] || die "bridge '$BRIDGE' not found on this host"
@@ -214,6 +215,7 @@ pct exec "$VMID" -- env \
   NODE_SHA256_ARM64="$NODE_SHA256_ARM64" \
   CLAUDE_CODE_VERSION="$CLAUDE_CODE_VERSION" \
   CODEX_VERSION="$CODEX_VERSION" \
+  GEMINI_CLI_VERSION="$GEMINI_CLI_VERSION" \
   AGENT_USER="$AGENT_USER" \
   bash /root/provision.sh
 pct exec "$VMID" -- rm -f /root/provision.sh
