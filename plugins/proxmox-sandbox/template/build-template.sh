@@ -62,6 +62,8 @@ Usage: build-template.sh [options]
   --mimo-cli-version V    npm version of @mimo-ai/cli (default: the one in versions.sh)
   --pi-version V          npm version of @mariozechner/pi-coding-agent (default: the one in versions.sh)
   --grok-cli-version V    npm version of @xai-official/grok (default: the one in versions.sh)
+  --claude-acp-version V   npm version of @agentclientprotocol/claude-agent-acp (default: the one in versions.sh)
+  --codex-acp-version V    npm version of @agentclientprotocol/codex-acp (default: the one in versions.sh)
   --rebuild                Replace an existing template built by this script
   -h, --help               Show this help
 EOF
@@ -93,6 +95,8 @@ while [[ $# -gt 0 ]]; do
     --mimo-cli-version) need_value "$@"; MIMO_CLI_VERSION="$2"; shift 2 ;;
     --pi-version) need_value "$@"; PI_VERSION="$2"; shift 2 ;;
     --grok-cli-version) need_value "$@"; GROK_CLI_VERSION="$2"; shift 2 ;;
+    --claude-acp-version) need_value "$@"; CLAUDE_AGENT_ACP_VERSION="$2"; shift 2 ;;
+    --codex-acp-version) need_value "$@"; CODEX_ACP_VERSION="$2"; shift 2 ;;
     --rebuild) REBUILD=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
@@ -120,6 +124,8 @@ done
 [[ "$MIMO_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--mimo-cli-version looks wrong"
 [[ "$PI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--pi-version looks wrong"
 [[ "$GROK_CLI_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--grok-cli-version looks wrong"
+[[ "$CLAUDE_AGENT_ACP_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--claude-acp-version looks wrong"
+[[ "$CODEX_ACP_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--codex-acp-version looks wrong"
 pvesm status --storage "$ROOTFS_STORAGE" >/dev/null 2>&1 || die "storage '$ROOTFS_STORAGE' not found (see pvesm status)"
 pvesm status --storage "$TEMPLATE_STORAGE" >/dev/null 2>&1 || die "storage '$TEMPLATE_STORAGE' not found (see pvesm status)"
 [[ -d "/sys/class/net/$BRIDGE" ]] || die "bridge '$BRIDGE' not found on this host"
@@ -232,6 +238,8 @@ pct exec "$VMID" -- env \
   MIMO_CLI_VERSION="$MIMO_CLI_VERSION" \
   PI_VERSION="$PI_VERSION" \
   GROK_CLI_VERSION="$GROK_CLI_VERSION" \
+  CLAUDE_AGENT_ACP_VERSION="$CLAUDE_AGENT_ACP_VERSION" \
+  CODEX_ACP_VERSION="$CODEX_ACP_VERSION" \
   AGENT_USER="$AGENT_USER" \
   bash /root/provision.sh
 pct exec "$VMID" -- rm -f /root/provision.sh

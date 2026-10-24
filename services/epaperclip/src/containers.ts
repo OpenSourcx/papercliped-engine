@@ -198,6 +198,9 @@ export interface ContainersDeps {
   paceMs?: number;
 }
 
+/** Harness adapters that have both an ACP lane (the engine's default) and a direct command-line lane. */
+const CLI_LANE = new Set(["claude_local", "codex_local", "gemini_local", "kimi_local"]);
+
 export class AgentContainers {
   private readonly d: ContainersDeps;
   private readonly now: () => number;
@@ -661,7 +664,7 @@ export class AgentContainers {
     const text = readFileSync(join(this.pluginDir, "template", "versions.sh"), "utf8");
     const out: Record<string, string> = {};
     for (const m of text.matchAll(/^([A-Z0-9_]+)="([^"\n]*)"$/gm)) out[m[1]] = m[2];
-    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64", "CLAUDE_CODE_VERSION", "CODEX_VERSION", "GEMINI_CLI_VERSION", "OPENCODE_VERSION", "MIMO_CLI_VERSION", "PI_VERSION", "GROK_CLI_VERSION"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
+    for (const k of ["NODE_VERSION", "NODE_SHA256_X64", "NODE_SHA256_ARM64", "CLAUDE_CODE_VERSION", "CODEX_VERSION", "GEMINI_CLI_VERSION", "OPENCODE_VERSION", "MIMO_CLI_VERSION", "PI_VERSION", "GROK_CLI_VERSION", "CLAUDE_AGENT_ACP_VERSION", "CODEX_ACP_VERSION"]) if (!out[k]) throw new StepError(`versions.sh doesn't define ${k}`);
     return out;
   }
 
@@ -892,10 +895,21 @@ export class AgentContainers {
     this.save({ environments: { ...(this.stored().environments ?? {}), [companyId]: { environmentId: env.id } } });
 
     // The organization's agents default to it, unless someone chose a different non-local environment on purpose.
-    const agents = await this.eng<{ id: string; name: string; status?: string; defaultEnvironmentId?: string | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
+    const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
     const known = new Map(envs.map((e) => [e.id, e]));
     for (const a of agents) {
-      if (a.status === "terminated" || a.defaultEnvironmentId === env.id) continue;
+      if (a.status === "terminated") continue;
+      // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
+      // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
+      // lane (including "acp") is never touched.
+      if (a.adapterType && CLI_LANE.has(a.adapterType) && a.adapterConfig?.engine === undefined) {
+        try {
+          await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { adapterConfig: { ...(a.adapterConfig ?? {}), engine: "cli" } });
+        } catch (e) {
+          warnings.push(`${name}: couldn't set ${a.name}'s engine: ${errText(e)}`);
+        }
+      }
+      if (a.defaultEnvironmentId === env.id) continue;
       const cur = a.defaultEnvironmentId ? known.get(a.defaultEnvironmentId) : undefined;
       // No default, or one that points at the (hidden) local environment, is replaced. A deliberate other choice stays.
       if (a.defaultEnvironmentId && cur && cur.driver !== "local" && !this.ours(cur)) continue;

@@ -17,3 +17,8 @@ OPENCODE_VERSION="1.19.4"
 MIMO_CLI_VERSION="0.1.15"
 PI_VERSION="0.73.1"
 GROK_CLI_VERSION="1.0.70"
+# The ACP bridges Paperclip's default engine lane talks to (claude-agent-acp, codex-acp). The versions are the ones the
+# pinned engine's own lockfile resolves, so the bridge speaks the protocol revision the engine expects. Gemini's bridge is
+# `gemini --acp`, built in.
+CLAUDE_AGENT_ACP_VERSION="0.73.0"
+CODEX_ACP_VERSION="1.13.1"

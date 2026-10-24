@@ -27,7 +27,8 @@ rm -f "/tmp/${tarball}"
 step "Installing agent CLIs"
 /usr/local/bin/npm install -g --no-fund --no-audit --loglevel=error \
   "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
- "opencode-ai@${OPENCODE_VERSION}" "@mimo-ai/cli@${MIMO_CLI_VERSION}" "@mariozechner/pi-coding-agent@${PI_VERSION}" "@xai-official/grok@${GROK_CLI_VERSION}"
+ "opencode-ai@${OPENCODE_VERSION}" "@mimo-ai/cli@${MIMO_CLI_VERSION}" "@mariozechner/pi-coding-agent@${PI_VERSION}" "@xai-official/grok@${GROK_CLI_VERSION}" \
+ "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}"
 
 step "Creating user ${AGENT_USER}"
 if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
@@ -81,7 +82,7 @@ truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 
 step "Self-test"
-for cmd in sh bash tar git curl node npm claude codex gemini opencode mimo pi grok sshd setsid; do
+for cmd in sh bash tar git curl node npm claude codex gemini opencode mimo pi grok claude-agent-acp codex-acp base64 sha256sum sshd setsid; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing: $cmd" >&2; exit 1; }
 done
 printf '     node %s, npm %s, git %s\n' "$(node --version)" "$(npm --version)" "$(git --version | awk '{print $3}')"

@@ -325,6 +325,23 @@ describe("agent containers setup", () => {
     expect(eng.st.agents.get(o.co)![1].defaultEnvironmentId).toBe([...eng.st.envs.values()][0].id);
   });
 
+  it("puts agents on the direct command-line lane unless they chose one, and leaves other adapters alone", async () => {
+    const sam = await admin();
+    const o = await org(sam, "Plain", false);
+    eng.st.agents.set(o.co, [
+      { id: "c1", name: "Claude", status: "idle", adapterType: "claude_local", adapterConfig: { model: "x" }, defaultEnvironmentId: null },
+      { id: "c2", name: "Chose ACP", status: "idle", adapterType: "codex_local", adapterConfig: { engine: "acp" }, defaultEnvironmentId: null },
+      { id: "c3", name: "Process", status: "idle", adapterType: "process", adapterConfig: {}, defaultEnvironmentId: null },
+      { id: "c4", name: "Gone", status: "terminated", adapterType: "gemini_local", adapterConfig: {}, defaultEnvironmentId: null },
+    ]);
+    expect((await runSetup(sam)).status).toBe("done");
+    const list = eng.st.agents.get(o.co)!;
+    expect(list[0].adapterConfig).toEqual({ model: "x", engine: "cli" });
+    expect(list[1].adapterConfig).toEqual({ engine: "acp" });
+    expect(list[2].adapterConfig).toEqual({});
+    expect(list[3].adapterConfig).toEqual({});
+  });
+
   it("leaves an agent's deliberate non-local environment alone", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);
