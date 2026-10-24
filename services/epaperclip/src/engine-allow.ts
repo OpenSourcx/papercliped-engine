@@ -104,6 +104,19 @@ export const ENGINE_ALLOWED: readonly string[] = [
   "/api/issues/{id}/documents",
   "/api/issues/{id}/approvals",
   "/api/companies/{companyId}/search",
+  "/api/companies/{companyId}/adapters/{type}/auth-signal",
+  "/api/companies/{companyId}/adapters/{type}/test-environment",
+  "/api/companies/{companyId}/adapters/{type}/login-sessions",
+  "/api/companies/{companyId}/adapters/{type}/login-sessions/active",
+  "/api/companies/{companyId}/adapters/{type}/login-sessions/{sessionId}",
+  "/api/companies/{companyId}/adapters/{type}/login-sessions/{sessionId}/cancel",
+  "/api/companies/{companyId}/setup-token-login-sessions",
+  "/api/companies/{companyId}/setup-token-login-sessions/active",
+  "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}",
+  "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/prompt",
+  "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/code",
+  "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/completion",
+  "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/cancel",
 ];
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

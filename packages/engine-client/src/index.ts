@@ -230,6 +230,20 @@ export const ENGINE_PATHS = {
   issueApprovals: "/api/issues/{id}/approvals",
   // Search
   search: "/api/companies/{companyId}/search",
+  // Signing an agent harness in (docs/AGENT-AUTH.md): Claude by browser code, Codex and Grok by device code.
+  authSignal: "/api/companies/{companyId}/adapters/{type}/auth-signal",
+  testEnvironment: "/api/companies/{companyId}/adapters/{type}/test-environment",
+  deviceLogins: "/api/companies/{companyId}/adapters/{type}/login-sessions",
+  deviceLoginActive: "/api/companies/{companyId}/adapters/{type}/login-sessions/active",
+  deviceLogin: "/api/companies/{companyId}/adapters/{type}/login-sessions/{sessionId}",
+  deviceLoginCancel: "/api/companies/{companyId}/adapters/{type}/login-sessions/{sessionId}/cancel",
+  claudeLogins: "/api/companies/{companyId}/setup-token-login-sessions",
+  claudeLoginActive: "/api/companies/{companyId}/setup-token-login-sessions/active",
+  claudeLogin: "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}",
+  claudeLoginPrompt: "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/prompt",
+  claudeLoginCode: "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/code",
+  claudeLoginCompletion: "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/completion",
+  claudeLoginCancel: "/api/companies/{companyId}/setup-token-login-sessions/{sessionId}/cancel",
 } as const;
 
 /**
@@ -239,6 +253,22 @@ export const ENGINE_PATHS = {
 export const ENGINE_PATHS_UNDOCUMENTED = {
   chatWith: "/api/companies/{companyId}/chats/{agentRef}",
 } as const;
+
+/** A harness sign-in session as the engine reports it. `prompt` is the one-time sign-in address and, for device logins, the code to type there. */
+export type LoginStatus = "starting" | "waiting_for_user" | "authenticated" | "failed" | "timed_out" | "cancelled";
+export interface LoginSession {
+  sessionId: string;
+  environmentId: string;
+  status: LoginStatus;
+  expiresAt: string | null;
+  failure: { reason: string; message: string | null } | null;
+  /** Device logins (Codex, Grok): the page to open and the code to enter. Claude's address comes from `claudeLoginPrompt`. */
+  prompt?: { url: string; code: string } | null;
+  panelMode?: "displayed_code" | "submitted_browser_code";
+}
+/** The harnesses with an account sign-in, by Paperclip adapter type. Gemini has none: it uses an API key. */
+export const LOGIN_ADAPTERS = ["claude_local", "codex_local", "grok_local"] as const;
+export type LoginAdapter = (typeof LOGIN_ADAPTERS)[number];
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -383,6 +413,32 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       accept: (issueId: string, interactionId: string, body: Record<string, unknown> = {}) => call<unknown>("POST", P.interactionAccept, { id: issueId, interactionId }, body),
       reject: (issueId: string, interactionId: string, body: Record<string, unknown> = {}) => call<unknown>("POST", P.interactionReject, { id: issueId, interactionId }, body),
       touchedByMe: (companyId: string, limit = 50) => call<Issue[]>("GET", P.issues, { companyId }, undefined, { touchedByUserId: "me", limit }),
+    },
+    agentAuth: {
+      /** "authenticated", "missing" or "unknown" for Claude and Codex; anything else is "unknown". */
+      signal: (companyId: string, type: string, environmentId?: string) => call<{ status: string }>("GET", P.authSignal, { companyId, type }, undefined, { environmentId }),
+      /** Starts a sign-in. Claude and the device-login harnesses use different routes; the caller doesn't need to know. */
+      start: (companyId: string, type: LoginAdapter, environmentId: string) =>
+        type === "claude_local"
+          ? call<LoginSession>("POST", P.claudeLogins, { companyId }, { environmentId, adapterType: type })
+          : call<LoginSession>("POST", P.deviceLogins, { companyId, type }, { environmentId }),
+      read: (companyId: string, type: LoginAdapter, sessionId: string) =>
+        type === "claude_local" ? call<LoginSession>("GET", P.claudeLogin, { companyId, sessionId }) : call<LoginSession>("GET", P.deviceLogin, { companyId, type, sessionId }),
+      active: (companyId: string, type: LoginAdapter) =>
+        (type === "claude_local" ? call<LoginSession>("GET", P.claudeLoginActive, { companyId }) : call<LoginSession>("GET", P.deviceLoginActive, { companyId, type })).catch((e) => {
+          if (e instanceof EngineError && e.status === 404) return null;
+          throw e;
+        }),
+      /** Claude only: the address to open once it has surfaced (404 until then). */
+      claudeAddress: (companyId: string, sessionId: string) => call<{ authorizationUrl: string }>("GET", P.claudeLoginPrompt, { companyId, sessionId }),
+      /** Claude only: the code the browser showed after signing in. */
+      claudeCode: (companyId: string, sessionId: string, browserCode: string) => call<LoginSession>("POST", P.claudeLoginCode, { companyId, sessionId }, { browserCode }),
+      /** Claude only: stores the token once the session is authenticated. */
+      claudeComplete: (companyId: string, sessionId: string) => call<{ storedSessionId: string }>("POST", P.claudeLoginCompletion, { companyId, sessionId }, {}),
+      cancel: (companyId: string, type: LoginAdapter, sessionId: string) =>
+        type === "claude_local" ? call<unknown>("POST", P.claudeLoginCancel, { companyId, sessionId }, {}) : call<unknown>("POST", P.deviceLoginCancel, { companyId, type, sessionId }, {}),
+      /** Runs the adapter's own readiness check in the organization's container, with an optional one-shot key that is never saved. */
+      test: (companyId: string, type: string, environmentId: string) => call<{ status: string; checks: { code: string; level: string; message: string; hint?: string }[] }>("POST", P.testEnvironment, { companyId, type }, { environmentId }),
     },
     chat: {
       settings: () => call<InstanceExperimental>("GET", P.instanceExperimental),

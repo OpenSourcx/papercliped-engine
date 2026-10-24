@@ -1,6 +1,7 @@
-import { Cable, Container, KeyRound, Palette, Plug, RefreshCw, Settings as Gear, ShieldCheck } from "lucide-react";
+import { Cable, Container, KeyRound, LogIn, Palette, Plug, RefreshCw, Settings as Gear, ShieldCheck } from "lucide-react";
 import { Access } from "../pages/Access.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
+import { AgentSignIn } from "../pages/AgentSignIn.tsx";
 import { Apps } from "../pages/Apps.tsx";
 import { Connectors } from "../pages/Connectors.tsx";
 import { AgentContainersSettings } from "../pages/containers/AgentContainers.tsx";
@@ -28,6 +29,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "access", group: "Access", label: "Access control", icon: <ShieldCheck className="h-4 w-4" />, render: () => <Access /> },
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
   { id: "connectors", group: "Access", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
+  { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },
   { id: "vault", group: "Access", label: "Vault", icon: <KeyRound className="h-4 w-4" />, render: () => <Vault /> },
   { id: "agent-containers", group: "Access", label: "Agent containers", icon: <Container className="h-4 w-4" />, render: () => <AgentContainersSettings /> },
   { id: "appearance", group: "You", label: "Appearance", icon: <Palette className="h-4 w-4" />, render: () => <Appearance /> },
