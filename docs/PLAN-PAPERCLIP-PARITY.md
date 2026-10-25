@@ -68,9 +68,9 @@ Give Pin tools for the same routes, gated by the permission modes already in pla
 - speak to the board and members through task comments and agent chats (routes exist; verify the board-chat route and what it allows before relying on it);
 - keep working inside machines (`machine_exec` and friends, `5bf49ee`) for setup the agents need.
 
-### 6. Look and feel
+### 6. Look and feel (decided)
 
-Open decision. Paperclip's interface is light, plain and uses a mascot. Ours has its own token system (DESIGN.md) with four themes, one of them "Daylight". Recommendation: keep our tokens and components (every control comes from `src/ui/`), match Paperclip's layouts, labels and flows exactly, and add a Paperclip-like light preset that is the default for the company screens. This keeps the "one definition per control" rule and still reads as Paperclip. Needs your call before phase 1's visuals.
+Visuals are ePaperclip's own interface: our tokens, our components from `src/ui/`, our themes. We match Paperclip's flows, labels and the order of its steps, not its colours, type or mascot. No Paperclip-style light preset and no Paperclip artwork.
 
 ## How each phase is checked
 
