@@ -74,7 +74,7 @@ Visuals are ePaperclip's own interface: our tokens, our components from `src/ui/
 
 ## Cross-check against the product spec (docs/VISION.md and the roadmap's v2 goals)
 
-The repo has no document called a v2 spec. What it has: [VISION.md](VISION.md) (the product spec) and the "v2 goals" list in [ROADMAP.md](ROADMAP.md) (SEV/TDX, OCI pull, OVA/ESXi import, single-file restore, SPICE/Open vSwitch, ZFS/Ceph, GlusterFS; all machine and storage items, none about companies). Against VISION.md the company flow stands like this:
+The repo has no document called a v2 spec; the closest to a Claude-style Pin and agents interface is the 1.0.0 plan for PinView, which lived outside the repo until now. What it has: [VISION.md](VISION.md) (the product spec) and the "v2 goals" list in [ROADMAP.md](ROADMAP.md) (SEV/TDX, OCI pull, OVA/ESXi import, single-file restore, SPICE/Open vSwitch, ZFS/Ceph, GlusterFS; all machine and storage items, none about companies). Against VISION.md the company flow stands like this:
 
 | VISION.md says | Today |
 | --- | --- |
@@ -82,6 +82,7 @@ The repo has no document called a v2 spec. What it has: [VISION.md](VISION.md) (
 | "Creating a company manually shows the memory options" (Postgres, or Postgres plus memory files) | The old modal showed them in the demo only; the wizard shows none, and the live engine has no such switch that we use. **Open** |
 | "Pin can create companies for you." | Pin drafts the CEO today; creating the company is phase 5 |
 | Device onboarding: name, Pin's mode, connect your first AI account, grant Pin access, "optionally create your first company, **or let Pin propose one**" | The device onboarding stops before that step. The wizard could be its last step, with Pin proposing the name and mission. **Open** |
+| A Claude-style workspace for Pin and agents | **Planned, not built**: PinView in [PLAN-1.0-PINVIEW-COLLABORATE.md](PLAN-1.0-PINVIEW-COLLABORATE.md) (it was only in the session's plan folder until now) |
 | "Nothing is lost from Paperclip. Redesign, don't remove." | The rule this plan follows |
 | An agent runs natively on the engine host for trusted, light work, or in a container session | Containers only: the engine is held to managed sandboxes. The native option is not built and is off by design (docs/ENGINE.md) |
 
