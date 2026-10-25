@@ -2,31 +2,18 @@ import { createContext, useCallback, useContext, useEffect, useId, useMemo, useR
 import { useLocation } from "react-router-dom";
 import type { QuickAction, QuickActions } from "./quickActions.ts";
 import { useEngine } from "../data/store.tsx";
-import { think, type PinCard } from "./brain.ts";
-import { fixFor, streamChat, type PinChatError, type PinPermission, type PinSettings, type PinToolEvent } from "./live.ts";
+import { think } from "./brain.ts";
+import { fixFor, streamChat, type PinPermission, type PinSettings } from "./live.ts";
+import { newId, useThread, wait, type ThreadMessage, type ToolState } from "./useThread.ts";
 import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { pinLibrary, type ChatMeta, type StoredMessage } from "../data/engine/pinLibraryApi.ts";
 import { demoSettingsSource, liveSettingsSource, type PinSettingsSource } from "./settings.ts";
 import { pageOf } from "./suggestions.ts";
 import { prefersReducedMotion } from "../ui/spring.ts";
 
-export interface PinToolState extends PinToolEvent {
-  /** What the person did with a proposal: ran it (and how that went) or cancelled it. */
-  resolved?: "done" | "cancelled" | "failed";
-  note?: string;
-}
-
-export interface PinMessage {
-  id: string;
-  from: "you" | "pin";
-  text: string;
-  card?: PinCard;
-  done?: boolean; // a card the user already acted on
-  tool?: PinToolState;
-  error?: PinChatError;
-  /** True while Pin is still writing this message. */
-  streaming?: boolean;
-}
+export type PinToolState = ToolState;
+/** The island and Pin's page draw the same message every conversation uses (see useThread). */
+export type PinMessage = ThreadMessage;
 
 export type IslandState = "rest" | "peek" | "actions" | "open";
 
@@ -77,7 +64,6 @@ interface PinCtx {
 }
 
 const Ctx = createContext<PinCtx | null>(null);
-let seq = 0;
 
 /** A saved message back as the thread draws it. A proposal that was waiting when the chat was saved can't be answered any more. */
 function fromStored(m: StoredMessage): PinMessage {
@@ -89,16 +75,13 @@ function fromStored(m: StoredMessage): PinMessage {
   if (m.error) return { id: m.id, from: "pin", text: "", error: { message: m.error.message, ...(m.error.code ? { code: m.error.code } : {}), ...(fixFor(m.error.code, m.error.message) ? { fix: fixFor(m.error.code, m.error.message) } : {}) } };
   return { id: m.id, from: m.from, text: m.text };
 }
-const newId = (p: string) => `${p}-${Date.now().toString(36)}-${++seq}`;
 
 export function PinProvider({ children }: { children: ReactNode }) {
   const engine = useEngine();
   const loc = useLocation();
   const [state, setState] = useState<IslandState>("rest");
   const [tab, setTab] = useState<"chat" | "notices">("chat");
-  const [messages, setMessages] = useState<PinMessage[]>([]);
-  const [thinking, setThinking] = useState(false);
-  const [streaming, setStreaming] = useState(false);
+  const { messages, thinking, streaming, run, stop, reset, markDone, resolveTool } = useThread();
   const [peek, setPeek] = useState<{ title: string; body?: string } | null>(null);
   const [settings, setSettings] = useState<PinSettings | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
@@ -111,10 +94,6 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const chatIdRef = useRef<string | null>(null);
   chatIdRef.current = chatId;
   const [loadingChat, setLoadingChat] = useState(false);
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
-  const abort = useRef<AbortController | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const locRef = useRef(loc.pathname);
   locRef.current = loc.pathname;
 
@@ -215,11 +194,6 @@ export function PinProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [engine.data.notices, state]);
 
-  useEffect(() => () => {
-    abort.current?.abort();
-    timers.current.forEach(clearTimeout);
-  }, []);
-
   const refreshChats = useCallback(() => {
     if (!engineRef.current.live) return Promise.resolve();
     return pinLibrary.chats().then((r) => setChats(r.chats), () => undefined);
@@ -228,131 +202,71 @@ export function PinProvider({ children }: { children: ReactNode }) {
     if (engine.live) void refreshChats();
   }, [engine.live, refreshChats]);
 
-  const patch = (id: string, fn: (m: PinMessage) => PinMessage) => setMessages((list) => list.map((m) => (m.id === id ? fn(m) : m)));
-
-  const stop = useCallback(() => {
-    abort.current?.abort();
-    abort.current = null;
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    setThinking(false);
-    setStreaming(false);
-    setMessages((list) => list.filter((m) => !(m.streaming && !m.text && !m.card)).map((m) => (m.streaming ? { ...m, streaming: false } : m)));
-  }, []);
-
   const send = useCallback((text: string, opts?: { inPlace?: boolean }) => {
     const clean = text.trim();
     if (!clean) return;
-    abort.current?.abort();
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    const history = messagesRef.current.filter((m) => m.text && !m.error).map((m) => ({ role: m.from === "you" ? ("user" as const) : ("assistant" as const), content: m.text }));
-    let replyId = newId("p");
-    setMessages((m) => [...m.map((x) => (x.streaming ? { ...x, streaming: false } : x)), { id: newId("u"), from: "you", text: clean }, { id: replyId, from: "pin", text: "", streaming: true }]);
     setTab("chat");
     if (!opts?.inPlace) setState("open");
-    setThinking(true);
-    setStreaming(true);
     const e = engineRef.current;
     const device = e.setup?.deviceName ?? "pve";
 
-    const finish = () => {
-      setThinking(false);
-      setStreaming(false);
-      setMessages((list) => list.filter((m) => !(m.streaming && !m.tool && !m.text && !m.card && !m.error)).map((m) => (m.streaming ? { ...m, streaming: false } : m)));
-    };
-
     if (e.live) {
-      const ctl = new AbortController();
-      abort.current = ctl;
       const ref = pageOf(locRef.current, e.data.orgs.map((o) => o.slug));
       // The device keeps the conversation: it already has what was said, so only the new message is sent.
       const saved = chatIdRef.current;
-      void streamChat(
-        { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) }, ...(saved ? { chatId: saved } : { save: true }) },
-        (ev) => {
-          if (ctl.signal.aborted) return;
-          if (ev.type === "chat") {
-            setChatId(ev.id);
-            void refreshChats();
-            return;
-          }
-          if (ev.type === "delta") {
-            setThinking(false);
-            patch(replyId, (m) => ({ ...m, text: m.text + ev.text }));
-          } else if (ev.type === "tool") {
-            setThinking(false);
-            if (messagesRef.current.some((m) => m.tool?.id === ev.tool.id)) {
-              setMessages((list) => list.map((m) => (m.tool?.id === ev.tool.id ? { ...m, tool: { ...m.tool!, ...ev.tool } } : m)));
-              return;
-            }
-            // A new step goes after whatever Pin has said so far, and what Pin says next starts below it, so the thread reads in order.
-            const prev = replyId;
-            const fresh = newId("p");
-            replyId = fresh;
-            setMessages((list) => {
-              const out: PinMessage[] = [];
-              for (const m of list) {
-                if (m.id !== prev) out.push(m);
-                else {
-                  if (m.text || m.card || m.error) out.push({ ...m, streaming: false });
-                  out.push({ id: newId("t"), from: "pin", text: "", tool: ev.tool }, { id: fresh, from: "pin", text: "", streaming: true });
+      run(clean, async ({ emit, signal, history }) => {
+        try {
+          await streamChat(
+            { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) }, ...(saved ? { chatId: saved } : { save: true }) },
+            (ev) => {
+              if (signal.aborted) return;
+              if (ev.type === "chat") {
+                setChatId(ev.id);
+                void refreshChats();
+              } else if (ev.type === "delta" || ev.type === "tool" || ev.type === "error") {
+                emit(ev);
+                if (ev.type === "error" && ev.error.code === "chat_not_found") {
+                  setChatId(null);
+                  void refreshChats();
                 }
               }
-              return out;
-            });
-          } else if (ev.type === "error") {
-            patch(replyId, (m) => ({ ...m, error: ev.error }));
-            if (ev.error.code === "chat_not_found") {
-              setChatId(null);
-              void refreshChats();
-            }
-          }
-        },
-        { signal: ctl.signal },
-      ).finally(() => {
-        if (abort.current === ctl) abort.current = null;
-        if (!ctl.signal.aborted) finish();
-        void refreshChats();
+            },
+            { signal },
+          );
+        } finally {
+          void refreshChats();
+        }
       });
       return;
     }
 
     // Demo: the scripted brain, revealed a few words at a time so it reads like a live answer.
-    const reply = think(clean, { host: e.host, data: e.data, mode: e.setup?.pinMode ?? "assistant", device });
-    const words = reply.text.split(/(\s+)/);
-    const instant = prefersReducedMotion();
-    const start = 520 + Math.min(700, clean.length * 10);
-    timers.current.push(setTimeout(() => {
-      setThinking(false);
-      if (instant) {
-        patch(replyId, (m) => ({ ...m, text: reply.text, card: reply.card }));
-        finish();
-        return;
+    run(clean, async ({ emit, signal }) => {
+      const reply = think(clean, { host: e.host, data: e.data, mode: e.setup?.pinMode ?? "assistant", device });
+      const words = reply.text.split(/(\s+)/);
+      if (!(await wait(520 + Math.min(700, clean.length * 10), signal))) return;
+      if (prefersReducedMotion()) {
+        emit({ type: "delta", text: reply.text });
+      } else {
+        for (let i = 0; i < words.length; i += 3) {
+          emit({ type: "delta", text: words.slice(i, i + 3).join("") });
+          if (!(await wait(28, signal))) return;
+        }
       }
-      let i = 0;
-      const tick = () => {
-        i = Math.min(words.length, i + 3);
-        const done = i >= words.length;
-        patch(replyId, (m) => ({ ...m, text: words.slice(0, i).join(""), ...(done ? { card: reply.card } : {}) }));
-        if (done) finish();
-        else timers.current.push(setTimeout(tick, 28));
-      };
-      tick();
-    }, start));
-  }, [refreshChats]);
+      if (reply.card) emit({ type: "card", card: reply.card });
+    });
+  }, [run, refreshChats]);
 
   const newChat = useCallback(() => {
-    stop();
-    setMessages([]);
+    reset();
     setChatId(null);
-  }, [stop]);
+  }, [reset]);
   const openChat = useCallback(async (id: string) => {
     stop();
     setLoadingChat(true);
     try {
       const { chat } = await pinLibrary.chat(id);
-      setMessages(chat.messages.map(fromStored));
+      reset(chat.messages.map(fromStored));
       setChatId(chat.id);
       setTab("chat");
     } catch {
@@ -360,7 +274,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingChat(false);
     }
-  }, [stop, refreshChats]);
+  }, [stop, reset, refreshChats]);
   const deleteChat = useCallback(async (id: string) => {
     await pinLibrary.remove(id);
     if (chatIdRef.current === id) newChat();
@@ -374,8 +288,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PinCtx>(
     () => ({
       state, setState, messages, thinking, streaming, stop, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat,
-      markDone: (id) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, done: true } : x))),
-      resolveTool: (id, p) => setMessages((m) => m.map((x) => (x.id === id && x.tool ? { ...x, tool: { ...x.tool, ...p } } : x))),
+      markDone, resolveTool,
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
       providerName: settings?.provider ? names[settings.provider] ?? settings.provider : null,
       setPermission: async (p, confirmBypass) => {
@@ -399,7 +312,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [state, messages, thinking, streaming, stop, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
+    [state, messages, thinking, streaming, stop, markDone, resolveTool, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
