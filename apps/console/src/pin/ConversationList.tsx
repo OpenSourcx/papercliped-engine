@@ -13,6 +13,8 @@ export interface ConversationItem {
   /** Where it belongs: the organization of an agent chat. */
   context?: string;
   updatedAt: number;
+  /** Something new arrived since the person last opened it. */
+  unread?: boolean;
 }
 
 /** A named group of conversations (Pinned, Pin, an organization), shown with a heading that folds it away. */
@@ -79,7 +81,8 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
     return (
       <div className={cn("group flex items-center rounded-lg transition-control", active ? "bg-accent-soft" : "hover:bg-surface-2")}>
         <button type="button" aria-current={active ? "true" : undefined} onClick={() => onPick(c)} className={cn("min-w-0 flex-1 text-left px-2.5", compact ? "py-1.5 flex items-center gap-2" : "py-2")}>
-          <div className={cn("text-compact truncate", compact && "flex-1 min-w-0")}>{c.title}</div>
+          {c.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden />}
+          <div className={cn("text-compact truncate", compact && "flex-1 min-w-0", c.unread && "font-semibold text-ink")}>{c.title}{c.unread && <span className="sr-only"> (unread)</span>}</div>
           {compact ? <span className="text-xs text-ink-3 shrink-0 group-hover:hidden group-focus-within:hidden">{ago(new Date(c.updatedAt))}</span> : <div className="text-xs text-ink-3">{c.context ? `${c.context} · ` : ""}{ago(new Date(c.updatedAt))}</div>}
         </button>
         {confirm === c.key ? (
@@ -117,6 +120,7 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
               <button type="button" aria-expanded={open} onClick={() => setFolded((f) => { const n = new Set(f); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })} className="transition-control w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-ink-3 hover:text-ink-2">
                 {open ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
                 {s.icon}<span className="truncate">{s.label}</span>
+                {s.items.some((c) => c.unread) && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-micro font-bold flex items-center justify-center" aria-label={`${s.items.filter((c) => c.unread).length} unread`}>{s.items.filter((c) => c.unread).length}</span>}
               </button>
               {open && (s.items.length === 0 ? <p className="text-xs text-ink-3 px-2.5 py-1">No chats yet.</p> : s.items.map((c) => <div key={c.key}>{row(c)}</div>))}
             </section>

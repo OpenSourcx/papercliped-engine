@@ -219,6 +219,8 @@ const PAST: Record<string, string> = { start: "Started", shutdown: "Shut down", 
 // ---- Inside a machine
 
 const sq = (v: string) => `'${v.replace(/'/g, `'"'"'`)}'`;
+/** Base64 characters per in-machine command when writing a file, well under a terminal's shortest input line. */
+const WRITE_CHUNK = 2000;
 /** Files whose change can stop a machine from booting or logging in; writing one needs the person's typed word. */
 const SYSTEM_PATH = /^\/(boot|dev|proc|sys)(\/|$)|^\/etc\/(passwd|shadow|gshadow|group|sudoers(\.d\/.*)?|fstab|ssh\/sshd_config|pam\.d\/.*)$|^\/(bin|sbin|lib\w*|usr\/(bin|sbin|lib\w*))(\/|$)/;
 function pathOf(v: unknown): string {
@@ -643,11 +645,19 @@ export const ACTS: Record<string, ActDef> = {
     },
     risk: (a) => (SYSTEM_PATH.test(a.path as string) ? "destructive" : "disruptive"),
     describe: (a, n) => ({ label: `${a.append ? "Append to" : "Write"} ${a.path} (${Buffer.byteLength(a.content as string)} bytes) in ${vm(a.vmid, n)}`, phrase: SYSTEM_PATH.test(a.path as string) ? `write ${a.vmid}` : null }),
-    run: (h, a) => {
+    run: async (h, a) => {
       const p = sq(a.path as string);
       const b64 = Buffer.from(a.content as string, "utf8").toString("base64");
-      const script = `set -e; mkdir -p "$(dirname ${p})"; printf %s ${b64} | base64 -d ${a.append ? ">>" : ">"} ${p}${a.mode ? `; chmod ${a.mode} ${p}` : ""}; echo wrote ${p}`;
-      return runInMachine(h, a.vmid as number, script, 30_000);
+      const write = (src: string) => `set -e; mkdir -p "$(dirname ${p})"; ${src} | base64 -d ${a.append ? ">>" : ">"} ${p}${a.mode ? `; chmod ${a.mode} ${p}` : ""}; echo wrote ${p}`;
+      if (b64.length <= WRITE_CHUNK) return runInMachine(h, a.vmid as number, write(`printf %s ${b64}`), 30_000);
+      // A container's command travels through its terminal, whose input line can be as short as 4 KiB: stage the content in
+      // pieces, then decode it in one go.
+      const stage = sq(`/tmp/.epc-write-${Date.now().toString(36)}.b64`);
+      for (let i = 0; i < b64.length; i += WRITE_CHUNK) {
+        const r = await runInMachine(h, a.vmid as number, `set -e; printf %s ${b64.slice(i, i + WRITE_CHUNK)} ${i === 0 ? ">" : ">>"} ${stage}`, 30_000);
+        if (!r.result.startsWith("Exit 0.")) return r;
+      }
+      return runInMachine(h, a.vmid as number, `${write(`cat ${stage}`)}; rm -f ${stage}`, 30_000);
     },
   },
 

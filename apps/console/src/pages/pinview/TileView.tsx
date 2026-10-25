@@ -29,7 +29,7 @@ export function Pane({ icon, title, sub, menu, expanded, onExpand, onClose, chil
 }
 
 /** Text with a line-number gutter, wrapped or scrolled sideways. Plain text only: nothing in it is ever interpreted. */
-function Code({ text, wrap, numbers, empty }: { text: string; wrap: boolean; numbers: boolean; empty: string }) {
+export function Code({ text, wrap, numbers, empty }: { text: string; wrap: boolean; numbers: boolean; empty: string }) {
   if (!text) return <p className="p-4 text-compact text-ink-3">{empty}</p>;
   const lines = text.replace(/\n$/, "").split("\n");
   return (
@@ -44,7 +44,7 @@ function Code({ text, wrap, numbers, empty }: { text: string; wrap: boolean; num
   );
 }
 
-export function TileView({ tile, device, expanded, onExpand, onClose }: { tile: Tile; device: string; expanded: boolean; onExpand: () => void; onClose: () => void }) {
+export function TileView({ tile, device, expanded, onExpand, onClose, onEditLive }: { tile: Tile; device: string; expanded: boolean; onExpand: () => void; onClose: () => void; /** Opens the file as it is now in the machine, in an editor tile. */ onEditLive?: (vmid: number, path: string) => void }) {
   const [wrap, setWrap] = useState(true);
   const [numbers, setNumbers] = useState(true);
   const [kind, label] = STATUS[tile.status];
@@ -54,8 +54,8 @@ export function TileView({ tile, device, expanded, onExpand, onClose }: { tile: 
   if (tile.kind === "file") {
     return (
       <Pane icon={<FileText className="h-4 w-4" />} title={tile.title} sub={<>{tile.write ? "Written" : "Read"}{tile.vmid !== null ? ` in machine ${tile.vmid}` : ""} · <span className="font-mono">{tile.path}</span></>} expanded={expanded} onExpand={onExpand} onClose={onClose} className="flex-1"
-        menu={[...view, { kind: "separator" }, { label: "Copy contents", onSelect: () => copyText(tile.text), disabled: !tile.text }, { label: "Copy path", onSelect: () => copyText(tile.path) }]}>
-        <div className="px-3 py-2 border-b border-line flex items-center gap-2">{status}{tile.write && <Chip>Proposed contents</Chip>}</div>
+        menu={[...view, { kind: "separator" }, ...(onEditLive && tile.vmid !== null ? [{ label: "Open the live file to edit", onSelect: () => onEditLive(tile.vmid!, tile.path) }] : []), { label: "Copy contents", onSelect: () => copyText(tile.text), disabled: !tile.text }, { label: "Copy path", onSelect: () => copyText(tile.path) }]}>
+        <div className="px-3 py-2 border-b border-line flex items-center gap-2">{status}{tile.write && <Chip>Proposed contents</Chip>}<span className="flex-1" />{onEditLive && tile.vmid !== null && tile.path && <button type="button" onClick={() => onEditLive(tile.vmid!, tile.path)} className="text-compact text-accent hover:underline">Edit the live file</button>}</div>
         <Code text={tile.text} wrap={wrap} numbers={numbers} empty={tile.status === "running" ? "Reading…" : tile.status === "waiting" ? "Waiting for your approval in the chat." : "Nothing came back."} />
       </Pane>
     );

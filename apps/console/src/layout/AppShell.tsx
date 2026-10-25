@@ -11,6 +11,7 @@ import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
 import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
 import { useThemeSettings } from "../theme/theme.tsx";
+import { usePinViewUnread } from "../pages/pinview/unread.ts";
 import { PinIsland, PinOrb } from "../pin/PinIsland.tsx";
 import { RouteActions } from "../pin/RouteActions.tsx";
 import { Avatar } from "../ui/primitives.tsx";
@@ -78,6 +79,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
   const updates = data.notices.filter((n) => !n.read && n.kind === "update").length;
   const onOrg = data.orgs.some((o) => o.slug === loc.pathname.split("/")[2]);
   const onPin = loc.pathname.split("/")[2] === "pin";
+  const pinViewUnread = usePinViewUnread();
   // Live: what is waiting on the person in each organization (approvals, questions, unread tasks, failed runs).
   const waiting = useInboxCounts(data.orgs.flatMap((o) => (o.engine ? [o.engine.companyId] : [])));
   const nav = (to: string, label: string, icon: ReactNode, sub?: string, badge?: ReactNode) => (
@@ -99,7 +101,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
         {() => <RailButton active={!onOrg && !onPin} label={d} sub={`Online · ${host.ip}`} expanded={expanded}><House className="h-5 w-5" /></RailButton>}
       </NavLink>
       {nav(`/${d}/pin`, "Pin", <PinOrb size={30} />, setup?.pinMode === "agent" ? "Agent mode" : "Assistant mode")}
-      {nav(`/${d}/view`, "PinView", <MessagesSquare className="h-5 w-5" />, "Every conversation")}
+      {nav(`/${d}/view`, "PinView", <MessagesSquare className="h-5 w-5" />, pinViewUnread ? `${pinViewUnread} unread` : "Every conversation", pinViewUnread ? <span className="absolute -bottom-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-critical text-on-status text-micro font-bold flex items-center justify-center border-3 border-bg tabular-nums">{pinViewUnread > 99 ? "99+" : pinViewUnread}</span> : undefined)}
       {sep}
       <div className="flex-1 overflow-y-auto overflow-x-clip flex flex-col gap-2 [scrollbar-width:none]">
         {data.orgs.map((o) => {

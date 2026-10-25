@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Building2, ChevronDown, ChevronRight, FolderOpen, GitPullRequest, Layers, MessageCircle, MessageSquarePlus, MoreHorizontal, PanelRight, Settings, X } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, ChevronRight, FolderOpen, GitPullRequest, HardDrive, Layers, MessageCircle, MessageSquarePlus, MoreHorizontal, PanelRight, Settings, X } from "lucide-react";
 import type { Agent } from "@papercliped-engine/engine-client";
 import { useAgentsCanRun } from "../containers/Banner.tsx";
 import { chatBlock, useSendChat } from "../../data/engine/chat.ts";
@@ -22,8 +22,10 @@ import { Avatar, Menu, Notice, Select, Status, type MenuEntry } from "../../ui/p
 import { useNames } from "../org/live/names.ts";
 import { ChangesBody, PullRequestList, useGithub } from "./Changes.tsx";
 import { FilesPanel } from "./FilesPanel.tsx";
+import { FileEditor, MachineBrowser } from "./MachineFiles.tsx";
 import { Pane, TileView } from "./TileView.tsx";
 import { tilesOf } from "./tiles.ts";
+import { SEEN, SINCE } from "./unread.ts";
 import { useQueryClient } from "@tanstack/react-query";
 
 /**
@@ -42,7 +44,7 @@ import { useQueryClient } from "@tanstack/react-query";
  */
 
 type View = { kind: "pin" } | { kind: "agent"; companyId: string; agentId: string };
-type Extra = "files" | "prs";
+type Extra = "files" | "prs" | "machine";
 const agentKey = (companyId: string, agentId: string) => `agent:${companyId}:${agentId}`;
 const PINNED = "epc.pinview.pinned";
 const HIDDEN = "epc.pinview.hidden";
@@ -85,6 +87,13 @@ export function PinView() {
   const [filesOrg, setFilesOrg] = useState<string | null>(null);
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>(PINNED, [])));
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>(HIDDEN, [])));
+  const [scope, setScope] = useState<string>("all");
+  const [browseVmid, setBrowseVmid] = useState<number | null>(null);
+  const [openFiles, setOpenFiles] = useState<{ vmid: number; path: string; edit?: boolean }[]>([]);
+  // Unread: a conversation is new when it changed after you last opened it. Anything older than your first visit counts as read.
+  const [since] = useState<number>(() => { const v = readJson<number | null>(SINCE, null); if (v === null) { const n = Date.now(); writeJson(SINCE, n); return n; } return v; });
+  const [seenAt, setSeenAt] = useState<Record<string, number>>(() => readJson<Record<string, number>>(SEEN, {}));
+  const activeKeyRef = useRef<string | null>(null);
   const orgs = data.orgs.flatMap((o) => (o.engine ? [{ name: o.name, slug: o.slug, hue: o.hue, companyId: o.engine.companyId }] : []));
   const ids = orgs.map((o) => o.companyId);
   const agents = useAgentsOf(ids);
@@ -109,21 +118,41 @@ export function PinView() {
 
   const agentName = (companyId: string, agentId: string) => agents[ids.indexOf(companyId)]?.data?.find((a) => a.id === agentId)?.name ?? "Agent";
   const sections: ConversationSection[] = useMemo(() => {
-    const pinItems = pin.chats.map((c): ConversationItem => ({ key: `pin:${c.id}`, source: "pin", title: c.title, context: "Pin", updatedAt: new Date(c.updatedAt).getTime() }));
-    const byOrg = orgs.map((org, i) => ({ org, items: (chats[i]?.data ?? []).flatMap((c): ConversationItem[] => (c.conversationAgentId ? [{ key: agentKey(org.companyId, c.conversationAgentId), source: "agent", title: agentName(org.companyId, c.conversationAgentId), context: org.name, updatedAt: new Date(c.updatedAt).getTime() }] : [])) }));
-    const everything = [...pinItems, ...byOrg.flatMap((o) => o.items)];
-    const star = everything.filter((c) => pinned.has(c.key));
-    const rest = (xs: ConversationItem[]) => xs.filter((c) => !pinned.has(c.key));
+    const unread = (key: string, at: number) => key !== activeKeyRef.current && at > (seenAt[key] ?? since);
+    const item = (key: string, source: "pin" | "agent", title: string, context: string, at: number): ConversationItem => ({ key, source, title, context, updatedAt: at, unread: unread(key, at) });
+    const pinItems = pin.chats.map((c) => item(`pin:${c.id}`, "pin", c.title, "Pin", new Date(c.updatedAt).getTime()));
+    const byOrg = orgs.map((org, i) => ({ org, items: (chats[i]?.data ?? []).flatMap((c) => (c.conversationAgentId ? [item(agentKey(org.companyId, c.conversationAgentId), "agent", agentName(org.companyId, c.conversationAgentId), org.name, new Date(c.updatedAt).getTime())] : [])) }));
+    // The scope chosen above the list: everything, only unread, only Pin, or one organization.
+    const inScope = (c: ConversationItem, orgId: string | null) => scope === "all" || (scope === "unread" ? !!c.unread : scope === "pin" ? c.source === "pin" : orgId === scope);
+    const tagged = [...pinItems.map((c) => ({ c, org: null as string | null })), ...byOrg.flatMap((o) => o.items.map((c) => ({ c, org: o.org.companyId as string | null })))];
+    const star = tagged.filter((t) => pinned.has(t.c.key) && inScope(t.c, t.org)).map((t) => t.c);
+    const rest = (xs: ConversationItem[], orgId: string | null) => xs.filter((c) => !pinned.has(c.key) && inScope(c, orgId));
+    const orgSections = byOrg.filter((o) => scope === "all" || scope === "unread" || scope === o.org.companyId).map((o) => ({ id: o.org.companyId, label: o.org.name, icon: <Building2 className="h-3.5 w-3.5" aria-hidden />, items: rest(o.items, o.org.companyId) }));
     return [
       ...(star.length ? [{ id: "pinned", label: "Pinned", items: star }] : []),
-      { id: "pin", label: "Pin", icon: <PinOrb size={14} />, items: rest(pinItems) },
-      ...byOrg.map((o) => ({ id: o.org.companyId, label: o.org.name, icon: <Building2 className="h-3.5 w-3.5" aria-hidden />, items: rest(o.items) })),
-    ];
+      ...(scope === "all" || scope === "unread" || scope === "pin" ? [{ id: "pin", label: "Pin", icon: <PinOrb size={14} />, items: rest(pinItems, null) }] : []),
+      ...orgSections,
+    ].filter((sec) => scope !== "unread" || sec.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin.chats, pinned, chats.map((q) => q.dataUpdatedAt).join(), agents.map((q) => q.dataUpdatedAt).join(), ids.join()]);
+  }, [pin.chats, pinned, scope, seenAt, since, chats.map((q) => q.dataUpdatedAt).join(), agents.map((q) => q.dataUpdatedAt).join(), ids.join()]);
 
   const allAgents = orgs.flatMap((o, i) => (agents[i]?.data ?? []).filter((a) => a.status !== "terminated").map((a) => ({ companyId: o.companyId, org: o.name, agent: a })));
   const activeKey = view.kind === "agent" ? agentKey(view.companyId, view.agentId) : pin.chatId ? `pin:${pin.chatId}` : null;
+  activeKeyRef.current = activeKey;
+  const activeAt = sections.flatMap((x) => x.items).find((c) => c.key === activeKey)?.updatedAt ?? 0;
+  // Opening a conversation reads it, and so does anything that arrives while it is open.
+  useEffect(() => {
+    if (!activeKey) return;
+    setSeenAt((prev) => {
+      const at = Math.max(Date.now(), activeAt);
+      if ((prev[activeKey] ?? 0) >= activeAt && prev[activeKey] !== undefined) return prev;
+      const next = { ...prev, [activeKey]: at };
+      writeJson(SEEN, next);
+      return next;
+    });
+  }, [activeKey, activeAt]);
+  const unreadCount = sections.filter((x) => x.id !== "pinned").flatMap((x) => x.items).filter((c) => c.unread).length + (sections.find((x) => x.id === "pinned")?.items.filter((c) => c.unread).length ?? 0);
+  const markAllRead = () => { const n = Date.now(); const next = Object.fromEntries(sections.flatMap((x) => x.items).map((c) => [c.key, Math.max(n, c.updatedAt)])); setSeenAt((p) => { const m = { ...p, ...next }; writeJson(SEEN, m); return m; }); };
   const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agent.id === view.agentId) : null;
   const orgOfCurrent = current ? orgs.find((o) => o.companyId === current.companyId) : null;
   const permission = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission)?.label;
@@ -144,7 +173,12 @@ export function PinView() {
   const shownTiles = allTiles ? tiles : tiles.slice(-MAX_TILES);
   const openExtra = (x: Extra) => { setExtras((xs) => (xs.includes(x) ? xs : [x, ...xs])); setTilesOpen(true); };
   const closeExtra = (x: Extra) => setExtras((xs) => xs.filter((y) => y !== x));
-  const paneCount = extras.length + tiles.length;
+  /** Opens a machine's file in an editor tile (or brings the open one forward). */
+  const openFile = (vmid: number, path: string, edit = false) => {
+    setOpenFiles((xs) => [{ vmid, path, edit }, ...xs.filter((x) => !(x.vmid === vmid && x.path === path))].slice(0, 4));
+    setTilesOpen(true);
+  };
+  const paneCount = extras.length + tiles.length + openFiles.length;
   const column = tilesOpen && paneCount > 0;
 
   const cardsFor: { id: string; label: string }[] = view.kind === "pin"
@@ -181,7 +215,17 @@ export function PinView() {
         </div>
         <button type="button" onClick={() => { pin.newChat(); open({ kind: "pin" }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><MessageSquarePlus className="h-4 w-4 text-ink-2" aria-hidden />New chat</button>
         <button type="button" onClick={() => { openExtra("files"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><FolderOpen className="h-4 w-4 text-ink-2" aria-hidden />Files</button>
-        <button type="button" onClick={() => { openExtra("prs"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2 mb-2"><GitPullRequest className="h-4 w-4 text-ink-2" aria-hidden />Pull requests</button>
+        <button type="button" onClick={() => { openExtra("prs"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><GitPullRequest className="h-4 w-4 text-ink-2" aria-hidden />Pull requests</button>
+        <button type="button" onClick={() => { openExtra("machine"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2 mb-2"><HardDrive className="h-4 w-4 text-ink-2" aria-hidden />Machine files</button>
+        <div className="flex items-center gap-1 mb-2">
+          <Select aria-label="Show conversations from" size="sm" className="flex-1" value={scope} onChange={(e) => setScope(e.target.value)}>
+            <option value="all">All conversations</option>
+            <option value="unread">Unread{unreadCount ? ` (${unreadCount})` : ""}</option>
+            <option value="pin">Pin only</option>
+            {orgs.length > 0 && <optgroup label="Organizations">{orgs.map((o) => <option key={o.companyId} value={o.companyId}>{o.name}</option>)}</optgroup>}
+          </Select>
+          <Menu size="sm" label="Conversation options" icon={<MoreHorizontal className="h-4 w-4" />} items={[{ label: "Mark all as read", onSelect: markAllRead, disabled: unreadCount === 0 }, { label: "Show everything", onSelect: () => setScope("all"), disabled: scope === "all" }]} />
+        </div>
         {live && allAgents.length > 0 && (
           <Select aria-label="Chat with an agent" size="sm" className="mb-2" value="" onChange={(e) => { const [c, a] = e.target.value.split("|"); if (c && a) open({ kind: "agent", companyId: c, agentId: a }); }}>
             <option value="">Chat with an agent…</option>
@@ -244,7 +288,7 @@ export function PinView() {
                 <button type="button" aria-label="Close tiles" onClick={() => setTilesOpen(false)} className="transition-control h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><X className="h-4 w-4" /></button>
               </div>
               <div className="flex-1 min-h-0 flex flex-col gap-3 p-3 overflow-y-auto">
-                {extras.filter((x) => !expanded || expanded === x).map((x) => x === "files" ? (
+                {extras.filter((x) => x !== "machine" && (!expanded || expanded === x)).map((x) => x === "files" ? (
                   <Pane key="files" icon={<FolderOpen className="h-4 w-4" />} title="Files" sub="What agents produced" expanded={expanded === "files"} onExpand={() => setExpanded((e) => (e === "files" ? null : "files"))} onClose={() => closeExtra("files")} className={cn("shrink-0", expanded === "files" ? "flex-1" : "h-96")}>
                     <div className="p-3"><FilesPanel orgs={orgs} companyId={view.kind === "agent" ? view.companyId : filesOrg ?? orgs[0]?.companyId ?? null} onOrg={setFilesOrg} /></div>
                   </Pane>
@@ -254,12 +298,20 @@ export function PinView() {
                     <div className="p-3 space-y-3">{github.status.data?.connected ? <PullRequestList prs={github.prs.data?.prs ?? []} /> : <ChangesBody onShowAll={() => undefined} editing={false} onEdited={() => undefined} />}</div>
                   </Pane>
                 ))}
+                {extras.includes("machine") && (!expanded || expanded === "machine") && (
+                  <MachineBrowser machines={data.guests ?? []} vmid={browseVmid} onVmid={setBrowseVmid} expanded={expanded === "machine"} onExpand={() => setExpanded((e) => (e === "machine" ? null : "machine"))} onClose={() => closeExtra("machine")}
+                    onOpenFile={(vmid, path) => openFile(vmid, path)} />
+                )}
+                {openFiles.filter((f) => !expanded || expanded === `file:${f.vmid}:${f.path}`).map((f) => {
+                  const k = `file:${f.vmid}:${f.path}`;
+                  return <FileEditor key={k} vmid={f.vmid} path={f.path} startEditing={f.edit} machineName={(data.guests ?? []).find((g) => g.vmid === f.vmid)?.name} expanded={expanded === k} onExpand={() => setExpanded((e) => (e === k ? null : k))} onClose={() => { setOpenFiles((xs) => xs.filter((x) => x !== f)); if (expanded === k) setExpanded(null); }} />;
+                })}
                 {tiles.length > MAX_TILES && !expanded && (
                   <button type="button" onClick={() => setAllTiles((v) => !v)} className="text-compact text-accent hover:underline self-start">{allTiles ? "Show only the newest" : `Show ${tiles.length - MAX_TILES} earlier`}</button>
                 )}
                 {shownTiles.filter((t) => !expanded || expanded === t.id).map((t) => (
                   <div key={t.id} className={cn("flex flex-col min-h-0 shrink-0", expanded === t.id ? "flex-1" : "h-96")}>
-                    <TileView tile={t} device={device} expanded={expanded === t.id} onExpand={() => setExpanded((e) => (e === t.id ? null : t.id))} onClose={() => { setClosed((c) => new Set([...c, t.id])); if (expanded === t.id) setExpanded(null); }} />
+                    <TileView tile={t} device={device} onEditLive={(vmid, path) => openFile(vmid, path, true)} expanded={expanded === t.id} onExpand={() => setExpanded((e) => (e === t.id ? null : t.id))} onClose={() => { setClosed((c) => new Set([...c, t.id])); if (expanded === t.id) setExpanded(null); }} />
                   </div>
                 ))}
               </div>

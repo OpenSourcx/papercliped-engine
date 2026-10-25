@@ -131,3 +131,33 @@ describe("ConversationList sections", () => {
     expect(screen.queryByRole("button", { name: /Acme/ })).toBeNull();
   });
 });
+
+describe("PinView unread and scope", () => {
+  it("shows a chat that changed after your first visit as unread, filters to unread, and marks all read", async () => {
+    localStorage.clear();
+    const { PinView } = await import("../src/pages/pinview/PinView.tsx");
+    const pinMod = await import("../src/pin/PinContext.tsx");
+    const base = pinMod.usePin();
+    vi.spyOn(pinMod, "usePin").mockReturnValue({ ...base, chats: [{ id: "x", title: "Saved one", createdAt: 1, updatedAt: NOW, count: 2 }, { id: "y", title: "Fresh one", createdAt: 1, updatedAt: Date.now() + 60_000, count: 1 }] } as never);
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><PinView /></MemoryRouter></QueryClientProvider>);
+    expect(screen.getByText("Fresh one").textContent).toContain("Fresh one");
+    expect(screen.getAllByText("(unread)")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Show conversations from"), { target: { value: "unread" } });
+    expect(screen.queryByText("Saved one")).toBeNull();
+    expect(screen.getByText("Fresh one")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Show conversations from"), { target: { value: "all" } });
+    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark all as read" }));
+    expect(screen.queryByText("(unread)")).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("opens the machine file browser from the sidebar", async () => {
+    const { PinView } = await import("../src/pages/pinview/PinView.tsx");
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><PinView /></MemoryRouter></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Machine files" }));
+    expect(screen.getByRole("region", { name: "Machine files" })).toBeTruthy();
+    expect(screen.getByText("Choose a running machine to browse its files.")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Pull requests" })).toBeNull();
+  });
+});

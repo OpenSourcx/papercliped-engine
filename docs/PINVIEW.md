@@ -6,7 +6,7 @@ PinView (`/<device>/view`, the speech-bubbles icon under Pin in the rail) is the
 
 | Area | What it holds |
 | --- | --- |
-| Sidebar (left) | **New chat**, **Files**, **Pull requests**, "Chat with an agent…", a search box, then your **Pinned** chats, **Pin**'s chats and one folding section per organization with its agent chats. Your name and Settings at the bottom. |
+| Sidebar (left) | **New chat**, **Files**, **Pull requests**, **Machine files**, "Chat with an agent…", a filter (All conversations, Unread, Pin only, or one organization) with "Mark all as read", a search box, then your **Pinned** chats, **Pin**'s chats and one folding section per organization with its agent chats. Your name and Settings at the bottom. |
 | Conversation (middle) | The thread in a centered column; the composer; under it what the conversation runs on (Pin: permission and model; an agent: its status and organization). |
 | Tiles (right) | Panes that open by themselves while the assistant works, plus Files and Pull requests when you open them. |
 | Details (far right) | Folding cards, chosen with the **Show** menu. |
@@ -36,6 +36,23 @@ Tiles are derived from the open conversation's tool steps (`pages/pinview/tiles.
 
 A new tile opens the tiles column by itself on a wide screen; on a phone the Tiles button in the header shows a count instead, so the conversation stays in view. The newest three tiles show; "Show N earlier" reveals the rest. Expand gives one tile the whole column; closing a tile hides it for this conversation. Agent chats have no tool steps in the engine's chat yet, so they produce no tiles.
 
+## Unread and the organization filter
+
+A conversation is unread when it changed after you last opened it: a dot and bold title on the row, a count on its section, and a count on PinView's icon in the rail (agent chats; Pin's own chats are read as you write them). Opening a conversation reads it, and so does anything that arrives while it is open. Anything older than your first visit to PinView counts as read, so the list doesn't start full of dots. What you have read is kept in this browser.
+
+The filter above the list shows everything, only unread conversations, only Pin, or one organization; "Mark all as read" is in the menu beside it.
+
+## Machine files and editing
+
+**Machine files** in the sidebar opens a tile with a machine picker and that machine's whole file tree: a path bar you can click or type into, Up and Refresh, folders first, hidden files on request (the tile's menu), sizes. Clicking a file opens it in an editor tile:
+
+- Text files up to 48 KB open; binary files and bigger ones say so instead.
+- **Edit** turns the view into an editor: Tab indents (Escape then Tab moves on), the footer shows line and column, the title gets a dot while there are unsaved changes, **Save** (or Ctrl/Cmd+S) writes it back, **Revert** drops your changes.
+- Saving sends the version you opened; if the file changed in the machine meanwhile, nothing is overwritten and the tile offers **Reload**.
+- A file tile from one of Pin's steps has **Edit the live file**, which opens the file as it is now in the machine in an editor tile.
+
+How it works (`services/epaperclip/src/features/machine-files.ts`): `GET /api/guests/:vmid/files?path=`, `GET /api/guests/:vmid/file?path=`, `PUT /api/guests/:vmid/file` (`{ path, content, etag }`). They run through the same in-machine path as Pin's machine tools (the guest agent for a VM; for a container its console, which must open into a shell), as the signed-in person, so Proxmox's permissions decide. File contents travel as base64 so nothing is changed on the way; a write goes to a temporary file and is copied over the original so owner and permissions stay, in pieces short enough for any terminal. Pin's `machine_write_file` now writes large files in pieces the same way.
+
 ## Pull-request tracking
 
 An administrator connects GitHub once (Details → Changes, or Pull requests in the sidebar): a token with read access to pull requests and checks, and up to 12 repositories as `owner/name`. Then everyone signed in sees:
@@ -53,4 +70,4 @@ How it works (`services/epaperclip/src/features/github.ts`):
 
 ## Not built yet
 
-Unread markers, a filter by organization, browsing a machine's or a workspace's whole file tree, editing a file in a tile (changes go through Pin or the agent), webhooks so pull requests update the moment they change (today: once a minute), and Collaborate rooms in the sidebar.
+Browsing an agent workspace's files (the engine has no routes for them), webhooks so pull requests update the moment they change (today: once a minute), unread state shared across browsers, and Collaborate rooms in the sidebar.
