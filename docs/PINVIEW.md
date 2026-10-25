@@ -4,30 +4,25 @@ PinView (`/<device>/view`, the speech-bubbles icon under Pin in the rail) is the
 
 ## Layout
 
-PinView is laid out like an editor in the browser, so you can work with Pin, your agents and your machines in one place:
+PinView is laid out like a desktop chat app:
 
 ```
-activity bar | side panel        | conversation            | editor tabs        | details
-             | Conversations     |                         | files, Pin's steps |
-             | Explorer          |                         | artifacts, PRs     |
-             | Artifacts         |-------------------------+--------------------|
-             | Pull requests     | panel: Terminal · Steps                       |
-status bar: device · unread · steps                         GitHub · Pin's mode · model
+sidebar | conversation  [cards] [plan] [terminal] [files] [⋯] [Share] | cards | tiles
+        |                                                              |       | Plan
+        |                                                              |       | Files (tree + tabs)
+        |                                                              |       | Terminal ...
 ```
 
 | Part | What it does |
 | --- | --- |
-| Activity bar | Back to the console, then Conversations (with an unread count), Explorer, Artifacts, Pull requests. Pressing the open view hides the side panel. Below: the panel toggle, the details toggle and Settings. |
-| Side panel | One view at a time, resizable (drag its edge or use the arrow keys on it). **Conversations**: New chat (Pin or any agent), Search, and a menu with what to show (all, unread, Pin only, one organization), Mark all as read, Collapse all and Expand all; each section has its own menu (new chat with one of its agents, mark as read, show only it). **Explorer**: a machine's file tree, opened folder by folder. **Artifacts**: what an organization's agents produced. **Pull requests**: the followed repositories. |
-| Conversation | The open chat in a centered column; a menu with Copy link, Pin to the top, Steps in this conversation, New chat. |
-| Editor tabs | Files from the Explorer, the files and plans Pin's steps touch, artifacts and pull requests. A step opens as a preview tab (italic, replaced by the next until you keep it by double-clicking or editing). A dot marks unsaved changes; closing one asks first. Middle-click closes; the tab menu closes others or all. |
-| Panel | **Terminal**: a real shell on this device or any running machine. **Steps**: every step Pin took in this conversation, each opening its output. |
-| Details | Folding cards chosen with a Show menu. |
-| Status bar | The device, unread conversations, steps, GitHub (red when an open pull request's checks fail), Pin's mode and permission, the model; each opens where it is changed. |
+| Sidebar | Hide it, back and forward through the conversations you opened, and the way back to the console. Places: **New chat**, **Search** (Go to), **Artifacts**, **Machine files**, **Pull requests**, **Automations**, **Customize** (Pin's settings). Then **Pinned**, one group per **organization** with its agent chats, and **Recents** with Pin's chats. Groups fold and end in "Show more"; each group's menu starts a chat with one of its agents, marks it read, and collapses or expands all. A row ends in its state (working, waiting for you, unread) and has a menu: Pin, Rename, Copy link, Mark as read, Delete. |
+| Conversation | The chat in a centered column. The toolbar's icons show what is open and toggle it: **Cards**, **Plan**, **Terminal**, **Files**; **⋯** has Artifacts, Pull requests, Pin, New chat and Search; **Share** copies a link to the conversation. |
+| Cards | **Environment** (the device, the machines this conversation touched with a shortcut to their files, the repositories followed), **Context** (an estimate of how full the conversation is), **Connectors** (each with Set up or Reconnect when it needs it), **Changes** (open, failing and merged pull requests), **Background tasks** (steps still running). The **Show** menu picks the cards. |
+| Tiles | Panes stacked in a column, each with its own actions, **expand** and **close**, the line between two dragging to share the height: **Plan** (the conversation's tasks: a written plan's steps with their state, or the steps Pin took, ticked off as they finish), **Files** (a machine's tree beside tabs for files, Pin's steps and artifacts), **Terminal** (this device or any running machine), **Artifacts**, **Pull requests**. A file or command Pin touches opens in Files as a preview tab, and a written plan opens Plan, by themselves. |
 
-Keyboard: **Ctrl/Cmd+P** Go to (conversations, open tabs, agents, every command), **Ctrl/Cmd+B** side panel, **Ctrl/Cmd+J** panel, **Ctrl/Cmd+.** details, **Alt+N** new chat with Pin, **Alt+W** close the tab. In the terminal only Go to is taken, so the shell keeps its keys. The arrangement (which view, sizes, what is open) is kept per browser.
+Keyboard: **Ctrl/Cmd+P** Go to (conversations, open files, agents, every command), **Ctrl/Cmd+B** sidebar, **Ctrl/Cmd+.** cards, **Alt+N** new chat with Pin, **Alt+W** close the file tab. In the terminal only Go to is taken. The arrangement (sidebar width, which tiles, their sizes, the tile column's width) is kept per browser.
 
-On a phone each part is its own screen: the side panel (with the views as icons on top), then the conversation, with editors and details as full sheets.
+On a phone the sidebar is the first screen; a conversation opens over it, and the cards and tiles open as full sheets from the toolbar.
 
 PinView sits above the console and below its dialogs (`--z-workspace`), so confirmations it opens show over it.
 
@@ -62,7 +57,7 @@ The filter above the list shows everything, only unread conversations, only Pin,
 
 ## Machine files and editing
 
-The **Explorer** shows a machine's whole file tree: pick a machine and a starting folder, open folders in place, show hidden files from its menu, refresh. Clicking a file opens it in an editor tab:
+The **Files** tile shows a machine's whole file tree (toggle it with the tree icon): pick a machine and a starting folder, open folders in place, show hidden files from its menu, refresh. Clicking a file opens it in a tab:
 
 - Text files up to 48 KB open; binary files and bigger ones say so instead.
 - **Edit** turns the view into an editor: Tab indents (Escape then Tab moves on), the footer shows line and column, the title gets a dot while there are unsaved changes, **Save** (or Ctrl/Cmd+S) writes it back, **Revert** drops your changes.

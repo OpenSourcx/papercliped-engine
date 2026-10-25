@@ -63,80 +63,77 @@ const workspace = async () => {
 };
 
 describe("PinView workspace", () => {
-  beforeEach(() => { localStorage.clear(); pinState.messages = []; pinState.chats = [{ id: "x", title: "Saved one", createdAt: 1, updatedAt: NOW, count: 2 }]; });
+  beforeEach(() => {
+    localStorage.clear();
+    pinState.messages = [];
+    pinState.chats = [{ id: "x", title: "Saved one", createdAt: 1, updatedAt: NOW, count: 2 }];
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("shows the activity bar, the conversations, the conversation and a status bar", async () => {
+  it("has the sidebar's places and groups, the conversation and its toolbar", async () => {
     await workspace();
-    expect(screen.getByRole("region", { name: "PinView" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Workspace" })).toBeTruthy();
-    expect(screen.getByText("Saved one")).toBeTruthy();
+    const side = within(screen.getByRole("navigation", { name: "Conversations" }));
+    for (const n of ["New chat", "Search", "Artifacts", "Machine files", "Pull requests"]) expect(side.getByRole("button", { name: n })).toBeTruthy();
+    expect(side.getByRole("region", { name: "Recents" })).toBeTruthy();
+    expect(side.getByText("Saved one")).toBeTruthy();
     expect(screen.getByLabelText("Message Pin")).toBeTruthy();
-    expect(screen.getByRole("contentinfo", { name: "Status" })).toBeTruthy();
+    for (const n of ["Cards (Ctrl+.)", "Plan", "Terminal", "Files"]) expect(screen.getByRole("button", { name: n }).getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("switches side views from the activity bar, and hides the side panel when the open one is pressed again", async () => {
+  it("toggles tiles from the toolbar icons, stacks them, and closes one from its header", async () => {
     await workspace();
-    const bar = within(screen.getByRole("navigation", { name: "Workspace" }));
-    fireEvent.click(bar.getByRole("button", { name: "Explorer" }));
-    expect(screen.getByText(/a machine's folders and files appear here/)).toBeTruthy();
-    fireEvent.click(bar.getByRole("button", { name: "Explorer" }));
-    // Closed on a wide screen (it stays as the list on a phone, where the conversation opens over it).
-    expect(screen.getByRole("complementary", { name: "Side panel" }).className).toContain("md:hidden");
-    fireEvent.click(bar.getByRole("button", { name: /^Conversations/ }));
-    expect(screen.getByText("Saved one")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    const tiles = screen.getByRole("complementary", { name: "Tiles" });
+    expect(within(tiles).getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Files", "Plan"]);
+    expect(screen.getByRole("button", { name: "Plan" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByLabelText("Close Plan"));
+    expect(screen.getByRole("button", { name: "Plan" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByLabelText("Expand Files"));
+    expect(screen.getByLabelText("Restore Files")).toBeTruthy();
   });
 
-  it("toggles the details and the panel with the keyboard, and hides detail cards from the Show menu", async () => {
+  it("shows the cards with Ctrl+. and hides one from the Show menu", async () => {
     await workspace();
     fireEvent.keyDown(window, { key: ".", ctrlKey: true });
-    expect(screen.getByRole("complementary", { name: "Details" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Show cards" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Model" }));
-    expect(screen.queryByRole("region", { name: "Model" })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Reset to defaults" }));
-    expect(screen.getByRole("region", { name: "Model" })).toBeTruthy();
-    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
-    expect(screen.getByRole("region", { name: "Panel" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: /Steps/ }));
-    expect(screen.getByText(/Pin's steps in this conversation appear here/)).toBeTruthy();
+    const cards = within(screen.getByRole("complementary", { name: "Cards" }));
+    for (const n of ["Environment", "Context", "Connectors", "Changes", "Background tasks"]) expect(cards.getByRole("region", { name: n })).toBeTruthy();
+    fireEvent.click(cards.getByRole("button", { name: "Show cards" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Context" }));
+    expect(cards.queryByRole("region", { name: "Context" })).toBeNull();
   });
 
-  it("goes to anything from the palette (Ctrl+P)", async () => {
+  it("lists Pin's steps as tasks in the plan, and opens the file it read as a preview tab", async () => {
+    pinState.messages = [
+      { id: "m1", from: "pin", text: "", tool: { id: "t1", name: "machine_read_file", label: "Read /etc/hosts in machine 103", args: { vmid: 103, path: "/etc/hosts" }, status: "done", result: "Exit 0. In paperclip (103).\n127.0.0.1 localhost" } },
+      { id: "m2", from: "pin", text: "", tool: { id: "t2", name: "machine_exec", label: "Run apt update", args: { vmid: 103, command: "apt update" }, status: "running" } },
+    ];
     await workspace();
-    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
-    const box = await screen.findByRole("combobox", { name: "Go to" });
-    fireEvent.change(box, { target: { value: "explorer" } });
-    fireEvent.keyDown(box, { key: "Enter" });
-    expect(await screen.findByText(/a machine's folders and files appear here/)).toBeTruthy();
-  });
-
-  it("opens the file Pin read as a preview tab beside the conversation, and keeps it when double-clicked", async () => {
-    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
-    pinState.messages = [{ id: "m1", from: "pin", text: "", tool: { id: "t1", name: "machine_read_file", args: { vmid: 103, path: "/etc/hosts" }, status: "done", result: "Exit 0. In paperclip (103).\n127.0.0.1 localhost" } }];
-    await workspace();
-    const tab = await screen.findByRole("tab", { name: /hosts/ });
+    const tab = await screen.findByRole("tab", { name: /apt update/ });
     expect(tab.textContent).toContain("(preview)");
-    expect(screen.getByText("127.0.0.1 localhost")).toBeTruthy();
-    fireEvent.doubleClick(tab);
-    expect(screen.getByRole("tab", { name: /hosts/ }).textContent).not.toContain("(preview)");
-    fireEvent.click(screen.getByLabelText("Close hosts"));
-    expect(screen.queryByRole("tab", { name: /hosts/ })).toBeNull();
-    vi.unstubAllGlobals();
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    const plan = within(screen.getByRole("region", { name: "Plan" }));
+    expect(plan.getByText("Read /etc/hosts in machine 103").className).toContain("line-through");
+    fireEvent.click(plan.getByText("Read /etc/hosts in machine 103"));
+    expect(await screen.findByText("127.0.0.1 localhost")).toBeTruthy();
   });
 
-  it("marks a chat that changed after your first visit as unread, filters to unread from the menu, and marks all read", async () => {
+  it("renames a chat from its row menu, marks a group read, and searches from the palette", async () => {
     pinState.chats = [{ id: "x", title: "Saved one", createdAt: 1, updatedAt: NOW, count: 2 }, { id: "y", title: "Fresh one", createdAt: 1, updatedAt: Date.now() + 60_000, count: 1 }];
     await workspace();
-    expect(screen.getAllByText("(unread)")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Unread/ }));
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    expect(screen.queryByText("Saved one")).toBeNull();
-    expect(screen.getByText(/Showing unread/)).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Show all conversations"));
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark all as read" }));
-    expect(screen.queryByText("(unread)")).toBeNull();
+    expect(screen.getByLabelText("1 unread")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Recents options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as read" }));
+    expect(screen.queryByLabelText("1 unread")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Options for Saved one" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(screen.getByLabelText("Chat name")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    const box = await screen.findByRole("combobox", { name: "Go to" });
+    fireEvent.change(box, { target: { value: "terminal" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "Terminal" }).getAttribute("aria-pressed")).toBe("true");
   });
 });
 

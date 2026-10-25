@@ -69,7 +69,9 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
       sizeSub.dispose();
       ro.disconnect();
       t.close();
-      term.dispose();
+      // xterm schedules a viewport sync right after open; disposing in the same tick makes that timer read a renderer that
+      // is gone (seen when React mounts twice in development). One tick later it has run.
+      setTimeout(() => term.dispose(), 0);
     };
     // `make` is stable per machine; a new session restarts it.
     // eslint-disable-next-line react-hooks/exhaustive-deps

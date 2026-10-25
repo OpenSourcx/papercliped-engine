@@ -1,24 +1,23 @@
 import { useCallback, useState } from "react";
 import { readJson, writeJson } from "../../../lib/storage.ts";
 
-/** Which view the side panel shows, chosen in the activity bar. */
-export type SideView = "chats" | "explorer" | "artifacts" | "prs" | "search";
-export type BottomTab = "terminal" | "steps";
+/** A tile in the right-hand column: the plan (tasks), files (tabs with an optional tree), a terminal, artifacts or pull requests. */
+export type TileKind = "plan" | "files" | "terminal" | "artifacts" | "prs";
 
-/** The workspace's arrangement, kept per browser like an editor keeps its window layout. */
+/** The workspace's arrangement, kept per browser the way a desktop app keeps its window layout. */
 export interface Layout {
-  side: SideView;
   sideOpen: boolean;
   sideWidth: number;
-  editorWidth: number;
-  bottomOpen: boolean;
-  bottomTab: BottomTab;
-  bottomHeight: number;
-  details: boolean;
+  cards: boolean;
+  tiles: TileKind[];
+  /** Height of each tile but the last, which takes what is left. */
+  tileHeights: Partial<Record<TileKind, number>>;
+  tilesWidth: number;
+  fileTree: boolean;
 }
 
-const KEY = "epc.pinview.layout";
-export const DEFAULT_LAYOUT: Layout = { side: "chats", sideOpen: true, sideWidth: 288, editorWidth: 520, bottomOpen: false, bottomTab: "terminal", bottomHeight: 260, details: false };
+const KEY = "epc.pinview.layout2";
+export const DEFAULT_LAYOUT: Layout = { sideOpen: true, sideWidth: 272, cards: false, tiles: [], tileHeights: {}, tilesWidth: 520, fileTree: true };
 
 export function useLayout() {
   const [layout, setLayout] = useState<Layout>(() => ({ ...DEFAULT_LAYOUT, ...readJson<Partial<Layout>>(KEY, {}) }));
@@ -27,7 +26,9 @@ export function useLayout() {
     writeJson(KEY, next);
     return next;
   }), []);
-  /** The activity bar: clicking the open view closes the side panel, clicking another switches to it. */
-  const showSide = useCallback((v: SideView) => set((l) => (l.sideOpen && l.side === v ? { sideOpen: false } : { side: v, sideOpen: true })), [set]);
-  return { layout, set, showSide };
+  /** Opens a tile (at the top, like a new pane), or closes it when it is already open. */
+  const toggleTile = useCallback((k: TileKind) => set((l) => ({ tiles: l.tiles.includes(k) ? l.tiles.filter((t) => t !== k) : [k, ...l.tiles] })), [set]);
+  const showTile = useCallback((k: TileKind) => set((l) => ({ tiles: l.tiles.includes(k) ? l.tiles : [k, ...l.tiles] })), [set]);
+  const closeTile = useCallback((k: TileKind) => set((l) => ({ tiles: l.tiles.filter((t) => t !== k) })), [set]);
+  return { layout, set, toggleTile, showTile, closeTile };
 }
