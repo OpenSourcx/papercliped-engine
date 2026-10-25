@@ -7,6 +7,7 @@ import { qk } from "../../data/engine/keys.ts";
 import { ago } from "../../data/engine/map.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { useModals } from "../../modals/useModals.ts";
+import { GlobalTokenModal, canShareGlobally } from "../AgentSignIn.tsx";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Spinner, Status, Toggle } from "../../ui/primitives.tsx";
@@ -68,6 +69,7 @@ function Row({ c, can, onEdit, onChanged }: { c: Connection; can: boolean; onEdi
   const modals = useModals();
   const [key, setKey] = useState("");
   const [setting, setSetting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const test = useMutation({
     mutationFn: () => connectApi.testConnection(c.id),
@@ -99,7 +101,8 @@ function Row({ c, can, onEdit, onChanged }: { c: Connection; can: boolean; onEdi
         {can && (
           <div className="flex gap-2">
             {keyed && <Button size="sm" onClick={() => { setSetting(!setting); setNote(null); }}>{c.last4 ? "Replace key" : "Set key"}</Button>}
-            {c.builtin && ACCOUNT_SIGN_IN[c.id] && <Button size="sm" variant="ghost" onClick={() => modals.selectSection("agent-signin")} title={`Let agents use your ${ACCOUNT_SIGN_IN[c.id]} account instead of a key`}>Sign in with {ACCOUNT_SIGN_IN[c.id]}</Button>}
+            {c.builtin && canShareGlobally(c.id) && <Button size="sm" onClick={() => setSharing(true)} title="Save a token once and let every agent use it">Use for all agents</Button>}
+            {c.builtin && ACCOUNT_SIGN_IN[c.id] && <Button size="sm" variant="ghost" onClick={() => modals.selectSection("agent-signin")} title={`Let agents use your ${ACCOUNT_SIGN_IN[c.id]} account instead of a key`}>Sign in per organization</Button>}
             {c.configured && <Button size="sm" variant="ghost" loading={test.isPending} onClick={() => test.mutate()}>Test</Button>}
             <Button size="sm" variant="ghost" onClick={onEdit}>Settings</Button>
           </div>
@@ -111,6 +114,7 @@ function Row({ c, can, onEdit, onChanged }: { c: Connection; can: boolean; onEdi
           <Button size="sm" variant="primary" loading={save.isPending} disabled={!key.trim()} onClick={() => save.mutate()}>Save</Button>
         </div>
       )}
+      {sharing && <GlobalTokenModal provider={c.id} label={c.label} onClose={() => setSharing(false)} />}
       {setting && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are.</p>}
       {!note && c.configured && c.ok === false && c.error && <p className="text-compact text-critical mt-2">{c.error}</p>}
       {note && <p className={`text-compact mt-2 ${note.ok ? "text-good" : "text-critical"}`} role="status">{note.text}</p>}

@@ -8,7 +8,7 @@ import { useModals } from "../modals/useModals.ts";
 import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
 import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
-import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Spinner } from "../ui/primitives.tsx";
+import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Select, Spinner } from "../ui/primitives.tsx";
 
 /**
  * Settings → Agent sign-in: lets an organization's agents use a person's own Claude, Codex or Grok account instead of an API
@@ -267,6 +267,80 @@ export function ApiKeyModal({ companyId, org, adapter, onClose, onDone }: { comp
             <p className="text-compact text-ink-2">Shared as <code className="font-mono text-ink">{name}</code> with: {mine.map((a) => a.name).join(", ")}.</p>
             {existing && <p className="text-compact text-ink-3">A key is already saved{existing.last4 ? ` (ending ${existing.last4})` : ""}. Leave this blank to keep it, or paste a new one to replace it everywhere it is used.</p>}
             <Field label={existing ? "New key (optional)" : "API key"} htmlFor="agent-api-key"><Input id="agent-api-key" type="password" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /></Field>
+          </>
+        )}
+        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+        {done && <Notice tone="good">{done}</Notice>}
+      </div>
+    </Modal>
+  );
+}
+
+/** What a device-wide credential can be, per provider on the Connectors page. A subscription token comes from `claude setup-token` run on the person's own computer. */
+const GLOBAL_KINDS: Record<string, { adapter: Harness; kind: string; env: string; help: string }[]> = {
+  anthropic: [
+    { adapter: "claude_local", kind: "Claude subscription token", env: "CLAUDE_CODE_OAUTH_TOKEN", help: "On your own computer run claude setup-token, sign in, and paste the token it prints." },
+    { adapter: "claude_local", kind: "API key", env: "ANTHROPIC_API_KEY", help: "An Anthropic API key from console.anthropic.com." },
+  ],
+  openai: [{ adapter: "codex_local", kind: "API key", env: "OPENAI_API_KEY", help: "An OpenAI API key from platform.openai.com." }],
+};
+
+export const canShareGlobally = (provider: string) => provider in GLOBAL_KINDS;
+
+/**
+ * Saves a credential once in the Vault and shares it with every agent of that harness in every organization, so agents
+ * across the device think with it. Agents added later are covered by saving again (leave the field blank to refresh the share).
+ */
+export function GlobalTokenModal({ provider, label, onClose }: { provider: string; label: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const kinds = GLOBAL_KINDS[provider] ?? [];
+  const [idx, setIdx] = useState(0);
+  const k = kinds[idx]!;
+  const orgs = useOrgs();
+  const vault = useQuery({ queryKey: ["vault"], queryFn: vaultApi.list, retry: false });
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const existing = vault.data?.items.find((i) => i.name === k.env) ?? null;
+  const canSave = !!vault.data?.canManage && orgs.data !== undefined && (existing !== null || value.trim() !== "");
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const lists = await Promise.all((orgs.data ?? []).map(async (o) => ({ id: o.id, agents: (await engine.agents.list(o.id)).filter((a) => a.adapterType === k.adapter && a.status !== "terminated") })));
+      const targets = lists.flatMap((l) => l.agents.map((a) => ({ companyId: l.id, agentId: a.id })));
+      const body = { share: "ceos" as const, targets, ...(value.trim() ? { value: value.trim() } : {}) };
+      const r = existing ? await vaultApi.update(existing.id, body) : await vaultApi.create({ name: k.env, description: `${label} ${k.kind.toLowerCase()}, from Connectors`, ...body, value: value.trim() });
+      void qc.invalidateQueries({ queryKey: ["vault"] });
+      setValue("");
+      setDone(r.problems.length ? `Saved, but ${r.problems.join("; ")}` : targets.length === 0 ? "Saved. No agents use this harness yet; save again after you add some." : `Saved. ${targets.length} agent${targets.length === 1 ? "" : "s"} will use it on their next run.`);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`Use ${label} for all agents`} subtitle="Saved once in the device's Vault and shared with every matching agent in every organization." icon={<KeyRound className="h-5 w-5" />} onClose={onClose} size="sm"
+      footer={done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!canSave} onClick={() => void save()}>{existing && !value.trim() ? "Share with new agents" : "Save and share"}</Button></>}>
+      <div className="space-y-4">
+        {(vault.isPending || orgs.isPending) && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Loading…</p>}
+        {vault.data && !vault.data.canManage && <Notice tone="warning">Only Proxmox administrators can save credentials.</Notice>}
+        {!done && (
+          <>
+            {kinds.length > 1 && (
+              <Field label="Kind" htmlFor="global-kind">
+                <Select id="global-kind" value={String(idx)} onChange={(e) => { setIdx(Number(e.target.value)); setValue(""); }}>
+                  {kinds.map((x, i) => <option key={x.env} value={String(i)}>{x.kind}</option>)}
+                </Select>
+              </Field>
+            )}
+            <p className="text-compact text-ink-2 text-pretty">{k.help} It is stored as <code className="font-mono text-ink">{k.env}</code> and never shown again.</p>
+            {existing && <p className="text-compact text-ink-3">One is already saved{existing.last4 ? ` (ending ${existing.last4})` : ""}. Leave this blank to keep it, or paste a new one to replace it everywhere it is used.</p>}
+            <Field label={existing ? "New credential (optional)" : "Credential"} htmlFor="global-token"><Input id="global-token" type="password" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /></Field>
           </>
         )}
         {error && <p role="alert" className="text-compact text-critical">{error}</p>}

@@ -12,7 +12,7 @@ vi.mock("../src/data/engine/queries.ts", async (orig) => ({
   useAgentContainers: () => ({ data: setup.containers }),
 }));
 
-import { AgentSignIn } from "../src/pages/AgentSignIn.tsx";
+import { AgentSignIn, GlobalTokenModal } from "../src/pages/AgentSignIn.tsx";
 
 interface Call { method: string; path: string; body: any }
 let calls: Call[];
@@ -162,5 +162,22 @@ describe("agent sign-in", () => {
     wrap();
     await screen.findByText("Acme");
     expect(screen.queryByText("Two things first")).toBeNull();
+  });
+});
+
+describe("one credential for every agent (Connectors)", () => {
+  const modal = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><GlobalTokenModal provider="anthropic" label="Anthropic" onClose={() => undefined} /></MemoryRouter></QueryClientProvider>);
+
+  it("saves a Claude subscription token once and shares it with every Claude agent in every organization", async () => {
+    setup.orgs = [{ id: "c1", name: "Acme", status: "active" }, { id: "c2", name: "Beta", status: "active" }];
+    handlers["GET /api/vault"] = () => ({ canManage: true, items: [] });
+    handlers["POST /api/vault"] = () => ({ item: {}, problems: [] });
+    handlers["GET /engine/api/companies/c1/agents"] = () => [{ id: "a1", name: "CEO", adapterType: "claude_local", status: "idle" }, { id: "a2", name: "Dev", adapterType: "codex_local", status: "idle" }];
+    handlers["GET /engine/api/companies/c2/agents"] = () => [{ id: "b1", name: "Lead", adapterType: "claude_local", status: "idle" }, { id: "b2", name: "Old", adapterType: "claude_local", status: "terminated" }];
+    modal();
+    fireEvent.change(await screen.findByLabelText("Credential"), { target: { value: "sk-ant-oat01-x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and share" }));
+    expect(await screen.findByText(/2 agents will use it/)).toBeTruthy();
+    expect(sent("POST", "/api/vault")[0].body).toMatchObject({ name: "CLAUDE_CODE_OAUTH_TOKEN", share: "ceos", value: "sk-ant-oat01-x", targets: [{ companyId: "c1", agentId: "a1" }, { companyId: "c2", agentId: "b1" }] });
   });
 });

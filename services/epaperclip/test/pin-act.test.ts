@@ -267,6 +267,8 @@ describe("the action list", () => {
     expect(() => ACTS.create_vm.parse({ name: "bad name!" })).toThrow();
     expect(() => ACTS.resize_disk.parse({ vmid: 100, disk: "../etc", grow_gb: 1 })).toThrow();
     expect(() => ACTS.set_machine_config.parse({ vmid: 100 })).toThrow(/Say what to change/);
+    expect(ACTS.set_machine_config.parse({ vmid: 103, console_mode: "shell" })).toMatchObject({ vmid: 103, console_mode: "shell" });
+    expect(() => ACTS.set_machine_config.parse({ vmid: 103, console_mode: "bash" })).toThrow(/console_mode/);
     expect(() => ACTS.create_container.parse({ hostname: "a", template: "debian-12", ipv4: "999.1.1.1/24" })).toThrow();
     expect(ACTS.delete_machine.describe(ACTS.delete_machine.parse({ vmid: 101 }), new Map([[101, "web"]]))).toEqual({ label: "Delete machine 101 (web) and its disks", phrase: "destroy 101" });
     expect(ACTS.power_machine.risk({ vmid: 1, action: "start" })).toBe("safe");

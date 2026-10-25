@@ -519,7 +519,7 @@ export const ACTS: Record<string, ActDef> = {
 
   set_machine_config: {
     name: "set_machine_config",
-    description: "Change a machine's name, cores, memory, swap (containers), start-at-boot, description or tags. Some changes apply at its next restart.",
+    description: "Change a machine's name, cores, memory, swap (containers), start-at-boot, description or tags, or a container's console_mode (\"shell\" opens its console straight into a root shell, which machine_exec needs when the console asks for a login; restart the container afterwards). Some changes apply at its next restart.",
     parameters: noProps(
       {
         vmid: { type: "integer" },
@@ -530,11 +530,12 @@ export const ACTS: Record<string, ActDef> = {
         onboot: { type: "boolean" },
         description: { type: "string" },
         tags: { type: "array", items: { type: "string" }, maxItems: 10 },
+        console_mode: { type: "string", enum: ["shell", "tty", "console"] },
       },
       ["vmid"],
     ),
     parse(r) {
-      only(r, ["vmid", "name", "cores", "memory_mb", "swap_mb", "onboot", "description", "tags"], "set_machine_config");
+      only(r, ["vmid", "name", "cores", "memory_mb", "swap_mb", "onboot", "description", "tags", "console_mode"], "set_machine_config");
       const out: Args = { vmid: vmidOf(r.vmid) };
       if (r.name !== undefined) out.name = str(r.name, HOST, "The name");
       if (r.cores !== undefined) out.cores = int(r.cores, 1, 128, "Cores");
@@ -545,6 +546,10 @@ export const ACTS: Record<string, ActDef> = {
       if (r.tags !== undefined) {
         if (!Array.isArray(r.tags) || r.tags.length > 10 || !r.tags.every((t) => typeof t === "string" && TAG.test(t))) throw bad("tags must be up to 10 short words");
         out.tags = r.tags;
+      }
+      if (r.console_mode !== undefined) {
+        if (r.console_mode !== "shell" && r.console_mode !== "tty" && r.console_mode !== "console") throw bad("console_mode must be shell, tty or console");
+        out.console_mode = r.console_mode;
       }
       if (Object.keys(out).length === 1) throw bad("Say what to change");
       return out;
@@ -565,6 +570,10 @@ export const ACTS: Record<string, ActDef> = {
       if (a.onboot !== undefined) p.onboot = a.onboot ? 1 : 0;
       if (a.description !== undefined) p.description = a.description as string;
       if (a.tags !== undefined) p.tags = (a.tags as string[]).join(";");
+      if (a.console_mode !== undefined) {
+        if (g.type !== "lxc") throw bad("Console mode is a container setting");
+        p.cmode = a.console_mode as string;
+      }
       await pve.setGuestConfig(g.where, g.type, a.vmid as number, p);
       return { result: `Updated ${g.name} (${a.vmid}). ${g.status === "running" ? "Some changes apply at its next restart." : ""}`.trim() };
     },

@@ -27,3 +27,16 @@ Needs: agent containers set up (Settings → Agent containers) with a template t
 - Account sign-in is per organization, not per agent.
 - A pasted code and a device code travel through the engine; use https for the console (the engine adds an advisory when the transport isn't confidential).
 - If the provider changes its sign-in screens, the engine's parser can fail and the sign-in times out; use an API key then.
+
+## One credential for every agent (Connectors)
+
+Paperclip ties a model connection to one company (personal or shared with the organization). On a device that is awkward, so Connectors → **Use for all agents** (Anthropic, OpenAI) saves one credential in the Vault and shares it with every agent of that harness in every organization:
+
+- Anthropic: a Claude subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, from `claude setup-token` run on the person's own computer) or an API key (`ANTHROPIC_API_KEY`). OpenAI: `OPENAI_API_KEY`.
+- No organization or container is needed to save it. Agents read it as an environment variable on their next run.
+- The Vault shares by agent, so agents created later need the share refreshed: open the same dialog and press **Share with new agents** (the field can stay blank).
+- Per-organization account sign-in in the agent container (Settings → Agent sign-in) remains for Codex and Grok accounts.
+
+## Pin and containers that ask for a login
+
+Pin runs commands in a container through its console. A console that asks for a login blocks that. `set_machine_config` accepts `console_mode: "shell"` (Proxmox `cmode`), which opens the console straight into a root shell; restart the container afterwards. Pin's error says this when it meets a login prompt.

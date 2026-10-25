@@ -211,12 +211,11 @@ describe("connections", () => {
     routes["GET /api/connect/connections"] = () => [200, { connections: [conn({}), conn({ id: "anthropic", catalog: "anthropic", label: "Anthropic", builtin: true, baseUrl: undefined, last4: "WXYZ", model: null, entry: { kind: "hosted", protocol: "anthropic", keyRequired: true } }), conn({ id: "openai", catalog: "openai", label: "OpenAI", builtin: true, baseUrl: undefined, configured: false, model: null, entry: { kind: "hosted", protocol: "openai", keyRequired: true } })], canManage: true, fallbacks: [] }];
     routes["GET /api/connect/usage"] = () => [200, { days: 30, perDay: [], byConnection: [{ id: "x:ollama", label: "Ollama", calls: 3, tokensIn: 1200, tokensOut: 340, costUsd: null, priced: false }] }];
   });
-  it("offers a Claude or Codex account sign-in next to their keys, and not for local servers", async () => {
+  it("offers one credential for every agent, and per-organization sign-in, for Claude and Codex but not local servers", async () => {
     wrap(<LiveConnections />);
     await screen.findByText("OpenAI");
-    expect(screen.getByRole("button", { name: "Sign in with Claude" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign in with Codex" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: /^Sign in with/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Use for all agents" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Sign in per organization" })).toHaveLength(2);
   });
 
   it("lists every connection without secrets and shows usage", async () => {

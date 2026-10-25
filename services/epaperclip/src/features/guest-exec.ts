@@ -142,7 +142,7 @@ function execInContainer(h: ExecHost, pve: ProxmoxClient, g: Guest, script: stri
         }
         if (buf.length < COLLECT_MAX) buf += text;
         const seen = clean(buf);
-        if (!seen.includes(START) && /(^|\n)[^\n]{0,60}login:\s*$/.test(seen)) return done(new Error("That container's console asks for a login, so a command can't be run in it. Give it no root password, or turn on console autologin."));
+        if (!seen.includes(START) && /(^|\n)[^\n]{0,60}login:\s*$/.test(seen)) return done(new Error("That container's console asks for a login, so a command can't be run in it. Set the container's console_mode to shell (set_machine_config, then restart it) so its console opens straight into a root shell, or tell the person to run pct set <vmid> --cmode shell on the host."));
         if (!sent) return;
         if (END.test(seen.slice(seen.indexOf(START) >= 0 ? seen.indexOf(START) : seen.length))) done(result(false));
       });
