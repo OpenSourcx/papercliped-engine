@@ -224,6 +224,9 @@ PinView (`/<device>/view`) is the workspace for working with Pin and agents. It 
 - **Columns, left to right:** sidebar (resizable, Ctrl/Cmd+B hides it) · conversation (centered column, `max-w-3xl`) · cards (`w-80`, Ctrl/Cmd+.) · tiles (resizable). Columns are separated by a 1px `line` border and a `ResizeHandle`; no gaps, no shadows between them.
 - **Sidebar:** places first (icon + label, `h-9` rows, `text-sm`), then groups headed by a small `text-xs` label with a caret. Rows are plain text; the open one is `surface-3`, hover `surface-2`. Status at the end of a row is an icon, never a word. Menus appear on hover or focus (`⋯`), never as permanent buttons.
 - **Toolbar icons** at the right of the conversation's header open and close what sits beside it, and show it with `aria-pressed` and a `surface-3` fill. Words are kept for the one primary action there (Share).
+- **Icon controls are bare:** no box, border or fill until hovered or pressed; one size and spacing everywhere (toolbar, tile headers, cards, sidebar).
+- **Composer:** `/` opens commands, `@` mentions a person, agent, organization, project, machine or file (a chip that travels as context), `#` at the start saves the line to Pin's memory. Popovers anchor to the caret and work with the keyboard alone.
+- **Tiling (goal):** panes size themselves as they open and close, split either way, drag to rearrange, resize from any shared edge, and move with the keyboard, like a tiling window manager.
 - **Cards:** one rounded `surface` card per subject, title + caret to fold, rows of icon · words · one action. Actions that fix something are `text-warning` links (Set up, Reconnect); others are small secondary buttons.
 - **Tiles** stack in one column; each has a title, its own actions, expand and close, in that order. Content that belongs to the conversation (the plan, the files Pin touched) opens on its own; nothing steals focus from the composer.
 - **Tabs** in the Files tile: italic for a preview, a dot for unsaved, an accent line for the active one.
@@ -293,6 +296,8 @@ Exceptions are listed by path in the "DESIGN ALLOWLIST" block at the end of `src
 Not gated yet (do by hand): arbitrary layout sizes (`min-w-[640px]`, grid templates), which are content decisions rather than visual values.
 
 ## Prior art
+
+The owner's reference screenshots, with what to take from each, are in `docs/design/reference/` (README there).
 
 What we read and what we took:
 

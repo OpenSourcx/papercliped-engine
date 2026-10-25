@@ -17,6 +17,38 @@ ePaperclip turns a Proxmox host into a device you run from one web console, with
 7. **Responsive for real:** desktop, tablet and a 390px phone. On a phone each part is its own screen (sidebar first, conversation over it, cards and tiles as full sheets).
 8. **Plain words.** Short, sentence case, say what happens; see `DESIGN.md` → Words.
 
+## The goal is UX, not only looks
+
+Give the **composer and how people put things in** the same weight as the visuals. PinView is where someone works on several organizations and projects at once with Pin and the agents; typing should be the fastest way to do anything.
+
+### The composer: `/`, `@` and `#`
+
+| Typed | Opens | What it does |
+| --- | --- | --- |
+| `/` | a command list | Workspace and Pin commands, filtered as you type, with descriptions: `/new`, `/plan` (ask Pin for a written plan), `/terminal`, `/files`, `/mode agent`, `/permission ask`, `/model`, `/clear`, `/automation` (describe a standing rule), `/remember`, plus each organization's useful actions (`/task`, `/hire`). Enter runs; Tab completes. |
+| `@` | a mention picker (see `docs/design/reference/composer-mention-picker.png`) | Mention a **person** (a Proxmox user on this device), an **agent** (any organization; the message reaches it), an **organization** or **project**, a **machine**, or a **file** (a machine's file through the Explorer, or an artifact). The mention becomes a chip in the field and travels as context with the message, so Pin or the agent knows exactly what you mean. |
+| `#` at the start | "Pin board" | Saves the line straight to Pin's memory, without a reply: `# we need to focus on work` is remembered at once and shown as a small "Remembered" chip. It uses Pin's memory file (`pinLibrary.save("memory", …)`, `apps/console/src/data/engine/pinLibraryApi.ts`); add a host route that appends one line if the edit has to be atomic. |
+
+Rules for all three: open as a small popover anchored to the caret (our `Menu`/`Select` popover look, glass); arrow keys, Enter, Tab, Escape; type to filter; recent and most likely items first; works with the keyboard alone and on a phone. Mentions and commands are tested like the rest.
+
+### Also in scope for UX
+
+- **The thread:** group an assistant's steps the way `docs/design/reference/thread-grouped-tool-calls.png` does: one collapsed line ("Ran 5 commands", "Read 3 files") that opens into the steps, each folding again with its command and output.
+- **Several organizations and projects at once:** switching never loses your place; tiles can hold things from different organizations; the sidebar shows what is working and what waits for you everywhere.
+- **The composer's status line** (mode, permission, model) is interactive: click to change, as in `docs/design/reference/composer.png`.
+
+## Dynamic tiling (the goal)
+
+Tiles should behave like a tiling window manager (Hyprland is the reference): panes **size themselves automatically** to share the space as they open and close, split horizontally or vertically, can be **dragged to rearrange** or to split another pane, and be resized by dragging any edge between them. Keyboard: move focus between panes and move a pane with modifier + arrow keys; maximise and restore. The current tile column (`workspace/Tiles.tsx`, a single vertical stack with fixed heights) is the starting point; replace it with a real layout tree (splits and leaves) kept per browser.
+
+## Consistent controls
+
+Icon controls are **bare icons**: no box, no border, no fill until hovered or pressed (see `docs/design/reference/tile-header-icons.png` and `tile-expand-close.png`). The same size, spacing and hover everywhere: toolbar, tile headers, cards, sidebar. Fix the places where icons sit in bordered boxes. Study how the reference app looks in **dark mode**: low-contrast separators, surfaces that differ by one step, no heavy borders.
+
+## Reference images
+
+`docs/design/reference/` holds the owner's reference screenshots with a README saying what to take from each. Read it before you start.
+
 ## Read first
 
 - `apps/console/DESIGN.md` — the design book: tokens (three tiers), status vocabulary, motion, layers, component inventory, **PinView workspace** rules, words, accessibility, enforcement.
@@ -54,6 +86,7 @@ These are the known weak spots; fix them and anything else you see:
 - **Glass and contrast:** check both dark and light themes (Appearance → mode), transparency on and off, several accents (a dark blue, a light yellow).
 - **Phone:** sheets, back arrows, the sidebar list, touch targets of 44px.
 - **Agent chats** use the same thread components; make sure they look identical to Pin's.
+- **Icon controls** inside bordered boxes (the cards' header menu, some tile actions, the phone sheets' back buttons): make them bare icons like the references.
 
 ## Rules you must keep
 
