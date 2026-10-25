@@ -61,7 +61,8 @@ Every preset in `theme/theme.tsx` carries the full semantic set, so switching pr
 | --- | --- |
 | Pin | `--pin-1..3` (orb gradient), `--pin-highlight`, `--island-rest-width`, `--island-height`, `--spring-island-*` |
 | Identity | `--identity-bg`, `--identity-ink`, `--identity-grad-*`: lightness and chroma for name-hashed hues (organizations, people, tags, Store apps). Components set only `--hue`. |
-| Glass | `--glass-blur`, `--glass-alpha` (Appearance tunes both) |
+| Glass | `--glass-blur`, `--glass-alpha`. Appearance sets both from one "Liquid glass" amount (fine-tune can set each); with Transparency effects off they become `0px` and `1`, `<html data-transparency="off">` turns every backdrop blur off, and `.glass`/`.glass-bar` go solid. Use `.glass` for floating surfaces (menus, popovers, the island) and `.glass-bar` for the rail and sidebars; never a hand-made `backdrop-blur`. |
+| On accent | `--on-accent`: dark or light text, whichever reads better on the current accent (the theme runtime computes it); use `text-on-accent` on anything filled with `bg-accent` |
 | Greeting | `--glow-1..3` |
 | Charts | `--series-1`, `--series-2` (two-series charts; one series uses the accent) |
 

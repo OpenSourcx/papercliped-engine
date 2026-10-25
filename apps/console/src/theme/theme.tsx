@@ -58,14 +58,30 @@ export const PRESETS: Preset[] = [
 
 export interface ThemeSettings {
   preset: string;
+  /** "fixed" uses the preset as chosen; "system" follows the device: Daylight when it is light, the dark preset otherwise. */
+  mode: "fixed" | "system";
   accent: string | null; // user override for --accent
+  /** The accents chosen most recently, newest first, for the Recent colours row. */
+  recentAccents: string[];
+  /** Fills the rail's tiles with the accent on hover and for the page you are on, like a chat app's server list. */
+  railAccent: boolean;
   radius: number; // rem
+  /** Off: every surface is solid and nothing blurs what is behind it (also faster on slow machines). */
+  transparency: boolean;
+  /** How much liquid glass, 0 to 100; sets the blur and the see-through amount together. */
+  glass: number;
   glassBlur: number; // px
   glassAlpha: number; // 0..1
   fontScale: number;
 }
 
-export const DEFAULT_THEME: ThemeSettings = { preset: "warm", accent: null, radius: 0.625, glassBlur: 22, glassAlpha: 0.62, fontScale: 1 };
+/** One slider for the whole effect: more glass blurs more and lets more of the page show through. */
+export const glassFrom = (amount: number) => ({ glassBlur: Math.round((amount / 100) * 40), glassAlpha: Math.round((0.95 - (amount / 100) * 0.65) * 100) / 100 });
+
+export const DEFAULT_THEME: ThemeSettings = { preset: "warm", mode: "fixed", accent: null, recentAccents: [], railAccent: true, radius: 0.625, transparency: true, glass: 55, glassBlur: 22, glassAlpha: 0.6, fontScale: 1 };
+
+/** Remembers an accent at the front of the recent list (five at most). */
+export const withRecent = (list: string[], accent: string) => [accent, ...list.filter((a) => a.toLowerCase() !== accent.toLowerCase())].slice(0, 5);
 
 function hexToSoft(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex);
@@ -74,8 +90,19 @@ function hexToSoft(hex: string, alpha: number): string {
   return `rgb(${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255} / ${alpha})`;
 }
 
-export function resolveTokens(s: ThemeSettings): { scheme: "dark" | "light"; tokens: Tokens } {
-  const preset = PRESETS.find((p) => p.id === s.preset) ?? PRESETS[0];
+/** Dark or light text, whichever reads better on this colour (WCAG relative luminance). */
+export function inkOn(hex: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#1b1a16";
+  const n = parseInt(m[1], 16);
+  const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? "#1b1a16" : "#ffffff";
+}
+
+export function resolveTokens(s: ThemeSettings, deviceLight = false): { scheme: "dark" | "light"; tokens: Tokens } {
+  const chosen = PRESETS.find((p) => p.id === s.preset) ?? PRESETS[0];
+  const preset = s.mode === "system" ? (deviceLight ? PRESETS.find((p) => p.scheme === "light")! : chosen.scheme === "dark" ? chosen : PRESETS[0]) : chosen;
   const tokens: Tokens = { ...preset.tokens };
   if (s.accent && /^#[0-9a-f]{6}$/i.test(s.accent)) {
     tokens["--accent"] = s.accent;
@@ -83,9 +110,10 @@ export function resolveTokens(s: ThemeSettings): { scheme: "dark" | "light"; tok
     tokens["--glow-1"] = hexToSoft(s.accent, 0.22);
     tokens["--pin-1"] = s.accent;
   }
+  tokens["--on-accent"] = inkOn(tokens["--accent"] ?? "#e8b25c");
   tokens["--radius"] = `${s.radius}rem`;
-  tokens["--glass-blur"] = `${s.glassBlur}px`;
-  tokens["--glass-alpha"] = String(s.glassAlpha);
+  tokens["--glass-blur"] = s.transparency ? `${s.glassBlur}px` : "0px";
+  tokens["--glass-alpha"] = s.transparency ? String(s.glassAlpha) : "1";
   tokens["--font-scale"] = String(s.fontScale);
   return { scheme: preset.scheme, tokens };
 }
@@ -100,18 +128,40 @@ const Ctx = createContext<ThemeCtx | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ThemeSettings>(() => ({ ...DEFAULT_THEME, ...readJson<Partial<ThemeSettings>>("epc.theme", {}) }));
+  const [deviceLight, setDeviceLight] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches);
+
+  // "Match this device" follows the system's light or dark setting as it changes.
+  useEffect(() => {
+    if (settings.mode !== "system" || typeof window.matchMedia !== "function") return;
+    const q = window.matchMedia("(prefers-color-scheme: light)");
+    const on = () => setDeviceLight(q.matches);
+    on();
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, [settings.mode]);
 
   useEffect(() => {
-    const { scheme, tokens } = resolveTokens(settings);
+    const { scheme, tokens } = resolveTokens(settings, deviceLight);
     const root = document.documentElement;
     for (const [k, v] of Object.entries(tokens)) root.style.setProperty(k, v);
     root.style.colorScheme = scheme;
     root.classList.toggle("dark", scheme === "dark");
+    root.dataset.transparency = settings.transparency ? "on" : "off";
+    root.dataset.railAccent = settings.railAccent ? "on" : "off";
     writeJson("epc.theme", settings);
-  }, [settings]);
+  }, [settings, deviceLight]);
 
-  const value = useMemo<ThemeCtx>(() => ({ settings, update: (patch) => setSettings((s) => ({ ...s, ...patch })), reset: () => setSettings(DEFAULT_THEME) }), [settings]);
+  const value = useMemo<ThemeCtx>(() => ({
+    settings,
+    update: (patch) => setSettings((s) => ({ ...s, ...patch, ...(patch.accent ? { recentAccents: withRecent(s.recentAccents, patch.accent) } : {}) })),
+    reset: () => setSettings((s) => ({ ...DEFAULT_THEME, recentAccents: s.recentAccents })),
+  }), [settings]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** The settings for parts that only read them (the rail), with the defaults where no provider is mounted (tests, previews). */
+export function useThemeSettings(): ThemeSettings {
+  return useContext(Ctx)?.settings ?? DEFAULT_THEME;
 }
 
 export function useTheme(): ThemeCtx {

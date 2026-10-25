@@ -10,6 +10,7 @@ import { CommandPalette } from "../search/CommandPalette.tsx";
 import { cn } from "../lib/storage.ts";
 import { ModalHost } from "../modals/ModalHost.tsx";
 import { modalHref, settingsHref, useModals } from "../modals/useModals.ts";
+import { useThemeSettings } from "../theme/theme.tsx";
 import { PinIsland, PinOrb } from "../pin/PinIsland.tsx";
 import { RouteActions } from "../pin/RouteActions.tsx";
 import { Avatar } from "../ui/primitives.tsx";
@@ -51,11 +52,15 @@ function useTip() {
 
 function RailButton({ active, label, sub, children, badge, expanded }: { active: boolean; label: string; sub?: string; children: ReactNode; badge?: ReactNode; expanded?: boolean }) {
   const tip = useTip();
+  const settings = useThemeSettings();
+  // Like a chat app's server list: the pill on the left is a dot when something waits, grows on hover and is tall for
+  // the page you are on; the tile turns from a circle into a rounded square and, with "Accent on the rail", takes the accent.
+  const fill = settings.railAccent ? "group-hover:bg-accent group-hover:text-on-accent" : "group-hover:bg-surface-3 group-hover:text-ink";
   return (
     <span ref={tip.ref} {...tip.handlers} className={cn("relative flex items-center", expanded ? "gap-3 w-full" : "justify-center w-18")}>
-      {!expanded && <span aria-hidden className={cn("rail-pill absolute left-0 w-1 rounded-r-full bg-ink", active ? "h-10 opacity-100" : "h-2 opacity-0 group-hover:opacity-100 group-hover:h-5")} />}
+      {!expanded && <span aria-hidden className={cn("rail-pill absolute left-0 w-1 rounded-r-full bg-ink", active ? "h-10 opacity-100" : badge ? "h-2 opacity-100 group-hover:h-5" : "h-2 opacity-0 group-hover:opacity-100 group-hover:h-5")} />}
       <span className="relative shrink-0">
-        <span className={cn("h-12 w-12 flex items-center justify-center overflow-hidden transition-[border-radius,background-color,color] duration-(--duration-base) ease-spring", active ? "rounded-rail-active bg-accent text-primary-ink" : "rounded-rail bg-surface-2 text-ink-2 group-hover:rounded-rail-active group-hover:bg-surface-3 group-hover:text-ink")}>
+        <span className={cn("h-12 w-12 flex items-center justify-center overflow-hidden transition-[border-radius,background-color,color] duration-(--duration-base) ease-spring", active ? (settings.railAccent ? "rounded-rail-active bg-accent text-on-accent" : "rounded-rail-active bg-surface-3 text-ink") : cn("rounded-rail bg-surface-2 text-ink-2 group-hover:rounded-rail-active", fill))}>
           {children}
         </span>
         {badge}
@@ -146,10 +151,10 @@ export function AppShell() {
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
   return (
     <div className="min-h-dvh flex">
-      <aside className="hidden md:block w-18 shrink-0 bg-surface/80 border-r border-line sticky top-0 h-dvh z-(--z-rail)">
+      <aside className="hidden md:block w-18 shrink-0 glass-bar border-r border-line sticky top-0 h-dvh z-(--z-rail)">
         <Rail />
       </aside>
-      <aside className="hidden md:block w-60 shrink-0 bg-surface/40 border-r border-line sticky top-0 h-dvh z-(--z-sidebar)">
+      <aside className="hidden md:block w-60 shrink-0 glass-bar border-r border-line sticky top-0 h-dvh z-(--z-sidebar)">
         <ContextSidebar />
       </aside>
       {drawer && (

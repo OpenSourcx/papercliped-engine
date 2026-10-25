@@ -78,6 +78,7 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-on-status: var(--on-status);
+  --color-on-accent: var(--on-accent);
   --color-scrim: var(--scrim);
   --color-code: var(--code);
   --color-screen: var(--screen);
@@ -173,6 +174,8 @@
   --code: #12110e;
   --screen: #000000;
   --on-status: #ffffff;
+  /* Text on the accent: dark or light, whichever reads better (set by the theme runtime when the accent changes). */
+  --on-accent: #1b1a16;
   --shadow-color: rgb(0 0 0 / 0.5);
   --rim: rgb(255 255 255 / 0.07);
   /* Status: one vocabulary everywhere, always with an icon or shape and a label, never colour alone. */
@@ -605,6 +608,27 @@ body {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Side bars in liquid glass: the same amount of blur and see-through as .glass, without the rim, so the page shows through softly. */
+.glass-bar {
+  background: color-mix(in oklab, var(--surface) calc(var(--glass-alpha) * 100%), transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+}
+
+/* Transparency effects off (Appearance): every surface is solid and nothing blurs the page behind it. */
+:root[data-transparency="off"] *,
+:root[data-transparency="off"] *::before {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-transparency="off"] .glass,
+:root[data-transparency="off"] .glass-bar {
+  background: var(--surface-2);
+}
+:root[data-transparency="off"] .glass-bar {
+  background: var(--surface);
 }
 
 /* The rail's active marker: a pill on the left edge that grows on hover and fills when selected. */
