@@ -111,7 +111,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
       {sep}
       {modalLink(settingsHref("apps"), "Connected apps", <Plug className="h-5 w-5" />, modals.settings === "apps")}
       {modalLink(
-        settingsHref(updates ? "updates" : "general"),
+        updates ? `/${d}/updates` : settingsHref("general"),
         "Settings",
         <Settings className="h-5 w-5" />,
         modals.settings !== null && modals.settings !== "apps",

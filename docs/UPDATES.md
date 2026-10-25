@@ -1,6 +1,6 @@
 # Updates
 
-How an ePaperclip device learns about updates, installs them, and what it keeps a record of. The console page is Settings → Updates (and Pin's Updates tab); everything below is also what that page changes.
+How an ePaperclip device learns about updates, installs them, and what it keeps a record of. The console page is Updates (`/<device>/updates`, with Update history and Advanced options as pages of their own, no dialogs), and Pin's Updates tab; everything below is also what that page changes.
 
 ## Two kinds of update
 

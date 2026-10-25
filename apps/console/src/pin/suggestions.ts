@@ -105,7 +105,7 @@ export function suggestionsFor(ref: PageRef, data: EngineData): { context: strin
     go("tasks", "Tasks", "list", `${d}/tasks`),
     go("store", "Store", "package", `${d}/store`),
     go("pin", "Pin's page", "sparkles", `${d}/pin`),
-    go("updates", "Updates", "refresh", "?settings=updates"),
+    go("updates", "Updates", "refresh", `${d}/updates`),
   ].filter((s) => s.to !== `${d}/${ref.page}`);
   const goFirst = (...ids: string[]) => [...ids.map((id) => nav.find((n) => n.id === `go-${id}`)).filter((n): n is Suggestion => !!n), ...nav.filter((n) => !ids.includes(n.id.slice(3)))];
 

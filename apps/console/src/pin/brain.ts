@@ -109,7 +109,7 @@ export function think(input: string, ctx: Ctx): PinReply {
   if (/\bupdates?\b|\bupgrade\b/.test(t)) {
     const u = ctx.data.notices.find((n) => n.kind === "update");
     return u
-      ? { text: `${u.title}. ${u.body}`, card: { type: "link", label: "Open updates", to: "?settings=updates" } }
+      ? { text: `${u.title}. ${u.body}`, card: { type: "link", label: "Open updates", to: "../updates" } }
       : { text: "Everything is up to date. I check Proxmox and Paperclip releases daily and will tell you when something lands." };
   }
 

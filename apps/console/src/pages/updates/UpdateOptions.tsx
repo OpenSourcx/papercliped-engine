@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { RebootDialog } from "../node/Power.tsx";
-import { History, Hourglass, PauseCircle, Power, Rocket, ShieldCheck, Timer } from "lucide-react";
+import { nodeApi } from "../../data/engine/nodeApi.ts";
+import { useNodeName } from "../node/common.tsx";
+import { ChevronRight, History, Hourglass, PauseCircle, Power, Rocket, Settings2, ShieldCheck, Timer } from "lucide-react";
 import { errorText } from "../../data/engine/queries.ts";
 import { pinRt, type UpdateInfo, type UpdateWindowDay } from "../../data/engine/pinRuntimeApi.ts";
-import { modalHref } from "../../modals/useModals.ts";
-import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, Input, Notice, Segmented, Select, Spinner, Toggle } from "../../ui/primitives.tsx";
 
 /**
  * The update settings people expect from a system update page: which releases to follow, whether to be reminded or let the
- * device install in a maintenance window, pausing, the history, and the restart notice. Used by Settings → Updates and Pin's
+ * device install in a maintenance window, pausing, the history, and the restart notice. Used by the Updates page and Pin's
  * Updates tab; both read and write the same device settings.
  */
 
@@ -37,18 +36,42 @@ function Option({ icon, title, body, children }: { icon: React.ReactNode; title:
   );
 }
 
-/** Proxmox installed a kernel that isn't running yet: say so plainly, with what to do and where. */
+/** Proxmox installed a kernel that isn't running yet: say so plainly, with what to do and where. Restarting is confirmed in place, never in a dialog. */
 export function RestartNotice({ u }: { u: UpdateInfo; device?: string }) {
   const policy = usePolicy();
+  const { node, name } = useNodeName();
   const [asking, setAsking] = useState(false);
+  const [typed, setTyped] = useState("");
+  const power = useQuery({ queryKey: ["node", "power", name], queryFn: () => nodeApi.power(node), retry: 1, enabled: asking });
+  const run = useMutation({ mutationFn: () => nodeApi.powerCommand(node, "reboot", power.data!.node) });
   if (!u.system.rebootRequired) return null;
+  const info = power.data;
   return (
-    <Notice tone="warning" title="Restart needed to finish updating Proxmox" action={<Button size="sm" variant="primary" onClick={() => setAsking(true)}><Power className="h-3.5 w-3.5" />Restart now…</Button>}>
-      {asking && <RebootDialog onClose={() => setAsking(false)} />}
+    <Notice tone="warning" title="Restart needed to finish updating Proxmox" action={!asking && <Button size="sm" variant="primary" onClick={() => setAsking(true)}><Power className="h-3.5 w-3.5" />Restart now…</Button>}>
       <span className="text-pretty">A new kernel (<span className="font-mono">{u.system.newestInstalled}</span>) is installed, but this device is still running <span className="font-mono">{u.system.running}</span>. Machines keep running until you restart; do it when nobody is relying on them.</span>
-      <span className="block mt-1">
-        {u.snoozed ? <span className="text-ink-3">Reminders are snoozed until {u.policy.snoozedUntil ? when(u.policy.snoozedUntil) : "later"}.</span> : <button type="button" className="text-accent hover:underline" disabled={policy.isPending} onClick={() => policy.mutate({ snoozeHours: 24 })}>Remind me tomorrow</button>}
-      </span>
+      {!asking && (
+        <span className="block mt-1">
+          {u.snoozed ? <span className="text-ink-3">Reminders are snoozed until {u.policy.snoozedUntil ? when(u.policy.snoozedUntil) : "later"}.</span> : <button type="button" className="text-accent hover:underline" disabled={policy.isPending} onClick={() => policy.mutate({ snoozeHours: 24 })}>Remind me tomorrow</button>}
+        </span>
+      )}
+      {asking && run.isSuccess && <p className="mt-3 text-pretty">{run.data.selfAffected ? "Restarting. This page loses its connection until the device is back, usually within a few minutes. Sign in again when it returns." : "Restart sent."}</p>}
+      {asking && !run.isSuccess && (
+        <div className="mt-3 space-y-3">
+          {power.isPending && <p className="text-ink-3">Checking what is running…</p>}
+          {power.error && <p role="alert" className="text-critical">{errorText(power.error)}</p>}
+          {info && (
+            <>
+              <p className="text-pretty">Everything on this device stops for a few minutes. {info.local ? "This is the device you are signed in to, so ePaperclip, its console and Pin go away with it. " : ""}Machines set to start at boot come back on their own.{info.running.length > 0 && <> Running now: {info.running.map((g) => `${g.name} (${g.vmid})`).join(", ")}.</>}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input aria-label={`Type ${info.node} to confirm`} placeholder={`Type ${info.node} to confirm`} value={typed} onChange={(e) => setTyped(e.target.value)} className="w-56 h-9" />
+                <Button size="sm" variant="danger" disabled={typed !== info.node} loading={run.isPending} onClick={() => run.mutate()}>Restart device</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setAsking(false); setTyped(""); }}>Cancel</Button>
+              </div>
+              {run.error && <p role="alert" className="text-critical">{errorText(run.error)}</p>}
+            </>
+          )}
+        </div>
+      )}
     </Notice>
   );
 }
@@ -73,7 +96,10 @@ export function RemindLater({ u }: { u: UpdateInfo }) {
   );
 }
 
-export function UpdateOptions({ u, device }: { u: UpdateInfo; device: string }) {
+/**
+ * `main` is the "More options" list on the Updates page, `advanced` the sub-page it opens, `all` (Pin's tab) both in one card.
+ */
+export function UpdateOptions({ u, device, part = "all" }: { u: UpdateInfo; device: string; part?: "all" | "main" | "advanced" }) {
   const qc = useQueryClient();
   const policy = usePolicy();
   const channel = useMutation({ mutationFn: pinRt.setUpdateChannel, onSuccess: (d: UpdateInfo) => qc.setQueryData(KEY, d) });
@@ -84,12 +110,14 @@ export function UpdateOptions({ u, device }: { u: UpdateInfo; device: string }) 
   if (!u.canManage) return <p className="text-compact text-ink-3">Only Proxmox administrators can change how updates are handled.</p>;
   return (
     <div className="space-y-3">
-      <h2 className="text-compact font-semibold text-ink-2 px-1">More options</h2>
+      {part !== "advanced" && <h2 className="text-compact font-semibold text-ink-2 px-1">More options</h2>}
       <Card className="divide-y divide-line">
+        {part !== "advanced" && (
         <Option icon={<Rocket className="h-4 w-4" />} title="Get updates as soon as they're available" body="Follow release candidates: builds that arrive sooner and may have rough edges. You can switch back any time.">
           <Toggle label="Follow release candidates" checked={u.channel === "rc"} onChange={(v) => channel.mutate(v ? "rc" : "stable")} />
         </Option>
-
+        )}
+        {part !== "main" && (<>
         <Option icon={<Timer className="h-4 w-4" />} title="Install updates by itself" body={mode === "window" ? <>ePaperclip updates itself inside the window below{u.nextWindowAt ? <>. Next window: {when(u.nextWindowAt)}</> : null}. It restarts for a minute or two, and goes back by itself if the new version doesn't come up. Proxmox packages are never upgraded automatically.</> : <>You're reminded once a day and install when it suits you. Proxmox packages are always upgraded by you, from the console, never automatically.</>}>
           <Segmented label="How updates are handled" value={mode} onChange={(v) => policy.mutate({ mode: v })} options={[{ value: "remind", label: "Remind me" }, ...(u.canUpdate ? [{ value: "window" as const, label: "Install in a window" }] : [])]} />
         </Option>
@@ -108,7 +136,8 @@ export function UpdateOptions({ u, device }: { u: UpdateInfo; device: string }) 
             <span className="text-xs text-ink-3">Uses this device's clock.</span>
           </div>
         )}
-
+        </>)}
+        {part !== "advanced" && (<>
         <Option icon={<PauseCircle className="h-4 w-4" />} title="Pause updates" body={u.paused && p.pausedUntil ? <>Paused until {when(p.pausedUntil)}. Nothing installs by itself and reminders wait, but you can still update by hand.</> : "Hold back automatic installs and reminders for a while (up to 5 weeks). Restart reminders still show."}>
           {u.paused ? (
             <Button size="sm" onClick={() => policy.mutate({ pauseDays: 0 })} loading={policy.isPending}>Resume updates</Button>
@@ -119,16 +148,22 @@ export function UpdateOptions({ u, device }: { u: UpdateInfo; device: string }) 
             </Select>
           )}
         </Option>
-
         <Option icon={<History className="h-4 w-4" />} title="Update history" body="What was installed and when, who started it, and how it went. Includes Proxmox package runs.">
-          <Link to={modalHref("update-history")} className="transition-control inline-flex items-center h-8 px-3 rounded-full border border-line bg-surface-2/60 text-compact font-medium hover:bg-surface-3">View history</Link>
+          <Link to={`/${device}/updates/history`} className="transition-control inline-flex items-center gap-0.5 h-8 pl-3 pr-2 rounded-full border border-line bg-surface-2/60 text-compact font-medium hover:bg-surface-3">View history<ChevronRight className="h-4 w-4" aria-hidden /></Link>
         </Option>
-
+        </>)}
+        {part === "main" && (
+        <Option icon={<Settings2 className="h-4 w-4" />} title="Advanced options" body="Install in a maintenance window, the update feed, and going back to the previous version.">
+          <Link to={`/${device}/updates/advanced`} className="transition-control inline-flex items-center gap-0.5 h-8 pl-3 pr-2 rounded-full border border-line bg-surface-2/60 text-compact font-medium hover:bg-surface-3">Open<ChevronRight className="h-4 w-4" aria-hidden /></Link>
+        </Option>
+        )}
+        {part !== "main" && (
         <Option icon={<ShieldCheck className="h-4 w-4" />} title="Check for updates" body={<>The device asks the project's update feed, signed with the release key every install trusts, and falls back to GitHub's release list. It sends nothing about you or this device.{u.source && <> Last answer came from {u.source === "feed" ? "the signed feed" : "GitHub"}.</>}</>}>
           <Toggle label="Check for updates" checked={u.checkEnabled} onChange={(v) => toggle.mutate(v)} />
         </Option>
+        )}
       </Card>
-      {u.feedNote && <Notice tone="warning" title="The signed update feed was ignored">{u.feedNote} GitHub's release list was used instead; every release is still checked against its own signature before it is installed.</Notice>}
+      {part !== "main" && u.feedNote && <Notice tone="warning" title="The signed update feed was ignored">{u.feedNote} GitHub's release list was used instead; every release is still checked against its own signature before it is installed.</Notice>}
       {err && <p role="alert" className="text-compact text-critical">{errorText(err)}</p>}
       <span className="sr-only" data-device={device} />
     </div>
@@ -138,11 +173,11 @@ export function UpdateOptions({ u, device }: { u: UpdateInfo; device: string }) 
 const result = { done: ["good", "Installed"], failed: ["critical", "Didn't finish"], rolled_back: ["warning", "Rolled back"] } as const;
 
 /** Everything installed on this device: ePaperclip's updates and rollbacks, and Debian's record of package runs. */
-export function UpdateHistoryModal({ onClose }: { onClose: () => void }) {
+export function UpdateHistory() {
   const q = useQuery({ queryKey: ["pin", "update", "history"], queryFn: pinRt.updateHistory, retry: 1 });
   const when2 = (ms: number | null) => (ms ? new Date(ms).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "unknown time");
   return (
-    <Modal size="lg" icon={<History className="h-5 w-5" />} title="Update history" subtitle="ePaperclip's own updates and the package changes Proxmox made." onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
+    <div>
       {q.isPending && <div className="py-8 flex justify-center"><Spinner /></div>}
       {q.error && <p role="alert" className="text-compact text-critical">{errorText(q.error)}</p>}
       {q.data && (
@@ -184,6 +219,6 @@ export function UpdateHistoryModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-ink-3 text-pretty">Proxmox's own packages can't be rolled back from here: apt has no undo. Take a backup or snapshot before upgrading, and keep the previous kernel (Proxmox keeps older kernels installed, so you can pick one at boot).</p>
         </div>
       )}
-    </Modal>
+    </div>
   );
 }

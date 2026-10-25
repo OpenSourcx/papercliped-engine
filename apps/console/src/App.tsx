@@ -4,6 +4,7 @@ import { AppShell } from "./layout/AppShell.tsx";
 import { Onboarding } from "./onboarding/Onboarding.tsx";
 import { Automations } from "./pages/Automations.tsx";
 import { Home } from "./pages/Home.tsx";
+import { Updates, UpdatesAdvancedPage, UpdatesHistoryPage } from "./pages/Updates.tsx";
 import { OrgDashboard } from "./pages/OrgDashboard.tsx";
 import { HostShell, StoragePage, Summary } from "./pages/DevicePages.tsx";
 import { Resources } from "./pages/Resources.tsx";
@@ -79,9 +80,12 @@ export function App() {
           <Route path="firewall" element={<FirewallPage />} />
           <Route path="backups" element={<BackupsPage />} />
           <Route path="automations" element={<Automations />} />
+          <Route path="updates" element={<Updates />} />
+          <Route path="updates/history" element={<LiveOnly fallback=".."><UpdatesHistoryPage /></LiveOnly>} />
+          <Route path="updates/advanced" element={<LiveOnly fallback=".."><UpdatesAdvancedPage /></LiveOnly>} />
           {FEATURES.flatMap((f) => f.routes.map((r) => <Route key={`${f.id}:${r.path}`} path={r.path} element={r.element} />))}
           {/* Older addresses open the matching modal over Home. */}
-          {["updates", "access", "connectors", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id}`} replace />} />)}
+          {["access", "connectors", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id}`} replace />} />)}
           <Route path="settings" element={<Navigate to="../home?settings=general" replace />} />
           <Route path="orgs/new" element={<Navigate to="../home?modal=new-org" replace />} />
           <Route path=":org" element={<OrgRoute />}>

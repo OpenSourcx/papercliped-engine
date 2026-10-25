@@ -236,12 +236,11 @@ describe("update options, restart and history", () => {
     handlers["POST /api/node/power"] = () => ({ ok: true, selfAffected: true });
     wrap(<UpdatesTab />);
     fireEvent.click(await screen.findByRole("button", { name: "Restart now…" }));
-    expect(await screen.findByText("Restart pve?")).toBeTruthy();
-    expect(screen.getByText("agent-dev")).toBeTruthy();
-    expect(screen.getByText("secretstore")).toBeTruthy();
+    expect(await screen.findByText(/agent-dev \(100\), secretstore \(101\)/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
     const go = screen.getByRole("button", { name: "Restart device" });
     expect((go as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "pve" } });
+    fireEvent.change(screen.getByLabelText("Type pve to confirm"), { target: { value: "pve" } });
     fireEvent.click(go);
     await waitFor(() => expect(sent("POST", "/api/node/power")[0].body).toMatchObject({ command: "reboot", confirm: "pve" }));
     expect(await screen.findByText(/loses its connection until the device is back/)).toBeTruthy();
@@ -259,8 +258,8 @@ describe("update options, restart and history", () => {
       entries: [{ id: "1", at: NOW - 3600_000, action: "update", from: "0.1.0", to: "0.2.0", by: "schedule", result: "failed", message: "The download was refused." }],
       system: [{ at: NOW - 86_400_000, command: "apt-get dist-upgrade", upgraded: 12, installed: 1, removed: 0, packages: ["pve-manager", "proxmox-kernel-6.8"], kernel: true }],
     });
-    const { UpdateHistoryModal } = await import("../src/pages/updates/UpdateOptions.tsx");
-    wrap(<UpdateHistoryModal onClose={() => undefined} />);
+    const { UpdateHistory } = await import("../src/pages/updates/UpdateOptions.tsx");
+    wrap(<UpdateHistory />);
     expect(await screen.findByText("Didn't finish")).toBeTruthy();
     expect(screen.getByText(/by the maintenance window/)).toBeTruthy();
     expect(screen.getByText("The download was refused.")).toBeTruthy();
