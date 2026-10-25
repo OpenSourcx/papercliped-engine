@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-25T04:26:03.290Z",
+  "generatedAt": "2026-10-25T04:46:06.470Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc20"
+    "rc": "1.0.0-rc21"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc21",
+      "channel": "rc",
+      "publishedAt": "2026-10-25T04:46:05Z",
+      "notes": "## What's new in 1.0.0-rc21\n\n- **docs: parity plan, visuals decided (ePaperclip's own interface).**\n- **Start a company the Paperclip way, with the CEO made by hand or by Pin.** A four-screen wizard (name, first agent, connect a model, first task) replaces the New organization modal on a live device. The organization is created at the end of the first screen, with its resource group (size by Pin or by hand); the first agent is typed in or drafted by Pin for review (POST /api/pin/draft-ceo, one tool-less model call); the model step reuses the account sign-in and API key flows; the last screen\n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc20...v1.0.0-rc21\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc21",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc20",
       "channel": "rc",
