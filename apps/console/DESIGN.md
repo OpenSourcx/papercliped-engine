@@ -201,8 +201,36 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `CardShell` / `PinCardView` / `ToolCard` (`pin/PinCards.tsx`) | cards in Pin's conversation | proposed, done, cancelled, failed |
 | `QuickActionBar` (`pin/QuickActionBar.tsx`) | Pin's quick actions for the page | row of three plus More; `compact`; `scroll` for one line |
 | `PinSettingsPanel` (`pin/PinSettings.tsx`) | provider, model, mode, connectors | loading skeleton, load error with retry, no provider, save, saved, save error |
+| `ThreadProvider` / `useThreadApi` (`pin/ThreadContext.tsx`) | any conversation drawn by `PinThread` | Pin's own thread by default; an agent chat provides its messages and `send` the same way |
+| `ConversationList` (`pin/ConversationList.tsx`) | a list of conversations | flat or in named sections; search, filter, day groups; unread dot and counts; row menu (pin, rename, copy link, delete) when the owner gives handlers |
+| `Sidebar` (`pages/pinview/workspace/Sidebar.tsx`) | PinView's sidebar | places (icon + label rows), groups with a caret, "Show more", group and row menus, row states (working spinner, waiting clock, unread dot), inline rename |
+| `ToolIcon` (`pages/pinview/PinView.tsx`) | an icon that opens a pane | `aria-pressed`; pressed = `surface-3` fill and ink; a small dot when something inside wants attention |
+| `Cards` / `CardRow` (`pages/pinview/workspace/Cards.tsx`) | the card column | folding card with title and caret, right-side meta (percent bar, count); rows: icon, words, one action (`Set up` / `Reconnect` in warning, or a small button); a Show menu picks cards |
+| `TileStack` (`pages/pinview/workspace/Tiles.tsx`) | the tile column | panes stacked top to bottom, header with title, own actions, expand and close; `ResizeHandle` between panes; last pane takes the rest |
+| `Pane` / `TileView` / `Code` (`pages/pinview/TileView.tsx`) | a step's output, a file, a plan | `tab` variant drops the title row (the tab names it); `Code`: plain text with a line-number gutter, word wrap, never interpreted |
+| `EditorGroup` (`pages/pinview/workspace/EditorGroup.tsx`) | tabs over one content area | preview tab in italics until kept (double-click or edit), dot for unsaved, middle-click closes, accent line on the active tab, menu: keep, close others, close all |
+| `FileEditor` (`pages/pinview/MachineFiles.tsx`) | one file of a machine | view, Edit, Save (Ctrl/Cmd+S), Revert, line and column, conflict notice with Reload, binary and too-large notices |
+| `Explorer` (`pages/pinview/workspace/Explorer.tsx`) | a machine's file tree | `role="tree"`, folders open in place, hidden files on request, the open file highlighted |
+| `MachineTerminal` (`pages/pinview/workspace/MachineTerminal.tsx`) | the Terminal tile | this device or a running machine; live relay on a device, demo shell otherwise |
+| `Palette` (`pages/pinview/workspace/Palette.tsx`) | Go to (Ctrl/Cmd+P) | grouped results (commands, open files, conversations, agents), arrow keys, Enter, shortcut hints in `Kbd` |
+| `PullRequestList` / `ConnectGithub` / `ChangesBody` (`pages/pinview/Changes.tsx`) | pull requests | state icon (open, merged, closed), checks icon (passed, failed, running), repo#number, author, age; connect form for administrators |
 
 Deliberate exceptions: native `<select>` stays native (keyboard and screen-reader behaviour for free); the terminal and machine screens are third-party canvases styled through tokens read at runtime.
+
+## PinView workspace
+
+PinView (`/<device>/view`) is the workspace for working with Pin and agents. It follows a desktop chat app's layout; `docs/PINVIEW.md` describes what each part does. The rules:
+
+- **Columns, left to right:** sidebar (resizable, Ctrl/Cmd+B hides it) · conversation (centered column, `max-w-3xl`) · cards (`w-80`, Ctrl/Cmd+.) · tiles (resizable). Columns are separated by a 1px `line` border and a `ResizeHandle`; no gaps, no shadows between them.
+- **Sidebar:** places first (icon + label, `h-9` rows, `text-sm`), then groups headed by a small `text-xs` label with a caret. Rows are plain text; the open one is `surface-3`, hover `surface-2`. Status at the end of a row is an icon, never a word. Menus appear on hover or focus (`⋯`), never as permanent buttons.
+- **Toolbar icons** at the right of the conversation's header open and close what sits beside it, and show it with `aria-pressed` and a `surface-3` fill. Words are kept for the one primary action there (Share).
+- **Cards:** one rounded `surface` card per subject, title + caret to fold, rows of icon · words · one action. Actions that fix something are `text-warning` links (Set up, Reconnect); others are small secondary buttons.
+- **Tiles** stack in one column; each has a title, its own actions, expand and close, in that order. Content that belongs to the conversation (the plan, the files Pin touched) opens on its own; nothing steals focus from the composer.
+- **Tabs** in the Files tile: italic for a preview, a dot for unsaved, an accent line for the active one.
+- **Empty states** are one quiet line in `ink-3` that says what will appear; no illustrations in panes.
+- **Layer:** PinView sits on `--z-workspace`, above the shell and below dialogs.
+- **Phone:** the sidebar is the first screen; a conversation opens over it; cards and tiles open as full sheets with a back arrow.
+- **Remembered per browser:** sidebar width, which tiles are open, their heights, the tile column's width, the cards shown.
 
 ## Words
 
