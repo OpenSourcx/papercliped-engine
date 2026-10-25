@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-24T18:45:58.717Z",
+  "generatedAt": "2026-10-25T03:46:18.487Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc18"
+    "rc": "1.0.0-rc19"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc19",
+      "channel": "rc",
+      "publishedAt": "2026-10-25T03:46:17Z",
+      "notes": "## What's new in 1.0.0-rc19\n\n- **Agent containers setup: pick storage and bridge from what the host has.** The three host fields were free text defaulting to local-lvm, so a host without it stopped at the first step. The status now lists the node's storages that can hold container disks, those that can hold templates and its bridges, with a valid starting pick (a saved choice if still valid, else local-lvm or local-zfs, local, vmbr0, then the first). The form shows them as lists and starts from that pick.\n- **Agent sign-in: use an API key instead, per organization and harness.** Each harness row gets 'Use an API key'. It saves the key in the Vault under the variable the harness reads (ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, GEMINI_API_KEY) and shares it with that organization's agents of that harness, keeping other organizations' shares; a blank field keeps the saved key, and 'Stop using it here' removes only this organization. Gemini, which has no account sign-in, uses this path.\n- **ACP bridges in the agent template; agents default to the direct CLI lane.** The template installs claude-agent-acp and codex-acp at the versions the pinned engine's lockfile resolves, and checks they exist. Because ACP over ssh polls about ten times a second, an agent that has not chosen an engine lane gets engine=cli on reconcile; a chosen lane (acp included) is left alone. The login hooks section of PROXMOX-SANDBOX.md is updated.\n- **Agent sign-in: Claude, Codex and Grok accounts from the console.** Settings > Agent sign-in lists each organization's harnesses. Sign in opens the provider's page in a new tab and runs the engine's login session in the organization's agent container: Claude takes a pasted browser code, Codex and Grok a device code. The engine keeps the credential as a secret; closing the window cancels the session. Gemini has no account sign-in in Paperclip, so the page points at the Vault for GEMIN\n- **Sandbox provider: sign-in terminals for Claude, Codex and Grok.** The Proxmox provider now implements Paperclip's login pseudo-terminal hooks and declares supportsLoginPty. A login opens one fixed command per key (claude setup-token, codex or grok login --device-auth) over ssh -tt in the leased container, in its own throwaway home, streams the output and exit to Paperclip, and takes the pasted code as input. The host sends only a key and a home of Paperclip's exact shape; anything \n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc18...v1.0.0-rc19\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc19",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc18",
       "channel": "rc",
