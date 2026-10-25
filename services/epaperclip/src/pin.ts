@@ -710,6 +710,18 @@ export class Pin {
    * Every chat spends the organization's model key and holds a connection open, and any signed-in Proxmox user may start
    * one, so each person gets 20 a minute and 3 at a time. Returns what to call when the chat ends.
    */
+  /**
+   * One short answer from the person's chosen model, with no tools and no saved chat. For drafting a thing the person then
+   * reviews (a CEO for a new organization), never for acting.
+   */
+  async draft(username: string, system: string, prompt: string, signal: AbortSignal): Promise<string> {
+    const p = this.prepare(username, { messages: [{ role: "user", content: prompt }] });
+    const input: TurnInput = { ref: p.ref, key: p.key, model: p.model, system, turns: [{ role: "user", text: prompt }], tools: [], allowTools: false, onText: () => undefined, signal };
+    const proto = refProtocol(p.ref);
+    const r = await (proto === "anthropic" ? anthropicTurn(this.fetch, input) : proto === "gemini" ? geminiTurn(this.fetch, input) : openaiTurn(this.fetch, p.ref, input));
+    return r.text;
+  }
+
   admit(username: string): () => void {
     const t = this.now();
     if (this.recentChats.size > 2000) for (const [k, v] of this.recentChats) if (v.every((x) => t - x >= 60_000)) this.recentChats.delete(k);

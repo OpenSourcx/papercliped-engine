@@ -26,6 +26,7 @@ import { RoutineIngress } from "./routine-ingress.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
+import { draftCeo } from "./features/pin-company.ts";
 import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
@@ -887,6 +888,19 @@ export function createApp(d: AppDeps) {
       const provider = url.searchParams.get("provider") ?? pin.settings(s.username).provider;
       if (!provider || (!isProvider(provider) && !/^x:[a-z0-9][a-z0-9-]{0,31}$/.test(provider))) throw new HttpError(400, "bad_request", "Unknown provider");
       return sendJson(res, 200, { provider, models: await pin.models(provider) });
+    }
+
+    if (method === "POST" && path === "/api/pin/draft-ceo") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const b = await readJson(req, 16 * 1024);
+      const release = pin.admit(s.username);
+      try {
+        const draft = await draftCeo(pin, s.username, b, AbortSignal.timeout(45_000));
+        return sendJson(res, 200, draft);
+      } finally {
+        release();
+      }
     }
 
     if (method === "POST" && path === "/api/pin/chat") {

@@ -7,6 +7,8 @@ import { Connectors } from "../pages/Connectors.tsx";
 import { AgentContainersSettings } from "../pages/containers/AgentContainers.tsx";
 import { NewMachineModal } from "../pages/machines/NewMachine.tsx";
 import { NewOrgModal } from "../pages/NewOrg.tsx";
+import { StartCompany } from "../pages/start/StartCompany.tsx";
+import { useEngine } from "../data/store.tsx";
 import { QuickCreateModal } from "../pages/org/QuickCreate.tsx";
 import { DownloadUrlModal, TemplatesModal, UploadModal } from "../pages/storage/StorageModals.tsx";
 import { TaskLogModal } from "../pages/Tasks.tsx";
@@ -40,12 +42,13 @@ export const SETTINGS_IDS = SECTIONS.map((s) => s.id);
 /** Renders whichever modal the URL asks for, over the current page. */
 export function ModalHost() {
   const m = useModals();
+  const live = useEngine().live;
   return (
     <>
       {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
       {m.modal === "update-history" && <UpdateHistoryModal onClose={m.close} />}
       {m.modal === "new-automation" && <NewAutomationModal onClose={m.close} />}
-      {m.modal === "new-org" && <NewOrgModal onClose={m.close} />}
+      {m.modal === "new-org" && (live ? <StartCompany onClose={m.close} /> : <NewOrgModal onClose={m.close} />)}
       {m.modal === "new-machine" && <NewMachineModal onClose={m.close} />}
       {m.modal === "upload" && <UploadModal onClose={m.close} />}
       {m.modal === "download-url" && <DownloadUrlModal onClose={m.close} />}

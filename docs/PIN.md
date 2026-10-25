@@ -127,6 +127,10 @@ Agent mode plans can now also come from connected apps (`createdBy: "app"`, titl
 
 `POST /api/mcp` with `Authorization: Bearer epc_...` speaks MCP's streamable HTTP in its simplest form (one JSON-RPC message per POST, one JSON answer): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are Pin's read tools (host status, machines, one machine, storage, tasks, organizations, one organization), run as the token's person with the token's own Proxmox permissions, so a privilege-separated token sees only what it was given. It offers no tool that changes anything and never accepts the console's cookie. For a token with the least reach, create one with **Separate privileges** and give it `PVEAuditor` on the paths to share. (A read-only token can't be used: it may only make GET requests, and MCP is a POST.) The full Papercliped bridge (OAuth at `/oauth/*`, `POST /mcp`, write tools through plans) is described in [CONNECTORS.md](CONNECTORS.md).
 
+## Drafting a CEO for a new organization
+
+The start-a-company wizard can ask Pin to create the organization's first agent. `POST /api/pin/draft-ceo { orgName, description? }` makes one call to the person's chosen model, with no tools and no saved chat, asking for a name, a title and a one-line summary as JSON, and returns `{ name, title, summary }` (400 without a name or a model, 502 with a plain reason when the model's answer can't be used). Nothing is created by it: the wizard shows the draft for review, then sends the kept name and role to the engine's own seed route. It counts against the same per-minute and at-once limits as a chat.
+
 ## Chats and memory
 
 Pin's conversations are kept on the device, per person, sealed like Notes. In the console a chat is saved as you talk, and the browser then sends only the new message: the device already has what was said, what Pin did and what failed. API tokens and the stateless call (`POST /api/pin/chat` without `save` or `chatId`) keep nothing.

@@ -94,7 +94,7 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
 const SPIN_MS = 2000;
 
 /** One sign-in, start to finish. Closing it before the end cancels the session so the next try isn't blocked by a stale one. */
-export function SignInModal({ companyId, org, adapter, environmentId, onClose }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onClose: () => void }) {
+export function SignInModal({ companyId, org, adapter, environmentId, onClose, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onClose: () => void; onDone?: () => void }) {
   const qc = useQueryClient();
   const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
   const claude = adapter === "claude_local";
@@ -125,6 +125,7 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose }:
             if (claude) await engine.agentAuth.claudeComplete(companyId, s.sessionId);
             live.current.over = true;
             setDone(true);
+            onDone?.();
             void qc.invalidateQueries({ queryKey: ["agent-auth", companyId] });
             return;
           }
@@ -192,7 +193,7 @@ export { LOGIN_ADAPTERS };
  * Gives an organization's agents of one harness an API key. The key goes in the host's Vault under the variable the
  * harness reads (ANTHROPIC_API_KEY ...), shared with exactly those agents; leaving the key blank keeps the one already saved.
  */
-export function ApiKeyModal({ companyId, org, adapter, onClose }: { companyId: string; org: string; adapter: Harness; onClose: () => void }) {
+export function ApiKeyModal({ companyId, org, adapter, onClose, onDone }: { companyId: string; org: string; adapter: Harness; onClose: () => void; onDone?: () => void }) {
   const qc = useQueryClient();
   const h = HARNESSES.find((x) => x.adapter === adapter)!;
   const name = KEY_ENV[adapter];
@@ -217,6 +218,7 @@ export function ApiKeyModal({ companyId, org, adapter, onClose }: { companyId: s
       const body = { share: "ceos" as const, targets, ...(value.trim() ? { value: value.trim() } : {}) };
       const r = existing ? await vaultApi.update(existing.id, body) : await vaultApi.create({ name, description: `${h.name} API key, from Agent sign-in`, ...body, value: value.trim() });
       void qc.invalidateQueries({ queryKey: ["vault"] });
+      if (!remove && r.problems.length === 0) onDone?.();
       setDone(r.problems.length ? `Saved, but ${r.problems.join("; ")}` : remove ? `${org}'s ${h.name} agents no longer use this key.` : `${org}'s ${h.name} agents will use this key on their next run.`);
     } catch (e) {
       setError(errorText(e));

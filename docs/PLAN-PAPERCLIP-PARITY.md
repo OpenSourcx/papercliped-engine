@@ -1,6 +1,6 @@
 # Plan: match Paperclip's experience, then add Proxmox
 
-Status: proposed, not started. Nothing here is built until it is approved.
+Status: phase 1 built (see below); the rest is proposed and waits for approval.
 
 ## The rule
 
@@ -32,12 +32,14 @@ Facts below come from using the pinned engine (`paperclipai 2026.1005.0`) in a b
 
 ## Phases
 
-### 1. Start a company the Paperclip way (first)
+### 1. Start a company the Paperclip way (built)
 
 A wizard with the same four steps and words as Paperclip's, one question per screen, calling the engine's own routes (create the company, then `POST /api/companies/{id}/onboarding-seed` for the goal, first agent, project and task). Our additions, as extra steps: the organization's size (the resource group) and a check that agent containers are ready, with a one-click fix when they are not.
 
 - Replaces the "New organization" modal for creating a company; the modal's size choices move into the wizard.
-- Decision to settle: Paperclip creates the company on the first Continue and leaves it if you quit. We should create it at the end of the wizard so nothing is left half-made.
+- Decision made: the company is created at the end of step 1, as Paperclip does, because signing in needs its container environment. The wizard saves where it was (`epc.start.draft`) and resumes; a saved draft is dropped when its company no longer exists.
+- Our twist: step 2 offers **Create it myself** or **Let Pin create it**. Pin drafts a name, a role and a one-line summary from the organization's name and mission (`POST /api/pin/draft-ceo`, one model call with no tools); the person reviews and edits it. Nothing is created until they press Next.
+- Built in `apps/console/src/pages/start/`; opened by `?modal=new-org` on a live device (the demo keeps the old modal).
 - Done when: a new organization opens on a dashboard with its mission, a CEO that has the five core skills and can hire, an Onboarding project and a first task, and its agent runs in a container.
 
 ### 2. Connect a model inside the flow

@@ -104,6 +104,7 @@ export const ENGINE_ALLOWED: readonly string[] = [
   "/api/issues/{id}/documents",
   "/api/issues/{id}/approvals",
   "/api/companies/{companyId}/search",
+  "/api/companies/{companyId}/onboarding-seed",
   "/api/companies/{companyId}/adapters/{type}/auth-signal",
   "/api/companies/{companyId}/adapters/{type}/test-environment",
   "/api/companies/{companyId}/adapters/{type}/login-sessions",

@@ -564,3 +564,50 @@ describe("what the service is doing (activity and status)", () => {
     expect((await get("/api/activity?source=nope", sam)).status).toBe(400);
   });
 });
+
+describe("drafting a CEO for a new organization", () => {
+  const anthropicJson = (json: string) => [
+    { event: "message_start", data: { type: "message_start", message: { usage: { input_tokens: 5 } } } },
+    { event: "content_block_start", data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } },
+    { event: "content_block_delta", data: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: json } } },
+    { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+    { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 9 } } },
+    { event: "message_stop", data: { type: "message_stop" } },
+  ];
+  const answerWith = (json: string, onBody?: (b: any) => void) =>
+    prov.set((r, res) => {
+      onBody?.(JSON.parse(r.body));
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      for (const e of anthropicJson(json)) res.write(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`);
+      res.end();
+    });
+  it("asks the person's own model for a name, a title and a summary, with no tools, and returns them for review", async () => {
+    const c = await signIn();
+    await configure(c, "anthropic", "claude-test");
+    let seen: any = null;
+    answerWith('{"name":"Ada","title":"Chief of staff","summary":"Plans the first week."}', (b) => (seen = b));
+    const r = await send("POST", "/api/pin/draft-ceo", { orgName: "Northwind Labs", description: "Invoicing for small studios" }, { Cookie: c });
+    expect(r.status).toBe(200);
+    expect(await j(r)).toEqual({ name: "Ada", title: "Chief of staff", summary: "Plans the first week." });
+    expect(JSON.stringify(seen)).toContain("Northwind Labs");
+    expect(seen.tools ?? []).toEqual([]);
+  });
+
+  it("says plainly when the model's answer can't be used, and when Pin has no model yet", async () => {
+    const c = await signIn();
+    expect(await (await send("POST", "/api/pin/draft-ceo", { orgName: "Acme" }, { Cookie: c })).status).toBe(400);
+    await configure(c, "anthropic", "claude-test");
+    answerWith("I would call them Ada.");
+    const bad = await send("POST", "/api/pin/draft-ceo", { orgName: "Acme" }, { Cookie: c });
+    expect(bad.status).toBe(502);
+    expect((await j(bad)).error).toMatch(/create one yourself/);
+  });
+
+  it("needs a name for the organization, refuses other fields, and a signed-in browser", async () => {
+    const c = await signIn();
+    await configure(c, "anthropic", "claude-test");
+    expect((await send("POST", "/api/pin/draft-ceo", {}, { Cookie: c })).status).toBe(400);
+    expect((await send("POST", "/api/pin/draft-ceo", { orgName: "A", extra: 1 }, { Cookie: c })).status).toBe(400);
+    expect((await send("POST", "/api/pin/draft-ceo", { orgName: "A" })).status).toBe(401);
+  });
+});

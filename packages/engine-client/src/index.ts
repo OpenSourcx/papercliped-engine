@@ -230,6 +230,7 @@ export const ENGINE_PATHS = {
   issueApprovals: "/api/issues/{id}/approvals",
   // Search
   search: "/api/companies/{companyId}/search",
+  onboardingSeed: "/api/companies/{companyId}/onboarding-seed",
   // Signing an agent harness in (docs/AGENT-AUTH.md): Claude by browser code, Codex and Grok by device code.
   authSignal: "/api/companies/{companyId}/adapters/{type}/auth-signal",
   testEnvironment: "/api/companies/{companyId}/adapters/{type}/test-environment",
@@ -253,6 +254,14 @@ export const ENGINE_PATHS = {
 export const ENGINE_PATHS_UNDOCUMENTED = {
   chatWith: "/api/companies/{companyId}/chats/{agentRef}",
 } as const;
+
+export interface OnboardingSeed {
+  revision: string;
+  mission?: string;
+  agent?: { name: string; role?: string };
+  firstTask?: { title: string; details?: string };
+}
+export interface OnboardingSeedResult { companyId: string; revision: string; applied: boolean; changed: boolean; goalId: string | null; agentId: string | null; issueId: string | null }
 
 /** A harness sign-in session as the engine reports it. `prompt` is the one-time sign-in address and, for device logins, the code to type there. */
 export type LoginStatus = "starting" | "waiting_for_user" | "authenticated" | "failed" | "timed_out" | "cancelled";
@@ -328,6 +337,12 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       create: (body: CreateCompanyBody) => call<Company>("POST", P.companies, {}, body),
       update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">> & { status?: "active" | "paused" | "archived"; requireBoardApprovalForNewAgents?: boolean }) => call<Company>("PATCH", P.company, { companyId }, body),
       archive: (companyId: string) => call<unknown>("DELETE", P.company, { companyId }),
+      /**
+       * What Paperclip's own start flow builds, in one idempotent call: the mission as the company goal, the first agent
+       * (a CEO with the core skills and hiring permission), an "Onboarding" project and a first task assigned to the agent.
+       * Sending the same `revision` again changes nothing.
+       */
+      seed: (companyId: string, body: OnboardingSeed) => call<OnboardingSeedResult>("POST", P.onboardingSeed, { companyId }, body),
       dashboard: (companyId: string) => call<DashboardSummary>("GET", P.dashboard, { companyId }),
       members: (companyId: string) => call<MembersAnswer>("GET", P.members, { companyId }),
     },
