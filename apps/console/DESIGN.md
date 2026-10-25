@@ -239,6 +239,18 @@ PinView (`/<device>/view`) is the workspace for working with Pin and agents. It 
 - **Phone:** the sidebar is the first screen; a conversation opens over it; cards and tiles open as full sheets with a back arrow.
 - **Remembered per browser:** sidebar width, which tiles are open, their heights, the tile column's width, the cards shown.
 
+## Iconography
+
+lucide-react only: outline, stroke 2 (the default), `currentColor`. Sizes: 14 (`h-3.5`) in chips, tabs and meta; 16 (`h-4`) in rows, dense chrome and bare icon controls (the default); 20 (`h-5`) in empty-state badges and page actions; 24 only in onboarding. One icon per concept: machine `HardDrive` (container `Container`, virtual machine `Monitor`), device `Server`, organization `Building2`, agent `Bot`, people `Users`, task `ListChecks`, plan `ClipboardList`, files `FolderOpen`, terminal `SquareTerminal`, artifacts `Package`, pull requests `GitPullRequest`, cards `PanelRight`, sidebar `PanelLeft`, search `Search`, settings `SlidersHorizontal`, more `Ellipsis`, expand `Maximize2`, close `X`, Pin's memory `Hash`, mention `AtSign`; status icons as in "Status vocabulary". Decorative icons are `aria-hidden`; an icon-only control carries the name.
+
+## Breakpoints and spacing
+
+Tailwind's: `sm` 640 (gutter 16 to 24), `md` 768 (sidebar beside the conversation), `lg` 1024 (cards and tiles become columns; below, sheets), `xl` 1280, `2xl` 1536; the phone we design for is 390. The rhythm is the 4px scale: 4 icon to label, 8 related controls, 12 card padding, 16 phone gutter and tile side padding, 24 section gap and gutter from `sm`, 32 page rhythm. Workspace sizes: header 48, tab strip 36, row 32, bare icon controls 28 and 32 (44 on touch), sidebar 272 (220 to 420), cards 288, tiles 480 (340 to 1000, they yield first), conversation at least 352.
+
+## Composer, tiling and patterns
+
+Specified in their own pages, kept in step with the design system: `docs/design/composer.md` (`/` commands, `@` mentions and chips, `#` Pin board, the status line), `docs/design/tiling.md` (layout tree, drag and drop preview, keyboard, tablet and phone, several organizations at once) and `docs/design/patterns.md` (empty, loading and error per surface, keyboard shortcuts, toasts and badges, responsive).
+
 ## Words
 
 Our vocabulary, one name per concept:
