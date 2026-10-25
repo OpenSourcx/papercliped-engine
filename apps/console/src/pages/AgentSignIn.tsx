@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, KeyRound, LogIn } from "lucide-react";
+import { Check, ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { LOGIN_ADAPTERS, type LoginAdapter, type LoginSession } from "@papercliped-engine/engine-client";
 import { useEngine } from "../data/store.tsx";
+import { cn } from "../lib/storage.ts";
+import { useModals } from "../modals/useModals.ts";
 import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
 import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
-import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, Spinner } from "../ui/primitives.tsx";
+import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Spinner } from "../ui/primitives.tsx";
 
 /**
  * Settings → Agent sign-in: lets an organization's agents use a person's own Claude, Codex or Grok account instead of an API
@@ -48,10 +50,7 @@ function LiveSignIn() {
       <PageHeader title="Agent sign-in" subtitle="Let an organization's agents use your own Claude, Codex or Grok account, or use an API key instead. The sign-in happens in that organization's agent container; the engine keeps the result as a secret and never shows it." />
       {orgs.isPending && <div className="py-10 flex justify-center"><Spinner /></div>}
       {orgs.error && <p role="alert" className="text-compact text-critical mb-3">{errorText(orgs.error)}</p>}
-      {containers.data && containers.data.state !== "ready" && (
-        <Notice tone="warning" title="Agent containers aren't set up yet" className="mb-4">Agents run in containers, and a sign-in runs in one too. Set them up first in Settings → Agent containers.</Notice>
-      )}
-      {orgs.data?.length === 0 && <EmptyState icon={<LogIn className="h-5 w-5" />} title="No organizations yet" body="Create an organization first; sign-ins belong to one." />}
+      <Prerequisites containersReady={containers.data?.state === "ready"} canSetUpContainers={containers.data?.canManage === true} loadedContainers={containers.data !== undefined} hasOrg={(orgs.data ?? []).some((c) => c.status !== "archived")} loadedOrgs={orgs.data !== undefined} />
       <div className="space-y-4">
         {(orgs.data ?? []).filter((c) => c.status !== "archived").map((c) => {
           const environmentId = envs.find((e) => e.companyId === c.id && e.ok)?.environmentId ?? null;
@@ -71,6 +70,34 @@ function LiveSignIn() {
       {flow && <SignInModal {...flow} onClose={() => setFlow(null)} />}
       {keyFlow && <ApiKeyModal {...keyFlow} onClose={() => setKeyFlow(null)} />}
     </PageFrame>
+  );
+}
+
+/**
+ * An account sign-in needs three things in this order: agent containers set up on the device, an organization (its
+ * container environment is where the sign-in runs), and then the sign-in itself. While the first two aren't there, say
+ * so as a short checklist with the button for each, instead of a dead end.
+ */
+function Prerequisites({ containersReady, canSetUpContainers, loadedContainers, hasOrg, loadedOrgs }: { containersReady: boolean; canSetUpContainers: boolean; loadedContainers: boolean; hasOrg: boolean; loadedOrgs: boolean }) {
+  const modals = useModals();
+  if (!loadedContainers || !loadedOrgs || (containersReady && hasOrg)) return null;
+  const row = (done: boolean, title: string, body: string, action?: ReactNode) => (
+    <li className="flex items-start gap-3">
+      <span className={cn("mt-0.5 h-5 w-5 shrink-0 rounded-full border flex items-center justify-center", done ? "border-good/40 bg-good/10 text-good" : "border-line-strong text-ink-3")} aria-hidden>{done ? <Check className="h-3 w-3" /> : null}</span>
+      <div className="flex-1 min-w-0"><div className={cn("text-compact font-medium", done && "text-ink-3")}>{title}{done && <span className="sr-only"> (done)</span>}</div><p className="text-xs text-ink-3 mt-0.5">{body}</p></div>
+      {!done && action}
+    </li>
+  );
+  return (
+    <Card className="p-5 mb-4">
+      <h3 className="text-body font-medium">Two things first</h3>
+      <p className="text-compact text-ink-3 mt-1">A sign-in runs inside an organization's agent container, so the device needs both before an account can be signed in.</p>
+      <ol className="mt-4 space-y-4">
+        {row(containersReady, "Set up agent containers", "Agents run in unprivileged containers on this device, never on the host. One setup, done by a Proxmox administrator.", canSetUpContainers ? <Button size="sm" variant="primary" onClick={() => modals.selectSection("agent-containers")}>Set up</Button> : <span className="text-xs text-ink-3">Ask an administrator</span>)}
+        {row(hasOrg, "Create an organization", "Its agents get a container of their own. Starting one takes a name, a first agent and a task.", <Button size="sm" variant={containersReady ? "primary" : "secondary"} onClick={() => { modals.close(); modals.openModal("new-org"); }}>Start a company</Button>)}
+        {row(false, "Sign in", "Then come back here (or use the Sign in button on a connector) and sign in with your Claude, Codex or Grok account.")}
+      </ol>
+    </Card>
   );
 }
 

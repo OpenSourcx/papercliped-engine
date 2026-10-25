@@ -2,12 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../src/data/store.tsx", () => ({ useEngine: () => ({ live: true }) }));
+const setup = { orgs: [{ id: "c1", name: "Acme", status: "active" }] as { id: string; name: string; status: string }[], containers: { state: "ready", canManage: true, environments: [{ companyId: "c1", environmentId: "e1", ok: true }] } as { state: string; canManage: boolean; environments: { companyId: string; environmentId: string; ok: boolean }[] } };
 vi.mock("../src/data/engine/queries.ts", async (orig) => ({
   ...(await orig<typeof import("../src/data/engine/queries.ts")>()),
-  useOrgs: () => ({ data: [{ id: "c1", name: "Acme", status: "active" }], isPending: false, error: null }),
-  useAgentContainers: () => ({ data: { state: "ready", environments: [{ companyId: "c1", environmentId: "e1", ok: true }] } }),
+  useOrgs: () => ({ data: setup.orgs, isPending: false, error: null }),
+  useAgentContainers: () => ({ data: setup.containers }),
 }));
 
 import { AgentSignIn } from "../src/pages/AgentSignIn.tsx";
@@ -20,6 +22,8 @@ const sent = (method: string, path: string) => calls.filter((c) => c.method === 
 const A = "/engine/api/companies/c1";
 
 beforeEach(() => {
+  setup.orgs = [{ id: "c1", name: "Acme", status: "active" }];
+  setup.containers = { state: "ready", canManage: true, environments: [{ companyId: "c1", environmentId: "e1", ok: true }] };
   calls = [];
   handlers = {};
   vi.stubGlobal("fetch", async (input: string, init: RequestInit = {}) => {
@@ -36,7 +40,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-const wrap = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><AgentSignIn /></QueryClientProvider>);
+const wrap = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><AgentSignIn /></MemoryRouter></QueryClientProvider>);
 
 describe("agent sign-in", () => {
   it("lists the harnesses per organization, with Gemini pointing at the Vault instead of a button", async () => {
@@ -133,5 +137,30 @@ describe("agent sign-in", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(sent("POST", "/api/vault")).toHaveLength(1));
     expect(sent("POST", "/api/vault")[0].body).toMatchObject({ name: "ANTHROPIC_API_KEY", share: "ceos", value: "sk-ant-1", targets: [{ companyId: "c1", agentId: "x1" }] });
+  });
+
+  it("shows what to do first, in order, instead of a dead end, when there are no containers and no organization", async () => {
+    setup.orgs = [];
+    setup.containers = { state: "not_set_up", canManage: true, environments: [] };
+    wrap();
+    expect(await screen.findByText("Two things first")).toBeTruthy();
+    expect(screen.getByText("Set up agent containers")).toBeTruthy();
+    expect(screen.getByText("Create an organization")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set up" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start a company" })).toBeTruthy();
+    expect(screen.queryByText("No organizations yet")).toBeNull();
+  });
+
+  it("asks a non-administrator to ask one, and drops the checklist once both are in place", async () => {
+    setup.orgs = [];
+    setup.containers = { state: "not_set_up", canManage: false, environments: [] };
+    wrap();
+    expect(await screen.findByText("Ask an administrator")).toBeTruthy();
+    cleanup();
+    setup.orgs = [{ id: "c1", name: "Acme", status: "active" }];
+    setup.containers = { state: "ready", canManage: true, environments: [{ companyId: "c1", environmentId: "e1", ok: true }] };
+    wrap();
+    await screen.findByText("Acme");
+    expect(screen.queryByText("Two things first")).toBeNull();
   });
 });
