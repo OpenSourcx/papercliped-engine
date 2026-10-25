@@ -9,6 +9,7 @@ import { ACT_TOOLS, DEFAULT_PERMISSION, PERMISSIONS, READ_NAMES, READ_TOOLS, act
 import { handleActCall } from "./features/pin-act-run.ts";
 import { runtimeFor } from "./features/pin-core.ts";
 import { NOTE_TOOLS, isNoteWriteTool, proposeNoteTool, searchNotesTool } from "./features/notes-tools.ts";
+import { GITHUB_TOOLS, pullRequestsTool } from "./features/github.ts";
 import { historyFor, libraryFor, type Chat } from "./features/pin-store.ts";
 import type { StateStore } from "./state.ts";
 
@@ -807,7 +808,7 @@ export class Pin {
     const turns: Turn[] = p.messages.map((m) => (m.role === "user" ? { role: "user", text: m.content } : { role: "assistant", text: m.content, calls: [] }));
     const reads = TOOLS.filter((t) => !t.action);
     const extraReads = READ_TOOLS as unknown as ToolDef[];
-    const tools: ToolDef[] = refProtocol(p.ref) === "gemini" ? [] : !agent ? [...TOOLS, ...NOTE_TOOLS, ...MEMORY_TOOLS] : acting ? [...reads, ...extraReads, ...NOTE_TOOLS, ...MEMORY_TOOLS, TOOLS.find((t) => t.name === "create_task")!, ...(ACT_TOOLS as unknown as ToolDef[])] : [...reads, ...extraReads, ...NOTE_TOOLS, ...MEMORY_TOOLS, ...AGENT_TOOLS];
+    const tools: ToolDef[] = refProtocol(p.ref) === "gemini" ? [] : !agent ? [...TOOLS, ...NOTE_TOOLS, ...(GITHUB_TOOLS as unknown as ToolDef[]), ...MEMORY_TOOLS] : acting ? [...reads, ...extraReads, ...NOTE_TOOLS, ...(GITHUB_TOOLS as unknown as ToolDef[]), ...MEMORY_TOOLS, TOOLS.find((t) => t.name === "create_task")!, ...(ACT_TOOLS as unknown as ToolDef[])] : [...reads, ...extraReads, ...NOTE_TOOLS, ...(GITHUB_TOOLS as unknown as ToolDef[]), ...MEMORY_TOOLS, ...AGENT_TOOLS];
     const maxSteps = acting ? 24 : MAX_STEPS;
     const actEnv = { rt: runtimeFor(this.state), host, permission: p.settings.permission, send, ping: () => { if (!res.writableEnded) res.write(": ping\n\n"); }, signal: clientGone, counter: { n: 0 } };
     let via: string | null = null;
@@ -946,7 +947,7 @@ export class Pin {
           }
           try {
             if (!def) throw new PinError("unknown_tool", `There is no tool called ${call.name}.`);
-            const out = call.name === "search_notes" ? searchNotesTool(this.state, host.username, args) : await Promise.race([READ_NAMES.includes(call.name) ? runRead(call.name, args, { node: host.node, username: host.username, pve: host.pve }) : runTool(call.name, args, host), new Promise((_, reject) => setTimeout(() => reject(new PinError("tool_timeout", "The tool took too long.")), TOOL_TIMEOUT_MS).unref())]);
+            const out = call.name === "search_notes" ? searchNotesTool(this.state, host.username, args) : call.name === "list_pull_requests" ? await pullRequestsTool(this.state, args) : await Promise.race([READ_NAMES.includes(call.name) ? runRead(call.name, args, { node: host.node, username: host.username, pve: host.pve }) : runTool(call.name, args, host), new Promise((_, reject) => setTimeout(() => reject(new PinError("tool_timeout", "The tool took too long.")), TOOL_TIMEOUT_MS).unref())]);
             activity.info("pin", "pin.tool", `${call.name} ok`, { tool: call.name, ms: Date.now() - callAt });
             send("tool", { id: call.id, name: call.name, args, status: "done" });
             results.push({ id: call.id, name: call.name, content: cap(out) });

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, MoreHorizontal, Square } from "lucide-react";
+import { Menu, type MenuEntry } from "../ui/primitives.tsx";
 import { cn } from "../lib/storage.ts";
 import { PinCardView, ToolCard } from "./PinCards.tsx";
 import type { PinMessage } from "./PinContext.tsx";
@@ -12,7 +13,7 @@ import { Markdown } from "../pages/pin/notes/Markdown.tsx";
  * Pin's conversation, shared by the island and Pin's page: the messages, then the composer. Pin's words sit on the
  * page; yours sit in a bubble on the right. While Pin writes, a soft caret breathes at the end of its words.
  */
-export function PinThread({ inPlace, empty, footer, className, autoFocus }: { inPlace?: boolean; empty: ReactNode; footer?: ReactNode; className?: string; autoFocus?: boolean }) {
+export function PinThread({ inPlace, empty, footer, below, className, autoFocus }: { inPlace?: boolean; empty: ReactNode; footer?: ReactNode; /** Under the composer: what the conversation is running with. */ below?: ReactNode; className?: string; autoFocus?: boolean }) {
   const pin = useThreadApi();
   const list = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -38,6 +39,7 @@ export function PinThread({ inPlace, empty, footer, className, autoFocus }: { in
       </div>
       {footer}
       <PinInput inPlace={inPlace} autoFocus={autoFocus} />
+      {below}
     </div>
   );
 }
@@ -57,18 +59,37 @@ function Waiting() {
   );
 }
 
+/** Markdown as a person would read it: no markers, links as their words. */
+export const plainText = (md: string) =>
+  md.replace(/```[a-z0-9]*\n?/gi, "").replace(/`([^`]*)`/g, "$1").replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, "$1$2").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/^>\s?/gm, "");
+
+/** Puts a message into the composer as a quote, so the next message refers to it. */
+export const quoteIntoComposer = (text: string) => window.dispatchEvent(new CustomEvent("pin:quote", { detail: text }));
+
+function MessageMenu({ text }: { text: string }) {
+  const items: MenuEntry[] = [
+    { label: "Copy message", onSelect: () => void navigator.clipboard?.writeText(plainText(text)).catch(() => undefined) },
+    { label: "Copy message as Markdown", onSelect: () => void navigator.clipboard?.writeText(text).catch(() => undefined) },
+    { kind: "separator" },
+    { label: "Quote in reply", onSelect: () => quoteIntoComposer(text) },
+  ];
+  return <span className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100 rounded-lg bg-surface border border-line shadow-raised"><Menu size="sm" label="Message options" icon={<MoreHorizontal className="h-4 w-4" />} items={items} /></span>;
+}
+
 function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
   const pin = useThreadApi();
   if (m.from === "you") {
     return (
-      <div className="flex justify-end fade-in">
+      <div className="group relative flex justify-end fade-in">
         <div className="max-w-[85%] rounded-2xl rounded-br-md bg-surface-3 px-3.5 py-2 text-pretty"><Markdown text={m.text} chat /></div>
+        {m.text && <MessageMenu text={m.text} />}
       </div>
     );
   }
   const waiting = m.streaming && !m.text && !m.error;
   return (
-    <div className="flex gap-2.5 fade-in">
+    <div className="group relative flex gap-2.5 fade-in">
+      {m.text && !m.streaming && <MessageMenu text={m.text} />}
       {inPlace && <span className="mt-0.5"><PinOrb size={22} thinking={m.streaming} /></span>}
       <div className="min-w-0 flex-1 text-sm leading-relaxed">
         {m.name && <div className="text-xs text-ink-3 mb-0.5">{m.name}</div>}
@@ -102,6 +123,17 @@ export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolea
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [draft]);
+  // "Quote in reply" from a message's menu: the quote goes on top of whatever is being written.
+  useEffect(() => {
+    const onQuote = (e: Event) => {
+      const text = String((e as CustomEvent).detail ?? "").trim();
+      if (!text) return;
+      setDraft((d) => `${text.split("\n").map((l) => `> ${l}`).join("\n")}\n\n${d}`);
+      setTimeout(() => area.current?.focus({ preventScroll: true }), 0);
+    };
+    window.addEventListener("pin:quote", onQuote);
+    return () => window.removeEventListener("pin:quote", onQuote);
+  }, []);
   useEffect(() => {
     if (!autoFocus) return;
     const t = setTimeout(() => area.current?.focus({ preventScroll: true }), 120);

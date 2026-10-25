@@ -28,6 +28,7 @@ import { handleNotes } from "./notes.ts";
 import { handleStorageTools } from "./storageTools.ts";
 import { handleBackupTools } from "./backupTools.ts";
 import { handleDiskHealth } from "./diskHealth.ts";
+import { handleGithub } from "./github.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -94,4 +95,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "storage-tools", handle: handleStorageTools },
   { name: "backup-tools", handle: handleBackupTools },
   { name: "disk-health", handle: handleDiskHealth },
+  { name: "github", handle: handleGithub },
 ];

@@ -117,6 +117,7 @@ export const Input = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLI
 export { Select } from "./Select.tsx";
 export { Slider } from "./Slider.tsx";
 export { ColorPicker } from "./ColorPicker.tsx";
+export { Menu, type MenuEntry } from "./Menu.tsx";
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} className={cn(controlClass, "px-3 py-2.5 leading-relaxed resize-y min-h-24", className)} />;

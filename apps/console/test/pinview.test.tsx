@@ -34,11 +34,15 @@ describe("ConversationList", () => {
 
   it("offers rename and delete only when the owner of the list gives handlers", () => {
     const { unmount } = list();
-    expect(screen.queryByLabelText("Rename Storage layout")).toBeNull();
+    expect(screen.queryByLabelText("Options for Storage layout")).toBeNull();
     unmount();
     list({ onRename: async () => undefined, onDelete: async () => undefined });
-    expect(screen.getByLabelText("Rename Storage layout")).toBeTruthy();
-    expect(screen.getByLabelText("Delete Storage layout")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Options for Storage layout"));
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Keep it"));
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
   it("marks the open conversation", () => {
@@ -64,17 +68,66 @@ describe("PinView", () => {
 });
 
 describe("PinView panels", () => {
-  it("opens Files and Details from the header, one at a time, and closes them", async () => {
+  it("opens Files as a tile and Details beside it, and closes them", async () => {
     const { PinView } = await import("../src/pages/pinview/PinView.tsx");
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><PinView /></MemoryRouter></QueryClientProvider>);
-    expect(screen.queryByRole("complementary", { name: "Files" })).toBeNull();
-    fireEvent.click(screen.getByLabelText("Files"));
-    expect(screen.getByRole("complementary", { name: "Files" })).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Tiles" })).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "Files" })[0]!);
+    expect(screen.getByRole("complementary", { name: "Tiles" })).toBeTruthy();
     expect(screen.getByText("No organizations yet")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Details"));
-    expect(screen.queryByRole("complementary", { name: "Files" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByRole("complementary", { name: "Details" })).toBeTruthy();
-    fireEvent.click(screen.getAllByLabelText("Close")[0]!);
+    expect(screen.getByRole("region", { name: "Model" })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Close Files"));
+    expect(screen.queryByRole("complementary", { name: "Tiles" })).toBeNull();
+    fireEvent.click(screen.getByLabelText("Close details"));
     expect(screen.queryByRole("complementary", { name: "Details" })).toBeNull();
+  });
+
+  it("hides and restores detail cards from the Show menu", async () => {
+    localStorage.clear();
+    const { PinView } = await import("../src/pages/pinview/PinView.tsx");
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><PinView /></MemoryRouter></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show cards" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Model" }));
+    expect(screen.queryByRole("region", { name: "Model" })).toBeNull();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Model" }).getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reset to defaults" }));
+    expect(screen.getByRole("region", { name: "Model" })).toBeTruthy();
+  });
+});
+
+describe("ConversationList sections", () => {
+  const sections = [
+    { id: "pinned", label: "Pinned", items: [items[1]!] },
+    { id: "pin", label: "Pin", items: [items[0]!, items[2]!] },
+    { id: "c1", label: "Acme", items: [] },
+  ];
+
+  it("shows named sections, folds one away, and says when a section is empty", () => {
+    render(<ConversationList sections={sections} activeKey={null} onPick={() => undefined} />);
+    expect(screen.getByRole("button", { name: /Pinned/ })).toBeTruthy();
+    expect(screen.getByText("No chats yet.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Pin$/ }));
+    expect(screen.queryByText("Storage layout")).toBeNull();
+    expect(screen.getByText("CEO")).toBeTruthy();
+  });
+
+  it("pins and unpins from a row", () => {
+    const toggled: string[] = [];
+    render(<ConversationList sections={sections} pinned={new Set(["agent:c1:a1"])} onTogglePin={(c) => toggled.push(c.key)} activeKey={null} onPick={() => undefined} />);
+    fireEvent.click(screen.getByLabelText("Options for CEO"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Unpin" }));
+    fireEvent.click(screen.getByLabelText("Options for Storage layout"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin" }));
+    expect(toggled).toEqual(["agent:c1:a1", "pin:2"]);
+  });
+
+  it("search opens folded sections and hides empty ones", () => {
+    render(<ConversationList sections={sections} search activeKey={null} onPick={() => undefined} />);
+    fireEvent.change(screen.getByLabelText("Search conversations"), { target: { value: "backup" } });
+    expect(screen.getByText("Fix the backup job")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Acme/ })).toBeNull();
   });
 });

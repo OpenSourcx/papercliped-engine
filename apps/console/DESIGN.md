@@ -188,6 +188,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `Select` (`ui/Select.tsx`) | every dropdown | a real `<select>` underneath, our list on top (never the browser's); sizes `xs` `sm` `md` `lg` `xl`; Up/Down/Home/End/type-ahead, Enter or Space opens and chooses, Esc closes; the list follows the field when the page scrolls |
 | `Slider` (`ui/Slider.tsx`) | every range | a real `<input type="range">` drawn from tokens (accent fill, round thumb, focus ring); label left, value right; `format` also sets the spoken value; `variant` for colour ramps |
 | `ColorPicker` (`ui/ColorPicker.tsx`) | every colour choice | round swatch opens our popover: hue, saturation, lightness sliders and a hex field; `#rrggbb`; never the browser's picker |
+| `Menu` (`ui/Menu.tsx`) | every "⋯" or options menu | a small icon button opens our popover of actions (shortcut hints, red for destructive), checkboxes that stay open, headings and separators; arrow keys, Enter, Escape; never a hand-made dropdown |
 | `NewAutomationModal` (`pages/pin/runtime.tsx`) | the model for "describe it or fill the form" creation | open question, example chips, hand-off to Pin, form behind a ghost button |
 | `SettingsModal` | the full-screen settings | categories left, section right; phone shows one at a time |
 | `ArcMeter` / `BarMeter` (`ui/meters.tsx`) | one ratio against a limit | value in ink, never in the series colour; exact value in caption and tooltip |
