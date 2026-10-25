@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Building2, MessageCircle, PanelRight } from "lucide-react";
+import { ArrowLeft, Building2, FolderOpen, MessageCircle, PanelRight, X } from "lucide-react";
 import type { Agent } from "@papercliped-engine/engine-client";
 import { useAgentsCanRun } from "../containers/Banner.tsx";
 import { chatBlock, useSendChat } from "../../data/engine/chat.ts";
@@ -16,8 +16,9 @@ import { PinOrb } from "../../pin/PinOrb.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
 import { ThreadProvider, type ThreadApi } from "../../pin/ThreadContext.tsx";
 import type { ThreadMessage } from "../../pin/useThread.ts";
-import { Button, Notice, Select, Status } from "../../ui/primitives.tsx";
+import { Notice, Segmented, Select, Status } from "../../ui/primitives.tsx";
 import { useNames } from "../org/live/names.ts";
+import { FilesPanel } from "./FilesPanel.tsx";
 
 /**
  * PinView: one full-screen place for every conversation on this device. Pin's chats and each organization's agent chats
@@ -33,7 +34,8 @@ export function PinView() {
   const pin = usePin();
   const device = setup?.deviceName ?? "pve";
   const [params, setParams] = useSearchParams();
-  const [details, setDetails] = useState(false);
+  const [panel, setPanel] = useState<null | "details" | "files">(null);
+  const [filesOrg, setFilesOrg] = useState<string | null>(null);
   const orgs = data.orgs.flatMap((o) => (o.engine ? [{ name: o.name, slug: o.slug, hue: o.hue, companyId: o.engine.companyId }] : []));
   const ids = orgs.map((o) => o.companyId);
   const agents = useAgentsOf(ids);
@@ -98,12 +100,13 @@ export function PinView() {
         />
       </aside>
 
-      <main className={cn("flex-1 min-w-0 flex-col min-h-0", params.get("t") ? "flex" : "hidden md:flex")}>
+      <main className={cn("relative flex-1 min-w-0 flex-col min-h-0", params.get("t") ? "flex" : "hidden md:flex")}>
         <div className="h-12 shrink-0 border-b border-line flex items-center gap-2 px-3">
           <button type="button" onClick={toList} aria-label="Back to conversations" className="md:hidden h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><ArrowLeft className="h-4 w-4" /></button>
           {view.kind === "pin" ? <PinOrb size={22} /> : <MessageCircle className="h-4 w-4 text-ink-3" aria-hidden />}
           <div className="text-sm font-medium truncate flex-1">{view.kind === "pin" ? "Pin" : current?.agent.name ?? "Agent"}{current && <span className="text-ink-3 font-normal"> · {current.org}</span>}</div>
-          <button type="button" aria-label="Details" aria-pressed={details} onClick={() => setDetails((v) => !v)} className={cn("transition-control h-9 w-9 rounded-lg flex items-center justify-center hover:bg-surface-2", details ? "text-ink bg-surface-2" : "text-ink-3")}><PanelRight className="h-4 w-4" /></button>
+          <button type="button" aria-label="Files" aria-pressed={panel === "files"} onClick={() => setPanel((v) => (v === "files" ? null : "files"))} className={cn("transition-control h-9 w-9 rounded-lg flex items-center justify-center hover:bg-surface-2", panel === "files" ? "text-ink bg-surface-2" : "text-ink-3")}><FolderOpen className="h-4 w-4" /></button>
+          <button type="button" aria-label="Details" aria-pressed={panel === "details"} onClick={() => setPanel((v) => (v === "details" ? null : "details"))} className={cn("transition-control h-9 w-9 rounded-lg flex items-center justify-center hover:bg-surface-2", panel === "details" ? "text-ink bg-surface-2" : "text-ink-3")}><PanelRight className="h-4 w-4" /></button>
         </div>
         <div className="flex-1 min-h-0 flex">
           <div className="flex-1 min-w-0 flex flex-col min-h-0 max-w-4xl mx-auto w-full">
@@ -115,21 +118,30 @@ export function PinView() {
               <div className="p-8"><Notice tone="info">That agent isn't available any more. Pick another conversation.</Notice></div>
             )}
           </div>
-          {details && (
-            <aside aria-label="Details" className="hidden lg:block w-72 shrink-0 border-l border-line p-4 space-y-4 overflow-y-auto">
-              {view.kind === "pin" ? (
-                <>
-                  <div><div className="text-xs text-ink-3">Model</div><div className="text-sm">{pin.providerName ?? "Not set up"}{pin.settings?.model ? <span className="text-ink-3"> · {pin.settings.model}</span> : null}</div></div>
-                  <div><div className="text-xs text-ink-3 mb-1">Mode</div><div className="text-sm">{pin.settings?.mode === "agent" ? "Agent" : "Assistant"}</div></div>
-                  <PermissionPicker />
-                </>
-              ) : current ? (
-                <>
-                  <div><div className="text-xs text-ink-3">Organization</div><div className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-ink-3" aria-hidden />{current.org}</div></div>
-                  <div><div className="text-xs text-ink-3 mb-1">Agent</div><Status kind={agentStatusOf(current.agent.status)[0]} label={agentStatusOf(current.agent.status)[1]} /></div>
-                  <Link to={`/${device}/${orgs.find((o) => o.companyId === current.companyId)?.slug ?? ""}/agents/${current.agent.id}`} className="text-compact text-accent hover:underline">Open the agent</Link>
-                </>
-              ) : null}
+          {panel && (
+            <aside aria-label={panel === "files" ? "Files" : "Details"} className="absolute inset-0 lg:static lg:inset-auto bg-bg lg:w-80 shrink-0 lg:border-l border-line flex flex-col min-h-0">
+              <div className="h-12 shrink-0 border-b border-line flex items-center gap-2 px-3 lg:hidden">
+                <span className="text-sm font-medium flex-1">{panel === "files" ? "Files" : "Details"}</span>
+                <button type="button" aria-label="Close" onClick={() => setPanel(null)} className="transition-control h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="hidden lg:block px-4 pt-3"><Segmented size="sm" label="Panel" value={panel} onChange={setPanel} options={[{ value: "files", label: "Files" }, { value: "details", label: "Details" }]} /></div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                {panel === "files" ? (
+                  <FilesPanel orgs={orgs} companyId={view.kind === "agent" ? view.companyId : filesOrg ?? orgs[0]?.companyId ?? null} onOrg={setFilesOrg} />
+                ) : view.kind === "pin" ? (
+                  <>
+                    <div><div className="text-xs text-ink-3">Model</div><div className="text-sm">{pin.providerName ?? "Not set up"}{pin.settings?.model ? <span className="text-ink-3"> · {pin.settings.model}</span> : null}</div></div>
+                    <div><div className="text-xs text-ink-3 mb-1">Mode</div><div className="text-sm">{pin.settings?.mode === "agent" ? "Agent" : "Assistant"}</div></div>
+                    <PermissionPicker />
+                  </>
+                ) : current ? (
+                  <>
+                    <div><div className="text-xs text-ink-3">Organization</div><div className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-ink-3" aria-hidden />{current.org}</div></div>
+                    <div><div className="text-xs text-ink-3 mb-1">Agent</div><Status kind={agentStatusOf(current.agent.status)[0]} label={agentStatusOf(current.agent.status)[1]} /></div>
+                    <Link to={`/${device}/${orgs.find((o) => o.companyId === current.companyId)?.slug ?? ""}/agents/${current.agent.id}`} className="text-compact text-accent hover:underline">Open the agent</Link>
+                  </>
+                ) : null}
+              </div>
             </aside>
           )}
         </div>

@@ -62,3 +62,19 @@ describe("PinView", () => {
     expect(screen.getByLabelText("Message Pin")).toBeTruthy();
   });
 });
+
+describe("PinView panels", () => {
+  it("opens Files and Details from the header, one at a time, and closes them", async () => {
+    const { PinView } = await import("../src/pages/pinview/PinView.tsx");
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><PinView /></MemoryRouter></QueryClientProvider>);
+    expect(screen.queryByRole("complementary", { name: "Files" })).toBeNull();
+    fireEvent.click(screen.getByLabelText("Files"));
+    expect(screen.getByRole("complementary", { name: "Files" })).toBeTruthy();
+    expect(screen.getByText("No organizations yet")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Details"));
+    expect(screen.queryByRole("complementary", { name: "Files" })).toBeNull();
+    expect(screen.getByRole("complementary", { name: "Details" })).toBeTruthy();
+    fireEvent.click(screen.getAllByLabelText("Close")[0]!);
+    expect(screen.queryByRole("complementary", { name: "Details" })).toBeNull();
+  });
+});
