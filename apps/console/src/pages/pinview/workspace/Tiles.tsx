@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { cn } from "../../../lib/storage.ts";
-import { ResizeHandle } from "../../../ui/primitives.tsx";
+import { IconButton, ResizeHandle } from "../../../ui/primitives.tsx";
 import type { TileKind } from "./layout.ts";
 
 /**
@@ -27,12 +27,12 @@ export function TileStack({ tiles, heights, onHeight, expanded, onExpand, onClos
         const h = heights[t.kind] ?? 320;
         return (
           <div key={t.kind} className={cn("flex flex-col min-h-0", last ? "flex-1" : "shrink-0")} style={last ? undefined : { height: h }}>
-            <section aria-label={t.label} className="flex flex-col min-h-0 h-full bg-bg">
-              <header className="h-11 shrink-0 flex items-center gap-1 pl-4 pr-2 border-b border-line">
-                <div className="min-w-0 flex-1 truncate text-compact font-medium">{t.title}</div>
+            <section aria-label={t.label} className="fade-in flex flex-col min-h-0 h-full bg-bg">
+              <header className="h-12 shrink-0 flex items-center gap-0.5 pl-4 pr-2 border-b border-line">
+                <div className="min-w-0 flex-1 truncate text-compact font-semibold">{t.title}</div>
                 {t.actions}
-                <button type="button" aria-label={expanded === t.kind ? `Restore ${t.label}` : `Expand ${t.label}`} title={expanded === t.kind ? "Restore" : "Expand"} onClick={() => onExpand(expanded === t.kind ? null : t.kind)} className="transition-control h-7 w-7 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2">{expanded === t.kind ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
-                <button type="button" aria-label={`Close ${t.label}`} title="Close" onClick={() => { if (expanded === t.kind) onExpand(null); onClose(t.kind); }} className="transition-control h-7 w-7 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><X className="h-3.5 w-3.5" /></button>
+                <IconButton variant="bare" size="xs" label={expanded === t.kind ? `Restore ${t.label}` : `Expand ${t.label}`} onClick={() => onExpand(expanded === t.kind ? null : t.kind)}>{expanded === t.kind ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</IconButton>
+                <IconButton variant="bare" size="xs" label={`Close ${t.label}`} onClick={() => { if (expanded === t.kind) onExpand(null); onClose(t.kind); }}><X className="h-4 w-4" /></IconButton>
               </header>
               <div className="flex-1 min-h-0 overflow-hidden">{t.body}</div>
             </section>

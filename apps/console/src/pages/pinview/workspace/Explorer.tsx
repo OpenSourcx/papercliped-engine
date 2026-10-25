@@ -6,7 +6,7 @@ import { errorText } from "../../../data/engine/queries.ts";
 import { machineFilesApi, type FileEntry } from "../../../data/engine/machineFilesApi.ts";
 import { useEngine } from "../../../data/store.tsx";
 import { cn } from "../../../lib/storage.ts";
-import { Menu, Select } from "../../../ui/primitives.tsx";
+import { IconButton, Menu, Select } from "../../../ui/primitives.tsx";
 import { copyText } from "../TileView.tsx";
 import { SideHeader } from "./parts.tsx";
 
@@ -34,7 +34,7 @@ function Folder_({ vmid, path, depth, hidden, open, toggle, onOpenFile, activePa
         return (
           <li key={e.name} role="treeitem" aria-expanded={folder ? isOpen : undefined} aria-selected={activePath === p}>
             <button type="button" onClick={() => (folder ? toggle(p) : onOpenFile(p))} title={p}
-              className={cn("transition-control w-full flex items-center gap-1.5 py-1 pr-2 text-left text-compact hover:bg-surface-2", activePath === p && "bg-accent-soft text-ink")} style={{ paddingLeft: `${0.25 + depth * 0.875}rem` }}>
+              className={cn("transition-control w-full flex items-center gap-1.5 py-0.5 pr-2 text-left text-compact hover:bg-surface-2", activePath === p && "bg-accent-soft text-ink")} style={{ paddingLeft: `${0.25 + depth * 0.875}rem` }}>
               <span className="w-4 shrink-0 flex justify-center text-ink-3" aria-hidden>{folder ? (isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : null}</span>
               <Icon className={cn("h-4 w-4 shrink-0", folder ? "text-accent" : "text-ink-3")} aria-hidden />
               <span className="truncate font-mono text-xs">{e.name}</span>
@@ -62,7 +62,7 @@ export function Explorer({ machines, vmid, onVmid, onOpenFile, activePath }: { m
     <div className="flex flex-col min-h-0 h-full">
       <SideHeader title="Explorer" actions={
         <>
-          <button type="button" aria-label="Refresh" title="Refresh" disabled={!machine} onClick={() => void qc.invalidateQueries({ queryKey: ["machine-files", vmid] })} className="transition-control h-7 w-7 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-40"><RefreshCw className="h-3.5 w-3.5" /></button>
+          <IconButton variant="bare" size="xs" label="Refresh" disabled={!machine} onClick={() => void qc.invalidateQueries({ queryKey: ["machine-files", vmid] })}><RefreshCw className="h-4 w-4" /></IconButton>
           <Menu size="sm" label="Explorer options" icon={<MoreHorizontal className="h-4 w-4" />} items={[
             { kind: "check", label: "Show hidden files", checked: hidden, onToggle: setHidden },
             { kind: "separator" },

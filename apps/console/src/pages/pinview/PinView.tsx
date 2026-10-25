@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, CheckCheck, Circle, CircleX, ClipboardList, FileText, FolderOpen, FolderTree, GitPullRequest, ListChecks, ListTree, Loader2, MessageCircle, MessagesSquare, MoreHorizontal, Package, PanelLeft, PanelRight, RefreshCw, Share, Sparkles, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Circle, CircleCheck, CircleX, ClipboardList, FileText, FolderOpen, FolderTree, GitPullRequest, ListChecks, ListTree, Loader2, MessageCircle, MessagesSquare, MoreHorizontal, Package, PanelLeft, PanelRight, RefreshCw, Share, Sparkles, SquareTerminal } from "lucide-react";
 import type { Agent, CompanyArtifact } from "@papercliped-engine/engine-client";
 import { useAgentsCanRun } from "../containers/Banner.tsx";
 import { chatBlock, useSendChat } from "../../data/engine/chat.ts";
@@ -20,7 +20,7 @@ import { PinThread } from "../../pin/PinThread.tsx";
 import { ThreadProvider, type ThreadApi } from "../../pin/ThreadContext.tsx";
 import type { ThreadMessage } from "../../pin/useThread.ts";
 import { ConfirmModal } from "../../ui/Confirm.tsx";
-import { Menu, Notice, ResizeHandle, Select, type MenuEntry } from "../../ui/primitives.tsx";
+import { Button, IconButton, Menu, Notice, ResizeHandle, Select, type MenuEntry } from "../../ui/primitives.tsx";
 import { Preview } from "../org/live/LiveArtifacts.tsx";
 import { useNames } from "../org/live/names.ts";
 import { ChangesBody, PullRequestList, useGithub } from "./Changes.tsx";
@@ -60,17 +60,14 @@ const wide = () => typeof window !== "undefined" && typeof window.matchMedia ===
 /** A rough count of tokens: about four characters each, which is what most models' tokenizers average on English and code. */
 const tokensOf = (ms: ThreadMessage[]) => Math.round(ms.reduce((n, m) => n + m.text.length + (m.tool ? JSON.stringify(m.tool.args ?? {}).length + (m.tool.result?.length ?? 0) : 0), 0) / 4);
 
-/** An icon in the conversation's toolbar that shows whether what it opens is open. */
-function ToolIcon({ label, on, onClick, children, badge }: { label: string; on?: boolean; onClick: () => void; children: ReactNode; badge?: ReactNode }) {
-  return (
-    <button type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick}
-      className={cn("transition-control relative h-8 w-8 rounded-md flex items-center justify-center", on ? "bg-surface-3 text-ink" : "text-ink-3 hover:text-ink hover:bg-surface-2")}>
-      {children}{badge}
-    </button>
-  );
+/** An icon in the conversation's toolbar that shows whether what it opens is open; the dot says something there needs a look. */
+function ToolIcon({ label, on, onClick, children, badge, wideOnly }: { label: string; on?: boolean; onClick: () => void; children: ReactNode; badge?: ReactNode; /** On a phone the icon moves into the More menu. */ wideOnly?: boolean }) {
+  return <IconButton variant="bare" size="sm" label={label} pressed={on} onClick={onClick} className={wideOnly ? "hidden sm:inline-flex" : undefined}>{children}{badge}</IconButton>;
 }
+const dot = "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-bg";
 
-const TASK_ICON = { done: <Check className="h-3.5 w-3.5 text-ink-3" />, failed: <CircleX className="h-3.5 w-3.5 text-critical" />, running: <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />, waiting: <Circle className="h-3.5 w-3.5 text-ink-3" /> } as const;
+const TASK_ICON = { done: <CircleCheck className="h-4 w-4 text-good" />, failed: <CircleX className="h-4 w-4 text-critical" />, running: <Loader2 className="h-4 w-4 animate-spin text-accent" />, waiting: <Circle className="h-4 w-4 text-ink-3" /> } as const;
+const TASK_WORD = { done: "Done", failed: "Failed", running: "In progress", waiting: "To do" } as const;
 
 export function PinView() {
   const { data, setup, live } = useEngine();
@@ -202,7 +199,6 @@ export function PinView() {
 
   const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agentId === view.agentId) : null;
   const currentAgent = current ? agents[ids.indexOf(current.companyId)]?.data?.find((a) => a.id === current.agentId) ?? null : null;
-  const permission = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission)?.label;
   const title = view.kind === "pin" ? (pin.chats.find((c) => c.id === pin.chatId)?.title ?? "New chat") : current?.name ?? "Agent";
   const messages = view.kind === "pin" ? pin.messages : [];
 
@@ -294,17 +290,20 @@ export function PinView() {
   const tileSpecs: Record<TileKind, TileSpec> = {
     plan: {
       kind: "plan", label: "Plan", title: livePlan?.title ?? planTile?.title ?? "Plan",
-      actions: livePlan || planTile ? <a href={`/${device}/pin?tab=plans`} className="text-xs text-accent hover:underline mr-1">Review</a> : undefined,
+      actions: livePlan || planTile ? <a href={`/${device}/pin?tab=plans`} className="transition-control h-7 px-2 rounded-md inline-flex items-center text-xs font-medium text-accent hover:bg-accent-soft">Review</a> : undefined,
       body: (
         <div className="h-full overflow-y-auto px-4 py-3">
-          <div className="text-micro font-semibold uppercase tracking-label text-ink-3 mb-2">Tasks</div>
+          <div className="flex items-center justify-between mb-2 text-micro font-semibold uppercase tracking-label text-ink-3">
+            <span>Tasks</span>
+            {tasks.length > 0 && <span className="tabular-nums normal-case tracking-normal font-normal text-xs">{tasks.filter((t) => t.state === "done").length} of {tasks.length} done</span>}
+          </div>
           {tasks.length === 0 ? <p className="text-compact text-ink-3 text-pretty">When Pin writes a plan or works through steps, its tasks show here and tick off as they finish.</p> : (
-            <ol className="space-y-1.5">
+            <ol className="space-y-0.5">
               {tasks.map((t) => (
                 <li key={t.id}>
-                  <button type="button" disabled={!t.onOpen} onClick={t.onOpen} className="w-full flex items-start gap-2.5 text-left text-compact rounded-md px-1 py-0.5 enabled:hover:bg-surface-2">
-                    <span className="mt-0.5 shrink-0">{TASK_ICON[t.state]}</span>
-                    <span className={cn("text-pretty", t.state === "done" && "line-through text-ink-3", t.state === "running" && "text-ink font-medium", t.state === "failed" && "text-critical")}>{t.label}</span>
+                  <button type="button" disabled={!t.onOpen} onClick={t.onOpen} className={cn("transition-control w-full flex items-start gap-2.5 text-left text-compact rounded-md px-2 py-1.5 enabled:hover:bg-surface-2", t.state === "running" && "bg-accent-soft", t.state === "failed" && "bg-critical/10")}>
+                    <span className="mt-0.5 shrink-0" role="img" aria-label={TASK_WORD[t.state]}>{TASK_ICON[t.state]}</span>
+                    <span className={cn("text-pretty min-w-0", t.state === "done" && "line-through text-ink-3", t.state === "running" && "text-ink font-medium", t.state === "failed" && "text-critical", t.state === "waiting" && "text-ink-2")}>{t.label}</span>
                   </button>
                 </li>
               ))}
@@ -317,7 +316,7 @@ export function PinView() {
       kind: "files", label: "Files", title: active ? heads.find((h) => h.id === active.id)?.title ?? "Files" : "Files",
       actions: (
         <>
-          <button type="button" aria-label={layout.fileTree ? "Hide the file tree" : "Show the file tree"} title={layout.fileTree ? "Hide the file tree" : "Show the file tree"} aria-pressed={layout.fileTree} onClick={() => set((l) => ({ fileTree: !l.fileTree }))} className={cn("transition-control h-7 w-7 rounded-md flex items-center justify-center hover:bg-surface-2", layout.fileTree ? "text-ink" : "text-ink-3")}><ListTree className="h-4 w-4" /></button>
+          <IconButton variant="bare" size="xs" label={layout.fileTree ? "Hide the file tree" : "Show the file tree"} pressed={layout.fileTree} onClick={() => set((l) => ({ fileTree: !l.fileTree }))}><ListTree className="h-4 w-4" /></IconButton>
           <Menu size="sm" label="Files options" icon={<MoreHorizontal className="h-4 w-4" />} items={[
             { kind: "check", label: "Show file tree", checked: layout.fileTree, onToggle: (v) => set({ fileTree: v }) },
             { kind: "separator" },
@@ -338,7 +337,7 @@ export function PinView() {
     terminal: {
       kind: "terminal", label: "Terminal", title: "Terminal",
       actions: (
-        <div className="w-48 mr-1">
+        <div className="w-40 mr-1">
           <Select aria-label="Terminal on" size="sm" value={termTarget} onChange={(e) => setTermTarget(e.target.value)}>
             <option value="host">This device</option>
             {machines.filter((g) => g.status === "running" && !g.template).map((g) => <option key={g.vmid} value={String(g.vmid)}>{g.name} ({g.vmid})</option>)}
@@ -353,7 +352,7 @@ export function PinView() {
     },
     prs: {
       kind: "prs", label: "Pull requests", title: "Pull requests",
-      actions: github.status.data?.connected ? <button type="button" aria-label="Refresh" title="Refresh" onClick={() => void qc.invalidateQueries({ queryKey: ["github", "prs"] })} className="transition-control h-7 w-7 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><RefreshCw className="h-3.5 w-3.5" /></button> : undefined,
+      actions: github.status.data?.connected ? <IconButton variant="bare" size="xs" label="Refresh" onClick={() => void qc.invalidateQueries({ queryKey: ["github", "prs"] })}><RefreshCw className="h-4 w-4" /></IconButton> : undefined,
       body: <div className="h-full overflow-y-auto p-3 space-y-3">{github.status.data?.connected ? <PullRequestList prs={github.prs.data?.prs ?? []} /> : <ChangesBody onShowAll={() => undefined} editing={false} onEdited={() => undefined} />}</div>,
     },
   };
@@ -433,16 +432,19 @@ export function PinView() {
       {layout.sideOpen && <ResizeHandle label="Sidebar width" value={layout.sideWidth} min={220} max={420} onChange={(v) => set({ sideWidth: v })} className="hidden md:block" />}
 
       <main className={cn("relative flex-1 min-w-0 flex-col min-h-0", onPhoneThread ? "flex" : "hidden md:flex")}>
-        <div className="h-11 shrink-0 flex items-center gap-1 px-2 border-b border-line">
-          <button type="button" onClick={toList} aria-label="Back to conversations" className="md:hidden h-8 w-8 rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><ArrowLeft className="h-4 w-4" /></button>
+        <div className="h-12 shrink-0 flex items-center gap-0.5 px-3 border-b border-line">
+          <IconButton variant="bare" size="sm" label="Back to conversations" onClick={toList} className="md:hidden"><ArrowLeft className="h-4 w-4" /></IconButton>
           {!layout.sideOpen && <span className="hidden md:inline-flex"><ToolIcon label="Show the sidebar (Ctrl+B)" onClick={() => set({ sideOpen: true })}><PanelLeft className="h-4 w-4" /></ToolIcon></span>}
           <span className="pl-1">{view.kind === "pin" ? <PinOrb size={18} /> : <MessageCircle className="h-4 w-4 text-ink-3" aria-hidden />}</span>
-          <h1 className="pl-1 text-compact font-medium truncate flex-1 min-w-0">{title}{current && <span className="text-ink-3 font-normal"> · {current.org}</span>}</h1>
+          <h1 className="pl-1.5 pr-2 text-sm font-medium truncate flex-1 min-w-0">{title}{current && <span className="text-ink-3 font-normal"> · {current.org}</span>}</h1>
           <ToolIcon label="Cards (Ctrl+.)" on={layout.cards} onClick={() => { set((l) => ({ cards: !l.cards })); if (!isWide) setSheet((s) => (s === "cards" ? null : "cards")); }}><PanelRight className="h-4 w-4" /></ToolIcon>
-          <ToolIcon label="Plan" on={layout.tiles.includes("plan")} onClick={() => toggleTileFromToolbar("plan")} badge={running.length ? <span aria-hidden className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" /> : undefined}><ListChecks className="h-4 w-4" /></ToolIcon>
-          <ToolIcon label="Terminal" on={layout.tiles.includes("terminal")} onClick={() => toggleTileFromToolbar("terminal")}><SquareTerminal className="h-4 w-4" /></ToolIcon>
-          <ToolIcon label="Files" on={layout.tiles.includes("files")} onClick={() => toggleTileFromToolbar("files")} badge={tabs.length ? <span aria-hidden className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-ink-3" /> : undefined}><FolderOpen className="h-4 w-4" /></ToolIcon>
+          <ToolIcon wideOnly label="Plan" on={layout.tiles.includes("plan")} onClick={() => toggleTileFromToolbar("plan")} badge={running.length ? <span aria-hidden className={cn(dot, "bg-accent")} /> : undefined}><ListChecks className="h-4 w-4" /></ToolIcon>
+          <ToolIcon wideOnly label="Terminal" on={layout.tiles.includes("terminal")} onClick={() => toggleTileFromToolbar("terminal")}><SquareTerminal className="h-4 w-4" /></ToolIcon>
+          <ToolIcon wideOnly label="Files" on={layout.tiles.includes("files")} onClick={() => toggleTileFromToolbar("files")} badge={tabs.length ? <span aria-hidden className={cn(dot, "bg-ink-3")} /> : undefined}><FolderOpen className="h-4 w-4" /></ToolIcon>
           <Menu label="More" icon={<MoreHorizontal className="h-4 w-4" />} items={[
+            { label: "Plan", icon: <ListChecks className="h-4 w-4" />, onSelect: () => toggleTileFromToolbar("plan") },
+            { label: "Terminal", icon: <SquareTerminal className="h-4 w-4" />, onSelect: () => toggleTileFromToolbar("terminal") },
+            { label: "Files", icon: <FolderOpen className="h-4 w-4" />, onSelect: () => toggleTileFromToolbar("files") },
             { label: "Artifacts", icon: <Package className="h-4 w-4" />, onSelect: () => toggleTileFromToolbar("artifacts") },
             { label: "Pull requests", icon: <GitPullRequest className="h-4 w-4" />, onSelect: () => toggleTileFromToolbar("prs") },
             { kind: "separator" },
@@ -450,14 +452,14 @@ export function PinView() {
             { label: "New chat with Pin", onSelect: newPinChat, shortcut: "Alt+N" },
             { label: "Search", onSelect: () => setPalette(true), shortcut: "Ctrl+P" },
           ]} />
-          <button type="button" onClick={share} disabled={!activeKey} title={activeKey ? "Copy a link to this conversation" : "Send a message first"} className="transition-control ml-1 h-8 px-2.5 rounded-md inline-flex items-center gap-1.5 text-compact text-ink-2 hover:text-ink hover:bg-surface-2 disabled:opacity-40">
+          <Button variant="ghost" size="sm" onClick={share} disabled={!activeKey} title={activeKey ? "Copy a link to this conversation" : "Send a message first"} aria-label={shared ? "Link copied" : "Share"} className="ml-1 pointer-coarse:h-11">
             {shared ? <Check className="h-4 w-4 text-good" /> : <Share className="h-4 w-4" />}<span className="hidden sm:inline">{shared ? "Copied" : "Share"}</span>
-          </button>
+          </Button>
         </div>
         <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto">
           {view.kind === "pin" ? (
             <PinThread inPlace autoFocus className="flex-1" empty={<div className="h-full flex flex-col items-center justify-center text-center gap-3 py-16 px-6"><PinOrb size={44} /><p className="text-ink-2 text-sm max-w-sm text-pretty">Ask Pin about this device, or tell it what to set up. In Agent mode it can act, inside machines too; its plan, files and commands open beside the chat.</p></div>}
-              below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{pin.settings?.mode === "agent" ? permission ?? "Agent" : "Assistant"}</span><span className="flex-1" /><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></div>} />
+              below={<PinStatus device={device} />} />
           ) : current && currentAgent ? (
             <AgentChat key={agentKey(current.companyId, current.agentId)} companyId={current.companyId} agent={currentAgent} org={current.org} />
           ) : (
@@ -467,9 +469,9 @@ export function PinView() {
         {/* On a phone the cards and the tiles open as sheets over the conversation. */}
         {!isWide && sheet && (
           <div className="absolute inset-0 z-(--z-raised) bg-bg flex flex-col">
-            <div className="h-11 shrink-0 flex items-center gap-2 px-2 border-b border-line">
+            <div className="h-12 shrink-0 flex items-center gap-1 px-3 border-b border-line">
               <ToolIcon label="Back to the conversation" onClick={() => setSheet(null)}><ArrowLeft className="h-4 w-4" /></ToolIcon>
-              <span className="text-compact font-medium">{sheet === "cards" ? "Details" : "Tiles"}</span>
+              <span className="text-sm font-medium">{sheet === "cards" ? "Details" : "Tiles"}</span>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">{sheet === "cards" ? <div className="p-3"><Cards m={cards} /></div> : <TileStack tiles={openTiles} heights={layout.tileHeights} onHeight={(k, h) => set((l) => ({ tileHeights: { ...l.tileHeights, [k]: h } }))} expanded={expanded} onExpand={setExpanded} onClose={(k) => { closeTile(k); if (layout.tiles.length <= 1) setSheet(null); }} />}</div>
           </div>
@@ -501,6 +503,29 @@ export function PinView() {
 }
 
 /** An organization's chat with one agent, drawn by the same thread as Pin's: each comment on the conversation task is a message. */
+/** The line under Pin's composer: the mode and permission change with a click; the model's own page is one click away. */
+function PinStatus({ device }: { device: string }) {
+  const pin = usePin();
+  const { live } = useEngine();
+  const [error, setError] = useState<string | null>(null);
+  const agent = pin.settings?.mode === "agent";
+  const current = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission);
+  return (
+    <div className="px-4 pb-3 -mt-1 flex items-center gap-1 text-xs text-ink-3 min-w-0">
+      <Menu size="sm" align="start" label="Mode" text={agent ? "Agent mode" : "Assistant mode"} items={[
+        { label: "Assistant: answers and reads", onSelect: () => pin.setMode("assistant"), disabled: !agent },
+        { label: "Agent: can act on the device", onSelect: () => pin.setMode("agent"), disabled: agent },
+      ]} />
+      {agent && live && pin.settings && (
+        <Menu size="sm" align="start" label="What Pin may do on its own" text={current?.label ?? "Ask"} items={PERMISSION_INFO.filter((p) => p.id !== "bypass" || p.id === pin.settings?.permission).map((p) => ({ label: p.label, onSelect: () => { setError(null); pin.setPermission(p.id).catch((e) => setError(e instanceof Error ? e.message : "That didn't save.")); }, disabled: p.id === pin.settings?.permission }))} />
+      )}
+      {error && <span role="alert" className="text-critical truncate">{error}</span>}
+      <span className="flex-1" />
+      <Link to={`/${device}/pin?tab=settings`} title="Choose the model in Pin's settings" className="transition-control h-7 pointer-coarse:h-11 px-2 rounded-md inline-flex items-center min-w-0 hover:text-ink hover:bg-surface-2"><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></Link>
+    </div>
+  );
+}
+
 function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent; org: string }) {
   const names = useNames(companyId);
   const chats = useChats(companyId, true);
@@ -544,7 +569,7 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
   return (
     <ThreadProvider value={api}>
       <PinThread inPlace autoFocus className="flex-1" empty={<p className="text-sm text-ink-3 py-8 text-center">No messages yet. Say hello to {agent.name}.</p>}
-        below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{agentStatusOf(agent.status)[1]}</span><span className="flex-1" /><span className="truncate">{org}</span></div>}
+        below={<div className="px-5 pb-3 -mt-1 h-7 flex items-center gap-3 text-xs text-ink-3"><span>{agentStatusOf(agent.status)[1]}</span><span className="flex-1" /><span className="truncate">{org}</span></div>}
         footer={(block || error) ? (
           <div className="px-4 space-y-2">
             {block && <Notice tone="warning" title={block.reason}>{block.todo}</Notice>}

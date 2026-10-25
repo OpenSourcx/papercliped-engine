@@ -22,5 +22,5 @@ export function MachineTerminal({ target }: { target: string }) {
       ? new DemoTransport({ kind: guest.type, name: guest.name, os: guest.os ?? "Linux", ip: guest.ip ?? null, cores: guest.cores, memUsed: guest.memUsed, memMax: guest.memMax, diskMax: guest.diskMax, uptimeSec: guest.uptimeSec ?? 3600 })
       : new DemoTransport({ kind: "host", name: setup?.deviceName ?? "pve", os: "Debian 13 (trixie)", ip: host.ip, cores: host.cpus, memUsed: host.memUsed, memMax: host.memTotal, diskMax: host.diskTotal, uptimeSec: host.uptimeSec ?? 86400 });
   }, [live, guest, host, setup]);
-  return <Terminal key={target} make={make} title={guest ? `root@${guest.name}` : `root@${setup?.deviceName ?? "pve"}`} className="h-full rounded-none border-0" />;
+  return <Terminal key={target} make={make} title={guest ? `root@${guest.name}` : `root@${setup?.deviceName ?? "pve"}`} embedded className="h-full" />;
 }

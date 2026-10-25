@@ -5,7 +5,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import "@xterm/xterm/css/xterm.css";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import { cn } from "../lib/storage.ts";
-import { Chip } from "../ui/primitives.tsx";
+import { Chip, IconButton } from "../ui/primitives.tsx";
 import type { TerminalTransport } from "./transport.ts";
 
 /** Reads a design token (index.css or the active theme) so the terminal follows the theme. */
@@ -14,7 +14,7 @@ function cssVar(name: string) {
 }
 
 /** An interactive terminal (xterm.js) bound to a transport. Fills its container and refits on resize. */
-export function Terminal({ make, title, className }: { make: () => TerminalTransport; title: string; className?: string }) {
+export function Terminal({ make, title, className, embedded }: { make: () => TerminalTransport; title: string; className?: string; embedded?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const [session, setSession] = useState(0);
   const [ended, setEnded] = useState(false);
@@ -77,6 +77,18 @@ export function Terminal({ make, title, className }: { make: () => TerminalTrans
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  if (embedded) {
+    // Inside a workspace tile the tile's header is the only chrome: the state and a restart sit quietly over the screen.
+    return (
+      <div className={cn("relative flex flex-col bg-bg", className)}>
+        <div className="absolute top-1.5 right-2 z-(--z-raised) flex items-center gap-1">
+          {live ? <Chip tone="accent">Live</Chip> : <Chip tone="warning">Demo shell</Chip>}
+          <IconButton variant="bare" size="xs" label="New session" onClick={() => setSession((s) => s + 1)}><RotateCcw className="h-3.5 w-3.5" /></IconButton>
+        </div>
+        <div ref={host} className="flex-1 min-h-0 px-3 py-2" onClick={() => host.current?.querySelector("textarea")?.focus()} />
+      </div>
+    );
+  }
   return (
     <div className={cn("flex flex-col rounded-xl border border-line overflow-hidden bg-bg", full && "fixed inset-3 z-(--z-fullscreen) shadow-modal", className)}>
       <div className="flex items-center gap-2 px-3 h-10 border-b border-line bg-surface">

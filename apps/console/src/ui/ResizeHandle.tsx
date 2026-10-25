@@ -64,7 +64,7 @@ export function ResizeHandle({ label, value, min, max, onChange, orientation = "
         className,
       )}
     >
-      <span aria-hidden className={cn("transition-control absolute bg-transparent group-hover:bg-accent/60 group-focus-visible:bg-accent group-active:bg-accent", orientation === "vertical" ? "inset-y-0 left-1/2 w-0.5 -translate-x-1/2" : "inset-x-0 top-1/2 h-0.5 -translate-y-1/2")} />
+      <span aria-hidden className={cn("transition-control absolute bg-transparent group-hover:bg-accent/70 group-focus-visible:bg-accent group-active:bg-accent shadow-none group-hover:shadow-raised", orientation === "vertical" ? "inset-y-0 left-1/2 w-0.5 -translate-x-1/2 group-hover:w-1 group-active:w-1" : "inset-x-0 top-1/2 h-0.5 -translate-y-1/2 group-hover:h-1 group-active:h-1")} />
     </div>
   );
 }

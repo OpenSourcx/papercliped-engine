@@ -34,9 +34,9 @@ export function Button({ variant = "secondary", size = "md", loading, className,
   );
 }
 
-/** A square button holding only an icon. The label is required: it becomes the accessible name and the tooltip. */
-export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: "sm" | "md"; variant?: "ghost" | "secondary" }>(function IconButton(
-  { label, size = "md", variant = "ghost", className, children, ...rest },
+/** A button holding only an icon. `bare` is the workspace's icon control: no box until hovered, `pressed` fills it while what it opens is open. The label is required: it becomes the accessible name and the tooltip. */
+export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: "xs" | "sm" | "md"; variant?: "bare" | "ghost" | "secondary"; pressed?: boolean }>(function IconButton(
+  { label, size = "md", variant = "ghost", pressed, className, children, ...rest },
   ref,
 ) {
   return (
@@ -45,11 +45,13 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
       type="button"
       aria-label={label}
       title={label}
+      aria-pressed={pressed}
       {...rest}
       className={cn(
-        "transition-control inline-flex items-center justify-center shrink-0 rounded-full disabled:opacity-40 disabled:pointer-events-none",
-        size === "sm" ? "h-8 w-8" : "h-10 w-10",
-        variant === "ghost" ? "text-ink-3 hover:text-ink hover:bg-surface-2" : "bg-surface-2 text-ink-2 border border-line hover:bg-surface-3 hover:text-ink",
+        "transition-control relative inline-flex items-center justify-center shrink-0 disabled:opacity-40 disabled:pointer-events-none",
+        variant === "bare" ? "rounded-md" : "rounded-full",
+        size === "xs" ? "h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11" : size === "sm" ? "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" : "h-10 w-10",
+        variant === "secondary" ? "bg-surface-2 text-ink-2 border border-line hover:bg-surface-3 hover:text-ink" : "text-ink-3 hover:text-ink hover:bg-surface-2 aria-pressed:bg-surface-3 aria-pressed:text-ink",
         className,
       )}
     >

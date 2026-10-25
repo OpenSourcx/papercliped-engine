@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 
 /**
@@ -19,7 +19,7 @@ export type MenuEntry =
 const GAP = 6;
 const WIDTH = 224;
 
-export function Menu({ label, icon, items, align = "end", className, size = "md" }: { label: string; icon: ReactNode; items: MenuEntry[]; align?: "start" | "end"; className?: string; size?: "sm" | "md" }) {
+export function Menu({ label, icon, text, items, align = "end", className, size = "md" }: { label: string; icon?: ReactNode; /** Words instead of an icon (a status line's "Agent mode"); the button then shows a small caret. */ text?: ReactNode; items: MenuEntry[]; align?: "start" | "end"; className?: string; size?: "sm" | "md" }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
@@ -123,9 +123,9 @@ export function Menu({ label, icon, items, align = "end", className, size = "md"
             show(true);
           }
         }}
-        className={cn("transition-control inline-flex items-center justify-center shrink-0 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 aria-expanded:bg-surface-2 aria-expanded:text-ink", size === "sm" ? "h-7 w-7" : "h-9 w-9", className)}
+        className={cn("transition-control inline-flex items-center justify-center shrink-0 rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 aria-expanded:bg-surface-3 aria-expanded:text-ink", text ? "gap-1 px-2 text-xs max-w-full min-w-0 " : "", size === "sm" ? "h-7 pointer-coarse:h-11" : "h-8 pointer-coarse:h-11", !text && (size === "sm" ? "w-7 pointer-coarse:w-11" : "w-8 pointer-coarse:w-11"), className)}
       >
-        {icon}
+        {text ? <><span className="truncate">{text}</span><ChevronDown className="h-3 w-3 shrink-0" aria-hidden /></> : icon}
       </button>
       {open && pos && createPortal(
         <div
