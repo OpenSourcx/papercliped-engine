@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-25T04:46:06.470Z",
+  "generatedAt": "2026-10-25T18:42:57.534Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc21"
+    "rc": "1.0.0-rc22"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc22",
+      "channel": "rc",
+      "publishedAt": "2026-10-25T18:42:56Z",
+      "notes": "## What's new in 1.0.0-rc22\n\n- **PinView: one full-screen list for Pin's chats and every organization's agent chats.** /<device>/view with search, filter, day groups and a details panel. ConversationList replaces ChatList's internals; ThreadContext lets any conversation feed the same thread, cards and composer. Agent chats read and write the engine's conversation task.\n- **Conversations: useThread and a source-agnostic message model; Pin's island runs on it.** A thread owns messages and the waiting/writing state; a source reports deltas, steps, cards and errors. Pin's live stream and the demo brain are two sources. Messages can come from an agent, with a name. PinView and organization chats reuse the hook.\n- **Connectors: save one credential for every agent; Pin can switch a container's console to shell.** Use for all agents saves a Claude subscription token or an API key once in the Vault and shares it with every matching agent in every organization. set_machine_config gains console_mode so Pin can open a container's console into a root shell when machine_exec meets a login prompt.\n- **Updates is a page, not a modal: Windows-style status, available updates and More options; history and advanced options are pages; restart confirms in place.**\n- **Agent sign-in: say what to do first, in order, instead of a dead end.** With no agent containers and no organization the page showed two warnings and 'No organizations yet'. It now shows a short checklist (set up agent containers, create an organization, then sign in) with a button for each step, and drops it once both are in place.\n- **docs: bring the 1.0.0 PinView and Collaborate plan into the repo.** It was only in the session's plan folder. PinView is the Claude-style workspace for Pin and agents.\n- **docs: cross-check the parity plan against VISION.md and the roadmap's v2 goals.**\n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc21...v1.0.0-rc22\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc22",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc21",
       "channel": "rc",
