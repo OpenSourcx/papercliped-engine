@@ -82,6 +82,20 @@ describe("the Agent containers screen", () => {
     expect(screen.getByText("Check and repair")).toBeTruthy();
   }, 10000);
 
+  it("offers lists of what the host has and starts from a valid pick instead of a default it may not have", async () => {
+    status = { ...status, options: { storages: ["local", "drive2"], templateStorages: ["local"], bridges: ["vmbr1"], suggested: { storage: "local", templateStorage: "local", bridge: "vmbr1" } } };
+    wrap(<AgentContainers />);
+    await screen.findByText("step access");
+    const storage = screen.getByLabelText("Container storage") as HTMLSelectElement;
+    expect(storage.tagName).toBe("SELECT");
+    expect(storage.value).toBe("local");
+    expect([...storage.options].map((o) => o.value)).toEqual(["local", "drive2"]);
+    expect((screen.getByLabelText("Network bridge") as HTMLSelectElement).value).toBe("vmbr1");
+    fireEvent.click(screen.getByText("Set up agent containers"));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/agent-containers/setup")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ storage: "local", templateStorage: "local", bridge: "vmbr1" });
+  });
+
   it("shows what failed and offers to resume", async () => {
     status = baseStatus({ state: "error", steps: steps(["access", "key"]), error: "storage 'local-lvm' is full" });
     wrap(<AgentContainers />);

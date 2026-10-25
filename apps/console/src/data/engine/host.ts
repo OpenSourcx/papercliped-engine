@@ -62,6 +62,8 @@ export interface ContainersStatus {
   canManage: boolean;
   job: { id: string; status: "running" | "done" | "failed" } | null;
   params?: ContainersParams | null;
+  /** What the node offers for the three host choices, and a valid starting pick for each (null when it couldn't be read). */
+  options?: { storages: string[]; templateStorages: string[]; bridges: string[]; suggested: { storage: string | null; templateStorage: string | null; bridge: string | null } } | null;
   error?: string;
 }
 export interface ContainersJob {

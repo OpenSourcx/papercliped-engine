@@ -420,8 +420,34 @@ export class AgentContainers {
       template,
       token: { exists: tokenExists },
       params: st.params ?? null,
+      options: await this.options(pve, st.params ?? null),
       ...(checkError ? { error: checkError } : state === "error" && st.lastJob?.error ? { error: st.lastJob.error } : {}),
     };
+  }
+
+  /**
+   * What this node can actually offer for the three host choices, and the pick to start from. The form shows these as
+   * lists, so nobody has to know that their default "local-lvm" isn't on this host. A saved choice that is still valid
+   * stays; otherwise: local-lvm or local-zfs when present for disks, "local" for templates, vmbr0 for the bridge, then
+   * whatever comes first.
+   */
+  private async options(pve: ProxmoxClient, saved: Params | null) {
+    try {
+      const node = this.d.node;
+      const [disks, tpl, net] = await Promise.all([pve.nodeStorages(node, "rootdir"), pve.nodeStorages(node, "vztmpl"), pve.network(node)]);
+      const storages = disks.map((x) => x.storage);
+      const templateStorages = tpl.map((x) => x.storage);
+      const bridges = net.interfaces.filter((i) => /bridge/i.test(i.type)).map((i) => i.iface);
+      const pick = (list: string[], saved: string | undefined, prefer: string[]) => (saved && list.includes(saved) ? saved : prefer.find((x) => list.includes(x)) ?? list[0] ?? null);
+      return {
+        storages,
+        templateStorages,
+        bridges,
+        suggested: { storage: pick(storages, saved?.storage, ["local-lvm", "local-zfs"]), templateStorage: pick(templateStorages, saved?.templateStorage, ["local"]), bridge: pick(bridges, saved?.bridge, ["vmbr0"]) },
+      };
+    } catch {
+      return null;
+    }
   }
 
   private wantedAcls(p: Params, vmid: number | undefined): [string, string][] {

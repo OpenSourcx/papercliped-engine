@@ -102,6 +102,17 @@ const status = async (sam: string) => (await send("GET", "/api/agent-containers"
 const secretsAnywhere = () => [...pve.tokenSecrets, state.getSecret("agentContainers.sshKey") ?? "", ...(state.getSecret("agentContainers.sshKey") ?? "").split("\n").filter((l) => l.length > 30)].filter(Boolean);
 
 describe("agent containers setup", () => {
+  it("offers the storages and bridges this node really has, and a valid pick to start from", async () => {
+    const sam = await admin();
+    const o = (await status(sam)).options;
+    expect(o.storages.length).toBeGreaterThan(0);
+    expect(o.templateStorages.length).toBeGreaterThan(0);
+    expect(o.bridges).toContain("vmbr0");
+    expect(o.storages).toContain(o.suggested.storage);
+    expect(o.templateStorages).toContain(o.suggested.templateStorage);
+    expect(o.suggested.bridge).toBe("vmbr0");
+  });
+
   it("sets everything up as the signed-in administrator, and ends ready", async () => {
     const sam = await admin();
     const { co, pool } = await org(sam, "Northwind");

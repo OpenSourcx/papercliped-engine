@@ -71,7 +71,13 @@ export function AgentContainers() {
   const job = useContainersJob(jobId);
   const j = job.data;
   const running = j?.status === "running" || setup.isPending || teardown.isPending;
-  const form = useMemo<ContainersParams>(() => choices ?? status?.params ?? { storage: "local-lvm", templateStorage: "local", bridge: "vmbr0", pool: "epc-agents", size: SIZES[1].size }, [choices, status?.params]);
+  const opts = status?.options ?? null;
+  // Start from what is saved, else from what this host offers (a default of local-lvm means nothing on a host without it).
+  const form = useMemo<ContainersParams>(
+    () => choices ?? status?.params ?? { storage: opts?.suggested.storage ?? "local-lvm", templateStorage: opts?.suggested.templateStorage ?? "local", bridge: opts?.suggested.bridge ?? "vmbr0", pool: "epc-agents", size: SIZES[1].size },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [choices, status?.params, JSON.stringify(opts?.suggested)],
+  );
   const set = (patch: Partial<ContainersParams>) => setChoices({ ...form, ...patch });
 
   const start = () =>
@@ -127,9 +133,9 @@ export function AgentContainers() {
           {canManage ? (
             <>
               <div className="mt-5 grid sm:grid-cols-2 gap-4">
-                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Container storage</span><Input value={form.storage} onChange={(e) => set({ storage: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Container storage" /><span className="block text-xs text-ink-3 mt-1">Where each agent container's disk lives, for example local-lvm.</span></label>
-                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Template storage</span><Input value={form.templateStorage} onChange={(e) => set({ templateStorage: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Template storage" /><span className="block text-xs text-ink-3 mt-1">Where Proxmox keeps container templates, for example local.</span></label>
-                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Network bridge</span><Input value={form.bridge} onChange={(e) => set({ bridge: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Network bridge" /><span className="block text-xs text-ink-3 mt-1">Containers get an address by DHCP on this bridge.</span></label>
+                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Container storage</span>{opts && opts.storages.length > 0 ? <Select value={form.storage} onChange={(e) => set({ storage: e.target.value })} disabled={running} aria-label="Container storage" className="font-mono">{(opts.storages.includes(form.storage) ? opts.storages : [form.storage, ...opts.storages]).map((x) => <option key={x} value={x}>{x}</option>)}</Select> : <Input value={form.storage} onChange={(e) => set({ storage: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Container storage" />}<span className="block text-xs text-ink-3 mt-1">Where each agent container's disk lives. Only storages on this host that can hold container disks are listed.</span></label>
+                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Template storage</span>{opts && opts.templateStorages.length > 0 ? <Select value={form.templateStorage} onChange={(e) => set({ templateStorage: e.target.value })} disabled={running} aria-label="Template storage" className="font-mono">{(opts.templateStorages.includes(form.templateStorage) ? opts.templateStorages : [form.templateStorage, ...opts.templateStorages]).map((x) => <option key={x} value={x}>{x}</option>)}</Select> : <Input value={form.templateStorage} onChange={(e) => set({ templateStorage: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Template storage" />}<span className="block text-xs text-ink-3 mt-1">Where Proxmox keeps container templates.</span></label>
+                <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Network bridge</span>{opts && opts.bridges.length > 0 ? <Select value={form.bridge} onChange={(e) => set({ bridge: e.target.value })} disabled={running} aria-label="Network bridge" className="font-mono">{(opts.bridges.includes(form.bridge) ? opts.bridges : [form.bridge, ...opts.bridges]).map((x) => <option key={x} value={x}>{x}</option>)}</Select> : <Input value={form.bridge} onChange={(e) => set({ bridge: e.target.value })} spellCheck={false} className="font-mono" disabled={running} aria-label="Network bridge" />}<span className="block text-xs text-ink-3 mt-1">Containers get an address by DHCP on this bridge.</span></label>
                 <label className="block"><span className="block text-compact text-ink-2 mb-1.5">Container size</span>
                   <Select value={sizeId(form.size)} onChange={(e) => set({ size: SIZES.find((x) => x.id === e.target.value)!.size })} disabled={running} aria-label="Container size">
                     {SIZES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
