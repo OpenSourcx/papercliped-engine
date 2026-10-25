@@ -6,6 +6,7 @@ import { connectApi, type CatalogEntry, type Connection } from "../../data/engin
 import { qk } from "../../data/engine/keys.ts";
 import { ago } from "../../data/engine/map.ts";
 import { errorText } from "../../data/engine/queries.ts";
+import { useModals } from "../../modals/useModals.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Spinner, Status, Toggle } from "../../ui/primitives.tsx";
@@ -60,7 +61,11 @@ export function LiveConnections() {
   );
 }
 
+/** Providers whose agents can sign in with a person's own account instead of a key (Settings → Agent sign-in). Gemini and OpenRouter have none. */
+const ACCOUNT_SIGN_IN: Record<string, string> = { anthropic: "Claude", openai: "Codex" };
+
 function Row({ c, can, onEdit, onChanged }: { c: Connection; can: boolean; onEdit: () => void; onChanged: () => void }) {
+  const modals = useModals();
   const [key, setKey] = useState("");
   const [setting, setSetting] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
@@ -94,6 +99,7 @@ function Row({ c, can, onEdit, onChanged }: { c: Connection; can: boolean; onEdi
         {can && (
           <div className="flex gap-2">
             {keyed && <Button size="sm" onClick={() => { setSetting(!setting); setNote(null); }}>{c.last4 ? "Replace key" : "Set key"}</Button>}
+            {c.builtin && ACCOUNT_SIGN_IN[c.id] && <Button size="sm" variant="ghost" onClick={() => modals.selectSection("agent-signin")} title={`Let agents use your ${ACCOUNT_SIGN_IN[c.id]} account instead of a key`}>Sign in with {ACCOUNT_SIGN_IN[c.id]}</Button>}
             {c.configured && <Button size="sm" variant="ghost" loading={test.isPending} onClick={() => test.mutate()}>Test</Button>}
             <Button size="sm" variant="ghost" onClick={onEdit}>Settings</Button>
           </div>
