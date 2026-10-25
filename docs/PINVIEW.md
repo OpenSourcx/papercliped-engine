@@ -84,3 +84,7 @@ How it works (`services/epaperclip/src/features/github.ts`):
 ## Not built yet
 
 Browsing an agent workspace's files (the engine has no routes for them), webhooks so pull requests update the moment they change (today: once a minute), unread state shared across browsers, and Collaborate rooms in the sidebar.
+
+## The status line under the composer
+
+On Pin's chat the line under the composer is interactive: click **Agent mode** or **Assistant mode** to switch; in Agent mode on a device, click the permission (Ask, Accept edits, Auto, Plan) to change what Pin may do on its own (Bypass is still set in Pin's settings, with its typed confirmation); the model on the right opens Pin's settings. On a phone the Plan, Terminal and Files icons move into the toolbar's More menu.

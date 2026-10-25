@@ -168,7 +168,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | Component | Job | Variants and states |
 | --- | --- | --- |
 | `Button` | every text action | `primary` (one per view), `secondary`, `ghost`, `danger`; `sm`/`md`/`lg`; hover, active (scale 98%), disabled, `loading` (spinner, `aria-busy`) |
-| `IconButton` | an action shown only as an icon | label required (accessible name and tooltip); `ghost`/`secondary`; `sm` 32 / `md` 40 |
+| `IconButton` | an action shown only as an icon | label required (accessible name and tooltip); `bare` (the workspace's icon control: `rounded-md`, no box until hovered, `pressed` fills it while what it opens is open) / `ghost` / `secondary`; `xs` 28 / `sm` 32 / `md` 40; 44 on touch for `xs` and `sm` |
 | `Card` | a bordered surface | `interactive` (hover border and fill); always `relative` so clipped content stays contained |
 | `PageFrame` / `PageHeader` | a page's frame and title block | roomy as a main view, flush in a modal; eyebrow, subtitle, actions |
 | `SectionTitle` | a label over a group | optional action on the right |
@@ -189,7 +189,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `Select` (`ui/Select.tsx`) | every dropdown | a real `<select>` underneath, our list on top (never the browser's); sizes `xs` `sm` `md` `lg` `xl`; Up/Down/Home/End/type-ahead, Enter or Space opens and chooses, Esc closes; the list follows the field when the page scrolls |
 | `Slider` (`ui/Slider.tsx`) | every range | a real `<input type="range">` drawn from tokens (accent fill, round thumb, focus ring); label left, value right; `format` also sets the spoken value; `variant` for colour ramps |
 | `ColorPicker` (`ui/ColorPicker.tsx`) | every colour choice | round swatch opens our popover: hue, saturation, lightness sliders and a hex field; `#rrggbb`; never the browser's picker |
-| `Menu` (`ui/Menu.tsx`) | every "⋯" or options menu | a small icon button opens our popover of actions (shortcut hints, red for destructive), checkboxes that stay open, headings and separators; arrow keys, Enter, Escape; never a hand-made dropdown |
+| `Menu` (`ui/Menu.tsx`) | every "⋯" or options menu | a small bare icon button (or, with `text`, a words-and-caret button such as a status line's "Agent mode") opens our popover of actions (shortcut hints, red for destructive), checkboxes that stay open, headings and separators; arrow keys, Enter, Escape; never a hand-made dropdown |
 | `ResizeHandle` (`ui/ResizeHandle.tsx`) | every resizable pane | a thin splitter that lights up in the accent on hover and focus; drag or arrow keys (Shift for bigger steps), Home and End; announced as a window splitter |
 | `NewAutomationModal` (`pages/pin/runtime.tsx`) | the model for "describe it or fill the form" creation | open question, example chips, hand-off to Pin, form behind a ghost button |
 | `SettingsModal` | the full-screen settings | categories left, section right; phone shows one at a time |
@@ -221,10 +221,14 @@ Deliberate exceptions: native `<select>` stays native (keyboard and screen-reade
 
 PinView (`/<device>/view`) is the workspace for working with Pin and agents. It follows a desktop chat app's layout; `docs/PINVIEW.md` describes what each part does. The rules:
 
-- **Columns, left to right:** sidebar (resizable, Ctrl/Cmd+B hides it) · conversation (centered column, `max-w-3xl`) · cards (`w-80`, Ctrl/Cmd+.) · tiles (resizable). Columns are separated by a 1px `line` border and a `ResizeHandle`; no gaps, no shadows between them.
+- **Columns, left to right:** sidebar (resizable, Ctrl/Cmd+B hides it) · conversation (centered column, `max-w-3xl`) · cards (`w-72`, Ctrl/Cmd+.) · tiles (resizable; they yield width first, so the conversation never drops under `min-w-88`). Columns are separated by a 1px `line` border and a `ResizeHandle`; no gaps, no shadows between them.
 - **Sidebar:** places first (icon + label, `h-9` rows, `text-sm`), then groups headed by a small `text-xs` label with a caret. Rows are plain text; the open one is `surface-3`, hover `surface-2`. Status at the end of a row is an icon, never a word. Menus appear on hover or focus (`⋯`), never as permanent buttons.
 - **Toolbar icons** at the right of the conversation's header open and close what sits beside it, and show it with `aria-pressed` and a `surface-3` fill. Words are kept for the one primary action there (Share).
-- **Icon controls are bare:** no box, border or fill until hovered or pressed; one size and spacing everywhere (toolbar, tile headers, cards, sidebar).
+- **Icon controls are bare:** `IconButton variant="bare"`: no box, border or fill until hovered or pressed; `sm` (32) in the toolbar and sidebar header, `xs` (28) in tile and card headers, 44 on touch. The attention dot is 6px with a `bg` ring in the icon's corner. Nothing in the workspace draws its own icon button.
+- **Type rhythm:** conversation title `text-sm`/medium; tile and card titles `text-compact`/semibold; sidebar rows, places and card rows `text-compact`; group labels, meta and hints `text-xs`; section labels `text-micro` uppercase. Rows are 32 (`h-8`) high, headers 48 (`h-12`), tab strips 36.
+- **Plan checklist:** a task's state is an icon with a name (To do, In progress, Done, Failed); done is struck through and `ink-3`, the current one sits on `accent-soft`, a failed one on a `critical` wash; a count ("2 of 5 done") heads the list.
+- **One chrome per tile:** a tile's header is its only title bar. The Terminal tile uses `Terminal embedded`: no title bar of its own, just the state chip and a restart icon over the screen.
+- **Composer status line:** words that change something are `Menu text=…` buttons (mode, permission); the model is a link to Pin's settings.
 - **Composer:** `/` opens commands, `@` mentions a person, agent, organization, project, machine or file (a chip that travels as context), `#` at the start saves the line to Pin's memory. Popovers anchor to the caret and work with the keyboard alone.
 - **Tiling (goal):** panes size themselves as they open and close, split either way, drag to rearrange, resize from any shared edge, and move with the keyboard, like a tiling window manager.
 - **Cards:** one rounded `surface` card per subject, title + caret to fold, rows of icon · words · one action. Actions that fix something are `text-warning` links (Set up, Reconnect); others are small secondary buttons.

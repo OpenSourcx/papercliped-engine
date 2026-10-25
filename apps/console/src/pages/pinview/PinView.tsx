@@ -431,7 +431,7 @@ export function PinView() {
       )}
       {layout.sideOpen && <ResizeHandle label="Sidebar width" value={layout.sideWidth} min={220} max={420} onChange={(v) => set({ sideWidth: v })} className="hidden md:block" />}
 
-      <main className={cn("relative flex-1 min-w-0 flex-col min-h-0", onPhoneThread ? "flex" : "hidden md:flex")}>
+      <main className={cn("relative flex-1 min-w-88 max-md:min-w-0 flex-col min-h-0", onPhoneThread ? "flex" : "hidden md:flex")}>
         <div className="h-12 shrink-0 flex items-center gap-0.5 px-3 border-b border-line">
           <IconButton variant="bare" size="sm" label="Back to conversations" onClick={toList} className="md:hidden"><ArrowLeft className="h-4 w-4" /></IconButton>
           {!layout.sideOpen && <span className="hidden md:inline-flex"><ToolIcon label="Show the sidebar (Ctrl+B)" onClick={() => set({ sideOpen: true })}><PanelLeft className="h-4 w-4" /></ToolIcon></span>}
@@ -478,11 +478,11 @@ export function PinView() {
         )}
       </main>
 
-      {showCards && <aside aria-label="Cards" className="w-80 shrink-0 border-l border-line overflow-y-auto p-3 bg-bg"><Cards m={cards} /></aside>}
+      {showCards && <aside aria-label="Cards" className="w-72 shrink-0 border-l border-line overflow-y-auto p-3 bg-bg"><Cards m={cards} /></aside>}
       {showTiles && (
         <>
           <ResizeHandle label="Tiles width" value={layout.tilesWidth} min={340} max={1000} edge="start" onChange={(v) => set({ tilesWidth: v })} />
-          <aside aria-label="Tiles" className="shrink-0 border-l border-line min-h-0" style={{ width: layout.tilesWidth }}>
+          <aside aria-label="Tiles" className="min-w-80 shrink border-l border-line min-h-0" style={{ width: layout.tilesWidth }}>
             <TileStack tiles={openTiles} heights={layout.tileHeights} onHeight={(k, h) => set((l) => ({ tileHeights: { ...l.tileHeights, [k]: h } }))} expanded={expanded} onExpand={setExpanded} onClose={closeTile} />
           </aside>
         </>
