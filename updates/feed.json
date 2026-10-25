@@ -1,11 +1,19 @@
 {
   "format": 1,
-  "generatedAt": "2026-10-25T03:46:18.487Z",
+  "generatedAt": "2026-10-25T04:26:03.290Z",
   "channels": {
     "stable": null,
-    "rc": "1.0.0-rc19"
+    "rc": "1.0.0-rc20"
   },
   "releases": [
+    {
+      "version": "1.0.0-rc20",
+      "channel": "rc",
+      "publishedAt": "2026-10-25T04:26:02Z",
+      "notes": "## What's new in 1.0.0-rc20\n\n- **docs: plan to match Paperclip's experience, then add Proxmox.** Screen-by-screen table of what Paperclip does against what our console has, and six phases: the start wizard with the seeded company, model connection inside the flow, the agent experience, company screens, Pin as the company's operator, and the look-and-feel decision. Unverified cells are marked.\n- **Pin works inside machines: run commands, read and write files.** Three new actions: machine_exec, machine_read_file and machine_write_file. A VM is reached through the QEMU guest agent; a container through the terminal Proxmox gives the signed-in person (the command is a base64 script between markers the shell prints), so there is no ssh and no key on the host, and Proxmox's permissions decide. Each line is classified without being run: a plain reading command is safe, a change or\n- **docs: Paperclip used as a person would use it.** Start-company wizard, what the seed produces, the three ways to connect a model, the new-agent flow, the agent and task pages, failure handling, and what each means for ePaperclip. Unverified parts are listed.\n- **Connectors: Sign in with Claude / Codex next to the key buttons.** The account sign-in lived only under Settings > Agent sign-in, where nobody looks while setting up a provider. The Anthropic and OpenAI connector rows now have a Sign in with Claude / Codex button that opens it. Gemini, OpenRouter and local servers have no account sign-in, so they show none.\n\n**Full changelog:** https://github.com/OpenSourcx/papercliped-engine/compare/v1.0.0-rc19...v1.0.0-rc20\n",
+      "url": "https://github.com/OpenSourcx/papercliped-engine/releases/tag/v1.0.0-rc20",
+      "withdrawn": false
+    },
     {
       "version": "1.0.0-rc19",
       "channel": "rc",
