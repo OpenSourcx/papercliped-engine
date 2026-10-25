@@ -4,6 +4,7 @@ import { AppShell } from "./layout/AppShell.tsx";
 import { Onboarding } from "./onboarding/Onboarding.tsx";
 import { Automations } from "./pages/Automations.tsx";
 import { Home } from "./pages/Home.tsx";
+import { PinView } from "./pages/pinview/PinView.tsx";
 import { Updates, UpdatesAdvancedPage, UpdatesHistoryPage } from "./pages/Updates.tsx";
 import { OrgDashboard } from "./pages/OrgDashboard.tsx";
 import { HostShell, StoragePage, Summary } from "./pages/DevicePages.tsx";
@@ -76,6 +77,7 @@ export function App() {
           <Route path="library" element={<Navigate to="../store" replace />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="pin" element={<PinPage />} />
+          <Route path="view" element={<PinView />} />
           <Route path="network" element={<NetworkPage />} />
           <Route path="firewall" element={<FirewallPage />} />
           <Route path="backups" element={<BackupsPage />} />

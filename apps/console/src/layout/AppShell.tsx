@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { House, Menu, Plug, Plus, Settings, X } from "lucide-react";
+import { House, Menu, MessagesSquare, Plug, Plus, Settings, X } from "lucide-react";
 import { ContextSidebar } from "./ContextSidebar.tsx";
 import { useSession } from "../auth/session.tsx";
 import { useEngine } from "../data/store.tsx";
@@ -94,6 +94,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
         {() => <RailButton active={!onOrg && !onPin} label={d} sub={`Online · ${host.ip}`} expanded={expanded}><House className="h-5 w-5" /></RailButton>}
       </NavLink>
       {nav(`/${d}/pin`, "Pin", <PinOrb size={30} />, setup?.pinMode === "agent" ? "Agent mode" : "Assistant mode")}
+      {nav(`/${d}/view`, "PinView", <MessagesSquare className="h-5 w-5" />, "Every conversation")}
       {sep}
       <div className="flex-1 overflow-y-auto overflow-x-clip flex flex-col gap-2 [scrollbar-width:none]">
         {data.orgs.map((o) => {

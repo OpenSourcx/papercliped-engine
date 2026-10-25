@@ -111,3 +111,7 @@ Voice and video, federation between hosts, end-to-end encryption, custom emoji a
 - Paperclip's `plugin-sdk` was not inspected; if the comment-polling bridge proves too slow, a plugin that pushes `issue.comment.created` is the fallback.
 - A guest account system is new authentication surface; keep it minimal and review before launch.
 - Web push depends on the user having a trusted certificate; the product must stay fully usable without it.
+
+## Status: PinView first cut (built)
+
+`/<device>/view`, a rail icon, full screen with a way back. One conversation list (`pin/ConversationList.tsx`) holds Pin's chats and each organization's agent chats: search, filter (All, Pin, Agents), grouped by day, rename and delete where the owner allows it. The thread, cards and composer are the same components everywhere (`pin/ThreadContext.tsx` lets any conversation provide its messages), so an agent chat is drawn exactly like Pin's. A details panel shows the model and permission mode for Pin, or the organization and status for an agent. On a phone the list and the thread are separate panes. Collaborate rooms join the list later. Not built: unread markers, pinning, filter by organization.

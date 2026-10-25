@@ -10,7 +10,8 @@ import { Button, Input } from "../ui/primitives.tsx";
 import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { BarMeter } from "../ui/meters.tsx";
 import type { PinCard } from "./brain.ts";
-import { usePin, type PinToolState } from "./PinContext.tsx";
+import type { PinToolState } from "./PinContext.tsx";
+import { useThreadApi } from "./ThreadContext.tsx";
 import { describeTool, kindOf, runTool } from "./tools.ts";
 
 /** The one shell every card in Pin's conversation uses: a label, the content, then its actions or outcome. */
@@ -218,7 +219,7 @@ export function ToolCard({ messageId, tool }: { messageId: string; tool: PinTool
 
 function ActionCard({ messageId, tool }: { messageId: string; tool: PinToolState }) {
   const engine = useEngine();
-  const pin = usePin();
+  const pin = useThreadApi();
   const nav = useNavigate();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);

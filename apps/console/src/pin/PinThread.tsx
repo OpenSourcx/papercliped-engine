@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowUp, Square } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { PinCardView, ToolCard } from "./PinCards.tsx";
-import { usePin, type PinMessage } from "./PinContext.tsx";
+import type { PinMessage } from "./PinContext.tsx";
+import { useThreadApi } from "./ThreadContext.tsx";
 import { PinOrb } from "./PinOrb.tsx";
 import { Markdown } from "../pages/pin/notes/Markdown.tsx";
 
@@ -12,7 +13,7 @@ import { Markdown } from "../pages/pin/notes/Markdown.tsx";
  * page; yours sit in a bubble on the right. While Pin writes, a soft caret breathes at the end of its words.
  */
 export function PinThread({ inPlace, empty, footer, className, autoFocus }: { inPlace?: boolean; empty: ReactNode; footer?: ReactNode; className?: string; autoFocus?: boolean }) {
-  const pin = usePin();
+  const pin = useThreadApi();
   const list = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -57,7 +58,7 @@ function Waiting() {
 }
 
 function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
-  const pin = usePin();
+  const pin = useThreadApi();
   if (m.from === "you") {
     return (
       <div className="flex justify-end fade-in">
@@ -70,6 +71,7 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
     <div className="flex gap-2.5 fade-in">
       {inPlace && <span className="mt-0.5"><PinOrb size={22} thinking={m.streaming} /></span>}
       <div className="min-w-0 flex-1 text-sm leading-relaxed">
+        {m.name && <div className="text-xs text-ink-3 mb-0.5">{m.name}</div>}
         {waiting ? (
           <Waiting />
         ) : m.text ? (
@@ -89,8 +91,8 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
 }
 
 /** The composer: grows with the text, Enter sends, Shift+Enter starts a new line, and Stop ends an answer. */
-export function PinInput({ inPlace, autoFocus, placeholder = "Ask Pin" }: { inPlace?: boolean; autoFocus?: boolean; placeholder?: string }) {
-  const pin = usePin();
+export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolean; autoFocus?: boolean; placeholder?: string }) {
+  const pin = useThreadApi();
   const [draft, setDraft] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
 
@@ -130,8 +132,8 @@ export function PinInput({ inPlace, autoFocus, placeholder = "Ask Pin" }: { inPl
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
-          placeholder={placeholder}
-          aria-label="Message Pin"
+          placeholder={placeholder ?? (pin.name ? `Message ${pin.name}` : "Ask Pin")}
+          aria-label={`Message ${pin.name ?? "Pin"}`}
           className="flex-1 min-w-0 resize-none bg-transparent py-1.5 text-sm leading-6 outline-none focus-visible:outline-none placeholder:text-ink-3"
         />
         <button
