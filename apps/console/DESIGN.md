@@ -34,7 +34,7 @@ All tokens live in one file, `src/index.css`. Runtime-tunable values (anything A
 | Spacing | Tailwind's 4px scale (`--spacing`) | `p-3`, `gap-4`, `h-10` |
 | Radius | one anchor `--radius` (Appearance tunes it); `xs sm md lg xl 2xl 3xl` derived as 0.4/0.6/0.8/1/1.4/1.8/2.6 x anchor; `rail`, `rail-active`, `squircle` | `rounded-lg` |
 | Elevation | `--elevation-1..3` built from `--shadow-color` | `shadow-raised`, `shadow-overlay`, `shadow-modal` |
-| Z layers | `--z-raised 10`, `sidebar 20`, `rail 30`, `island 40`, `drawer 50`, `modal 60`, `fullscreen 65`, `popover 70`, `tooltip 80` | `z-(--z-modal)` |
+| Z layers | `--z-raised 10`, `sidebar 20`, `rail 30`, `island 40`, `drawer 50`, `workspace 55` (PinView: over the shell, under the dialogs it opens), `modal 60`, `fullscreen 65`, `popover 70`, `tooltip 80` | `z-(--z-modal)` |
 | Motion | durations, easings, springs (see "Motion") | `duration-(--duration-fast)`, `ease-spring` |
 
 Radius assignments: chips and tags `sm`; buttons, inputs and menu rows `md`/`lg`; cards and popovers `xl`; modals and the island `2xl`; avatars and pills `full`. A nested element steps down one tier from its container.
@@ -190,6 +190,7 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `Slider` (`ui/Slider.tsx`) | every range | a real `<input type="range">` drawn from tokens (accent fill, round thumb, focus ring); label left, value right; `format` also sets the spoken value; `variant` for colour ramps |
 | `ColorPicker` (`ui/ColorPicker.tsx`) | every colour choice | round swatch opens our popover: hue, saturation, lightness sliders and a hex field; `#rrggbb`; never the browser's picker |
 | `Menu` (`ui/Menu.tsx`) | every "⋯" or options menu | a small icon button opens our popover of actions (shortcut hints, red for destructive), checkboxes that stay open, headings and separators; arrow keys, Enter, Escape; never a hand-made dropdown |
+| `ResizeHandle` (`ui/ResizeHandle.tsx`) | every resizable pane | a thin splitter that lights up in the accent on hover and focus; drag or arrow keys (Shift for bigger steps), Home and End; announced as a window splitter |
 | `NewAutomationModal` (`pages/pin/runtime.tsx`) | the model for "describe it or fill the form" creation | open question, example chips, hand-off to Pin, form behind a ghost button |
 | `SettingsModal` | the full-screen settings | categories left, section right; phone shows one at a time |
 | `ArcMeter` / `BarMeter` (`ui/meters.tsx`) | one ratio against a limit | value in ink, never in the series colour; exact value in caption and tooltip |

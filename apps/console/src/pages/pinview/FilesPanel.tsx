@@ -14,7 +14,7 @@ const SOURCE: Record<string, string> = { document: "Document", attachment: "File
  * (text and code in a monospace view, images as images, anything else as a download). Files are untrusted engine data, so
  * the same safe preview as the Artifacts page is used.
  */
-export function FilesPanel({ orgs, companyId, onOrg }: { orgs: { name: string; companyId: string }[]; companyId: string | null; onOrg: (companyId: string) => void }) {
+export function FilesPanel({ orgs, companyId, onOrg, onOpen }: { orgs: { name: string; companyId: string }[]; companyId: string | null; onOrg: (companyId: string) => void; /** Opens a file somewhere else (the workspace's editor) instead of in place. */ onOpen?: (a: CompanyArtifact) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<CompanyArtifact | null>(null);
   const list = useArtifacts(companyId, "all", q.trim());
@@ -51,7 +51,7 @@ export function FilesPanel({ orgs, companyId, onOrg }: { orgs: { name: string; c
           <ul className="space-y-0.5 -mx-1">
             {items.map((a) => (
               <li key={a.id}>
-                <button type="button" onClick={() => setOpen(a)} className="transition-control w-full text-left rounded-lg px-2 py-2 hover:bg-surface-2 flex items-start gap-2.5">
+                <button type="button" onClick={() => (onOpen ? onOpen(a) : setOpen(a))} className="transition-control w-full text-left rounded-lg px-2 py-2 hover:bg-surface-2 flex items-start gap-2.5">
                   <FileText className="h-4 w-4 text-ink-3 mt-0.5 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="block text-compact truncate">{a.title}</span>

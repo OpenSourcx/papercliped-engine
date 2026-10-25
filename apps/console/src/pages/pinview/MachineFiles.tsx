@@ -10,9 +10,9 @@ import { Button, Input, Notice, Select, Spinner } from "../../ui/primitives.tsx"
 import { Code, copyText, Pane } from "./TileView.tsx";
 
 /**
- * A machine's whole file tree, and an editor for one file, as PinView tiles. Both go through the host's machine-files
- * routes, so they work wherever Pin can run commands in that machine (the guest agent for a VM; for a container, its
- * console must open into a shell) and only as far as the person's Proxmox permissions reach.
+ * An editor for one file of a machine, as a PinView tab (the Explorer in workspace/Explorer.tsx finds the files). It goes
+ * through the host's machine-files routes, so it works wherever Pin can run commands in that machine (the guest agent for a
+ * VM; for a container, its console must open into a shell) and only as far as the person's Proxmox permissions reach.
  */
 
 const KEY = (vmid: number, path: string) => ["machine-files", vmid, path] as const;
@@ -21,88 +21,8 @@ const join = (dir: string, name: string) => (dir === "/" ? `/${name}` : `${dir}/
 const up = (p: string) => (p === "/" ? "/" : p.slice(0, p.lastIndexOf("/")) || "/");
 const ICON: Record<FileEntry["kind"], typeof Folder> = { dir: Folder, linkdir: FolderSymlink, file: FileText, link: Link2 };
 
-export function MachineBrowser({ machines, vmid, onVmid, onOpenFile, expanded, onExpand, onClose }: {
-  machines: Guest[];
-  vmid: number | null;
-  onVmid: (vmid: number) => void;
-  onOpenFile: (vmid: number, path: string) => void;
-  expanded: boolean;
-  onExpand: () => void;
-  onClose: () => void;
-}) {
-  const [path, setPath] = useState("/");
-  const [typed, setTyped] = useState("/");
-  const [hidden, setHidden] = useState(false);
-  const { live } = useEngine();
-  const machine = machines.find((m) => m.vmid === vmid) ?? null;
-  const list = useQuery({ queryKey: KEY(vmid ?? 0, path), queryFn: () => machineFilesApi.list(vmid!, path), enabled: live && !!machine && machine.status === "running", retry: false });
-  useEffect(() => setTyped(path), [path]);
-  useEffect(() => { setPath("/"); }, [vmid]);
-  const go = (p: string) => setPath(p.trim() || "/");
-  const parts = path.split("/").filter(Boolean);
-  const entries = (list.data?.entries ?? []).filter((e) => hidden || !e.name.startsWith("."));
-
-  return (
-    <Pane icon={<HardDrive className="h-4 w-4" />} title={machine ? `${machine.name} files` : "Machine files"} sub={machine ? `Machine ${machine.vmid}` : "Pick a machine"} expanded={expanded} onExpand={onExpand} onClose={onClose} className={cn("shrink-0", expanded ? "flex-1" : "h-120")}
-      menu={[
-        { kind: "check", label: "Show hidden files", checked: hidden, onToggle: setHidden },
-        { kind: "separator" },
-        { label: "Copy path", onSelect: () => copyText(path) },
-        { label: "Refresh", onSelect: () => void list.refetch() },
-      ]}>
-      <div className="p-3 space-y-2 border-b border-line">
-        <Select aria-label="Machine" size="sm" value={vmid === null ? "" : String(vmid)} onChange={(e) => e.target.value && onVmid(Number(e.target.value))}>
-          <option value="">Choose a machine…</option>
-          {machines.filter((m) => !m.template).map((m) => <option key={m.vmid} value={String(m.vmid)} disabled={m.status !== "running"}>{m.name} ({m.vmid}){m.status !== "running" ? " · off" : ""}</option>)}
-        </Select>
-        {machine && (
-          <>
-            <nav aria-label="Path" className="flex items-center flex-wrap gap-0.5 text-compact">
-              <button type="button" onClick={() => go("/")} className="transition-control rounded px-1.5 py-0.5 font-mono hover:bg-surface-2">/</button>
-              {parts.map((p, i) => (
-                <span key={i} className="flex items-center gap-0.5">
-                  {i > 0 && <ChevronRight className="h-3 w-3 text-ink-3" aria-hidden />}
-                  <button type="button" onClick={() => go(`/${parts.slice(0, i + 1).join("/")}`)} aria-current={i === parts.length - 1 ? "location" : undefined} className="transition-control rounded px-1.5 py-0.5 font-mono hover:bg-surface-2 max-w-40 truncate">{p}</button>
-                </span>
-              ))}
-            </nav>
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); go(typed); }}>
-              <Input aria-label="Go to a path" value={typed} onChange={(e) => setTyped(e.target.value)} className="h-8 font-mono text-compact" spellCheck={false} />
-              <button type="button" aria-label="Up one folder" title="Up one folder" disabled={path === "/"} onClick={() => go(up(path))} className="transition-control h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
-              <button type="button" aria-label="Refresh" title="Refresh" onClick={() => void list.refetch()} className="transition-control h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><RefreshCw className={cn("h-4 w-4", list.isFetching && "animate-spin")} /></button>
-            </form>
-          </>
-        )}
-      </div>
-      <div className="p-2">
-        {!live && machine && <p className="p-2 text-compact text-ink-3 text-pretty">On a device this shows the machine's folders and files, and opens them in an editor. The demo has no machines to look inside.</p>}
-        {!machine && <p className="p-2 text-compact text-ink-3">Choose a running machine to browse its files.</p>}
-        {machine && list.isPending && <div className="py-8 flex justify-center"><Spinner label="Reading the folder" /></div>}
-        {list.error && <div className="p-2"><Notice tone="warning">{errorText(list.error)}</Notice></div>}
-        {list.data && entries.length === 0 && <p className="p-2 text-compact text-ink-3">This folder is empty{!hidden && list.data.entries.length ? " (hidden files aren't shown)" : ""}.</p>}
-        <ul role="list">
-          {entries.map((e) => {
-            const Icon = ICON[e.kind];
-            const folder = e.kind === "dir" || e.kind === "linkdir";
-            return (
-              <li key={e.name}>
-                <button type="button" onClick={() => (folder ? go(join(path, e.name)) : onOpenFile(vmid!, join(path, e.name)))} className="transition-control w-full flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2">
-                  <Icon className={cn("h-4 w-4 shrink-0", folder ? "text-accent" : "text-ink-3")} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-compact font-mono">{e.name}</span>
-                  {!folder && <span className="text-xs text-ink-3 tabular-nums shrink-0">{size(e.size)}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {list.data?.truncated && <p className="p-2 text-xs text-ink-3">Only the first 2000 entries are shown.</p>}
-      </div>
-    </Pane>
-  );
-}
-
 /** One file of a machine: read it, then edit it in place and save it back (Ctrl+S). A change made elsewhere meanwhile is never overwritten. */
-export function FileEditor({ vmid, path, machineName, expanded, onExpand, onClose, startEditing }: { vmid: number; path: string; machineName?: string; expanded: boolean; onExpand: () => void; onClose: () => void; startEditing?: boolean }) {
+export function FileEditor({ vmid, path, machineName, expanded, onExpand, onClose, startEditing, tab, onDirty }: { vmid: number; path: string; machineName?: string; expanded: boolean; onExpand: () => void; onClose: () => void; startEditing?: boolean; tab?: boolean; /** Told whether there are unsaved changes, so a tab can show it. */ onDirty?: (dirty: boolean) => void }) {
   const qc = useQueryClient();
   const key = ["machine-file", vmid, path] as const;
   const file = useQuery({ queryKey: key, queryFn: () => machineFilesApi.read(vmid, path), retry: false, staleTime: Infinity });
@@ -121,6 +41,7 @@ export function FileEditor({ vmid, path, machineName, expanded, onExpand, onClos
   });
   const conflict = (save.error as { status?: number } | null)?.status === 409;
   const editable = !!file.data && file.data.content !== null;
+  useEffect(() => onDirty?.(dirty), [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = path.split("/").pop() || path;
 
   const reload = () => { setDraft(null); save.reset(); void file.refetch(); };
@@ -149,7 +70,7 @@ export function FileEditor({ vmid, path, machineName, expanded, onExpand, onClos
   useEffect(() => { if (editing) setTimeout(() => area.current?.focus(), 0); }, [editing]);
 
   return (
-    <Pane icon={<FileText className="h-4 w-4" />} title={`${dirty ? "● " : ""}${name}`} sub={<>{machineName ? `${machineName} · ` : ""}<span className="font-mono">{path}</span></>} expanded={expanded} onExpand={onExpand} onClose={onClose} className={cn("shrink-0", expanded ? "flex-1" : "h-120")}
+    <Pane tab={tab} icon={<FileText className="h-4 w-4" />} title={`${dirty ? "● " : ""}${name}`} sub={<>{machineName ? `${machineName} · ` : ""}<span className="font-mono">{path}</span></>} expanded={expanded} onExpand={onExpand} onClose={onClose} className={cn("shrink-0", expanded ? "flex-1" : "h-120")}
       menu={[
         { kind: "check", label: "Word wrap", checked: wrap, onToggle: setWrap },
         { kind: "check", label: "Line numbers", checked: numbers, onToggle: setNumbers },

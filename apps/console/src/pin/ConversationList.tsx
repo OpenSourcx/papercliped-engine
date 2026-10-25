@@ -18,7 +18,16 @@ export interface ConversationItem {
 }
 
 /** A named group of conversations (Pinned, Pin, an organization), shown with a heading that folds it away. */
-export interface ConversationSection { id: string; label: string; icon?: ReactNode; items: ConversationItem[] }
+export interface ConversationSection {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  items: ConversationItem[];
+  /** Shown under the heading when the section has nothing; without it an empty section is left out. */
+  empty?: ReactNode;
+  /** The section's own menu ("⋯" on its heading). */
+  actions?: MenuEntry[];
+}
 
 const DAY = 86_400_000;
 const groupOf = (t: number, now: number) => (now - t < DAY ? "Today" : now - t < 2 * DAY ? "Yesterday" : now - t < 7 * DAY ? "This week" : "Earlier");
@@ -28,7 +37,7 @@ const groupOf = (t: number, now: number) => (now - t < DAY ? "Today" : now - t <
  * caller names. Rename and delete appear only when the owner of the list gives handlers (Pin's chats have them; an agent's chat
  * lives in its organization); a pin toggle appears when `onTogglePin` is given.
  */
-export function ConversationList({ items, sections, activeKey, onPick, onNew, onRename, onDelete, pinned, onTogglePin, linkFor, search, filter, grouped, empty, label = "Conversations", className }: {
+export function ConversationList({ items, sections, activeKey, onPick, onNew, onRename, onDelete, pinned, onTogglePin, linkFor, search, query: given, filter, grouped, empty, folded: foldedGiven, onFoldedChange, label = "Conversations", className }: {
   items?: ConversationItem[];
   sections?: ConversationSection[];
   activeKey: string | null;
@@ -41,7 +50,12 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
   /** An address that opens this conversation, for "Copy link". */
   linkFor?: (c: ConversationItem) => string;
   search?: boolean;
+  /** Text to filter by when the caller owns the search box. */
+  query?: string;
   filter?: boolean;
+  /** Folded sections, when the caller owns them (for Collapse all / Expand all). */
+  folded?: ReadonlySet<string>;
+  onFoldedChange?: (folded: ReadonlySet<string>) => void;
   grouped?: boolean;
   empty?: string;
   label?: string;
@@ -51,9 +65,12 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
   const [title, setTitle] = useState("");
   const [confirm, setConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [ownQuery, setQuery] = useState("");
+  const query = given ?? ownQuery;
   const [source, setSource] = useState<"all" | "pin" | "agent">("all");
-  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  const [ownFolded, setOwnFolded] = useState<ReadonlySet<string>>(new Set());
+  const folded = foldedGiven ?? ownFolded;
+  const setFolded = (fn: (f: ReadonlySet<string>) => ReadonlySet<string>) => { const next = fn(folded); if (onFoldedChange) onFoldedChange(next); else setOwnFolded(next); };
   const fail = (e: unknown) => setError(errorText(e));
   const keep = (c: ConversationItem) => {
     const q = query.trim().toLowerCase();
@@ -61,7 +78,7 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
   };
   const all = useMemo(() => (sections ? sections.flatMap((s) => s.items) : items ?? []), [sections, items]);
   const shown = useMemo(() => all.filter(keep).sort((a, b) => b.updatedAt - a.updatedAt), [all, query, source]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shownSections = useMemo(() => (sections ?? []).map((s) => ({ ...s, items: s.items.filter(keep).sort((a, b) => b.updatedAt - a.updatedAt) })).filter((s) => s.items.length > 0 || (!query.trim() && source === "all" && s.id !== "pinned")), [sections, query, source]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownSections = useMemo(() => (sections ?? []).map((s) => ({ ...s, items: s.items.filter(keep).sort((a, b) => b.updatedAt - a.updatedAt) })).filter((s) => s.items.length > 0 || (!query.trim() && source === "all" && s.empty !== undefined)), [sections, query, source]); // eslint-disable-line react-hooks/exhaustive-deps
   const now = Date.now();
   const mixed = new Set(all.map((i) => i.source)).size > 1;
   const compact = !!sections;
@@ -111,18 +128,21 @@ export function ConversationList({ items, sections, activeKey, onPick, onNew, on
       {search && <div className="relative mb-2"><Search className="h-4 w-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden /><Input aria-label="Search conversations" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 h-9" /></div>}
       {filter && mixed && <div className="mb-2"><Segmented size="sm" label="Show" value={source} onChange={setSource} options={[{ value: "all", label: "All" }, { value: "pin", label: "Pin" }, { value: "agent", label: "Agents" }]} /></div>}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-0.5 -mx-1 px-1">
-        {all.length === 0 && <p className="text-xs text-ink-3 px-2 py-3">{empty ?? "Your conversations are kept here."}</p>}
+        {all.length === 0 && !sections?.some((x) => x.empty !== undefined) && <p className="text-xs text-ink-3 px-2 py-3">{empty ?? "Your conversations are kept here."}</p>}
         {all.length > 0 && shown.length === 0 && <p className="text-xs text-ink-3 px-2 py-3">Nothing matches.</p>}
         {sections ? shownSections.map((s) => {
           const open = !folded.has(s.id) || !!query.trim();
           return (
-            <section key={s.id} aria-label={s.label} className="pb-2">
-              <button type="button" aria-expanded={open} onClick={() => setFolded((f) => { const n = new Set(f); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })} className="transition-control w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-ink-3 hover:text-ink-2">
+            <section key={s.id} aria-label={s.label} className="pb-1.5">
+              <div className="group/head flex items-center">
+              <button type="button" aria-expanded={open} onClick={() => setFolded((f) => { const n = new Set(f); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })} className="transition-control flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-ink-3 hover:text-ink-2">
                 {open ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
                 {s.icon}<span className="truncate">{s.label}</span>
                 {s.items.some((c) => c.unread) && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-micro font-bold flex items-center justify-center" aria-label={`${s.items.filter((c) => c.unread).length} unread`}>{s.items.filter((c) => c.unread).length}</span>}
               </button>
-              {open && (s.items.length === 0 ? <p className="text-xs text-ink-3 px-2.5 py-1">No chats yet.</p> : s.items.map((c) => <div key={c.key}>{row(c)}</div>))}
+              {s.actions && s.actions.length > 0 && <span className="opacity-0 group-hover/head:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100 pr-1"><Menu size="sm" label={`${s.label} options`} icon={<MoreHorizontal className="h-4 w-4" />} items={s.actions} /></span>}
+              </div>
+              {open && (s.items.length === 0 ? <div className="text-xs text-ink-3 pl-7 pr-2.5 py-1">{s.empty}</div> : s.items.map((c) => <div key={c.key}>{row(c)}</div>))}
             </section>
           );
         }) : shown.map((c, i) => {

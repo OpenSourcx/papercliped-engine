@@ -1,54 +1,68 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Building2, ChevronDown, ChevronRight, FolderOpen, GitPullRequest, HardDrive, Layers, MessageCircle, MessageSquarePlus, MoreHorizontal, PanelRight, Settings, X } from "lucide-react";
-import type { Agent } from "@papercliped-engine/engine-client";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Building2, CheckCheck, PanelLeft, ChevronDown, ChevronRight, ClipboardList, FileText, FolderTree, GitPullRequest, HardDrive, MessageCircle, MessagesSquare, MoreHorizontal, Package, PanelBottom, PanelRight, SquareTerminal, Sparkles } from "lucide-react";
+import type { Agent, CompanyArtifact } from "@papercliped-engine/engine-client";
 import { useAgentsCanRun } from "../containers/Banner.tsx";
 import { chatBlock, useSendChat } from "../../data/engine/chat.ts";
 import { githubApi } from "../../data/engine/githubApi.ts";
 import { useChats, useChatsOf, useChatWrites } from "../../data/engine/more.ts";
 import { agentStatusOf } from "../../data/engine/labels.tsx";
-import { errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useRuns } from "../../data/engine/queries.ts";
+import { engine as engineApi, errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useRuns } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, readJson, writeJson } from "../../lib/storage.ts";
 import { settingsHref } from "../../modals/useModals.ts";
-import { ConversationList, type ConversationItem, type ConversationSection } from "../../pin/ConversationList.tsx";
+import type { ConversationItem, ConversationSection } from "../../pin/ConversationList.tsx";
 import { PERMISSION_INFO, PermissionPicker } from "../../pin/PermissionPicker.tsx";
 import { usePin } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinOrb.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
 import { ThreadProvider, type ThreadApi } from "../../pin/ThreadContext.tsx";
 import type { ThreadMessage } from "../../pin/useThread.ts";
-import { Avatar, Menu, Notice, Select, Status, type MenuEntry } from "../../ui/primitives.tsx";
+import { Menu, Notice, ResizeHandle, Status, type MenuEntry } from "../../ui/primitives.tsx";
+import { ConfirmModal } from "../../ui/Confirm.tsx";
+import { Preview } from "../org/live/LiveArtifacts.tsx";
 import { useNames } from "../org/live/names.ts";
 import { ChangesBody, PullRequestList, useGithub } from "./Changes.tsx";
 import { FilesPanel } from "./FilesPanel.tsx";
-import { FileEditor, MachineBrowser } from "./MachineFiles.tsx";
-import { Pane, TileView } from "./TileView.tsx";
-import { tilesOf } from "./tiles.ts";
+import { FileEditor } from "./MachineFiles.tsx";
+import { copyText, TileView } from "./TileView.tsx";
+import { tilesOf, type Tile } from "./tiles.ts";
 import { SEEN, SINCE } from "./unread.ts";
-import { useQueryClient } from "@tanstack/react-query";
+import { BottomPanel } from "./workspace/BottomPanel.tsx";
+import { ActivityBar, Palette, StatusBar, type Command } from "./workspace/chrome.tsx";
+import { ChatsView, type AgentChoice } from "./workspace/ChatsView.tsx";
+import { EditorGroup, type TabHead } from "./workspace/EditorGroup.tsx";
+import { Explorer } from "./workspace/Explorer.tsx";
+import { useLayout, type SideView } from "./workspace/layout.ts";
+import { BarButton, SideHeader } from "./workspace/parts.tsx";
 
 /**
- * PinView: one full-screen workspace for every conversation on this device, laid out like a desktop chat app.
+ * PinView: a focused workspace for working with Pin and your agents, laid out like an editor in the browser.
  *
- * - Left, the sidebar: New chat, Files, a search box, your pinned chats, then Pin's chats and each organization's agent
- *   chats in folding sections; each row has a menu (pin, rename, copy link, delete). Your name and Settings at the bottom.
- * - Middle, the conversation in a centered column, with what it runs on under the composer; each message has a menu
- *   (copy, copy as Markdown, quote in reply).
- * - Right, tiles that open by themselves when the assistant works: a file it read or wrote, a command's output, a plan.
- *   Files and Pull requests open there too. Each tile has its own menu (word wrap, line numbers, copy), expand and close.
- * - Far right, the details: folding cards (Model, Permissions, Connectors, Changes for Pin; Agent, Organization, Files,
- *   Changes for an agent), with a Show menu to choose which cards appear.
+ *   activity bar | side panel (Conversations, Explorer, Artifacts, Pull requests) | conversation | editor tabs | details
+ *                                                                    panel: Terminal, Steps
+ *                                              status bar
  *
- * On a phone each part is a pane of its own. Collaborate rooms join the sidebar later.
+ * Files from a machine, the files and plans Pin's steps touch, artifacts and pull requests open as tabs beside the
+ * conversation (a step's tab is a preview, replaced by the next until you keep it). The panel holds a real terminal and
+ * Pin's steps. Everything resizes, folds away and is remembered per browser. Ctrl/Cmd+P goes to anything; Ctrl/Cmd+B,
+ * Ctrl/Cmd+J and Ctrl/Cmd+. toggle the side panel, the panel and the details. On a phone each part is a pane of its own.
  */
 
 type View = { kind: "pin" } | { kind: "agent"; companyId: string; agentId: string };
-type Extra = "files" | "prs" | "machine";
+type ETab = { id: string; preview: boolean } & (
+  | { kind: "tool"; toolId: string }
+  | { kind: "file"; vmid: number; path: string; edit?: boolean }
+  | { kind: "artifact"; artifact: CompanyArtifact }
+  | { kind: "prs" }
+);
 const agentKey = (companyId: string, agentId: string) => `agent:${companyId}:${agentId}`;
 const PINNED = "epc.pinview.pinned";
 const HIDDEN = "epc.pinview.hidden";
-const MAX_TILES = 3;
+const base = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
+const wide = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches;
+const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** A card in the details column, folded away by its heading; `action` sits at the right of the heading. */
 function DetailCard({ title, children, open: start = true, action }: { title: string; children: ReactNode; open?: boolean; action?: ReactNode }) {
@@ -67,30 +81,30 @@ function DetailCard({ title, children, open: start = true, action }: { title: st
 }
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => <div><div className="text-xs text-ink-3">{label}</div><div className="text-compact">{children}</div></div>;
-const wide = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches;
 
 export function PinView() {
   const { data, setup, live } = useEngine();
   const pin = usePin();
   const qc = useQueryClient();
+  const nav = useNavigate();
   const connectors = useConnectors();
   const github = useGithub();
   const device = setup?.deviceName ?? "pve";
+  const machines = data.guests ?? [];
   const [params, setParams] = useSearchParams();
-  const [details, setDetails] = useState(false);
-  const [tilesOpen, setTilesOpen] = useState(false);
-  const [extras, setExtras] = useState<Extra[]>([]);
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [allTiles, setAllTiles] = useState(false);
+  const { layout, set, showSide } = useLayout();
+  const [tabs, setTabs] = useState<ETab[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [dirty, setDirty] = useState<ReadonlySet<string>>(new Set());
+  const [closedTools, setClosedTools] = useState<ReadonlySet<string>>(new Set());
+  const [palette, setPalette] = useState(false);
   const [editingGithub, setEditingGithub] = useState(false);
   const [filesOrg, setFilesOrg] = useState<string | null>(null);
+  const [explorerVmid, setExplorerVmid] = useState<number | null>(null);
+  const [mobilePane, setMobilePane] = useState<null | "editor" | "details" | "panel">(null);
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>(PINNED, [])));
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>(HIDDEN, [])));
   const [scope, setScope] = useState<string>("all");
-  const [browseVmid, setBrowseVmid] = useState<number | null>(null);
-  const [openFiles, setOpenFiles] = useState<{ vmid: number; path: string; edit?: boolean }[]>([]);
-  // Unread: a conversation is new when it changed after you last opened it. Anything older than your first visit counts as read.
   const [since] = useState<number>(() => { const v = readJson<number | null>(SINCE, null); if (v === null) { const n = Date.now(); writeJson(SINCE, n); return n; } return v; });
   const [seenAt, setSeenAt] = useState<Record<string, number>>(() => readJson<Record<string, number>>(SEEN, {}));
   const activeKeyRef = useRef<string | null>(null);
@@ -105,11 +119,11 @@ export function PinView() {
     const [kind, companyId, agentId] = (params.get("c") ?? "").split(":");
     return kind === "agent" && companyId && agentId ? { kind: "agent", companyId, agentId } : { kind: "pin" };
   }, [params]);
-  /** Opens a conversation; `t` is what a phone uses to show the thread instead of the list. */
+  /** Opens a conversation; `t` is what a phone uses to show the conversation instead of the side panel. */
   const open = (v: View) => setParams((p) => { const n = new URLSearchParams(p); n.delete("chat"); if (v.kind === "pin") n.delete("c"); else n.set("c", `agent:${v.companyId}:${v.agentId}`); n.set("t", "1"); return n; }, { replace: true });
   const toList = () => setParams((p) => { const n = new URLSearchParams(p); n.delete("t"); return n; }, { replace: true });
+  const onMobileThread = !!params.get("t");
 
-  // A copied link to one of Pin's chats (?chat=<id>) opens it.
   const linked = params.get("chat");
   useEffect(() => {
     if (linked && linked !== pin.chatId) void pin.openChat(linked);
@@ -117,69 +131,206 @@ export function PinView() {
   }, [linked]);
 
   const agentName = (companyId: string, agentId: string) => agents[ids.indexOf(companyId)]?.data?.find((a) => a.id === agentId)?.name ?? "Agent";
+  const allAgents: AgentChoice[] = orgs.flatMap((o, i) => (agents[i]?.data ?? []).filter((a) => a.status !== "terminated").map((a) => ({ companyId: o.companyId, org: o.name, agentId: a.id, name: a.name })));
+
   const sections: ConversationSection[] = useMemo(() => {
     const unread = (key: string, at: number) => key !== activeKeyRef.current && at > (seenAt[key] ?? since);
     const item = (key: string, source: "pin" | "agent", title: string, context: string, at: number): ConversationItem => ({ key, source, title, context, updatedAt: at, unread: unread(key, at) });
     const pinItems = pin.chats.map((c) => item(`pin:${c.id}`, "pin", c.title, "Pin", new Date(c.updatedAt).getTime()));
     const byOrg = orgs.map((org, i) => ({ org, items: (chats[i]?.data ?? []).flatMap((c) => (c.conversationAgentId ? [item(agentKey(org.companyId, c.conversationAgentId), "agent", agentName(org.companyId, c.conversationAgentId), org.name, new Date(c.updatedAt).getTime())] : [])) }));
-    // The scope chosen above the list: everything, only unread, only Pin, or one organization.
     const inScope = (c: ConversationItem, orgId: string | null) => scope === "all" || (scope === "unread" ? !!c.unread : scope === "pin" ? c.source === "pin" : orgId === scope);
     const tagged = [...pinItems.map((c) => ({ c, org: null as string | null })), ...byOrg.flatMap((o) => o.items.map((c) => ({ c, org: o.org.companyId as string | null })))];
     const star = tagged.filter((t) => pinned.has(t.c.key) && inScope(t.c, t.org)).map((t) => t.c);
     const rest = (xs: ConversationItem[], orgId: string | null) => xs.filter((c) => !pinned.has(c.key) && inScope(c, orgId));
-    const orgSections = byOrg.filter((o) => scope === "all" || scope === "unread" || scope === o.org.companyId).map((o) => ({ id: o.org.companyId, label: o.org.name, icon: <Building2 className="h-3.5 w-3.5" aria-hidden />, items: rest(o.items, o.org.companyId) }));
+    const readAll = (xs: ConversationItem[]): MenuEntry => ({ label: "Mark as read", disabled: !xs.some((c) => c.unread), onSelect: () => markRead(xs) });
+    const orgSections = byOrg.filter((o) => scope === "all" || scope === "unread" || scope === o.org.companyId).map((o) => {
+      const theirs = allAgents.filter((a) => a.companyId === o.org.companyId);
+      return {
+        id: o.org.companyId,
+        label: o.org.name,
+        icon: <Building2 className="h-3.5 w-3.5" aria-hidden />,
+        items: rest(o.items, o.org.companyId),
+        empty: scope === o.org.companyId ? `No chats with ${o.org.name}'s agents yet.` : undefined,
+        actions: [
+          ...(theirs.length ? [{ kind: "heading" as const, label: "New chat with" }, ...theirs.map((a): MenuEntry => ({ label: a.name, onSelect: () => open({ kind: "agent", companyId: a.companyId, agentId: a.agentId }) }))] : []),
+          { kind: "separator" as const },
+          readAll(o.items),
+          { label: "Show only this organization", onSelect: () => setScope(o.org.companyId), disabled: scope === o.org.companyId },
+        ],
+      };
+    });
     return [
-      ...(star.length ? [{ id: "pinned", label: "Pinned", items: star }] : []),
-      ...(scope === "all" || scope === "unread" || scope === "pin" ? [{ id: "pin", label: "Pin", icon: <PinOrb size={14} />, items: rest(pinItems, null) }] : []),
+      ...(star.length ? [{ id: "pinned", label: "Pinned", items: star, actions: [readAll(star)] }] : []),
+      ...(scope === "all" || scope === "unread" || scope === "pin" ? [{ id: "pin", label: "Pin", icon: <PinOrb size={14} />, items: rest(pinItems, null), empty: scope === "unread" ? undefined : "No chats yet. Start one with the pen above.", actions: [{ label: "New chat with Pin", onSelect: () => { pin.newChat(); open({ kind: "pin" }); } }, readAll(pinItems)] }] : []),
       ...orgSections,
     ].filter((sec) => scope !== "unread" || sec.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin.chats, pinned, scope, seenAt, since, chats.map((q) => q.dataUpdatedAt).join(), agents.map((q) => q.dataUpdatedAt).join(), ids.join()]);
 
-  const allAgents = orgs.flatMap((o, i) => (agents[i]?.data ?? []).filter((a) => a.status !== "terminated").map((a) => ({ companyId: o.companyId, org: o.name, agent: a })));
   const activeKey = view.kind === "agent" ? agentKey(view.companyId, view.agentId) : pin.chatId ? `pin:${pin.chatId}` : null;
   activeKeyRef.current = activeKey;
-  const activeAt = sections.flatMap((x) => x.items).find((c) => c.key === activeKey)?.updatedAt ?? 0;
-  // Opening a conversation reads it, and so does anything that arrives while it is open.
+  const everything = sections.flatMap((x) => x.items);
+  const activeAt = everything.find((c) => c.key === activeKey)?.updatedAt ?? 0;
   useEffect(() => {
     if (!activeKey) return;
     setSeenAt((prev) => {
-      const at = Math.max(Date.now(), activeAt);
-      if ((prev[activeKey] ?? 0) >= activeAt && prev[activeKey] !== undefined) return prev;
-      const next = { ...prev, [activeKey]: at };
+      if (prev[activeKey] !== undefined && prev[activeKey] >= activeAt) return prev;
+      const next = { ...prev, [activeKey]: Math.max(Date.now(), activeAt) };
       writeJson(SEEN, next);
       return next;
     });
   }, [activeKey, activeAt]);
-  const unreadCount = sections.filter((x) => x.id !== "pinned").flatMap((x) => x.items).filter((c) => c.unread).length + (sections.find((x) => x.id === "pinned")?.items.filter((c) => c.unread).length ?? 0);
-  const markAllRead = () => { const n = Date.now(); const next = Object.fromEntries(sections.flatMap((x) => x.items).map((c) => [c.key, Math.max(n, c.updatedAt)])); setSeenAt((p) => { const m = { ...p, ...next }; writeJson(SEEN, m); return m; }); };
-  const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agent.id === view.agentId) : null;
+  const unreadCount = new Set(everything.filter((c) => c.unread).map((c) => c.key)).size;
+  function markRead(xs: ConversationItem[]) {
+    const n = Date.now();
+    setSeenAt((p) => { const m = { ...p, ...Object.fromEntries(xs.map((c) => [c.key, Math.max(n, c.updatedAt)])) }; writeJson(SEEN, m); return m; });
+  }
+  const markAllRead = () => markRead(everything);
+
+  const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agentId === view.agentId) : null;
+  const currentAgent = current ? agents[ids.indexOf(current.companyId)]?.data?.find((a) => a.id === current.agentId) ?? null : null;
   const orgOfCurrent = current ? orgs.find((o) => o.companyId === current.companyId) : null;
   const permission = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission)?.label;
-  const title = view.kind === "pin" ? (pin.chats.find((c) => c.id === pin.chatId)?.title ?? "New chat") : current?.agent.name ?? "Agent";
+  const title = view.kind === "pin" ? (pin.chats.find((c) => c.id === pin.chatId)?.title ?? "New chat") : current?.name ?? "Agent";
   const configured = (connectors.data?.connectors ?? []).filter((c) => c.configured);
-  const iconBtn = (on: boolean) => cn("transition-control relative h-9 w-9 rounded-lg flex items-center justify-center hover:bg-surface-2", on ? "text-ink bg-surface-2" : "text-ink-3");
   const linkFor = (c: ConversationItem) => `${window.location.origin}/${device}/view?${c.source === "pin" ? `chat=${encodeURIComponent(c.key.slice(4))}` : `c=${encodeURIComponent(c.key)}`}`;
 
-  // Tiles come from the open conversation's tool steps (Pin's thread; agent chats have none yet). A new one opens the
-  // column by itself on a wide screen; on a phone it waits for the Tiles button so the conversation stays in view.
-  const tiles = useMemo(() => (view.kind === "pin" ? tilesOf(pin.messages, closed) : []), [view.kind, pin.messages, closed]);
-  const seen = useRef(new Set<string>());
-  useEffect(() => {
-    const fresh = tiles.filter((t) => !seen.current.has(t.id));
-    tiles.forEach((t) => seen.current.add(t.id));
-    if (fresh.length && wide()) setTilesOpen(true);
-  }, [tiles]);
-  const shownTiles = allTiles ? tiles : tiles.slice(-MAX_TILES);
-  const openExtra = (x: Extra) => { setExtras((xs) => (xs.includes(x) ? xs : [x, ...xs])); setTilesOpen(true); };
-  const closeExtra = (x: Extra) => setExtras((xs) => xs.filter((y) => y !== x));
-  /** Opens a machine's file in an editor tile (or brings the open one forward). */
-  const openFile = (vmid: number, path: string, edit = false) => {
-    setOpenFiles((xs) => [{ vmid, path, edit }, ...xs.filter((x) => !(x.vmid === vmid && x.path === path))].slice(0, 4));
-    setTilesOpen(true);
+  // ---- Editor tabs
+
+  const openTab = useCallback((t: ETab, focus = true) => {
+    setTabs((list) => {
+      const at = list.findIndex((x) => x.id === t.id);
+      if (at >= 0) return list.map((x, i) => (i === at ? { ...x, ...t, preview: x.preview && t.preview } : x));
+      const pre = t.preview ? list.findIndex((x) => x.preview && !dirtyRef.current.has(x.id)) : -1;
+      if (pre >= 0) return list.map((x, i) => (i === pre ? t : x));
+      return [...list, t];
+    });
+    if (focus) setActiveTab(t.id);
+    if (!wide()) setMobilePane("editor");
+  }, []);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const [closing, setClosing] = useState<string[] | null>(null);
+  const closeTabs = (ids_: string[], force = false) => {
+    if (!force && ids_.some((i) => dirty.has(i))) { setClosing(ids_); return; }
+    const toolIds = tabs.filter((t) => ids_.includes(t.id) && t.kind === "tool").map((t) => (t as { toolId: string }).toolId);
+    if (toolIds.length) setClosedTools((c) => new Set([...c, ...toolIds]));
+    setTabs((list) => {
+      const left = list.filter((t) => !ids_.includes(t.id));
+      if (activeTab && ids_.includes(activeTab)) {
+        const i = list.findIndex((t) => t.id === activeTab);
+        setActiveTab((left[Math.min(i, left.length - 1)] ?? null)?.id ?? null);
+      }
+      if (!left.length) setMobilePane((p) => (p === "editor" ? null : p));
+      return left;
+    });
   };
-  const paneCount = extras.length + tiles.length + openFiles.length;
-  const column = tilesOpen && paneCount > 0;
+  const keep = (id: string) => setTabs((list) => list.map((t) => (t.id === id ? { ...t, preview: false } : t)));
+  const openFile = (vmid: number, path: string, edit = false) => openTab({ id: `file:${vmid}:${path}`, kind: "file", vmid, path, edit, preview: false });
+  const openArtifact = (a: CompanyArtifact) => openTab({ id: `artifact:${a.id}`, kind: "artifact", artifact: a, preview: true });
+  const openPrs = () => openTab({ id: "prs", kind: "prs", preview: false });
+
+  // Pin's steps: a file it read or wrote, a command and a plan open as a preview tab while it works (the newest replaces the last
+  // preview); closing one keeps it closed. Agent chats have no steps in the engine yet.
+  const tiles = useMemo(() => (view.kind === "pin" ? tilesOf(pin.messages, new Set()) : []), [view.kind, pin.messages]);
+  const tileById = useMemo(() => new Map(tiles.map((t) => [t.id, t])), [tiles]);
+  const seenTiles = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = tiles.filter((t) => !seenTiles.current.has(t.id) && !closedTools.has(t.id));
+    tiles.forEach((t) => seenTiles.current.add(t.id));
+    const last = fresh[fresh.length - 1];
+    if (last && wide()) openTab({ id: `tool:${last.id}`, kind: "tool", toolId: last.id, preview: true });
+  }, [tiles, closedTools, openTab]);
+  const openStep = (toolId: string) => {
+    if (tileById.has(toolId)) openTab({ id: `tool:${toolId}`, kind: "tool", toolId, preview: false });
+    else set({ bottomOpen: true, bottomTab: "steps" });
+  };
+
+  const iconFor = (t: ETab | Tile) => {
+    const k = "toolId" in t ? tileById.get(t.toolId)?.kind : t.kind;
+    return k === "file" ? <FileText className="h-3.5 w-3.5 text-ink-3" /> : k === "command" ? <SquareTerminal className="h-3.5 w-3.5 text-ink-3" /> : k === "plan" ? <ClipboardList className="h-3.5 w-3.5 text-ink-3" /> : k === "artifact" ? <Package className="h-3.5 w-3.5 text-ink-3" /> : k === "prs" ? <GitPullRequest className="h-3.5 w-3.5 text-ink-3" /> : <FileText className="h-3.5 w-3.5 text-ink-3" />;
+  };
+  const heads: TabHead[] = tabs.map((t) => {
+    if (t.kind === "tool") { const tile = tileById.get(t.toolId); return { id: t.id, title: tile?.title ?? "Step", icon: iconFor(t), preview: t.preview, hint: tile?.kind === "file" ? tile.path : tile?.kind === "command" ? tile.command : tile?.title }; }
+    if (t.kind === "file") return { id: t.id, title: base(t.path), icon: iconFor(t), preview: t.preview, dirty: dirty.has(t.id), hint: `${machines.find((m) => m.vmid === t.vmid)?.name ?? t.vmid}: ${t.path}` };
+    if (t.kind === "artifact") return { id: t.id, title: t.artifact.title, icon: iconFor(t), preview: t.preview, hint: `${t.artifact.issue.identifier}: ${t.artifact.title}` };
+    return { id: t.id, title: "Pull requests", icon: iconFor(t), preview: false };
+  });
+  const active = tabs.find((t) => t.id === activeTab) ?? tabs[tabs.length - 1] ?? null;
+
+  const editorContent = (t: ETab | null): ReactNode => {
+    if (!t) return null;
+    if (t.kind === "tool") {
+      const tile = tileById.get(t.toolId);
+      if (!tile) return <div className="p-6"><Notice tone="info">This step belongs to another conversation. Open that conversation to see it.</Notice></div>;
+      return <TileView key={t.id} tab tile={tile} device={device} expanded={false} onExpand={() => undefined} onClose={() => closeTabs([t.id])} onEditLive={(vmid, path) => openFile(vmid, path, true)} />;
+    }
+    if (t.kind === "file") return <FileEditor key={t.id} tab vmid={t.vmid} path={t.path} startEditing={t.edit} machineName={machines.find((g) => g.vmid === t.vmid)?.name} expanded={false} onExpand={() => undefined} onClose={() => closeTabs([t.id])} onDirty={(d) => { setDirty((s) => { const n = new Set(s); if (d) n.add(t.id); else n.delete(t.id); return n; }); if (d) keep(t.id); }} />;
+    if (t.kind === "artifact") {
+      const a = t.artifact;
+      const dl = a.downloadPath ?? a.contentPath;
+      return (
+        <div className="h-full flex flex-col">
+          <div className="h-9 shrink-0 flex items-center gap-3 pl-4 pr-2 border-b border-line text-xs text-ink-3">
+            <span className="truncate flex-1">From <span className="font-mono">{a.issue.identifier}</span>: {a.issue.title}</span>
+            {dl && engineApi.artifacts.pathUrl(dl) && <a href={engineApi.artifacts.pathUrl(dl) ?? undefined} download className="text-accent hover:underline">Download</a>}
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto p-4">{a.contentPath ? <Preview path={a.contentPath} contentType={a.contentType} mediaKind={a.mediaKind} title={a.title} /> : a.previewText ? <p className="text-sm text-ink-2 whitespace-pre-wrap break-words">{a.previewText}</p> : <Notice tone="info">There is no preview for this one.</Notice>}</div>
+        </div>
+      );
+    }
+    return (
+      <div className="h-full overflow-auto p-4 space-y-3">
+        {github.status.data?.connected ? <PullRequestList prs={github.prs.data?.prs ?? []} /> : <ChangesBody onShowAll={() => undefined} editing={false} onEdited={() => undefined} />}
+      </div>
+    );
+  };
+
+  // ---- Keyboard
+
+  useEffect(() => {
+    // Listened for before anything else (the terminal keeps the keys it handles); inside the terminal only Go to is taken,
+    // so Ctrl+B, Ctrl+J and the rest still reach the shell.
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      const inTerminal = e.target instanceof HTMLElement && !!e.target.closest(".xterm");
+      if (mod && k === "p") { e.preventDefault(); e.stopPropagation(); setPalette(true); }
+      else if (inTerminal) return;
+      else if (mod && k === "b") { e.preventDefault(); set((l) => ({ sideOpen: !l.sideOpen })); }
+      else if (mod && k === "j") { e.preventDefault(); set((l) => ({ bottomOpen: !l.bottomOpen })); }
+      else if (mod && k === ".") { e.preventDefault(); set((l) => ({ details: !l.details })); }
+      else if (e.altKey && k === "n" && !mod) { e.preventDefault(); pin.newChat(); open({ kind: "pin" }); }
+      else if (e.altKey && k === "w" && !mod && activeTab) { e.preventDefault(); closeTabs([activeTab]); }
+      else if (e.key === "Escape" && !typing(e.target) && mobilePane) setMobilePane(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
+  // ---- Palette
+
+  const commands: Command[] = [
+    { id: "new", label: "New chat with Pin", group: "Commands", hint: "Alt+N", icon: <Sparkles className="h-4 w-4" />, run: () => { pin.newChat(); open({ kind: "pin" }); } },
+    { id: "side", label: layout.sideOpen ? "Hide the side panel" : "Show the side panel", group: "Commands", hint: "Ctrl+B", icon: <PanelLeft className="h-4 w-4" />, run: () => set((l) => ({ sideOpen: !l.sideOpen })) },
+    { id: "panel", label: layout.bottomOpen ? "Hide the panel" : "Show the panel", group: "Commands", hint: "Ctrl+J", icon: <PanelBottom className="h-4 w-4" />, run: () => set((l) => ({ bottomOpen: !l.bottomOpen })) },
+    { id: "terminal", label: "Open a terminal", group: "Commands", icon: <SquareTerminal className="h-4 w-4" />, run: () => set({ bottomOpen: true, bottomTab: "terminal" }) },
+    { id: "details", label: layout.details ? "Hide details" : "Show details", group: "Commands", hint: "Ctrl+.", icon: <PanelRight className="h-4 w-4" />, run: () => set((l) => ({ details: !l.details })) },
+    { id: "explorer", label: "Show the Explorer", group: "Commands", icon: <FolderTree className="h-4 w-4" />, run: () => set({ side: "explorer", sideOpen: true }) },
+    { id: "artifacts", label: "Show artifacts", group: "Commands", icon: <Package className="h-4 w-4" />, run: () => set({ side: "artifacts", sideOpen: true }) },
+    { id: "prs", label: "Open pull requests", group: "Commands", icon: <GitPullRequest className="h-4 w-4" />, run: openPrs },
+    { id: "read", label: "Mark all conversations as read", group: "Commands", icon: <CheckCheck className="h-4 w-4" />, run: markAllRead },
+    { id: "back", label: "Back to the console", group: "Commands", icon: <ArrowLeft className="h-4 w-4" />, run: () => nav(`/${device}/home`) },
+    ...heads.map((h): Command => ({ id: `tab-${h.id}`, label: h.title, group: "Open editors", hint: undefined, icon: h.icon, run: () => setActiveTab(h.id) })),
+    ...everything.map((c): Command => ({ id: `c-${c.key}`, label: c.title, group: "Conversations", icon: c.source === "pin" ? <PinOrb size={14} /> : <MessageCircle className="h-4 w-4" />, run: () => pickConversation(c) })),
+    ...allAgents.map((a): Command => ({ id: `a-${a.companyId}-${a.agentId}`, label: `Chat with ${a.name} (${a.org})`, group: "Agents", icon: <MessagesSquare className="h-4 w-4" />, run: () => open({ kind: "agent", companyId: a.companyId, agentId: a.agentId }) })),
+  ];
+  function pickConversation(c: ConversationItem) {
+    if (c.source === "pin") { void pin.openChat(c.key.slice(4)); open({ kind: "pin" }); }
+    else { const [, companyId, agentId] = c.key.split(":"); open({ kind: "agent", companyId: companyId!, agentId: agentId! }); }
+  }
+
+  // ---- Details
 
   const cardsFor: { id: string; label: string }[] = view.kind === "pin"
     ? [{ id: "model", label: "Model" }, { id: "permissions", label: "Permissions" }, { id: "connectors", label: "Connectors" }, { id: "changes", label: "Changes" }]
@@ -193,194 +344,163 @@ export function PinView() {
   const visible = (id: string) => !hidden.has(id);
   const changesAction = github.status.data?.connected && github.status.data.canManage ? (
     <Menu size="sm" label="Changes options" icon={<MoreHorizontal className="h-4 w-4" />} items={[
-      { label: "Show all pull requests", onSelect: () => openExtra("prs") },
+      { label: "Show all pull requests", onSelect: openPrs },
       { label: "Refresh", onSelect: () => void qc.invalidateQueries({ queryKey: ["github", "prs"] }) },
       { label: "Change token or repositories", onSelect: () => setEditingGithub(true) },
       { kind: "separator" },
-      { label: "Disconnect GitHub", danger: true, onSelect: () => void githubApi.disconnect().then((s) => { qc.setQueryData(["github", "status"], s); closeExtra("prs"); }) },
+      { label: "Disconnect GitHub", danger: true, onSelect: () => void githubApi.disconnect().then((s) => qc.setQueryData(["github", "status"], s)) },
     ]} />
   ) : undefined;
-  const changesCard = visible("changes") && (
-    <DetailCard title="Changes" action={changesAction}>
-      <ChangesBody onShowAll={() => openExtra("prs")} editing={editingGithub} onEdited={() => setEditingGithub(false)} />
-    </DetailCard>
+  const detailsPanel = (
+    <aside aria-label="Details" className={cn("bg-bg flex flex-col min-h-0 border-l border-line", mobilePane === "details" ? "absolute inset-0 z-(--z-raised) md:static md:w-80" : "hidden lg:flex w-80 shrink-0")}>
+      <div className="h-10 shrink-0 flex items-center gap-1 pl-4 pr-2 border-b border-line">
+        <h2 className="flex-1 text-micro font-semibold uppercase tracking-label text-ink-3">Details</h2>
+        <Menu size="sm" label="Show cards" icon={<MoreHorizontal className="h-4 w-4" />} items={showMenu} />
+        <BarButton label="Close details" onClick={() => { set({ details: false }); setMobilePane(null); }}><PanelRight className="h-4 w-4" /></BarButton>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+        {view.kind === "pin" ? (
+          <>
+            {visible("model") && <DetailCard title="Model"><Fact label="Provider">{pin.providerName ?? "Not set up"}</Fact><Fact label="Model">{pin.settings?.model ?? "None chosen"}</Fact><Link to={`/${device}/pin?tab=settings`} className="text-compact text-accent hover:underline">Change in Pin's settings</Link></DetailCard>}
+            {visible("permissions") && <DetailCard title="Permissions"><Fact label="Mode">{pin.settings?.mode === "agent" ? "Agent" : "Assistant"}</Fact><PermissionPicker /></DetailCard>}
+            {visible("connectors") && (
+              <DetailCard title="Connectors" open={configured.length > 0}>
+                {configured.length === 0 ? <p className="text-compact text-ink-3">No connectors are set up yet.</p> : <ul className="space-y-1.5">{configured.map((c) => <li key={c.id} className="flex items-center gap-2 text-compact"><span className="flex-1 truncate">{c.label ?? c.id}</span><Status kind={pin.settings?.connectors.includes(c.id) ? "good" : "idle"} label={pin.settings?.connectors.includes(c.id) ? "Pin uses it" : "Not used"} /></li>)}</ul>}
+                <Link to={settingsHref("connectors")} className="text-compact text-accent hover:underline">Manage connectors</Link>
+              </DetailCard>
+            )}
+          </>
+        ) : current ? (
+          <>
+            {visible("agent") && <DetailCard title="Agent"><Fact label="Name">{current.name}</Fact>{currentAgent && <div><div className="text-xs text-ink-3 mb-1">Status</div><Status kind={agentStatusOf(currentAgent.status)[0]} label={agentStatusOf(currentAgent.status)[1]} /></div>}<Link to={`/${device}/${orgOfCurrent?.slug ?? ""}/agents/${current.agentId}`} className="text-compact text-accent hover:underline">Open the agent</Link></DetailCard>}
+            {visible("organization") && <DetailCard title="Organization"><Fact label="Name"><span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-ink-3" aria-hidden />{current.org}</span></Fact><Link to={`/${device}/${orgOfCurrent?.slug ?? ""}`} className="text-compact text-accent hover:underline">Open the organization</Link></DetailCard>}
+            {visible("files") && <DetailCard title="Files"><p className="text-compact text-ink-3 text-pretty">Documents and files this organization's agents produced.</p><button type="button" onClick={() => { setFilesOrg(current.companyId); set({ side: "artifacts", sideOpen: true }); }} className="text-compact text-accent hover:underline">Show artifacts</button></DetailCard>}
+          </>
+        ) : null}
+        {visible("changes") && <DetailCard title="Changes" action={changesAction}><ChangesBody onShowAll={openPrs} editing={editingGithub} onEdited={() => setEditingGithub(false)} /></DetailCard>}
+        {cardsFor.every((c) => hidden.has(c.id)) && <p className="text-compact text-ink-3 px-1">Every card is hidden. Choose some from the menu above.</p>}
+      </div>
+    </aside>
+  );
+
+  // ---- Side panel views
+
+  const sideViews: Record<SideView, ReactNode> = {
+    chats: (
+      <ChatsView sections={sections} activeKey={activeKey} onPick={pickConversation} onNewPin={() => { pin.newChat(); open({ kind: "pin" }); }} onNewAgent={(a) => open({ kind: "agent", companyId: a.companyId, agentId: a.agentId })}
+        agents={allAgents} scope={scope} setScope={setScope} scopes={[{ id: "all", label: "All conversations" }, { id: "unread", label: "Unread" }, { id: "pin", label: "Pin only" }, ...orgs.map((o) => ({ id: o.companyId, label: o.name }))]}
+        unreadCount={unreadCount} markAllRead={markAllRead} pinned={pinned} onTogglePin={togglePin} linkFor={linkFor}
+        onRename={(c, t) => (c.source === "pin" ? pin.renameChat(c.key.slice(4), t) : Promise.reject(new Error("Agent chats are named after the agent.")))}
+        onDelete={(c) => (c.source === "pin" ? pin.deleteChat(c.key.slice(4)) : Promise.reject(new Error("An agent chat lives in its organization; delete its task there.")))}
+        emptyNote={live ? undefined : "Chats are kept on a device; the demo doesn't save them."} />
+    ),
+    explorer: <Explorer machines={machines} vmid={explorerVmid} onVmid={setExplorerVmid} onOpenFile={(vmid, path) => openFile(vmid, path)} activePath={active?.kind === "file" && active.vmid === explorerVmid ? active.path : null} />,
+    artifacts: (
+      <div className="flex flex-col min-h-0 h-full">
+        <SideHeader title="Artifacts" />
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3"><FilesPanel orgs={orgs} companyId={filesOrg ?? (view.kind === "agent" ? view.companyId : orgs[0]?.companyId ?? null)} onOrg={setFilesOrg} onOpen={openArtifact} /></div>
+      </div>
+    ),
+    prs: (
+      <div className="flex flex-col min-h-0 h-full">
+        <SideHeader title="Pull requests" actions={github.status.data?.connected ? <BarButton label="Open in the editor" onClick={openPrs}><GitPullRequest className="h-3.5 w-3.5" /></BarButton> : undefined} />
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 space-y-3"><ChangesBody onShowAll={openPrs} editing={editingGithub} onEdited={() => setEditingGithub(false)} /></div>
+      </div>
+    ),
+    search: null,
+  };
+
+  // ---- Layout
+
+  const conversation = (
+    <section aria-label="Conversation" className="flex-1 min-w-0 flex flex-col min-h-0">
+      <div className="h-10 shrink-0 border-b border-line flex items-center gap-2 px-3">
+        <button type="button" onClick={toList} aria-label="Back to conversations" className="md:hidden h-8 w-8 rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><ArrowLeft className="h-4 w-4" /></button>
+        <span>{view.kind === "pin" ? <PinOrb size={18} /> : <MessageCircle className="h-4 w-4 text-ink-3" aria-hidden />}</span>
+        <h1 className="text-compact font-medium truncate flex-1 min-w-0">{title}{orgOfCurrent && <span className="text-ink-3 font-normal"> · {orgOfCurrent.name}</span>}</h1>
+        {tabs.length > 0 && <span className="md:hidden"><BarButton label={`Open editors (${tabs.length})`} onClick={() => setMobilePane("editor")}><FileText className="h-4 w-4" /></BarButton></span>}
+        <span className="lg:hidden"><BarButton label="Details" onClick={() => setMobilePane("details")}><PanelRight className="h-4 w-4" /></BarButton></span>
+        <Menu size="sm" label="Conversation menu" icon={<MoreHorizontal className="h-4 w-4" />} items={[
+          ...(view.kind === "pin" && pin.chatId ? [{ label: "Copy link", onSelect: () => copyText(`${window.location.origin}/${device}/view?chat=${pin.chatId}`) }] : []),
+          ...(activeKey ? [{ label: pinned.has(activeKey) ? "Unpin" : "Pin to the top", onSelect: () => { const c = everything.find((x) => x.key === activeKey); if (c) togglePin(c); } }] : []),
+          { label: "Steps in this conversation", onSelect: () => set({ bottomOpen: true, bottomTab: "steps" }) },
+          { label: "New chat with Pin", onSelect: () => { pin.newChat(); open({ kind: "pin" }); } },
+        ]} />
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto">
+        {view.kind === "pin" ? (
+          <PinThread inPlace autoFocus className="flex-1" empty={<div className="h-full flex flex-col items-center justify-center text-center gap-3 py-16 px-6"><PinOrb size={44} /><p className="text-ink-2 text-sm max-w-sm text-pretty">Ask Pin about this device, or tell it what to set up. In Agent mode it can act, inside machines too; files and plans it touches open beside the chat.</p></div>}
+            below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{pin.settings?.mode === "agent" ? permission ?? "Agent" : "Assistant"}</span><span className="flex-1" /><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></div>} />
+        ) : current && currentAgent ? (
+          <AgentChat key={agentKey(current.companyId, current.agentId)} companyId={current.companyId} agent={currentAgent} org={current.org} />
+        ) : (
+          <div className="p-8"><Notice tone="info">That agent isn't available any more. Pick another conversation.</Notice></div>
+        )}
+      </div>
+    </section>
+  );
+
+  const editor = tabs.length > 0 && (
+    <div className={cn("bg-bg flex min-h-0", mobilePane === "editor" ? "absolute inset-0 z-(--z-raised) md:static md:inset-auto" : "hidden md:flex")} style={wide() || mobilePane !== "editor" ? { width: layout.editorWidth } : undefined}>
+      <ResizeHandle label="Editor width" value={layout.editorWidth} min={320} max={1100} edge="start" onChange={(v) => set({ editorWidth: v })} className="hidden md:block" />
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 border-l border-line">
+        <div className="md:hidden h-10 shrink-0 flex items-center gap-2 px-2 border-b border-line">
+          <BarButton label="Back to the conversation" onClick={() => setMobilePane(null)}><ArrowLeft className="h-4 w-4" /></BarButton>
+          <span className="text-compact font-medium">Editors</span>
+        </div>
+        <EditorGroup tabs={heads} active={active?.id ?? null} onActivate={setActiveTab} onClose={(id) => closeTabs([id])} onKeep={keep} onCloseMany={closeTabs}>
+          {editorContent(active)}
+        </EditorGroup>
+      </div>
+    </div>
   );
 
   return (
-    <div className="fixed inset-0 z-(--z-fullscreen) bg-bg flex" role="region" aria-label="PinView">
-      <aside className={cn("w-full md:w-72 shrink-0 border-r border-line bg-surface/40 flex-col min-h-0 p-3", params.get("t") ? "hidden md:flex" : "flex")}>
-        <div className="flex items-center gap-2 mb-3">
-          <Link to={`/${device}/home`} aria-label="Back to the console" className="transition-control h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><ArrowLeft className="h-4 w-4" /></Link>
-          <h1 className="text-sm font-semibold flex-1">PinView</h1>
-        </div>
-        <button type="button" onClick={() => { pin.newChat(); open({ kind: "pin" }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><MessageSquarePlus className="h-4 w-4 text-ink-2" aria-hidden />New chat</button>
-        <button type="button" onClick={() => { openExtra("files"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><FolderOpen className="h-4 w-4 text-ink-2" aria-hidden />Files</button>
-        <button type="button" onClick={() => { openExtra("prs"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2"><GitPullRequest className="h-4 w-4 text-ink-2" aria-hidden />Pull requests</button>
-        <button type="button" onClick={() => { openExtra("machine"); setParams((p) => { const n = new URLSearchParams(p); n.set("t", "1"); return n; }, { replace: true }); }} className="transition-control flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-compact hover:bg-surface-2 mb-2"><HardDrive className="h-4 w-4 text-ink-2" aria-hidden />Machine files</button>
-        <div className="flex items-center gap-1 mb-2">
-          <Select aria-label="Show conversations from" size="sm" className="flex-1" value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="all">All conversations</option>
-            <option value="unread">Unread{unreadCount ? ` (${unreadCount})` : ""}</option>
-            <option value="pin">Pin only</option>
-            {orgs.length > 0 && <optgroup label="Organizations">{orgs.map((o) => <option key={o.companyId} value={o.companyId}>{o.name}</option>)}</optgroup>}
-          </Select>
-          <Menu size="sm" label="Conversation options" icon={<MoreHorizontal className="h-4 w-4" />} items={[{ label: "Mark all as read", onSelect: markAllRead, disabled: unreadCount === 0 }, { label: "Show everything", onSelect: () => setScope("all"), disabled: scope === "all" }]} />
-        </div>
-        {live && allAgents.length > 0 && (
-          <Select aria-label="Chat with an agent" size="sm" className="mb-2" value="" onChange={(e) => { const [c, a] = e.target.value.split("|"); if (c && a) open({ kind: "agent", companyId: c, agentId: a }); }}>
-            <option value="">Chat with an agent…</option>
-            {allAgents.map((a) => <option key={`${a.companyId}|${a.agent.id}`} value={`${a.companyId}|${a.agent.id}`}>{a.org} · {a.agent.name}</option>)}
-          </Select>
-        )}
-        <ConversationList
-          className="flex-1"
-          label="Conversations"
-          sections={sections}
-          activeKey={activeKey}
-          search
-          pinned={pinned}
-          onTogglePin={togglePin}
-          linkFor={linkFor}
-          empty={live ? "Your chats with Pin and with your agents are kept here." : "Chats are kept on a device. The demo doesn't save them."}
-          onPick={(c) => {
-            if (c.source === "pin") { void pin.openChat(c.key.slice(4)); open({ kind: "pin" }); }
-            else { const [, companyId, agentId] = c.key.split(":"); open({ kind: "agent", companyId: companyId!, agentId: agentId! }); }
-          }}
-          onRename={(c, t) => (c.source === "pin" ? pin.renameChat(c.key.slice(4), t) : Promise.reject(new Error("Agent chats are named after the agent.")))}
-          onDelete={(c) => (c.source === "pin" ? pin.deleteChat(c.key.slice(4)) : Promise.reject(new Error("An agent chat lives in its organization; delete its task there.")))}
-        />
-        <Link to={settingsHref("general")} className="transition-control mt-2 flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-surface-2">
-          <Avatar name={setup?.ownerName || "You"} hue={32} size={28} />
-          <span className="text-compact truncate flex-1">{setup?.ownerName || "You"}</span>
-          <Settings className="h-4 w-4 text-ink-3" aria-hidden /><span className="sr-only">Settings</span>
-        </Link>
-      </aside>
-
-      <main className={cn("relative flex-1 min-w-0 flex-col min-h-0", params.get("t") ? "flex" : "hidden md:flex")}>
-        <div className="h-12 shrink-0 border-b border-line flex items-center gap-1 px-3">
-          <button type="button" onClick={toList} aria-label="Back to conversations" className="md:hidden h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><ArrowLeft className="h-4 w-4" /></button>
-          <span className="mr-1">{view.kind === "pin" ? <PinOrb size={20} /> : <MessageCircle className="h-4 w-4 text-ink-3" aria-hidden />}</span>
-          <div className="text-sm font-medium truncate flex-1 min-w-0">{title}{orgOfCurrent && <span className="text-ink-3 font-normal"> · {orgOfCurrent.name}</span>}</div>
-          <button type="button" aria-label="Files" aria-pressed={extras.includes("files") && tilesOpen} onClick={() => (extras.includes("files") && tilesOpen ? closeExtra("files") : openExtra("files"))} className={iconBtn(extras.includes("files") && tilesOpen)}><FolderOpen className="h-4 w-4" /></button>
-          <button type="button" aria-label={`Tiles${tiles.length ? ` (${tiles.length})` : ""}`} aria-pressed={column} disabled={paneCount === 0} onClick={() => setTilesOpen((v) => !v)} className={cn(iconBtn(column), "disabled:opacity-40")}>
-            <Layers className="h-4 w-4" />{tiles.length > 0 && !column && <span aria-hidden className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-accent text-on-status text-micro font-bold flex items-center justify-center">{tiles.length}</span>}
-          </button>
-          <button type="button" aria-label="Details" aria-pressed={details} onClick={() => setDetails((v) => !v)} className={iconBtn(details)}><PanelRight className="h-4 w-4" /></button>
-        </div>
-        <div className="flex-1 min-h-0 flex">
-          <div className="flex-1 min-w-0 flex flex-col min-h-0">
-            <div className="flex-1 min-h-0 flex flex-col max-w-3xl mx-auto w-full">
-              {view.kind === "pin" ? (
-                <PinThread inPlace autoFocus className="flex-1" empty={<div className="h-full flex flex-col items-center justify-center text-center gap-3 py-16"><PinOrb size={44} /><p className="text-ink-2 text-sm max-w-sm text-pretty">Ask Pin about this device, or tell it what to set up. Switch to Agent mode to let it act.</p></div>}
-                  below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{pin.settings?.mode === "agent" ? permission ?? "Agent" : "Assistant"}</span><span className="flex-1" /><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></div>} />
-              ) : current ? (
-                <AgentChat key={agentKey(current.companyId, current.agent.id)} companyId={current.companyId} agent={current.agent} org={current.org} />
-              ) : (
-                <div className="p-8"><Notice tone="info">That agent isn't available any more. Pick another conversation.</Notice></div>
-              )}
+    <div className="fixed inset-0 z-(--z-workspace) bg-bg flex flex-col" role="region" aria-label="PinView">
+      <div className="flex-1 min-h-0 flex">
+        <div className="hidden md:flex"><ActivityBar side={layout.side} sideOpen={layout.sideOpen} onSide={showSide} bottomOpen={layout.bottomOpen} onBottom={() => set((l) => ({ bottomOpen: !l.bottomOpen }))} details={layout.details} onDetails={() => set((l) => ({ details: !l.details }))} device={device} unread={unreadCount} /></div>
+        {/* The side panel: full width on a phone until a conversation opens. */}
+        {(layout.sideOpen || !onMobileThread) && (
+          <aside aria-label="Side panel" className={cn("min-h-0 flex-col bg-surface/40 border-r border-line", onMobileThread ? "hidden md:flex" : layout.sideOpen ? "flex w-full md:w-auto" : "flex w-full md:hidden")} style={wide() ? { width: layout.sideWidth } : undefined}>
+            <div className="md:hidden flex items-center gap-1 px-2 h-12 border-b border-line">
+              <Link to={`/${device}/home`} aria-label="Back to the console" className="h-9 w-9 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink"><ArrowLeft className="h-4 w-4" /></Link>
+              {(["chats", "explorer", "artifacts", "prs"] as const).map((v) => <BarButton key={v} label={{ chats: "Conversations", explorer: "Explorer", artifacts: "Artifacts", prs: "Pull requests", search: "" }[v]} pressed={layout.side === v} onClick={() => set({ side: v, sideOpen: true })}>{{ chats: <MessagesSquare className="h-4 w-4" />, explorer: <FolderTree className="h-4 w-4" />, artifacts: <Package className="h-4 w-4" />, prs: <GitPullRequest className="h-4 w-4" />, search: null }[v]}</BarButton>)}
             </div>
+            <div className="flex-1 min-h-0">{sideViews[layout.side] ?? sideViews.chats}</div>
+          </aside>
+        )}
+        {layout.sideOpen && <ResizeHandle label="Side panel width" value={layout.sideWidth} min={220} max={520} onChange={(v) => set({ sideWidth: v })} className="hidden md:block" />}
+
+        <div className={cn("relative flex-1 min-w-0 flex-col min-h-0", onMobileThread ? "flex" : "hidden md:flex")}>
+          <div className="flex-1 min-h-0 flex relative">
+            {conversation}
+            {editor}
           </div>
-
-          {column && (
-            <aside aria-label="Tiles" className="absolute inset-0 lg:static lg:inset-auto bg-bg lg:w-96 xl:w-120 shrink-0 lg:border-l border-line flex flex-col min-h-0">
-              <div className="h-12 shrink-0 border-b border-line flex items-center gap-2 pl-4 pr-2 lg:hidden">
-                <span className="text-sm font-medium flex-1">Tiles</span>
-                <button type="button" aria-label="Close tiles" onClick={() => setTilesOpen(false)} className="transition-control h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><X className="h-4 w-4" /></button>
+          {layout.bottomOpen && (
+            <>
+              <ResizeHandle label="Panel height" orientation="horizontal" value={layout.bottomHeight} min={140} max={640} edge="start" onChange={(v) => set({ bottomHeight: v })} className="hidden md:block" />
+              <div style={{ height: layout.bottomHeight }} className="shrink-0 min-h-0">
+                <BottomPanel tab={layout.bottomTab} onTab={(t) => set({ bottomTab: t })} onClose={() => set({ bottomOpen: false })} messages={view.kind === "pin" ? pin.messages : []} onOpenStep={openStep} />
               </div>
-              <div className="flex-1 min-h-0 flex flex-col gap-3 p-3 overflow-y-auto">
-                {extras.filter((x) => x !== "machine" && (!expanded || expanded === x)).map((x) => x === "files" ? (
-                  <Pane key="files" icon={<FolderOpen className="h-4 w-4" />} title="Files" sub="What agents produced" expanded={expanded === "files"} onExpand={() => setExpanded((e) => (e === "files" ? null : "files"))} onClose={() => closeExtra("files")} className={cn("shrink-0", expanded === "files" ? "flex-1" : "h-96")}>
-                    <div className="p-3"><FilesPanel orgs={orgs} companyId={view.kind === "agent" ? view.companyId : filesOrg ?? orgs[0]?.companyId ?? null} onOrg={setFilesOrg} /></div>
-                  </Pane>
-                ) : (
-                  <Pane key="prs" icon={<GitPullRequest className="h-4 w-4" />} title="Pull requests" sub={github.status.data?.connected ? github.status.data.repos.join(", ") : "GitHub isn't connected"} expanded={expanded === "prs"} onExpand={() => setExpanded((e) => (e === "prs" ? null : "prs"))} onClose={() => closeExtra("prs")} className={cn("shrink-0", expanded === "prs" ? "flex-1" : "h-96")}
-                    menu={github.status.data?.connected ? [{ label: "Refresh", onSelect: () => void qc.invalidateQueries({ queryKey: ["github", "prs"] }) }] : undefined}>
-                    <div className="p-3 space-y-3">{github.status.data?.connected ? <PullRequestList prs={github.prs.data?.prs ?? []} /> : <ChangesBody onShowAll={() => undefined} editing={false} onEdited={() => undefined} />}</div>
-                  </Pane>
-                ))}
-                {extras.includes("machine") && (!expanded || expanded === "machine") && (
-                  <MachineBrowser machines={data.guests ?? []} vmid={browseVmid} onVmid={setBrowseVmid} expanded={expanded === "machine"} onExpand={() => setExpanded((e) => (e === "machine" ? null : "machine"))} onClose={() => closeExtra("machine")}
-                    onOpenFile={(vmid, path) => openFile(vmid, path)} />
-                )}
-                {openFiles.filter((f) => !expanded || expanded === `file:${f.vmid}:${f.path}`).map((f) => {
-                  const k = `file:${f.vmid}:${f.path}`;
-                  return <FileEditor key={k} vmid={f.vmid} path={f.path} startEditing={f.edit} machineName={(data.guests ?? []).find((g) => g.vmid === f.vmid)?.name} expanded={expanded === k} onExpand={() => setExpanded((e) => (e === k ? null : k))} onClose={() => { setOpenFiles((xs) => xs.filter((x) => x !== f)); if (expanded === k) setExpanded(null); }} />;
-                })}
-                {tiles.length > MAX_TILES && !expanded && (
-                  <button type="button" onClick={() => setAllTiles((v) => !v)} className="text-compact text-accent hover:underline self-start">{allTiles ? "Show only the newest" : `Show ${tiles.length - MAX_TILES} earlier`}</button>
-                )}
-                {shownTiles.filter((t) => !expanded || expanded === t.id).map((t) => (
-                  <div key={t.id} className={cn("flex flex-col min-h-0 shrink-0", expanded === t.id ? "flex-1" : "h-96")}>
-                    <TileView tile={t} device={device} onEditLive={(vmid, path) => openFile(vmid, path, true)} expanded={expanded === t.id} onExpand={() => setExpanded((e) => (e === t.id ? null : t.id))} onClose={() => { setClosed((c) => new Set([...c, t.id])); if (expanded === t.id) setExpanded(null); }} />
-                  </div>
-                ))}
-              </div>
-            </aside>
-          )}
-
-          {details && (
-            <aside aria-label="Details" className="absolute inset-0 lg:static lg:inset-auto bg-bg lg:w-80 shrink-0 lg:border-l border-line flex flex-col min-h-0">
-              <div className="h-12 shrink-0 border-b border-line flex items-center gap-1 pl-4 pr-2">
-                <span className="text-sm font-medium flex-1">Details</span>
-                <Menu label="Show cards" icon={<MoreHorizontal className="h-4 w-4" />} items={showMenu} />
-                <button type="button" aria-label="Close details" onClick={() => setDetails(false)} className="transition-control h-9 w-9 rounded-lg text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center"><X className="h-4 w-4" /></button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-                {view.kind === "pin" ? (
-                  <>
-                    {visible("model") && (
-                      <DetailCard title="Model">
-                        <Fact label="Provider">{pin.providerName ?? "Not set up"}</Fact>
-                        <Fact label="Model">{pin.settings?.model ?? "None chosen"}</Fact>
-                        <Link to={`/${device}/pin?tab=settings`} className="text-compact text-accent hover:underline">Change in Pin's settings</Link>
-                      </DetailCard>
-                    )}
-                    {visible("permissions") && (
-                      <DetailCard title="Permissions">
-                        <Fact label="Mode">{pin.settings?.mode === "agent" ? "Agent" : "Assistant"}</Fact>
-                        <PermissionPicker />
-                      </DetailCard>
-                    )}
-                    {visible("connectors") && (
-                      <DetailCard title="Connectors" open={configured.length > 0}>
-                        {configured.length === 0 ? <p className="text-compact text-ink-3">No connectors are set up yet.</p> : (
-                          <ul className="space-y-1.5">{configured.map((c) => <li key={c.id} className="flex items-center gap-2 text-compact"><span className="flex-1 truncate">{c.label ?? c.id}</span><Status kind={pin.settings?.connectors.includes(c.id) ? "good" : "idle"} label={pin.settings?.connectors.includes(c.id) ? "Pin uses it" : "Not used"} /></li>)}</ul>
-                        )}
-                        <Link to={settingsHref("connectors")} className="text-compact text-accent hover:underline">Manage connectors</Link>
-                      </DetailCard>
-                    )}
-                    {changesCard}
-                  </>
-                ) : current ? (
-                  <>
-                    {visible("agent") && (
-                      <DetailCard title="Agent">
-                        <Fact label="Name">{current.agent.name}</Fact>
-                        <div><div className="text-xs text-ink-3 mb-1">Status</div><Status kind={agentStatusOf(current.agent.status)[0]} label={agentStatusOf(current.agent.status)[1]} /></div>
-                        <Link to={`/${device}/${orgOfCurrent?.slug ?? ""}/agents/${current.agent.id}`} className="text-compact text-accent hover:underline">Open the agent</Link>
-                      </DetailCard>
-                    )}
-                    {visible("organization") && (
-                      <DetailCard title="Organization">
-                        <Fact label="Name"><span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-ink-3" aria-hidden />{current.org}</span></Fact>
-                        <Link to={`/${device}/${orgOfCurrent?.slug ?? ""}`} className="text-compact text-accent hover:underline">Open the organization</Link>
-                      </DetailCard>
-                    )}
-                    {visible("files") && (
-                      <DetailCard title="Files">
-                        <p className="text-compact text-ink-3 text-pretty">Documents and files this organization's agents produced.</p>
-                        <button type="button" onClick={() => openExtra("files")} className="text-compact text-accent hover:underline">Browse files</button>
-                      </DetailCard>
-                    )}
-                    {changesCard}
-                  </>
-                ) : null}
-                {cardsFor.every((c) => hidden.has(c.id)) && <p className="text-compact text-ink-3 px-1">Every card is hidden. Choose some from the menu above.</p>}
-              </div>
-            </aside>
+            </>
           )}
         </div>
-      </main>
+        {(layout.details || mobilePane === "details") && detailsPanel}
+      </div>
+      <StatusBar items={[
+        { id: "device", label: <><HardDrive className="h-3.5 w-3.5" aria-hidden />{device}</>, title: live ? `Connected to ${device}` : "Demo data" },
+        ...(unreadCount ? [{ id: "unread", label: <>{unreadCount} unread</>, title: "Show unread conversations", onClick: () => { setScope("unread"); set({ side: "chats", sideOpen: true }); } }] : []),
+        { id: "steps", wideOnly: true, label: <><SquareTerminal className="h-3.5 w-3.5" aria-hidden />{tiles.length ? `${tiles.length} step${tiles.length === 1 ? "" : "s"}` : "Terminal"}</>, title: "Open the panel", onClick: () => set({ bottomOpen: true, bottomTab: tiles.length ? "steps" : "terminal" }) },
+        { id: "github", side: "right" as const, wideOnly: true, label: <><GitPullRequest className="h-3.5 w-3.5" aria-hidden />{github.status.data?.connected ? `${(github.prs.data?.prs ?? []).filter((p) => p.state === "open").length} open` : "GitHub"}</>, title: github.status.data?.connected ? "Open pull requests" : "Connect GitHub", tone: (github.prs.data?.prs ?? []).some((p) => p.state === "open" && p.checks === "failure") ? "critical" as const : undefined, onClick: () => (github.status.data?.connected ? openPrs() : set({ side: "prs", sideOpen: true })) },
+        { id: "mode", side: "right" as const, label: <>{pin.settings?.mode === "agent" ? `Agent · ${permission ?? ""}` : "Assistant"}</>, title: "Pin's mode and permissions", onClick: () => set({ details: true }) },
+        { id: "model", side: "right" as const, wideOnly: true, label: <>{pin.settings?.model ?? pin.providerName ?? "No model"}</>, title: "Pin's model", onClick: () => set({ details: true }) },
+      ]} />
+      {palette && <Palette commands={commands} onClose={() => setPalette(false)} />}
+      {closing && (
+        <ConfirmModal title="Close without saving?" label="Close without saving" danger
+          body={`${closing.filter((i) => dirty.has(i)).length === 1 ? "A file has" : `${closing.filter((i) => dirty.has(i)).length} files have`} changes that aren't saved to the machine. They will be lost.`}
+          onConfirm={() => { const ids_ = closing; setClosing(null); setDirty((d) => new Set([...d].filter((i) => !ids_.includes(i)))); closeTabs(ids_, true); }} onClose={() => setClosing(null)} />
+      )}
     </div>
   );
 }

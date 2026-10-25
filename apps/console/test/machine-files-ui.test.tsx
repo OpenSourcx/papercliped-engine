@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { FileEditor, MachineBrowser } from "../src/pages/pinview/MachineFiles.tsx";
+import { FileEditor } from "../src/pages/pinview/MachineFiles.tsx";
+import { Explorer } from "../src/pages/pinview/workspace/Explorer.tsx";
 import { ConversationList } from "../src/pin/ConversationList.tsx";
 import type { Guest } from "../src/data/types.ts";
 
@@ -27,19 +28,25 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 const guest = (vmid: number, name: string, status: "running" | "stopped"): Guest => ({ vmid, name, type: "lxc", status, cpuPct: 0, cores: 1, memUsed: 0, memMax: 1, diskMax: 1, org: null, protected: false } as Guest);
 
-describe("machine file browser", () => {
-  it("lists a machine's folder, folders first, walks into one, and opens a file", async () => {
+describe("Explorer", () => {
+  it("shows a machine's tree, opens folders in place, hides dotfiles until asked, and opens a file", async () => {
     handlers["GET /api/guests/103/files"] = (c) => [200, c.path.includes(encodeURIComponent("/etc")) ? { path: "/etc", entries: [{ name: "hosts", kind: "file", size: 120, mtime: 1 }], truncated: false } : { path: "/", entries: [{ name: "etc", kind: "dir", size: 0, mtime: 1 }, { name: ".profile", kind: "file", size: 10, mtime: 1 }], truncated: false }];
     const opened: string[] = [];
-    let vmid: number | null = null;
-    const { rerender } = wrap(<MachineBrowser machines={[guest(103, "paperclip", "running"), guest(104, "old", "stopped")]} vmid={vmid} onVmid={(v) => { vmid = v; }} onOpenFile={(v, p) => opened.push(`${v}:${p}`)} expanded={false} onExpand={() => undefined} onClose={() => undefined} />);
-    expect(screen.getByText("Choose a running machine to browse its files.")).toBeTruthy();
-    rerender(<QueryClientProvider client={new QueryClient()}><MachineBrowser machines={[guest(103, "paperclip", "running")]} vmid={103} onVmid={() => undefined} onOpenFile={(v, p) => opened.push(`${v}:${p}`)} expanded={false} onExpand={() => undefined} onClose={() => undefined} /></QueryClientProvider>);
-    fireEvent.click(await screen.findByText("etc"));
-    expect(screen.queryByText(".profile")).toBeNull(); // hidden files stay hidden until asked
+    wrap(<Explorer machines={[guest(103, "paperclip", "running"), guest(104, "old", "stopped")]} vmid={103} onVmid={() => undefined} onOpenFile={(v, p) => opened.push(`${v}:${p}`)} activePath={null} />);
+    const etc = await screen.findByText("etc");
+    expect(screen.queryByText(".profile")).toBeNull();
+    fireEvent.click(etc);
+    expect(etc.closest("[role=treeitem]")!.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(await screen.findByText("hosts"));
     expect(opened).toEqual(["103:/etc/hosts"]);
-    expect(screen.getByRole("button", { name: "etc" }).getAttribute("aria-current")).toBe("location");
+    fireEvent.click(screen.getByRole("button", { name: "Explorer options" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" }));
+    expect(await screen.findByText(".profile")).toBeTruthy();
+  });
+
+  it("asks for a machine first", () => {
+    wrap(<Explorer machines={[guest(103, "paperclip", "running")]} vmid={null} onVmid={() => undefined} onOpenFile={() => undefined} activePath={null} />);
+    expect(screen.getByText(/Choose a running machine to see its files/)).toBeTruthy();
   });
 });
 

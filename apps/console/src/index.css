@@ -149,6 +149,8 @@
   --z-rail: 30;
   --z-island: 40;
   --z-drawer: 50;
+  /* A full-window workspace (PinView): above the shell, below the dialogs it opens. */
+  --z-workspace: 55;
   --z-modal: 60;
   --z-fullscreen: 65;
   --z-popover: 70;
