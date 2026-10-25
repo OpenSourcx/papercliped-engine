@@ -1,4 +1,5 @@
 import { ProxmoxError, type ProxmoxClient, type GuestType } from "@papercliped-engine/proxmox-client";
+import type { Connect } from "../console.ts";
 import type { EngineGateway } from "../engine.ts";
 import type { Session } from "../sessions.ts";
 import type { FeatureCtx } from "./index.ts";
@@ -229,7 +230,7 @@ const reasonOf = (e: unknown): string => {
   return "It failed.";
 };
 
-async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: string, gw: EngineGateway | null, rt: PinRuntime): Promise<{ upid?: string; result: string }> {
+async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: string, gw: EngineGateway | null, rt: PinRuntime, connect: Connect): Promise<{ upid?: string; result: string }> {
   const a = step.args;
   if (isNoteStep(step.kind)) return { result: runNoteStep(rt.state, s.username, step.kind, a) };
   if (step.kind === "create_task") {
@@ -238,7 +239,7 @@ async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: str
     return { result: `Created task ${issue.identifier ?? issue.id ?? ""}`.trim() };
   }
   if (step.kind === "act") {
-    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, sleep: rt.sleep, maxWaitMs: 100_000 }, a.params as Record<string, unknown>);
+    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, connect, sleep: rt.sleep, maxWaitMs: 100_000 }, a.params as Record<string, unknown>);
     return { ...(r.upid ? { upid: r.upid } : {}), result: r.result };
   }
   const vmid = a.vmid as number;
@@ -259,7 +260,7 @@ async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: str
 }
 
 /** Applies the person's decision on one step. The step runs now, as them, when they approve it. */
-export async function decide(rt: PinRuntime, ctx: { pve: ProxmoxClient; session: Session; node: string; gateway: EngineGateway | null }, planId: string, sid: string, action: Action, confirm: unknown): Promise<Plan> {
+export async function decide(rt: PinRuntime, ctx: { pve: ProxmoxClient; session: Session; node: string; gateway: EngineGateway | null; connect: Connect }, planId: string, sid: string, action: Action, confirm: unknown): Promise<Plan> {
   const plan = rt.store.plan(planId);
   if (!plan || plan.owner !== ctx.session.username) throw new PlanProblem(404, "not_found", "There is no such plan");
   const { step, index } = findStep(plan, sid);
@@ -292,7 +293,7 @@ export async function decide(rt: PinRuntime, ctx: { pve: ProxmoxClient; session:
   rt.store.putPlan(plan);
   rt.audit(who, "pin.plan.approve", plan.id, `step ${index + 1}: ${step.label}${step.destructive ? " (typed confirmation)" : ""}`);
   try {
-    const r = await execute(step, ctx.pve, ctx.session, ctx.node, ctx.gateway, rt);
+    const r = await execute(step, ctx.pve, ctx.session, ctx.node, ctx.gateway, rt, ctx.connect);
     Object.assign(step, { state: "done", finishedAt: rt.now(), result: r.result, ...(r.upid ? { upid: r.upid } : {}) });
     rt.audit(who, "pin.plan.step.done", plan.id, `step ${index + 1}: ${step.label}`);
   } catch (e) {
@@ -351,6 +352,6 @@ export async function planRoutes(ctx: FeatureCtx): Promise<boolean> {
   if (s.apiToken) throw new HttpError(403, "ticket_only", "Plans are approved in the console, by a signed-in person. API tokens can only read them.");
   if (one[2]) return ctx.json(200, { plan: await wrap(async () => cancelPlan(rt, s.username, one[1])) }), true;
   const b = await ctx.readJson();
-  const plan = await ctx.asUser((pve, sess) => wrap(() => decide(rt, { pve, session: sess, node: ctx.node, gateway: ctx.gateway }, one[1], one[3], one[4] as Action, b.confirm)));
+  const plan = await ctx.asUser((pve, sess) => wrap(() => decide(rt, { pve, session: sess, node: ctx.node, gateway: ctx.gateway, connect: ctx.connect }, one[1], one[3], one[4] as Action, b.confirm)));
   return ctx.json(200, { plan }), true;
 }

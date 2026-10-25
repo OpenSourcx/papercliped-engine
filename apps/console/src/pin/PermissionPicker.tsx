@@ -9,8 +9,8 @@ import type { PinPermission } from "./live.ts";
 /** What each permission means, in the order a person would climb them. */
 export const PERMISSION_INFO: { id: PinPermission; label: string; body: string }[] = [
   { id: "ask", label: "Ask", body: "Every change Pin wants to make waits for your approval, right in the chat." },
-  { id: "accept", label: "Accept edits", body: "Creating, starting, snapshots, backups and settings run on their own. Shutting down, rebooting or deleting asks first." },
-  { id: "auto", label: "Auto", body: "Everything runs on its own except what can't be undone (delete, roll back), which asks first." },
+  { id: "accept", label: "Accept edits", body: "Creating, starting, snapshots, backups and settings run on their own, and so do plain reading commands inside a machine. Shutting down, rebooting, deleting, or changing a machine from inside asks first." },
+  { id: "auto", label: "Auto", body: "Everything runs on its own, including work inside machines, except what can't be undone (delete, roll back, deleting or overwriting files), which asks first." },
   { id: "plan", label: "Plan", body: "Pin only writes plans. Nothing runs until you approve each step on the Plans tab." },
   { id: "bypass", label: "Bypass permissions", body: "Everything runs with no questions, deletes included. It still can only do what your Proxmox account may do, and every action is logged." },
 ];

@@ -1,3 +1,4 @@
+import type { Connect } from "../console.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { EngineGateway } from "../engine.ts";
@@ -38,6 +39,8 @@ import { handleDiskHealth } from "./diskHealth.ts";
  * before anything reaches Proxmox, and nothing secret is ever returned or logged.
  */
 export interface FeatureCtx {
+  /** Opens a WebSocket to Proxmox (a container terminal), the same one the console relay uses. */
+  connect: Connect;
   req: IncomingMessage;
   res: ServerResponse;
   url: URL;

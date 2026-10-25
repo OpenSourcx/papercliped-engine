@@ -1,5 +1,7 @@
 import { ProxmoxError, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { WizardError, buildCt, buildVm, type WizardContext } from "@papercliped-engine/proxmox-client/wizard-schema";
+import type { Connect } from "../console.ts";
+import { MAX_OUTPUT, SENSITIVE, commandRisk, execInGuest } from "./guest-exec.ts";
 
 /**
  * What Pin can do in Agent mode, and how much of it runs without asking.
@@ -45,6 +47,8 @@ export interface ActHost {
   node: string;
   username: string;
   pve: () => Promise<ProxmoxClient>;
+  /** How to open a terminal to Proxmox, for running a command inside a container. Without it only VMs (guest agent) can be reached. */
+  connect?: Connect;
   sleep?: (ms: number) => Promise<void>;
   /** Longest an action may hold its caller waiting for Proxmox (an approval request must answer in time); longer tasks keep running and are reported as such. */
   maxWaitMs?: number;
@@ -210,6 +214,30 @@ const noProps = (props: Record<string, unknown>, required: string[] = []) => ({ 
 const POWER = ["start", "shutdown", "stop", "reboot"] as const;
 const VERB: Record<string, string> = { start: "Start", shutdown: "Shut down", stop: "Stop", reboot: "Reboot" };
 const PAST: Record<string, string> = { start: "Started", shutdown: "Shut down", stop: "Stopped", reboot: "Rebooted" };
+
+
+// ---- Inside a machine
+
+const sq = (v: string) => `'${v.replace(/'/g, `'"'"'`)}'`;
+/** Files whose change can stop a machine from booting or logging in; writing one needs the person's typed word. */
+const SYSTEM_PATH = /^\/(boot|dev|proc|sys)(\/|$)|^\/etc\/(passwd|shadow|gshadow|group|sudoers(\.d\/.*)?|fstab|ssh\/sshd_config|pam\.d\/.*)$|^\/(bin|sbin|lib\w*|usr\/(bin|sbin|lib\w*))(\/|$)/;
+function pathOf(v: unknown): string {
+  if (typeof v !== "string" || !v.startsWith("/") || v.length > 512 || /[\0\n\r]/.test(v) || v.split("/").includes("..")) throw bad("path must be an absolute path without “..”");
+  return v;
+}
+
+/** Runs a script in a running machine as the signed-in person and reports the exit code and output in words. */
+async function runInMachine(h: ActHost, vmid: number, script: string, timeoutMs: number): Promise<ActResult> {
+  const pve = await h.pve();
+  const g = await locate(pve, h.node, vmid);
+  if (g.status !== "running") throw bad(`${g.name} (${vmid}) isn't running. Start it first.`);
+  if (g.type === "lxc" && !h.connect) throw bad("This host can't open container terminals right now.");
+  const r = await execInGuest({ pve: h.pve, connect: h.connect!, sleep: h.sleep }, { type: g.type, vmid, node: g.where }, script, { timeoutMs }).catch((e: unknown) => {
+    throw bad(e instanceof Error ? e.message : "Couldn't run that in the machine");
+  });
+  const head = r.timedOut ? `Still running after ${Math.round(timeoutMs / 1000)} s, so it was stopped waiting (a VM's command can keep running in the guest).` : r.exitCode === 0 ? "Exit 0." : r.exitCode === null ? "Finished with no exit code." : `Exit code ${r.exitCode}.`;
+  return { result: `${head} In ${g.name} (${vmid}).${r.output ? `\n${r.output}` : "\n(no output)"}` };
+}
 
 export const ACTS: Record<string, ActDef> = {
   power_machine: {
@@ -559,6 +587,58 @@ export const ACTS: Record<string, ActDef> = {
       const upid = await pve.destroyGuest(g.where, g.type, a.vmid as number);
       const tail = await done(h, pve, g.where, upid, 600_000);
       return { result: `Deleted ${g.name} (${a.vmid}).${tail}`, upid };
+    },
+  },
+
+  machine_exec: {
+    name: "machine_exec",
+    description:
+      "Run a shell command INSIDE a running machine (a container, or a VM with the QEMU guest agent) and get its output and exit code. It runs as root in a Linux shell. Use it to install and configure software, read logs, check services, build and test. One command or a short script per call; long jobs should be started in the background and checked later. Reading commands run without asking in most modes; anything that changes the machine is held for approval unless the person turned that off.",
+    parameters: noProps({ vmid: { type: "integer" }, command: { type: "string", description: "The shell command or short script to run" }, timeout_s: { type: "integer", minimum: 1, maximum: 600, description: "Seconds to wait (default 60)" } }, ["vmid", "command"]),
+    parse(r) {
+      only(r, ["vmid", "command", "timeout_s"], "machine_exec");
+      if (typeof r.command !== "string" || !r.command.trim()) throw bad("command is needed");
+      if (r.command.length > 8000 || r.command.includes("\0")) throw bad("command must be text up to 8000 characters");
+      return { vmid: vmidOf(r.vmid), command: r.command, timeout_s: int(r.timeout_s, 1, 600, "timeout_s", 60) };
+    },
+    risk: (a) => commandRisk(a.command as string),
+    describe: (a, n) => {
+      const first = (a.command as string).split("\n")[0].trim();
+      const label = `Run \`${first.length > 140 ? `${first.slice(0, 140)}…` : first}\`${(a.command as string).includes("\n") ? " (and more lines)" : ""} in ${vm(a.vmid, n)}`;
+      return { label, phrase: commandRisk(a.command as string) === "destructive" ? `run ${a.vmid}` : null };
+    },
+    run: (h, a) => runInMachine(h, a.vmid as number, a.command as string, (a.timeout_s as number) * 1000),
+  },
+
+  machine_read_file: {
+    name: "machine_read_file",
+    description: "Read a text file inside a running machine (up to 64 KiB). Files that hold credentials or keys are held for approval.",
+    parameters: noProps({ vmid: { type: "integer" }, path: { type: "string", description: "Absolute path" } }, ["vmid", "path"]),
+    parse(r) {
+      only(r, ["vmid", "path"], "machine_read_file");
+      return { vmid: vmidOf(r.vmid), path: pathOf(r.path) };
+    },
+    risk: (a) => (SENSITIVE.test(a.path as string) ? "disruptive" : "safe"),
+    describe: (a, n) => ({ label: `Read ${a.path} in ${vm(a.vmid, n)}`, phrase: null }),
+    run: (h, a) => runInMachine(h, a.vmid as number, `head -c ${MAX_OUTPUT - 1024} -- ${sq(a.path as string)}`, 30_000),
+  },
+
+  machine_write_file: {
+    name: "machine_write_file",
+    description: "Write (or append to) a text file inside a running machine. Creates the folder if needed. Up to 64 KiB per call. Changes the machine, so it is held for approval in most modes.",
+    parameters: noProps({ vmid: { type: "integer" }, path: { type: "string", description: "Absolute path" }, content: { type: "string" }, append: { type: "boolean" }, mode: { type: "string", description: "Octal permissions such as 0644" } }, ["vmid", "path", "content"]),
+    parse(r) {
+      only(r, ["vmid", "path", "content", "append", "mode"], "machine_write_file");
+      if (typeof r.content !== "string" || r.content.length > 64 * 1024 || r.content.includes("\0")) throw bad("content must be text up to 64 KiB");
+      return { vmid: vmidOf(r.vmid), path: pathOf(r.path), content: r.content, append: flag(r.append, "append", false), ...(r.mode !== undefined ? { mode: str(r.mode, /^[0-7]{3,4}$/, "The mode") } : {}) };
+    },
+    risk: (a) => (SYSTEM_PATH.test(a.path as string) ? "destructive" : "disruptive"),
+    describe: (a, n) => ({ label: `${a.append ? "Append to" : "Write"} ${a.path} (${Buffer.byteLength(a.content as string)} bytes) in ${vm(a.vmid, n)}`, phrase: SYSTEM_PATH.test(a.path as string) ? `write ${a.vmid}` : null }),
+    run: (h, a) => {
+      const p = sq(a.path as string);
+      const b64 = Buffer.from(a.content as string, "utf8").toString("base64");
+      const script = `set -e; mkdir -p "$(dirname ${p})"; printf %s ${b64} | base64 -d ${a.append ? ">>" : ">"} ${p}${a.mode ? `; chmod ${a.mode} ${p}` : ""}; echo wrote ${p}`;
+      return runInMachine(h, a.vmid as number, script, 30_000);
     },
   },
 

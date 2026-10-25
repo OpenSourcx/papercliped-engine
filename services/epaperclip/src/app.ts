@@ -357,6 +357,7 @@ export function createApp(d: AppDeps) {
   const maxUpload = d.maxUploadBytes ?? 64 * 1024 ** 3;
   const cookie = (id: string, maxAge: number) => `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${d.secureCookies ? "; Secure" : ""}`;
 
+  const connectWs: Connect = d.connect ?? realConnect(d.pve.caPem);
   const clientFor = async (s: Session): Promise<ProxmoxClient> => {
     // An ePaperclip API token acts through its own Proxmox API token (no ticket to renew).
     if (s.apiToken) return new ProxmoxClient({ ...pveOpts, tokenId: s.apiToken.pveTokenId, tokenSecret: s.apiToken.pveSecret });
@@ -524,6 +525,7 @@ export function createApp(d: AppDeps) {
     gateway,
     sessions: d.sessions,
     iac,
+    connect: connectWs,
     cookieSessionId: () => (bearer.principal(req) ? undefined : d.sessions.get(cookieValue(req, COOKIE))?.id),
     session: () => requireSession(req),
     asUser: <T,>(fn: (pve: ProxmoxClient, s: Session) => Promise<T>) => asUser(req, res, fn),
@@ -894,7 +896,7 @@ export function createApp(d: AppDeps) {
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
-      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), connect: connectWs, engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
       try {
         return await pin.chat(res, prepared, host, gone.signal);
       } finally {
@@ -1802,7 +1804,7 @@ export function createApp(d: AppDeps) {
     return null;
   };
   const consoleUpgrade = createConsoleRelay({
-    connect: d.connect ?? realConnect(d.pve.caPem),
+    connect: connectWs,
     precheck: socketPrecheck,
     authorize: async (req, url) => {
       const s = d.sessions.get(cookieValue(req, COOKIE));

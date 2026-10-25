@@ -504,6 +504,28 @@ export class ProxmoxClient {
     return this.call<{ port: number; ticket: string; user: string; upid: string }>("POST", path, guest?.type === "qemu" ? { serial: "serial0" } : undefined);
   }
 
+  /**
+   * Starts a command in a VM through its guest agent and returns its pid to poll with agentExecStatus. Needs the agent
+   * running in the guest and the privilege Proxmox asks for (VM.GuestAgent.Unrestricted; VM.Monitor on older versions).
+   */
+  agentExec(node: string, vmid: number, command: string[], inputData?: string) {
+    return this.call<{ pid: number }>("POST", `/nodes/${seg(node)}/qemu/${seg(vmid)}/agent/exec`, { command, ...(inputData !== undefined ? { "input-data": inputData } : {}) });
+  }
+
+  agentExecStatus(node: string, vmid: number, pid: number) {
+    return this.call<{ exited?: number | boolean; exitcode?: number; signal?: number; "out-data"?: string; "err-data"?: string; "out-truncated"?: number | boolean; "err-truncated"?: number | boolean }>("GET", `/nodes/${seg(node)}/qemu/${seg(vmid)}/agent/exec-status`, { pid });
+  }
+
+  /**
+   * Opens a terminal on a guest and returns how to connect to it as this user: the wss address, the cookie to send and
+   * the line that completes Proxmox's handshake. Used to run a command inside a container without any ssh.
+   */
+  async terminalTarget(node: string, guest: { type: GuestType; vmid: number }): Promise<{ url: string; headers: Record<string, string>; handshake: string }> {
+    const tp = await this.termproxy(node, guest);
+    const host = new URL(this.base).host;
+    return { url: `wss://${host}${ProxmoxClient.consoleSocketPath(node, guest, tp.port, tp.ticket)}`, headers: { ...this.headers }, handshake: `${tp.user}:${tp.ticket}\n` };
+  }
+
   /** Opens the node terminal proxy running one of Proxmox's own commands (`upgrade` runs the package upgrade in the terminal). */
   termproxyCommand(node: string, cmd: "upgrade") {
     return this.call<{ port: number; ticket: string; user: string; upid: string }>("POST", `/nodes/${seg(node)}/termproxy`, { cmd });

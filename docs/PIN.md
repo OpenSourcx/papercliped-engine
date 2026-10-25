@@ -51,14 +51,31 @@ In Agent mode Pin does the work, not just a checklist. It has real action tools,
 | Permission | What happens |
 | --- | --- |
 | **Ask** (the default) | Every action Pin wants to take is shown in the chat as a card. You approve or decline it there, and Pin carries on with the result. |
-| **Accept edits** | Safe actions run at once: create, start, snapshot, clone, back up, grow a disk, change settings. Anything that interrupts a machine (shut down, stop, reboot) or can't be undone asks. |
-| **Auto** | Everything runs at once except what can't be undone (delete a machine, delete a snapshot, roll back), which asks. |
+| **Accept edits** | Safe actions run at once: create, start, snapshot, clone, back up, grow a disk, change settings, and plain reading commands inside a machine. Anything that interrupts a machine (shut down, stop, reboot), changes one from inside, or can't be undone asks. |
+| **Auto** | Everything runs at once, including changes inside machines, except what can't be undone (delete a machine, delete a snapshot, roll back, delete or overwrite files, stop a machine from inside), which asks. |
 | **Plan** | Pin only writes plans (`propose_plan`); nothing runs until you approve each step on the Plans tab, as before. |
 | **Bypass permissions** | Everything runs with no questions, deletes included. Turning it on takes the typed word `bypass` (the host refuses without it) and is written to the audit trail. |
 
 Every action runs as the signed-in person, so Proxmox's own permissions still decide, and each run, result and failure is audited (`pin.act.run`, `pin.act.done`, `pin.act.failed`). Bypass does not widen what the account may do. Nothing in a tool call can carry a password: a container Pin creates has none and is opened from its console as root, or with an SSH public key you give it.
 
 **Actions**: `create_container` (a template by volume id, or an OS name like `debian-12`, found on the node or downloaded from Proxmox's catalog; storage and bridge default to sensible ones), `create_vm` (with an ISO attached if asked), `clone_machine`, `backup_machine`, `resize_disk`, `set_machine_config` (name, cores, memory, swap, start at boot, description, tags), `power_machine`, `snapshot_machine`, `delete_snapshot`, `rollback_snapshot`, `delete_machine` (stopped machines only), `download_template`, `create_task`. **Reads** it uses to choose well: `list_machines`, `machine_detail`, `storage_overview`, `list_container_templates`, `list_isos`, `list_bridges`, `list_snapshots`, `list_backups`, `task_status`, plus the existing host, task, organization and notes tools.
+
+**Inside machines.** Pin works in a running machine with three actions, so it can install, configure, build and check things, not only manage the machine from outside:
+
+- `machine_exec { vmid, command, timeout_s? }` runs a shell command (or a short script) as root and returns the exit code and output (cut at 64 KiB).
+- `machine_read_file { vmid, path }` reads a text file; `machine_write_file { vmid, path, content, append?, mode? }` writes or appends to one (up to 64 KiB, creates the folder).
+
+How it reaches the machine, with no ssh and no key kept on the host: a **VM** through the QEMU guest agent (`agent/exec`; needs the agent running, a Linux guest, and `VM.GuestAgent.Unrestricted`, or `VM.Monitor` on older Proxmox); a **container** through the same terminal Proxmox gives you for its console (`VM.Console`), with the command sent as a base64 script between markers the shell prints, so the output is exactly what it printed. A container whose console asks for a login can't be used until it has no root password or autologin. Proxmox's permissions decide, as for every other action.
+
+How each permission treats them (the line is never run to classify it; unknown means ask):
+
+| Class | What | Ask / Accept / Auto / Bypass |
+| --- | --- | --- |
+| safe | a single plain reading command (`ls`, `df`, `ps`, `systemctl status`, `journalctl`, `ip a`, `docker ps`, `git status`, ...), or reading a file that isn't a credential | asks / runs / runs / runs |
+| disruptive | anything that changes something, or that can't be told apart from something that does (a pipe, a redirect, `apt install`, `systemctl restart`), writing a file, reading a credential file (`/etc/shadow`, `~/.ssh/id_*`, `.env`, keys; the output goes to the model provider) | asks / asks / runs / runs |
+| destructive | deletes, overwrites or stops: `rm`, `dd`, `mkfs`, `shutdown`, `reboot`, `apt remove`, `docker ... prune`, `find -delete`, `git reset --hard`, writing `/etc/fstab`, `/etc/passwd`, `/boot`, ... | asks (types `run <vmid>` or `write <vmid>`) / asks / asks / runs |
+
+Plan mode only writes these as plan steps. Command output and file contents are data to Pin, never instructions, and the vault's values are not available to it.
 
 Behaviour worth knowing:
 
