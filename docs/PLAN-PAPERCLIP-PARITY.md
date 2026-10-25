@@ -72,6 +72,19 @@ Give Pin tools for the same routes, gated by the permission modes already in pla
 
 Visuals are ePaperclip's own interface: our tokens, our components from `src/ui/`, our themes. We match Paperclip's flows, labels and the order of its steps, not its colours, type or mascot. No Paperclip-style light preset and no Paperclip artwork.
 
+## Cross-check against the product spec (docs/VISION.md and the roadmap's v2 goals)
+
+The repo has no document called a v2 spec. What it has: [VISION.md](VISION.md) (the product spec) and the "v2 goals" list in [ROADMAP.md](ROADMAP.md) (SEV/TDX, OCI pull, OVA/ESXi import, single-file restore, SPICE/Open vSwitch, ZFS/Ceph, GlusterFS; all machine and storage items, none about companies). Against VISION.md the company flow stands like this:
+
+| VISION.md says | Today |
+| --- | --- |
+| "When you create a company, you choose how much of the system it may use. If you don't know, Pin decides." | Done in the wizard's first screen |
+| "Creating a company manually shows the memory options" (Postgres, or Postgres plus memory files) | The old modal showed them in the demo only; the wizard shows none, and the live engine has no such switch that we use. **Open** |
+| "Pin can create companies for you." | Pin drafts the CEO today; creating the company is phase 5 |
+| Device onboarding: name, Pin's mode, connect your first AI account, grant Pin access, "optionally create your first company, **or let Pin propose one**" | The device onboarding stops before that step. The wizard could be its last step, with Pin proposing the name and mission. **Open** |
+| "Nothing is lost from Paperclip. Redesign, don't remove." | The rule this plan follows |
+| An agent runs natively on the engine host for trusted, light work, or in a container session | Containers only: the engine is held to managed sandboxes. The native option is not built and is off by design (docs/ENGINE.md) |
+
 ## How each phase is checked
 
 - A scripted run in a real browser against the real engine (the harness in `docs/E2E.md`) for each flow, plus the console tests.
