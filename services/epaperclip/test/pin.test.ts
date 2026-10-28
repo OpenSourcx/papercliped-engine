@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.ts";
 import { managedEmail } from "../src/engine.ts";
-import { CHATS_AT_ONCE, CHATS_PER_MINUTE, MAX_STEPS, Pin, parseMessages, sseEvents } from "../src/pin.ts";
+import { CHATS_AT_ONCE, CHATS_PER_MINUTE, MAX_STEPS, Pin, memoryAsked, parseMessages, sseEvents, systemPrompt } from "../src/pin.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
 import { fakeEngine, fakePve, fakeProviders, until } from "./fakes.ts";
@@ -609,5 +609,115 @@ describe("drafting a CEO for a new organization", () => {
     expect((await send("POST", "/api/pin/draft-ceo", {}, { Cookie: c })).status).toBe(400);
     expect((await send("POST", "/api/pin/draft-ceo", { orgName: "A", extra: 1 }, { Cookie: c })).status).toBe(400);
     expect((await send("POST", "/api/pin/draft-ceo", { orgName: "A" })).status).toBe(401);
+  });
+});
+
+describe("saving a line to memory from the composer", () => {
+  const remember = (c: string, body: unknown) => send("POST", "/api/pin/memory/remember", body, { Cookie: c });
+
+  it("appends one line and returns the revision to undo to", async () => {
+    const c = await signIn();
+    const before = await j(await get("/api/pin/memory", c));
+    const r = await remember(c, { text: "we need to focus on work" });
+    expect(r.status).toBe(200);
+    const body = await j(r);
+    expect(body.ok).toBe(true);
+    expect(body.line).toMatch(/^- \d{4}-\d{2}-\d{2}: we need to focus on work$/);
+    expect(body.rev).toBe(before.rev);
+    const after = await j(await get("/api/pin/memory", c));
+    expect(after.memory).toContain("we need to focus on work");
+    expect(after.memory.split("\n").filter((l: string) => l.includes("focus on work")).length).toBe(1);
+  });
+
+  it("refuses an empty line or one that is only spacing, and keeps a long line to the store's limit", async () => {
+    const c = await signIn();
+    expect((await remember(c, { text: "" })).status).toBe(400);
+    expect((await remember(c, { text: "   " })).status).toBe(400);
+    // Not a string at all, and nothing sent.
+    expect((await remember(c, { text: 42 })).status).toBe(400);
+    expect((await remember(c, {})).status).toBe(400);
+    // A long line is kept to one entry (the store's own rule, LIMITS.entry) rather than refused or dropped.
+    const long = "y".repeat(1000);
+    const r = await remember(c, { text: long });
+    expect(r.status).toBe(200);
+    const body = await j(r);
+    expect(body.ok).toBe(true);
+    expect(body.line.length).toBeLessThan(long.length);
+    expect(body.line.startsWith("- ")).toBe(true);
+    const after = await j(await get("/api/pin/memory", c));
+    expect(after.memory).toContain("y".repeat(400));
+    expect(after.memory).not.toContain(long);
+  });
+
+  it("needs the person signed in", async () => {
+    expect((await send("POST", "/api/pin/memory/remember", { text: "from a script" })).status).toBe(401);
+  });
+
+  it("undoes through the ordinary restore route", async () => {
+    const c = await signIn();
+    const before = await j(await get("/api/pin/memory", c));
+    const saved = await j(await remember(c, { text: "undo me please" }));
+    expect(saved.line).toContain("undo me please");
+    const mid = await j(await get("/api/pin/memory", c));
+    expect(mid.memory).toContain("undo me please");
+    const restored = await send("POST", "/api/pin/memory/restore", { rev: saved.rev }, { Cookie: c });
+    expect(restored.status).toBe(200);
+    const after = await j(await get("/api/pin/memory", c));
+    expect(after.memory).not.toContain("undo me please");
+    expect(after.memory).toBe(before.memory);
+  });
+
+  it("says so, without adding a second copy, when the line is already there", async () => {
+    const c = await signIn();
+    await remember(c, { text: "prefers local-lvm" });
+    const again = await j(await remember(c, { text: "prefers local-lvm" }));
+    expect(again.ok).toBe(true);
+    expect(again.message).toMatch(/Already in MEMORY.md/);
+    expect(again.line).toBeNull();
+    const mem = await j(await get("/api/pin/memory", c));
+    expect(mem.memory.split("\n").filter((l: string) => l.includes("prefers local-lvm")).length).toBe(1);
+  });
+
+  it("leaves the model's own remember tool gated to the person's words", async () => {
+    // The person's message doesn't ask for anything to be remembered, so the tool is refused.
+    expect(memoryAsked("remember", "What is running on the host?")).toBe(false);
+    // A note or tool result that says "remember" is not the person asking; only their message counts.
+    expect(memoryAsked("remember", "remember this")).toBe(true);
+    expect(memoryAsked("remember", "from now on always use local-lvm")).toBe(true);
+  });
+});
+
+describe("what the composer attaches to a message", () => {
+  it("tells Pin which things were mentioned, as ids, and ignores junk", () => {
+    const prompt = systemPrompt({
+      node: "pve",
+      username: "sam",
+      mode: "assistant",
+      context: {
+        page: "PinView",
+        device: "pve",
+        mentions: [
+          { kind: "machine", id: "101" },
+          { kind: "agent", id: "a1" },
+          { kind: "not-a-kind", id: "x" },
+          { kind: "person", id: "sam@pve\nevil instruction" },
+          { kind: "machine", id: 42 },
+          null,
+          "junk",
+        ],
+      },
+    });
+    expect(prompt).toContain("- Mentioned in the message (ids, not names):");
+    expect(prompt).toContain("  - machine: 101");
+    expect(prompt).toContain("  - agent: a1");
+    // A person's name can't carry a newline into the prompt, and unknown kinds and non-strings are dropped.
+    expect(prompt).toContain("  - person: sam@pve evil instruction");
+    expect(prompt).not.toContain("not-a-kind");
+    expect(prompt).not.toContain("42");
+  });
+
+  it("says nothing about mentions when there are none", () => {
+    const prompt = systemPrompt({ node: "pve", username: "sam", mode: "assistant", context: { page: "Overview", device: "pve" } });
+    expect(prompt).not.toContain("Mentioned in the message");
   });
 });

@@ -343,8 +343,11 @@ export class PinLibrary {
     const d = this.loadMemory(user);
     if (opts.baseRev !== undefined && opts.baseRev !== d.rev) throw new LibraryError(409, "stale", "This changed somewhere else since you opened it (Pin may have remembered something). Reload to see the newest version.");
     const before = d[file];
-    if (before !== null && before !== text) {
-      d.history.push({ rev: d.rev, file, text: before, at: d.at[file] ?? this.now(), by: opts.by ?? "you" });
+    // Keep what was there before every change, the first one included (a default file is still text to go back to),
+    // so undo always has a revision to restore.
+    const beforeText = before ?? (file === "soul" ? DEFAULT_SOUL : DEFAULT_MEMORY);
+    if (beforeText !== text) {
+      d.history.push({ rev: d.rev, file, text: beforeText, at: d.at[file] ?? this.now(), by: opts.by ?? "you" });
       d.history = d.history.slice(-LIMITS.revisions);
     }
     d[file] = text;

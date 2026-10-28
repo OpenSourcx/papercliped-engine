@@ -133,6 +133,16 @@ describe("using a Bearer token", () => {
     expect((await h.call("POST", "/api/access/tfa/sam%40pve", { bearer: token }, { type: "recovery" })).status).toBe(403);
   });
 
+  it("keeps memory personal: a token can't save a line with the composer's remember route", async () => {
+    const { token } = await mint();
+    const r = await h.call("POST", "/api/pin/memory/remember", { bearer: token }, { text: "from a script" });
+    expect(r.status).toBe(403);
+    expect((await j(r)).code).toBe("ticket_only");
+    // Nothing was written for the person.
+    const mem = await j(await h.call("GET", "/api/pin/memory", { cookie: sam }));
+    expect(mem.memory).not.toContain("from a script");
+  });
+
   it("is never accepted as a cookie, in a query string or by the sockets", async () => {
     const { token } = await mint();
     expect((await h.call("GET", "/api/me", { headers: { Cookie: `epc_session=${token}` } })).status).toBe(401);
