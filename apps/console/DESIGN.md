@@ -197,7 +197,9 @@ All in `src/ui/` unless noted. Each uses tokens only.
 | `TimeSeriesChart` / `UsageGraphs` | history | series tokens; tooltip on hover |
 | `PinOrb` (`pin/PinOrb.tsx`) | Pin's mark | `thinking` |
 | `PinIsland` (`pin/PinIsland.tsx`) | Pin's home | the five views above |
-| `PinThread` / `PinInput` (`pin/PinThread.tsx`) | Pin's conversation and composer | shared by the island and Pin's page; Enter sends, Shift+Enter adds a line, Stop while writing |
+| `PinThread` / `PinInput` (`pin/PinThread.tsx`) | Pin's conversation and composer | shared by the island, Pin's page, PinView and agent chats; Enter sends, Shift+Enter adds a line, Stop while writing; `/` commands, `@` mentions and a `#` memory line (`pin/composer/`) |
+| `ComposerPopover` (`pin/composer/ComposerPopover.tsx`) | the one list the composer opens for `/` and `@` | anchored to the field and opened upward; as wide as the field, at least 288, at most 560 and never past the window; `role="listbox"`, grouped with headings, the field keeps focus and passes keys; rows 36 tall, 44 on a touch screen |
+| `StatusLine` (`pin/composer/StatusLine.tsx`) | what a conversation runs with, under the composer | the mode, what Pin may do (Agent mode only) and the model, each a small button that opens a menu with text; Bypass permissions says to turn it on where the word is typed |
 | `CardShell` / `PinCardView` / `ToolCard` (`pin/PinCards.tsx`) | cards in Pin's conversation | proposed, done, cancelled, failed |
 | `QuickActionBar` (`pin/QuickActionBar.tsx`) | Pin's quick actions for the page | row of three plus More; `compact`; `scroll` for one line |
 | `PinSettingsPanel` (`pin/PinSettings.tsx`) | provider, model, mode, connectors | loading skeleton, load error with retry, no provider, save, saved, save error |
@@ -226,6 +228,7 @@ PinView (`/<device>/view`) is the workspace for working with Pin and agents. It 
 - **Toolbar icons** at the right of the conversation's header open and close what sits beside it, and show it with `aria-pressed` and a `surface-3` fill. Words are kept for the one primary action there (Share).
 - **Icon controls are bare:** no box, border or fill until hovered or pressed; one size and spacing everywhere (toolbar, tile headers, cards, sidebar).
 - **Composer:** `/` opens commands, `@` mentions a person, agent, organization, project, machine or file (a chip that travels as context), `#` at the start saves the line to Pin's memory. Popovers anchor to the caret and work with the keyboard alone.
+- **Composer details:** the popover opens upward from the field, is as wide as the field where there is room and never wider than the window, and fits Pin's 480-px island panel as well as PinView's column. Arrow keys move, Enter runs or chooses, Tab completes and leaves focus in the field, Escape closes and returns focus. A `#` line never opens the popover; saving it shows one quiet line with Undo. The line under the field is the fastest way to change the mode, the permission and the model, and reads the same everywhere the composer appears.
 - **Tiling (goal):** panes size themselves as they open and close, split either way, drag to rearrange, resize from any shared edge, and move with the keyboard, like a tiling window manager.
 - **Cards:** one rounded `surface` card per subject, title + caret to fold, rows of icon · words · one action. Actions that fix something are `text-warning` links (Set up, Reconnect); others are small secondary buttons.
 - **Tiles** stack in one column; each has a title, its own actions, expand and close, in that order. Content that belongs to the conversation (the plan, the files Pin touched) opens on its own; nothing steals focus from the composer.
