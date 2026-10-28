@@ -7,6 +7,8 @@
 #EPC_TLS_KEY=/etc/pve/local/pve-ssl.key
 #EPC_STATIC=/opt/epaperclip/console
 #EPC_MAX_UPLOAD_GB=64
+# The Router: every model connection behind one local address for agents and scripts (docs/ROUTER.md). "off" turns it off.
+#EPC_ROUTER_LISTEN=127.0.0.1:3120
 # Set by the unit; change them only together with the engine's own settings in /etc/epaperclip/engine.env.
 #EPC_STATE_DIR=/var/lib/epaperclip
 #EPC_ENGINE_URL=http://127.0.0.1:3100

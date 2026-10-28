@@ -28,6 +28,9 @@ import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
 import { draftCeo } from "./features/pin-company.ts";
 import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
+import { registerRouter } from "./features/router.ts";
+import { Router, RouterKeys } from "./router/router.ts";
+import { routerHandler } from "./router/server.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
 
@@ -68,6 +71,8 @@ export interface AppDeps {
   containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
   /** The address people reach this device at (EPC_PUBLIC_URL), used in OAuth metadata. Without it, the request's Host header is used. */
   publicUrl?: string;
+  /** Where the Router's own listener is (EPC_ROUTER_LISTEN), shown in the console; null when it is switched off. */
+  routerListen?: string | null;
 }
 
 const COOKIE_BASE = "epc_session";
@@ -456,6 +461,10 @@ export function createApp(d: AppDeps) {
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
+  // The Router: every connection behind one local endpoint for agents and scripts (docs/ROUTER.md). main.ts gives it its own listener.
+  const router = new Router({ connections, fetch: outbound, now });
+  const routerKeys = new RouterKeys(state, now);
+  registerRouter(state, { router, keys: routerKeys, listen: () => d.routerListen ?? null });
 
   const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
 
@@ -1956,5 +1965,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, engine: gateway, containers });
+  return Object.assign(handle, { upgrade, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }) });
 }

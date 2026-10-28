@@ -31,6 +31,7 @@ import { StateStore } from "./state.ts";
  *   EPC_ENGINE_PUBLIC_URL  the engine's PAPERCLIP_PUBLIC_URL, sent as Origin (default EPC_ENGINE_URL)
  *   EPC_ENGINE_DIR         where the engine is installed, for its version  (default /opt/epaperclip/engine)
  *   EPC_PLUGIN_DIR         the built Proxmox sandbox provider (default /opt/epaperclip/plugins/proxmox-sandbox)
+ *   EPC_ROUTER_LISTEN      host:port for the Router, every model connection behind one endpoint (default 127.0.0.1:3120; "off" turns it off)
  */
 
 const env = process.env;
@@ -54,6 +55,7 @@ const sessions = new SessionStore();
 // The state directory must be usable: it holds the only copy of the managed engine passwords, so a fallback would strand them.
 const state = new StateStore(env.EPC_STATE_DIR || "/var/lib/epaperclip");
 const engineUrl = env.EPC_ENGINE_URL || "http://127.0.0.1:3100";
+const routerListen = env.EPC_ROUTER_LISTEN === "off" ? null : env.EPC_ROUTER_LISTEN || "127.0.0.1:3120";
 const handle = createApp({
   state,
   engine: { url: engineUrl, publicUrl: env.EPC_ENGINE_PUBLIC_URL || engineUrl, installDir: env.EPC_ENGINE_DIR || undefined },
@@ -66,6 +68,7 @@ const handle = createApp({
   publicUrl: env.EPC_PUBLIC_URL || undefined,
   // The built Proxmox sandbox provider the installer puts beside the engine (agent containers).
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
+  routerListen,
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
@@ -87,6 +90,22 @@ const sweep = setInterval(() => sessions.sweep(), 60_000);
 sweep.unref();
 
 server.listen(port, host, () => activity.info("host", "host.start", `listening on ${devHttp ? "http" : "https"}://${listen}`));
+
+// The Router listens on its own address, loopback by default; only a Router key opens it (docs/ROUTER.md).
+let routerServer: ReturnType<typeof createHttp> | null = null;
+if (routerListen) {
+  const ra = routerListen.lastIndexOf(":");
+  const rhost = ra > 0 ? routerListen.slice(0, ra).replace(/^\[|\]$/g, "") : "127.0.0.1";
+  const rport = Number(ra >= 0 ? routerListen.slice(ra + 1) : routerListen);
+  if (!Number.isInteger(rport) || rport <= 0 || rport > 65535) throw new Error(`EPC_ROUTER_LISTEN must be host:port or off, got ${routerListen}`);
+  routerServer = createHttp(handle.router);
+  routerServer.headersTimeout = 20_000;
+  // Long agent answers stream for minutes; a client that goes quiet for 10 minutes is dropped.
+  routerServer.requestTimeout = 0;
+  routerServer.timeout = 600_000;
+  routerServer.on("error", (e) => activity.error("router", "router.listen", `The Router couldn't listen on ${routerListen}: ${e.message}`));
+  routerServer.listen(rport, rhost, () => activity.info("router", "router.start", `Router listening on http://${routerListen}`));
+}
 // Settle the engine's service account in the background, retrying while the engine starts.
 // Once the engine is up, keep agents off the host: it refuses to run them anywhere but in a container (docs/ENGINE.md).
 // Then keep organizations' container environments in step (new organizations, new agents) every minute.
@@ -104,5 +123,6 @@ void handle.engine?.start((m) => activity.info("engine", "engine.start", m)).the
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
     handle.engine?.stop();
+    routerServer?.close();
     server.close(() => process.exit(0));
   });

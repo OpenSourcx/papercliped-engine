@@ -10,6 +10,7 @@ import { useModals } from "../../modals/useModals.ts";
 import { GlobalTokenModal, canShareGlobally } from "../AgentSignIn.tsx";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
+import { RouterPanel } from "./RouterPanel.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Spinner, Status, Toggle } from "../../ui/primitives.tsx";
 
 const KEY = ["connect", "connections"] as const;
@@ -53,6 +54,7 @@ export function LiveConnections() {
           </Card>
           {!can && <p className="text-xs text-ink-3 mt-3">Only Proxmox administrators can add, test or change connections. You can see which are set up.</p>}
           <Fallbacks connections={q.data.connections} order={q.data.fallbacks} can={can} onChanged={refresh} />
+          {can && <RouterPanel />}
           <Usage />
         </>
       )}
@@ -245,9 +247,9 @@ function Fallbacks({ connections, order, can, onChanged }: { connections: Connec
   };
   return (
     <section className="mt-8">
-      <SectionTitle>If Pin's provider can't answer</SectionTitle>
+      <SectionTitle>If a provider can't answer</SectionTitle>
       <Card className="p-5">
-        <p className="text-compact text-ink-2 mb-3">When the provider Pin uses is busy, out of quota or unreachable, Pin tries these in order, using each one's default model. This only happens before any answer has appeared.</p>
+        <p className="text-compact text-ink-2 mb-3">When the provider Pin uses is busy, out of quota or unreachable, Pin tries these in order, using each one's default model. The Router follows the same chain. This only happens before any answer has appeared.</p>
         {chain.length === 0 ? <p className="text-sm text-ink-3">No fallbacks. Pin shows the error instead.</p> : (
           <ol className="space-y-2">
             {chain.map((c, i) => (
@@ -281,10 +283,10 @@ function Usage(): ReactNode {
       <SectionTitle>Usage, last 30 days</SectionTitle>
       <Card className="overflow-x-auto edge-fade-x">
         {q.isPending && <p className="px-5 py-4 text-sm text-ink-3">Loading…</p>}
-        {q.data && q.data.byConnection.length === 0 && <p className="px-5 py-4 text-sm text-ink-3">Nothing yet. Pin's chats show here as tokens, and as a cost for connections with a price.</p>}
+        {q.data && q.data.byConnection.length === 0 && <p className="px-5 py-4 text-sm text-ink-3">Nothing yet. Pin's chats and the Router's calls show here as tokens, and as a cost for connections with a price.</p>}
         {q.data && q.data.byConnection.length > 0 && (
           <table className="w-full text-sm min-w-[520px]">
-            <thead><tr className="text-xs text-ink-3 border-b border-line"><th className="text-left font-normal px-5 h-10">Connection</th><th className="text-right font-normal px-3">Chats</th><th className="text-right font-normal px-3">Tokens in</th><th className="text-right font-normal px-3">Tokens out</th><th className="text-right font-normal px-5">Estimated cost</th></tr></thead>
+            <thead><tr className="text-xs text-ink-3 border-b border-line"><th className="text-left font-normal px-5 h-10">Connection</th><th className="text-right font-normal px-3">Calls</th><th className="text-right font-normal px-3">Tokens in</th><th className="text-right font-normal px-3">Tokens out</th><th className="text-right font-normal px-5">Estimated cost</th></tr></thead>
             <tbody>
               {q.data.byConnection.map((b) => (
                 <tr key={b.id} className="border-b border-line last:border-0 tabular-nums">

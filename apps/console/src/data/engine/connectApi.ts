@@ -34,6 +34,10 @@ async function req<T>(method: "GET" | "PUT" | "POST" | "PATCH" | "DELETE", path:
 
 const enc = encodeURIComponent;
 
+/** The Router (docs/ROUTER.md): its address, the models clients can name, connections resting after failures, and its keys (never the keys themselves). */
+export interface RouterKey { id: string; name: string; last4: string; createdAt: number; createdBy: string; lastUsedAt?: number }
+export interface RouterStatus { listen: string | null; models: { id: string; owner: string; label: string }[]; resting: { pid: string; fails: number; openUntil: number }[]; keys: RouterKey[] }
+
 export type Level = "paperclip:read" | "paperclip:control";
 export interface ScopeInfo { id: Level; label: string; description: string }
 export interface ConnectOverview {
@@ -168,6 +172,9 @@ export const connectApi = {
   connectionModels: (id: string) => req<{ models: { id: string; label: string }[] }>("GET", `/api/connect/connections/${enc(id)}/models`),
   setFallbacks: (order: string[]) => req<{ order: string[] }>("PUT", "/api/connect/fallbacks", { order }),
   usage: (days = 30) => req<UsageReport>("GET", `/api/connect/usage?days=${days}`),
+  router: () => req<RouterStatus>("GET", "/api/router"),
+  makeRouterKey: (name: string) => req<{ key: string; view: RouterKey }>("POST", "/api/router/keys", { name }),
+  revokeRouterKey: (id: string) => req<{ ok: true }>("DELETE", `/api/router/keys/${enc(id)}`),
 
   orgAi: (company: string) => req<{ connections: { id: string | null; provider: string | null; method: string | null; name: string | null; ownership: string | null; status: string | null }[] }>("GET", `/api/connect/orgs/${enc(company)}/ai`),
   applyToOrg: (company: string, id: string) => req<{ applied: boolean }>("POST", `/api/connect/orgs/${enc(company)}/apply/${enc(id)}`, {}),

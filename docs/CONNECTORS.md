@@ -57,6 +57,8 @@ Every tool call is in the app log (`GET /api/connect/activity`: tool name, outco
 - **Usage and cost.** Pin records calls and tokens per connection and model per day (62 days, no text). Set a price per million tokens on a connection and Usage shows an estimated cost; without one it says "No price set" rather than guessing.
 - **Fallbacks.** An ordered chain: when the provider Pin uses is rate-limited, out of quota, overloaded, unreachable or rejects the key, and nothing has been shown yet, Pin tries the next connection with its default model. The answer says which one replied.
 
+The same connections, fallback chain and usage ledger also serve the Router, one local address for agents and scripts in OpenAI's or Anthropic's format ([ROUTER.md](ROUTER.md)).
+
 Routes (administrators change, anyone signed in reads): `GET/POST /api/connect/connections`, `PATCH/DELETE /api/connect/connections/:id`, `PUT .../:id/key`, `POST .../:id/test`, `GET .../:id/models`, `PUT /api/connect/fallbacks`, `GET /api/connect/usage?days=`.
 
 ## Agents' AI accounts, per organization

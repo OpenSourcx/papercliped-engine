@@ -30,6 +30,7 @@ import { handleBackupTools } from "./backupTools.ts";
 import { handleDiskHealth } from "./diskHealth.ts";
 import { handleGithub } from "./github.ts";
 import { handleMachineFiles } from "./machine-files.ts";
+import { routerRoutes } from "./router.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -98,4 +99,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "disk-health", handle: handleDiskHealth },
   { name: "github", handle: handleGithub },
   { name: "machine-files", handle: handleMachineFiles },
+  { name: "router", handle: routerRoutes },
 ];

@@ -335,6 +335,12 @@ export class ConnectionsStore {
     }
   }
 
+  /** Where the Router sends a request for this connection, and the key: null when it is switched off or has no key. */
+  routeTarget(id: string): { ref: ProviderRef; key: string } | null {
+    const c = this.get(id);
+    return c && c.enabled && c.configured ? this.endpoint(id) : null;
+  }
+
   // ---- Fallbacks and Pin
 
   fallbackOrder = (): string[] => this.state.getSetting<string[]>(FALLBACKS) ?? [];
