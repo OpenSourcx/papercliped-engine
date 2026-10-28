@@ -1,19 +1,24 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUp, MoreHorizontal, Square } from "lucide-react";
+import { ArrowUp, MoreHorizontal, Square, X } from "lucide-react";
+import { useEngine } from "../data/store.tsx";
 import { Menu, type MenuEntry } from "../ui/primitives.tsx";
 import { cn } from "../lib/storage.ts";
 import { PinCardView, ToolCard } from "./PinCards.tsx";
 import type { PinMessage } from "./PinContext.tsx";
 import { useThreadApi } from "./ThreadContext.tsx";
 import { PinOrb } from "./PinOrb.tsx";
+import { ComposerPopover } from "./composer/ComposerPopover.tsx";
+import { StatusLine } from "./composer/StatusLine.tsx";
+import { COMMANDS } from "./composer/commands.ts";
+import { useComposer, type ComposerShell } from "./composer/useComposer.tsx";
 import { Markdown } from "../pages/pin/notes/Markdown.tsx";
 
 /**
  * Pin's conversation, shared by the island and Pin's page: the messages, then the composer. Pin's words sit on the
  * page; yours sit in a bubble on the right. While Pin writes, a soft caret breathes at the end of its words.
  */
-export function PinThread({ inPlace, empty, footer, below, className, autoFocus }: { inPlace?: boolean; empty: ReactNode; footer?: ReactNode; /** Under the composer: what the conversation is running with. */ below?: ReactNode; className?: string; autoFocus?: boolean }) {
+export function PinThread({ inPlace, empty, footer, below, className, autoFocus, workspace }: { inPlace?: boolean; empty: ReactNode; footer?: ReactNode; /** Under the composer: what the conversation is running with. */ below?: ReactNode; className?: string; autoFocus?: boolean; /** PinView's workspace hooks, so "/terminal" and the like open its tiles. */ workspace?: ComposerShell }) {
   const pin = useThreadApi();
   const list = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -38,7 +43,7 @@ export function PinThread({ inPlace, empty, footer, below, className, autoFocus 
         )}
       </div>
       {footer}
-      <PinInput inPlace={inPlace} autoFocus={autoFocus} />
+      <PinInput inPlace={inPlace} autoFocus={autoFocus} workspace={workspace} />
       {below}
     </div>
   );
@@ -111,66 +116,99 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
   );
 }
 
-/** The composer: grows with the text, Enter sends, Shift+Enter starts a new line, and Stop ends an answer. */
-export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolean; autoFocus?: boolean; placeholder?: string }) {
+/**
+ * The composer: grows with the text, Enter sends, Shift+Enter starts a new line, and Stop ends an answer.
+ *
+ * Typing does more than text: "/" opens the console's commands, "@" mentions a person, an agent, an organization, a
+ * project or a machine (a chip whose id travels with the message), and a message starting with "#" is saved to Pin's
+ * memory instead of being sent. Both popovers open upward from the field and fit Pin's island panel. The line under the
+ * field says what the conversation runs with, and changes the mode, what Pin may do, and the model.
+ */
+export function PinInput({ inPlace, autoFocus, placeholder, workspace }: {
+  inPlace?: boolean;
+  autoFocus?: boolean;
+  placeholder?: string;
+  /** PinView's workspace hooks, so "/terminal" and the like open its tiles. Omitted elsewhere. */
+  workspace?: ComposerShell;
+}) {
   const pin = useThreadApi();
-  const [draft, setDraft] = useState("");
-  const area = useRef<HTMLTextAreaElement>(null);
+  const engine = useEngine();
+  const shell = useMemo<ComposerShell>(() => workspace ?? { newChat: () => pin.newChat?.(), openTile: null, org: null }, [workspace, pin]);
+  const c = useComposer(shell, { inPlace });
+  const area = c.area;
+  // The field points at the list it opens, so a screen reader announces the choices and the one the arrow keys are on.
+  const listId = useId();
 
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [draft]);
+  }, [c.draft, area]);
   // "Quote in reply" from a message's menu: the quote goes on top of whatever is being written.
   useEffect(() => {
     const onQuote = (e: Event) => {
       const text = String((e as CustomEvent).detail ?? "").trim();
       if (!text) return;
-      setDraft((d) => `${text.split("\n").map((l) => `> ${l}`).join("\n")}\n\n${d}`);
-      setTimeout(() => area.current?.focus({ preventScroll: true }), 0);
+      c.quote(text);
     };
     window.addEventListener("pin:quote", onQuote);
     return () => window.removeEventListener("pin:quote", onQuote);
-  }, []);
+  }, [c, area]);
   useEffect(() => {
     if (!autoFocus) return;
     const t = setTimeout(() => area.current?.focus({ preventScroll: true }), 120);
     return () => clearTimeout(t);
-  }, [autoFocus]);
+  }, [autoFocus, area]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (pin.streaming && !draft.trim()) return pin.stop();
-    if (!draft.trim()) return;
-    pin.send(draft, { inPlace });
-    setDraft("");
+    if (pin.streaming && !c.draft.trim()) return pin.stop();
+    void c.send();
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    c.onKeyDown(e);
+    if (e.defaultPrevented) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
   };
-  const canStop = pin.streaming && !draft.trim();
+  const canStop = pin.streaming && !c.draft.trim();
 
   return (
     <form onSubmit={submit} className="p-3 pt-2">
+      {c.open && (
+        <ComposerPopover
+          id={listId}
+          anchor={area.current ?? null}
+          groups={c.groups}
+          active={c.active}
+          label={c.mode.kind === "commands" ? "Commands" : "Mention"}
+          onChoose={(item) => (c.mode.kind === "commands" ? c.runCommand((COMMANDS.find((x) => x.name === item.key)?.id ?? "clear")) : c.chooseMention(item))}
+          onHover={c.hover}
+        />
+      )}
       <div className="transition-control flex items-end gap-2 rounded-2xl bg-surface-2 border border-line pl-4 pr-1.5 py-1.5 focus-within:border-line-strong focus-within:ring-2 focus-within:ring-accent/20">
         <textarea
           ref={area}
           rows={1}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          value={c.draft}
+          onChange={c.onChange}
+          onClick={c.onClick}
           onKeyDown={onKey}
           placeholder={placeholder ?? (pin.name ? `Message ${pin.name}` : "Ask Pin")}
           aria-label={`Message ${pin.name ?? "Pin"}`}
+          role="combobox"
+          aria-expanded={c.open}
+          aria-controls={c.open ? listId : undefined}
+          aria-autocomplete="list"
+          disabled={c.busy}
           className="flex-1 min-w-0 resize-none bg-transparent py-1.5 text-sm leading-6 outline-none focus-visible:outline-none placeholder:text-ink-3"
         />
         <button
           type="submit"
-          disabled={!canStop && !draft.trim()}
+          disabled={!canStop && !c.draft.trim()}
           className="transition-control h-8 w-8 shrink-0 rounded-full bg-primary text-primary-ink flex items-center justify-center disabled:opacity-30 active:scale-95"
           aria-label={canStop ? "Stop" : "Send"}
           title={canStop ? "Stop" : "Send"}
@@ -178,6 +216,27 @@ export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolea
           {canStop ? <Square className="h-3 w-3 fill-current" /> : <ArrowUp className="h-4 w-4" />}
         </button>
       </div>
+      {c.note && <ComposerNote note={c.note} onUndo={c.undo} onDismiss={() => c.setNote(null)} />}
+      {c.memoryHint && <p className="px-1 pt-1.5 text-xs text-ink-3">{c.memoryHint}</p>}
+      {engine.setup && <div className="px-1 pt-1"><StatusLine editable={!pin.agentChat} /></div>}
     </form>
+  );
+}
+
+/** A quiet confirmation under the field, with Undo on a "#" save. */
+function ComposerNote({ note, onUndo, onDismiss }: { note: { tone: "good" | "critical"; text: string; undo?: number }; onUndo: () => void; onDismiss: () => void }) {
+  return (
+    <div role="status" className="mt-1.5 flex items-start gap-2 rounded-lg px-2.5 py-1.5 text-xs text-ink-2">
+      <span aria-hidden className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", note.tone === "good" ? "bg-good" : "bg-critical")} />
+      <span className="min-w-0 flex-1 break-words">{note.text}</span>
+      {note.undo !== undefined && (
+        <button type="button" onClick={onUndo} className="shrink-0 rounded px-1.5 text-xs font-medium text-ink hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+          Undo
+        </button>
+      )}
+      <button type="button" onClick={onDismiss} aria-label="Dismiss" className="shrink-0 rounded p-0.5 text-ink-3 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring">
+        <X aria-hidden className="h-3 w-3" />
+      </button>
+    </div>
   );
 }

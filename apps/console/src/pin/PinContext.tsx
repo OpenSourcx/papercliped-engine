@@ -27,8 +27,11 @@ interface PinCtx {
   streaming: boolean;
   stop: () => void;
   peek: { title: string; body?: string } | null;
-  /** Sends a message to Pin. `inPlace` keeps the island closed (used by Pin's own page, which shows the chat itself). */
-  send: (text: string, opts?: { inPlace?: boolean }) => void;
+  /**
+   * Sends a message to Pin. `inPlace` keeps the island closed (used by Pin's own page, which shows the chat itself).
+   * `context` carries what the composer attached: the ids of anything mentioned with "@", never names.
+   */
+  send: (text: string, opts?: { inPlace?: boolean; context?: { mentions?: { kind: string; id: string }[] } }) => void;
   markDone: (id: string) => void;
   resolveTool: (id: string, patch: Pick<PinToolState, "resolved" | "note">) => void;
   tab: "chat" | "notices";
@@ -202,7 +205,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
     if (engine.live) void refreshChats();
   }, [engine.live, refreshChats]);
 
-  const send = useCallback((text: string, opts?: { inPlace?: boolean }) => {
+  const send = useCallback((text: string, opts?: { inPlace?: boolean; context?: { mentions?: { kind: string; id: string }[] } }) => {
     const clean = text.trim();
     if (!clean) return;
     setTab("chat");
@@ -217,7 +220,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
       run(clean, async ({ emit, signal, history }) => {
         try {
           await streamChat(
-            { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) }, ...(saved ? { chatId: saved } : { save: true }) },
+            { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}), ...(opts?.context ?? {}) }, ...(saved ? { chatId: saved } : { save: true }) },
             (ev) => {
               if (signal.aborted) return;
               if (ev.type === "chat") {

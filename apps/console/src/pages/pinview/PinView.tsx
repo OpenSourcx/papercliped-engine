@@ -13,10 +13,10 @@ import { useEngine } from "../../data/store.tsx";
 import { cn, readJson, writeJson } from "../../lib/storage.ts";
 import { settingsHref } from "../../modals/useModals.ts";
 import type { ConversationItem } from "../../pin/ConversationList.tsx";
-import { PERMISSION_INFO } from "../../pin/PermissionPicker.tsx";
 import { usePin } from "../../pin/PinContext.tsx";
 import { PinOrb } from "../../pin/PinOrb.tsx";
 import { PinThread } from "../../pin/PinThread.tsx";
+import type { ComposerShell } from "../../pin/composer/useComposer.tsx";
 import { ThreadProvider, type ThreadApi } from "../../pin/ThreadContext.tsx";
 import type { ThreadMessage } from "../../pin/useThread.ts";
 import { ConfirmModal } from "../../ui/Confirm.tsx";
@@ -202,7 +202,21 @@ export function PinView() {
 
   const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agentId === view.agentId) : null;
   const currentAgent = current ? agents[ids.indexOf(current.companyId)]?.data?.find((a) => a.id === current.agentId) ?? null : null;
-  const permission = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission)?.label;
+  // What the composer can reach from here: the workspace's tiles, and the open conversation's organization so "@" starts
+  // with its people and agents.
+  const pinWork = useMemo<ComposerShell>(
+    () => ({
+      newChat: newPinChat,
+      openTile: (k) => {
+        showTile(k);
+        // A phone shows the tiles as a sheet, the way its toolbar does.
+        if (!wide()) setSheet("tiles");
+      },
+      org: current?.org ? (orgs.find((o) => o.name === current.org)?.slug ?? null) : null,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current?.org, showTile, newPinChat, orgs.map((o) => o.slug).join(",")],
+  );
   const title = view.kind === "pin" ? (pin.chats.find((c) => c.id === pin.chatId)?.title ?? "New chat") : current?.name ?? "Agent";
   const messages = view.kind === "pin" ? pin.messages : [];
 
@@ -457,7 +471,7 @@ export function PinView() {
         <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto">
           {view.kind === "pin" ? (
             <PinThread inPlace autoFocus className="flex-1" empty={<div className="h-full flex flex-col items-center justify-center text-center gap-3 py-16 px-6"><PinOrb size={44} /><p className="text-ink-2 text-sm max-w-sm text-pretty">Ask Pin about this device, or tell it what to set up. In Agent mode it can act, inside machines too; its plan, files and commands open beside the chat.</p></div>}
-              below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{pin.settings?.mode === "agent" ? permission ?? "Agent" : "Assistant"}</span><span className="flex-1" /><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></div>} />
+              workspace={pinWork} />
           ) : current && currentAgent ? (
             <AgentChat key={agentKey(current.companyId, current.agentId)} companyId={current.companyId} agent={currentAgent} org={current.org} />
           ) : (
@@ -526,6 +540,9 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
     stop: () => undefined,
     markDone: () => undefined,
     resolveTool: () => undefined,
+    // An agent chat: the line under the composer reads Pin's settings, so it stays read-only there.
+    agentChat: true,
+    // Agent chats send the words to the engine; a mention's ids are not used there yet, so nothing else is read.
     send: (text) => {
       const body = text.trim();
       if (!body) return;
@@ -544,7 +561,6 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
   return (
     <ThreadProvider value={api}>
       <PinThread inPlace autoFocus className="flex-1" empty={<p className="text-sm text-ink-3 py-8 text-center">No messages yet. Say hello to {agent.name}.</p>}
-        below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{agentStatusOf(agent.status)[1]}</span><span className="flex-1" /><span className="truncate">{org}</span></div>}
         footer={(block || error) ? (
           <div className="px-4 space-y-2">
             {block && <Notice tone="warning" title={block.reason}>{block.todo}</Notice>}

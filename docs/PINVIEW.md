@@ -20,6 +20,17 @@ sidebar | conversation  [cards] [plan] [terminal] [files] [⋯] [Share] | cards 
 | Cards | **Environment** (the device, the machines this conversation touched with a shortcut to their files, the repositories followed), **Context** (an estimate of how full the conversation is), **Connectors** (each with Set up or Reconnect when it needs it), **Changes** (open, failing and merged pull requests), **Background tasks** (steps still running). The **Show** menu picks the cards. |
 | Tiles | Panes stacked in a column, each with its own actions, **expand** and **close**, the line between two dragging to share the height: **Plan** (the conversation's tasks: a written plan's steps with their state, or the steps Pin took, ticked off as they finish), **Files** (a machine's tree beside tabs for files, Pin's steps and artifacts), **Terminal** (this device or any running machine), **Artifacts**, **Pull requests**. A file or command Pin touches opens in Files as a preview tab, and a written plan opens Plan, by themselves. |
 
+## The composer
+
+Typing is the fastest way to do anything here. Every conversation on the device uses the same composer, so it behaves the same in PinView, in Pin's island and on Pin's page:
+
+- **`/`** opens the console's commands, filtered as you type: `/new` (a new chat), `/mode` (Assistant or Agent mode), `/permission` (what Pin may do without asking), `/model`, `/plan` (ask Pin for a written plan), `/terminal`, `/files` and `/prs` (open a tile; in PinView these open it), `/automation` (describe a standing rule), `/remember` (the same as a `#` line) and `/clear`. Arrow keys move, Enter runs the highlighted command, Tab completes it.
+- **`@`** mentions a person, an agent, an organization, a project or a machine, grouped by kind and filtered as you type. The list starts with the open conversation's organization. The choice becomes `@name` in the field, and the message carries its **id**, never only the name, so Pin looks up the real thing before acting on it. Files are not offered yet (the composer has no file source it can trust in every machine).
+- **`#`** as the first character saves the rest of the line to Pin's memory instead of sending it, and shows "Saved to MEMORY.md" with **Undo**. Undo is the memory history's own restore, so there is one way back, and it is the same list on Pin's Soul and memory tab. On a device the line goes through `POST /api/pin/memory/remember`, which calls the same store Pin's `remember` tool uses; in the demo it is kept in this browser.
+- **The line under the field** says what the conversation runs with — the mode, what Pin may do (Agent mode only) and the model — and each changes from a click. Turning Bypass permissions on still happens where the word is typed.
+
+The popover opens upward from the field and fits both Pin's 480-px panel and PinView's column.
+
 Keyboard: **Ctrl/Cmd+P** Go to (conversations, open files, agents, every command), **Ctrl/Cmd+B** sidebar, **Ctrl/Cmd+.** cards, **Alt+N** new chat with Pin, **Alt+W** close the file tab. In the terminal only Go to is taken. The arrangement (sidebar width, which tiles, their sizes, the tile column's width) is kept per browser.
 
 On a phone the sidebar is the first screen; a conversation opens over it, and the cards and tiles open as full sheets from the toolbar.
