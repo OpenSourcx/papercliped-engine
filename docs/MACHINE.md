@@ -143,3 +143,5 @@ Also not run on a real node: the exact strings Proxmox writes back for `cpu` (fl
 ## Not built
 
 Importing an OVA or OVF as a whole machine (settings from the OVF) and the ESXi import wizard are not possible through the API alone: Proxmox builds those from a command-line tool or its own import dialog. What the API does give is creating a VM whose **disk comes from an image** on an import storage (a disk image, the disk inside an OVA, or an ESXi virtual machine's disk); the Create VM wizard offers it (`docs/WIZARDS.md`). Container OCI image pulls (ND-060) are not built either. AMD SEV and Intel TDX options stay out of the options dialog.
+
+Container file browsing and editing use the private local exec helper (independent `VM.Console` authorization), never the shared Console tab. Install/update ePaperclip to enable `epaperclip-exec.socket`. For a container on another cluster node, open ePaperclip on that node; remote container file execution is refused. VM file operations continue through the QEMU guest agent.

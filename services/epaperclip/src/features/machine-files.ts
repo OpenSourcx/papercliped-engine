@@ -5,7 +5,7 @@ import type { FeatureCtx, FeatureHandler } from "./index.ts";
 
 /**
  * Files inside a machine, for PinView's file browser and its editor tiles. Everything runs through the same in-machine
- * command path Pin uses (guest-exec.ts): the QEMU guest agent for a VM, the person's own terminal for a container, as the
+ * command path Pin uses (guest-exec.ts): the QEMU guest agent for a VM, the independently authorizing local exec helper for a container, as the
  * signed-in person, so Proxmox's permissions decide (VM.GuestAgent.Unrestricted or VM.Monitor for a VM, VM.Console for a
  * container). Nothing is kept on the host.
  *
@@ -18,7 +18,7 @@ const ROUTE = /^\/api\/guests\/(\d{3,9})\/(files|file)$/;
 export const MAX_EDIT = 48 * 1024;
 const MAX_ENTRIES = 2000;
 const TIMEOUT = 30_000;
-/** Base64 characters per container command, well under a terminal's shortest input line. */
+/** Base64 characters per write chunk; bounds individual requests. */
 const CHUNK = 2000;
 
 const sq = (v: string) => `'${v.replace(/'/g, `'"'"'`)}'`;
@@ -57,7 +57,7 @@ for f in * .[!.]* ..?*; do
   printf '%s\\t%s\\t%s\\n' "$t" "$m" "$f"
 done | head -n ${MAX_ENTRIES + 1}`;
 
-/** Size first, then (when small enough) the bytes as base64 between markers, so a terminal's line handling can't change them. */
+/** Size first, then (when small enough) the bytes as base64 between markers, so file contents round-trip without text transformations. */
 const readScript = (path: string) => `[ -f ${sq(path)} ] || { echo "EPC_NOFILE"; exit 3; }
 s=$(wc -c < ${sq(path)} | tr -d ' ')
 echo "EPC_SIZE $s"
