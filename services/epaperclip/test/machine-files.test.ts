@@ -3,45 +3,40 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, statSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HttpError } from "../src/http.ts";
 import { cleanPath, handleMachineFiles, parseListing, MAX_EDIT } from "../src/features/machine-files.ts";
 import type { FeatureCtx } from "../src/features/index.ts";
 
-/** A container terminal that runs each typed line in a real local shell (as the guest-exec tests do), recording the lines. */
-function terminal(typed: string[]) {
-  const ws = Object.assign(new EventEmitter(), {
-    send(data: string) {
-      if (data.startsWith("0:")) {
-        const line = data.slice(data.indexOf(":", 2) + 1);
-        typed.push(line);
-        if (line.includes("__EPC_")) {
-          const r = spawnSync("sh", ["-c", line], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-          setTimeout(() => ws.emit("message", Buffer.from(r.stdout.replace(/\n/g, "\r\n"))), 2);
-        }
-        return;
-      }
-      setTimeout(() => ws.emit("message", Buffer.from("OK")), 1);
-    },
-    terminate() {},
+const recorded = vi.hoisted(() => { vi.resetModules(); return { scripts: [] as string[] }; });
+vi.mock("node:os", async importOriginal => ({ ...await importOriginal<typeof import("node:os")>(), hostname: () => "pve" }));
+vi.mock("node:net", async importOriginal => ({ ...await importOriginal<typeof import("node:net")>(), createConnection: () => {
+  const socket = Object.assign(new EventEmitter(), {
+    end(data: string) {
+      const req = JSON.parse(data);
+      recorded.scripts.push(req.script);
+      const r = spawnSync("sh", ["-s"], { input: req.script, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+      setTimeout(() => { socket.emit("data", Buffer.from(JSON.stringify({ exitCode: r.status, output: r.stdout + r.stderr, timedOut: false, truncated: false }))); socket.emit("end"); }, 0);
+    }, destroy() {},
   });
-  setTimeout(() => ws.emit("open"), 0);
-  return ws;
-}
+  setTimeout(() => socket.emit("connect"), 0);
+  return socket;
+} }));
 
 function call(method: string, path: string, query: Record<string, string>, body?: Record<string, unknown>, status = "running") {
   const typed: string[] = [];
+  recorded.scripts = typed;
   let out: { status: number; body: any } | null = null;
   const url = new URL(`http://h${path}?${new URLSearchParams(query)}`);
   const pve = {
     clusterResources: async () => [{ vmid: 103, type: "lxc", node: "pve", name: "paperclip", status }],
-    terminalTarget: async () => ({ url: "wss://x/ws", headers: {}, handshake: "root@pam:t\n" }),
+    execAuth: () => ({ ticket: "fixture" }),
   };
   const ctx = {
     path, url, method, node: "pve", HttpError,
     session: () => ({ username: "sam@pam" }),
     asUser: (fn: (p: unknown, s: unknown) => Promise<unknown>) => fn(pve, {}),
-    connect: () => terminal(typed),
+    connect: () => { throw new Error("console must not be used"); },
     sameSite: () => undefined,
     readJson: async () => body ?? {},
     json: (s: number, b: unknown) => { out = { status: s, body: b }; },
@@ -91,7 +86,7 @@ describe("files inside a container", () => {
     await expect(call("GET", "/api/guests/103/files", { path: join(d, "nope") }).run()).rejects.toThrow(/isn't a folder/);
   });
 
-  it("writes in chunks short enough for any terminal, keeps the file's permissions, and refuses when it changed meanwhile", async () => {
+  it("writes in bounded chunks, keeps the file's permissions, and refuses when it changed meanwhile", async () => {
     const d = dir();
     const file = join(d, "hello.txt");
     chmodSync(file, 0o640);
@@ -102,7 +97,7 @@ describe("files inside a container", () => {
     expect(res.status).toBe(200);
     expect(readFileSync(file, "utf8")).toBe(big);
     expect(statSync(file).mode & 0o777).toBe(0o640);
-    expect(Math.max(...w.typed.map((l) => l.length))).toBeLessThan(4000);
+    expect(Math.max(...w.typed.map((l) => l.length))).toBeLessThan(8000);
     // Someone else changes it; the old etag no longer matches.
     writeFileSync(file, "changed elsewhere");
     await expect(call("PUT", "/api/guests/103/file", {}, { path: file, content: "mine", etag: first.body.etag }).run()).rejects.toThrow(/changed in the machine/);
@@ -124,14 +119,16 @@ describe("Pin's machine_write_file", () => {
     const { ACTS } = await import("../src/features/pin-act.ts");
     const d = mkdtempSync(join(tmpdir(), "epc-pw-"));
     const typed: string[] = [];
+    recorded.scripts = typed;
+  recorded.scripts = typed;
     const pve = {
       clusterResources: async () => [{ vmid: 103, type: "lxc", node: "pve", name: "paperclip", status: "running" }],
-      terminalTarget: async () => ({ url: "wss://x/ws", headers: {}, handshake: "root@pam:t\n" }),
+      execAuth: () => ({ ticket: "fixture" }),
     };
     const content = "y".repeat(9000) + "\n'quotes' $HOME `tick`\n";
-    const r = await ACTS.machine_write_file.run({ node: "pve", username: "sam@pam", pve: async () => pve as never, connect: () => terminal(typed) as never }, { vmid: 103, path: join(d, "big.txt"), content, append: false });
+    const r = await ACTS.machine_write_file.run({ node: "pve", username: "sam@pam", pve: async () => pve as never, connect: () => { throw new Error("console must not be used"); } }, { vmid: 103, path: join(d, "big.txt"), content, append: false });
     expect(r.result).toMatch(/^Exit 0\./);
     expect(readFileSync(join(d, "big.txt"), "utf8")).toBe(content);
-    expect(Math.max(...typed.map((l) => l.length))).toBeLessThan(4000);
+    expect(Math.max(...typed.map((l) => l.length))).toBeLessThan(8000);
   }, 60_000);
 });

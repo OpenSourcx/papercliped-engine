@@ -7,3 +7,5 @@
 - Type: ed25519, signing only, expires 2029-10-11
 
 The private half lives only in the repository secret `APT_SIGNING_KEY`, used by the release workflow. Never commit it.
+
+The package is built from the release tarball, including `epaperclip-exec.mjs`, `epaperclip-exec.socket` and `epaperclip-exec@.service`. Its postinst and prerm call the shared installer, so APT installs/enables and uninstalls the private container exec helper just like source installs and signed updates. The helper uses the bundled Node, not a system Node package.

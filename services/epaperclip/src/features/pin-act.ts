@@ -47,7 +47,7 @@ export interface ActHost {
   node: string;
   username: string;
   pve: () => Promise<ProxmoxClient>;
-  /** How to open a terminal to Proxmox, for running a command inside a container. Without it only VMs (guest agent) can be reached. */
+  /** Legacy console connector, unused by private guest execution. */
   connect?: Connect;
   sleep?: (ms: number) => Promise<void>;
   /** Longest an action may hold its caller waiting for Proxmox (an approval request must answer in time); longer tasks keep running and are reported as such. */
@@ -233,11 +233,10 @@ async function runInMachine(h: ActHost, vmid: number, script: string, timeoutMs:
   const pve = await h.pve();
   const g = await locate(pve, h.node, vmid);
   if (g.status !== "running") throw bad(`${g.name} (${vmid}) isn't running. Start it first.`);
-  if (g.type === "lxc" && !h.connect) throw bad("This host can't open container terminals right now.");
   const r = await execInGuest({ pve: h.pve, connect: h.connect!, sleep: h.sleep }, { type: g.type, vmid, node: g.where }, script, { timeoutMs }).catch((e: unknown) => {
     throw bad(e instanceof Error ? e.message : "Couldn't run that in the machine");
   });
-  const head = r.timedOut ? `Still running after ${Math.round(timeoutMs / 1000)} s, so it was stopped waiting (a VM's command can keep running in the guest).` : r.exitCode === 0 ? "Exit 0." : r.exitCode === null ? "Finished with no exit code." : `Exit code ${r.exitCode}.`;
+  const head = r.timedOut && g.type === "lxc" ? `Timed out after ${Math.round(timeoutMs / 1000)} s; the command and its children were stopped.` : r.timedOut ? `Still running after ${Math.round(timeoutMs / 1000)} s, so it was stopped waiting (a VM's command can keep running in the guest).` : r.exitCode === 0 ? "Exit 0." : r.exitCode === null ? "Finished with no exit code." : `Exit code ${r.exitCode}.`;
   return { result: `${head} In ${g.name} (${vmid}).${r.output ? `\n${r.output}` : "\n(no output)"}` };
 }
 
@@ -521,7 +520,7 @@ export const ACTS: Record<string, ActDef> = {
 
   set_machine_config: {
     name: "set_machine_config",
-    description: "Change a machine's name, cores, memory, swap (containers), start-at-boot, description or tags, or a container's console_mode (\"shell\" opens its console straight into a root shell, which machine_exec needs when the console asks for a login; restart the container afterwards). Some changes apply at its next restart.",
+    description: "Change a machine's name, cores, memory, swap (containers), start at boot, description, tags or console_mode. Console mode affects only the interactive console; private execution does not depend on it. Some changes apply at its next restart.",
     parameters: noProps(
       {
         vmid: { type: "integer" },
@@ -604,7 +603,7 @@ export const ACTS: Record<string, ActDef> = {
   machine_exec: {
     name: "machine_exec",
     description:
-      "Run a shell command INSIDE a running machine (a container, or a VM with the QEMU guest agent) and get its output and exit code. It runs as root in a Linux shell. Use it to install and configure software, read logs, check services, build and test. One command or a short script per call; long jobs should be started in the background and checked later. Reading commands run without asking in most modes; anything that changes the machine is held for approval unless the person turned that off.",
+      "Run a shell command INSIDE a running machine (a container, or a VM with the QEMU guest agent) and get its output and exit code. It runs as root in a Linux shell. Use it to install and configure software, read logs, check services, build and test. One command or a short script per call; Container commands and their background children are stopped at timeout or when the foreground command finishes; wait for child jobs before exiting. Reading commands run without asking in most modes; anything that changes the machine is held for approval unless the person turned that off.",
     parameters: noProps({ vmid: { type: "integer" }, command: { type: "string", description: "The shell command or short script to run" }, timeout_s: { type: "integer", minimum: 1, maximum: 600, description: "Seconds to wait (default 60)" } }, ["vmid", "command"]),
     parse(r) {
       only(r, ["vmid", "command", "timeout_s"], "machine_exec");
