@@ -13,7 +13,7 @@ Code: host `services/epaperclip/src/features/guest.ts` (routes) and `guestCheck.
 | Hardware | Pending-changes banner, Processor and memory, Options, Disks, **Firmware and devices** (VM), **Network devices**, **DNS** and **Features** (container), **Host devices** (add and remove), and for a VM **Processor details**, **Machine type and memory details**, **Other devices** and **More options**; for a container **Container options**. |
 | Cloud-Init (VM) | The drive, user, password, SSH keys, DNS, addresses per network device, custom files, regenerate, generated files. |
 | Guest agent (VM) | What the agent reports, and trim, freeze, set password, run a command, read a file. |
-| Console | Built-in screen and serial terminal, plus a SPICE viewer file and the QEMU monitor. |
+| Console | Built-in screen and serial terminal, plus a SPICE viewer file and the QEMU monitor. A terminal's corner button opens it in a window of its own (`/:device/console/:vmid`, the host shell at `/:device/console/host`) and the page shows where it went until that window is closed; a blocked pop-up falls back to full screen. A container's console is one shared session that Proxmox reattaches to, so the relay sends Ctrl-L once after connecting to redraw the prompt (it runs nothing). |
 | Permissions | Who may use this machine: entries on `/vms/<id>`, and what reaches it from `/`, `/vms` and its pool. |
 
 ### Addresses and hostname

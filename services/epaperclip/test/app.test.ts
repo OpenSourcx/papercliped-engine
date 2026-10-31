@@ -898,8 +898,10 @@ describe("live consoles", () => {
     const c = await signIn();
     const { ws, out } = await open("/api/console/guests/101", { Cookie: c, Origin: base });
     ws.send("0:2:ls");
-    await until(() => out.length > 0);
-    expect(out).toEqual(["echo:ls"]);
+    await until(() => out.length > 1);
+    // The shared session is asked to redraw (Ctrl-L) once, after what the browser queued, so it isn't blank.
+    expect(out).toEqual(["echo:ls", "echo:\x0c"]);
+    expect(consoleSeen[0].frames.slice(1)).toEqual(["0:2:ls", "0:1:\x0c"]);
     expect(consoleSeen[0].url).toBe("/api2/json/nodes/pve/lxc/101/vncwebsocket?port=5901&vncticket=PVEVNC%3Aabc");
     expect(consoleSeen[0].cookie).toMatch(/^PVEAuthCookie=PVE%3Asam%40pve/);
     expect(consoleSeen[0].frames[0]).toBe("sam@pve:PVEVNC:abc\n");

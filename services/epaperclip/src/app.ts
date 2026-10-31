@@ -1866,6 +1866,7 @@ export function createApp(d: AppDeps) {
           url: `wss://${base.host}${ProxmoxClient.consoleSocketPath(node, guest, tp.port, tp.ticket)}`,
           headers: { Cookie: `PVEAuthCookie=${encodeURIComponent(s.ticket)}` },
           handshake: `${tp.user}:${tp.ticket}\n`,
+          redraw: guest?.type === "lxc",
         };
       } catch (e) {
         if (e instanceof ProxmoxError && e.status === 403) throw new Error("Your Proxmox account doesn't have console access here (Sys.Console or VM.Console).");

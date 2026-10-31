@@ -221,7 +221,7 @@ export function MachinePage() {
                 <Card className="p-10 text-center"><Monitor className="h-6 w-6 mx-auto text-ink-3" /><p className="text-ink-2 mt-3">{g.name}'s screen appears here on a device.</p><p className="text-compact text-ink-3 mt-1">The demo has no real VM to show. The serial console works as a demo.</p></Card>
               )
             ) : (
-              <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" />
+              <Terminal make={make} title={`root@${g.name}`} className="h-[min(560px,calc(100dvh-280px))]" popout={setup ? `/${setup.deviceName}/console/${g.vmid}` : undefined} />
             )}
             {g.type === "qemu" && <ConsoleExtras vmid={g.vmid} name={g.name} />}
             {live && g.type === "qemu" && view === "serial" && (
