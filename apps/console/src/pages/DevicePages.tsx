@@ -22,7 +22,7 @@ export function HostShell() {
         <p className="text-ink-2">{live ? "A shell on the host, opened by Proxmox for your account (it needs Sys.Console). " : "Only owners can open the host shell. "}It is never available to agents or connected apps. Changes here bypass ePaperclip's checks; prefer machine consoles and Pin for everyday work.</p>
       </div>
       {connected
-        ? <Terminal make={make} title={`root@${setup?.deviceName ?? "pve"}`} className="h-[min(600px,calc(100dvh-260px))]" />
+        ? <Terminal make={make} title={`root@${setup?.deviceName ?? "pve"}`} className="h-[min(600px,calc(100dvh-260px))]" popout={setup ? `/${setup.deviceName}/console/host` : undefined} />
         : <Card className="p-6 flex flex-col items-start gap-3">
             <p className="text-compact text-ink-2">Opening the shell starts a root session on the host and shows up in Tasks. It only starts when you press the button, never just from visiting this page.</p>
             <Button variant="primary" onClick={() => setConnected(true)}>Open host shell</Button>

@@ -20,6 +20,12 @@ export interface ConsoleTarget {
   handshake?: string;
   /** Relay output as binary frames (VNC) instead of text (terminals). */
   binary?: boolean;
+  /**
+   * Ask the far side to redraw once it is ready (Ctrl-L). A container's console is one shared session that Proxmox
+   * reattaches to (dtach), and reattaching doesn't replay the screen, so without this it stays blank until the shell
+   * prints again. Ctrl-L redraws the prompt and runs nothing.
+   */
+  redraw?: boolean;
 }
 
 /** Something that speaks WebSocket to Proxmox: the real `ws` client, or a fake in tests. */
@@ -100,6 +106,8 @@ export function createConsoleRelay(opts: {
               if (!text.startsWith("OK")) return fail("Proxmox refused the console session.");
               ready = true;
               for (const f of pending.splice(0)) pve!.send(f);
+              // After the queued resize, so the redraw is at the terminal's size.
+              if (target.redraw) pve!.send("0:1:\x0c");
               const rest = text.slice(2);
               if (rest) browser.send(rest);
               return;
