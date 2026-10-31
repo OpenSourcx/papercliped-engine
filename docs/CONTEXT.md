@@ -327,8 +327,5 @@ Each is shippable on its own, with tests, in this order; one branch and one pull
 6. **Editors:** engine `owner` or `admin`, or a Proxmox administrator. Members don't edit (§4).
 7. **Projects rename:** its own small change, first (phase 0, §11).
 8. **Library under a project** (`/:device/projects/<project>/library`): fine.
-
-### Still open
-
-1. **Agent network:** a dedicated SDN agent bridge (recommended, §5.3), or stay on `vmbr0` with the per-address firewall rule? And is `10.250.0.0/24` free on your networks?
-2. **Delivery:** the managed block in each agent's entry file (recommended, §5.1), with **Apply now** resetting the sessions of resumed Claude, Codex and ACP agents. Approve?
+9. **Agent network:** a dedicated agent bridge (§5.3). The subnet is confirmed free during the phase 2 setup on the real host.
+10. **Delivery:** the managed block in each agent's entry file, with **Apply now** resetting resumed sessions (§5.1).
