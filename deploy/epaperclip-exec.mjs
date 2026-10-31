@@ -57,12 +57,24 @@ export async function isolate(attachPid, guestPid) {
   if (!pid) throw new Error('Could not isolate the container command; execution refused.');
   const rel = readFileSync(`/proc/${pid}/cgroup`, 'utf8').match(/^0::(.+)$/m)?.[1];
   if (!rel || rel.includes('..')) throw new Error('A unified cgroup hierarchy is required for private container commands.');
-  const dir = `/sys/fs/cgroup${rel}/epaperclip-${randomUUID()}`;
+  const parent = `/sys/fs/cgroup${rel}`;
+  const dir = `${parent}/epaperclip-${randomUUID()}`;
   mkdirSync(dir);
   try { writeFileSync(`${dir}/cgroup.procs`, String(pid)); }
   catch (e) { rmdirSync(dir); throw e; }
   return {
     kill() { writeFileSync(`${dir}/cgroup.kill`, '1'); },
+    // The command finished: background jobs it started on purpose keep running, as ordinary processes of the container.
+    // Frozen first so nothing forks while they move; a moved process takes its new cgroup's state and thaws.
+    release() {
+      writeFileSync(`${dir}/cgroup.freeze`, '1');
+      for (let i = 0; i < 20; i++) {
+        const pids = readFileSync(`${dir}/cgroup.procs`, 'utf8').split('\n').filter(Boolean);
+        if (!pids.length) return;
+        for (const p of pids) { try { writeFileSync(`${parent}/cgroup.procs`, p); } catch { /* exited */ } }
+      }
+      throw new Error('Could not move background processes out of the private command cgroup.');
+    },
     dispose() { try { rmdirSync(dir); return true; } catch { return false; } },
   };
 }
@@ -113,6 +125,9 @@ export async function run(req, deps = {}) {
       proc = spawn('lxc-attach', ['--clear-env', '-n', String(req.vmid), '--', '/bin/sh', '-s'], { stdio: ['pipe', 'pipe', 'pipe'] });
       let chunks = [], collected = 0, ready = false, prefix = '', timedOut = false, failed;
       const finishGroup = () => { try { group?.kill(); } catch { failed = new Error('Could not clean up the private command cgroup.'); } };
+      // A normal exit keeps background jobs; if they can't be moved out, they are stopped rather than left in a cgroup
+      // that can't be removed.
+      const releaseGroup = () => { try { group?.release(); } catch { finishGroup(); } };
       const stop = () => {
         finishGroup();
         if (!group) {
@@ -145,15 +160,24 @@ export async function run(req, deps = {}) {
       proc.stderr.on('data', collect);
       proc.stdin.on('error', () => {});
       proc.on('error', () => { process.removeListener('SIGTERM', onTerminate); clearTimeout(timer); reject(new Error('Could not start lxc-attach.')); });
-      proc.on('exit', () => { finishGroup(); });
-      proc.on('close', code => {
+      let settled = false;
+      const settle = code => {
+        if (settled) return;
+        settled = true;
         process.removeListener('SIGTERM', onTerminate);
-        clearTimeout(timer); finishGroup();
+        clearTimeout(timer);
         if (failed) return reject(failed);
         const out = Buffer.from(Buffer.concat(chunks).toString('utf8'));
         const output = new TextDecoder().decode(out.subarray(0, OUTPUT_MAX), { stream: true });
         resolve({ exitCode: timedOut ? null : code, output, timedOut, truncated: bytes > OUTPUT_MAX || out.length > OUTPUT_MAX });
+      };
+      proc.on('exit', code => {
+        if (timedOut || failed) finishGroup(); else releaseGroup();
+        // A background job may still hold the output pipes; the command is done when its shell exits, so read what has
+        // arrived for a moment, then stop listening. A job that keeps writing there gets SIGPIPE: send its output to a file.
+        setTimeout(() => { proc.stdout.destroy(); proc.stderr.destroy(); settle(code); }, 250);
       });
+      proc.on('close', code => { if (timedOut || failed) finishGroup(); settle(code); });
       proc.stdin.write('printf "EPC_READY:%s\\n" "$$"\n');
     });
     return result;

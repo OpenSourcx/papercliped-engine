@@ -603,7 +603,7 @@ export const ACTS: Record<string, ActDef> = {
   machine_exec: {
     name: "machine_exec",
     description:
-      "Run a shell command INSIDE a running machine (a container, or a VM with the QEMU guest agent) and get its output and exit code. It runs as root in a Linux shell. Use it to install and configure software, read logs, check services, build and test. One command or a short script per call; Container commands and their background children are stopped at timeout or when the foreground command finishes; wait for child jobs before exiting. Reading commands run without asking in most modes; anything that changes the machine is held for approval unless the person turned that off.",
+      "Run a shell command INSIDE a running machine (a container, or a VM with the QEMU guest agent) and get its output and exit code. It runs as root in a Linux shell. Use it to install and configure software, read logs, check services, build and test. One command or a short script per call; long jobs should be started in the background with their output in a file (`nohup cmd > /tmp/job.log 2>&1 &`) and checked later. A command that runs past its timeout is stopped, together with everything it started; a background job started by a command that finished keeps running. Reading commands run without asking in most modes; anything that changes the machine is held for approval unless the person turned that off.",
     parameters: noProps({ vmid: { type: "integer" }, command: { type: "string", description: "The shell command or short script to run" }, timeout_s: { type: "integer", minimum: 1, maximum: 600, description: "Seconds to wait (default 60)" } }, ["vmid", "command"]),
     parse(r) {
       only(r, ["vmid", "command", "timeout_s"], "machine_exec");

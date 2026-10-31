@@ -79,4 +79,32 @@ describe('independent root helper boundary', () => {
       expect(() => process.kill(pid, 0)).toThrow();
     } finally { process.env.PATH = original; rmSync(dir, { recursive: true, force: true }); }
   });
+
+  it('keeps background jobs of a finished command running and returns when its shell exits', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'epc-helper-'));
+    const original = process.env.PATH;
+    writeFileSync(join(dir, 'lxc-attach'), '#!/bin/sh\nexec /bin/sh -s\n');
+    chmodSync(join(dir, 'lxc-attach'), 0o755);
+    writeFileSync(join(dir, 'pct'), '#!/bin/sh\nprintf "status: running\\n"\n');
+    chmodSync(join(dir, 'pct'), 0o755);
+    process.env.PATH = `${dir}:${original}`;
+    let released = 0, killed = 0;
+    const d = { ...deps, capture: undefined, isolate: async () => ({ kill: () => { killed++; }, release: () => { released++; }, dispose() {} }), log: () => {} };
+    const pids: number[] = [];
+    try {
+      // One job writes to a file, as it should; one still holds the inherited output pipe.
+      const started = Date.now();
+      const r = await run({ ...req, script: `nohup sleep 30 >/dev/null 2>&1 & echo $!; sleep 30 & echo $!; exit 0`, timeoutMs: 20_000 }, d);
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(r).toMatchObject({ exitCode: 0, timedOut: false });
+      pids.push(...r.output.trim().split(/\s+/).map(Number));
+      expect(pids).toHaveLength(2);
+      expect(() => process.kill(pids[0], 0)).not.toThrow();
+      expect(released).toBe(1);
+      expect(killed).toBe(0);
+    } finally {
+      for (const p of pids) { try { process.kill(p, 'SIGKILL'); } catch {} }
+      process.env.PATH = original; rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
