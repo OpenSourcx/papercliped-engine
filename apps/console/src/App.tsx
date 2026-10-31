@@ -19,6 +19,7 @@ import { Store } from "./pages/store/Store.tsx";
 import { ConsentPage } from "./pages/connect/Consent.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
+import { ConsoleWindow } from "./pages/ConsoleWindow.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
 import { NotFound } from "./pages/NotFound.tsx";
 import { Activity, Agents, Artifacts, Chat, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
@@ -62,6 +63,8 @@ export function App() {
       <Route path="/" element={<Root />} />
       <Route path="/setup" element={<SetupGate />} />
       <Route path="/:device" element={<DeviceGate />}>
+        {/* A console in a window of its own, without the app around it. */}
+        <Route path="console/:vmid" element={<ConsoleWindow />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="home" replace />} />
           <Route path="home" element={<Home />} />
