@@ -1,0 +1,33 @@
+[Unit]
+Description=ePaperclip private container execution
+
+[Service]
+ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/exec/epaperclip-exec.mjs
+User=root
+Group=root
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+TimeoutStartSec=330
+RuntimeMaxSec=330
+KillMode=control-group
+UMask=0077
+ProtectSystem=strict
+# Lock slots and private descendant cleanup are the only host filesystem writes.
+ReadWritePaths=/run/epaperclip-exec /sys/fs/cgroup
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# lxc-attach needs root capabilities, namespace entry, guest mounts/devices and access to /proc.
+# Do not use PrivateDevices, RestrictNamespaces, ProtectProc or a reduced CapabilityBoundingSet here.
+# ProtectControlGroups is intentionally unset: cgroup.procs/cgroup.kill must remain writable.
+# lxc-attach enters the guest mount namespace, where authorized commands retain normal guest filesystem access.
+# NoNewPrivileges would change the privileges available to commands authorized as container root.

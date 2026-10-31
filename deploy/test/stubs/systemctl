@@ -11,18 +11,20 @@ map() {
   sed -e "s#/opt/epaperclip#${EPC_PREFIX}#g" -e "s#/etc/epaperclip#${EPC_ETC_DIR}#g" -e "s#/etc/default/epaperclip#${EPC_DEFAULTS}#g" \
       -e "s#/var/lib/epaperclip-engine#${EPC_ENGINE_HOME}#g" -e "s#/var/lib/epaperclip\\b#${EPC_HOST_STATE_DIR}#g"
 }
-unit_file() { echo "$EPC_UNIT_DIR/${1%.service}.service"; }
+unit_file() { case "$1" in *.socket) echo "$EPC_UNIT_DIR/$1";; *) echo "$EPC_UNIT_DIR/${1%.service}.service";; esac; }
 alive() { kill -0 "$1" 2>/dev/null && [ "$(sed -n "s/^[0-9]* ([^)]*) \\(.\\).*/\\1/p" "/proc/$1/stat" 2>/dev/null)" != Z ]; } # a zombie is not running
 pid_of() { cat "$S/${1%.service}.pid" 2>/dev/null; }
 is_active() {
   local u="${1%.service}" p
   [ "$u" = pveproxy ] && { [ "${STUB_PVEPROXY_DOWN:-}" = 1 ] && return 3; return 0; }
+  if [[ "$u" = *.socket ]]; then [ -f "$S/active.$u" ]; return $?; fi
   p="$(pid_of "$u")"; [ -n "$p" ] && alive "$p"
 }
 start() {
   local u="${1%.service}" f exec dir user line
   f="$(unit_file "$u")"; [ -f "$f" ] || { echo "Failed to start $u.service: Unit $u.service not found." >&2; return 5; }
   is_active "$u" && return 0
+  if [[ "$u" = *.socket ]]; then touch "$S/active.$u"; return 0; fi
   exec="$(sed -n 's/^ExecStart=//p' "$f" | map)"; dir="$(sed -n 's/^WorkingDirectory=//p' "$f" | map)"; user="$(sed -n 's/^User=//p' "$f")"
   [ -x "${exec%% *}" ] || [ -L "${exec%% *}" ] || { echo "$u.service: ExecStart binary ${exec%% *} missing (status=203/EXEC)" >>"$S/$u.log"; return 1; }
   (
@@ -43,6 +45,7 @@ start() {
 }
 stop() {
   local u="${1%.service}" p i
+  rm -f "$S/active.$u"
   p="$(pid_of "$u")"; rm -f "$S/$u.pid"
   [ -n "$p" ] || return 0
   echo "[stub] stopping $u (pid $p) at $(date +%T.%N)" >>"$S/$u.log"

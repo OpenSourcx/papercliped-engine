@@ -117,6 +117,7 @@ if [ "$got" != "$version" ]; then
   status failed "The download is version ${got:-unknown}, not $version. Nothing was changed." "$version"; exit 0
 fi
 status installing "Installing $version: the installer test-starts it, swaps it in, and puts the old version back if it doesn't come up." "$version"
+# The versioned installer also installs/enables the private exec socket/helper and preserves its matching units for rollback.
 bash "$WORK/epaperclip/deploy/install.sh" >>"$LOG" 2>&1; rc=$?
 if [ "$rc" -eq 0 ]; then status done "Updated to $version." "$version"
 elif grep -q "was restored" "$LOG"; then status rolled_back "The update didn't come up healthy, so the previous version was put back and is running." "$version"

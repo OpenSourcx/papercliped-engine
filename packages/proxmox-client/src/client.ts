@@ -266,6 +266,14 @@ export class ProxmoxClient {
     this.streamTransport = opts.streamTransport ?? nodeStreamTransport(opts.caPem);
   }
 
+  /** Credentials for the independently authorizing local exec helper; never log or persist them. */
+  execAuth(): { ticket: string } | { tokenId: string; tokenSecret: string } {
+    if (this.headers.Cookie) return { ticket: decodeURIComponent(this.headers.Cookie.slice("PVEAuthCookie=".length)) };
+    const token = this.headers.Authorization.slice("PVEAPIToken=".length);
+    const split = token.indexOf("=");
+    return { tokenId: token.slice(0, split), tokenSecret: token.slice(split + 1) };
+  }
+
   /**
    * Signs a user in with Proxmox's own login (`POST /access/ticket`). With two-factor enabled, the first call returns
    * a partial ticket and needTfa; answer it with `tfaChallenge` set to that ticket and `password` set to the response

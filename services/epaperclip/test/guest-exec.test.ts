@@ -1,5 +1,7 @@
-import { EventEmitter } from "node:events";
-import { spawnSync } from "node:child_process";
+import { createServer } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { ACTS, gate } from "../src/features/pin-act.ts";
@@ -87,50 +89,38 @@ describe("running in a VM through the guest agent", () => {
   });
 });
 
-describe("running in a container through its terminal", () => {
-  /** A terminal that answers the handshake with OK and runs whatever is typed in a real local shell, echoing nothing. */
-  function fakeTerminal(opts: { login?: boolean } = {}) {
-    const typed: string[] = [];
-    const ws = Object.assign(new EventEmitter(), {
-      send(data: string) {
-        if (data.startsWith("0:")) {
-          const line = data.slice(data.indexOf(":", 2) + 1);
-          typed.push(line);
-          if (line.includes("__EPC_")) {
-            const r = spawnSync("sh", ["-c", line], { encoding: "utf8" });
-            setTimeout(() => ws.emit("message", Buffer.from(r.stdout.replace(/\n/g, "\r\n"))), 5);
-          }
-          return;
-        }
-        // The handshake line.
-        setTimeout(() => ws.emit("message", Buffer.from(opts.login ? "OK" : "OK")), 1);
-        if (opts.login) setTimeout(() => ws.emit("message", Buffer.from("\r\ndebian login: ")), 3);
-      },
-      terminate() {},
+describe("running in a container through private pipes", () => {
+  const guest = { type: "lxc" as const, vmid: 103, node: "pve" };
+  const pve = { execAuth: () => ({ ticket: "fixture" }), terminalTarget: () => { throw new Error("must never open terminal"); } } as unknown as ProxmoxClient;
+  async function withHelper(reply: unknown, check: (socket: string) => Promise<void>) {
+    const dir = await mkdtemp(join(tmpdir(), "epc-exec-"));
+    const socket = join(dir, "exec.sock");
+    const server = createServer({ allowHalfOpen: true }, s => {
+      let body = "";
+      s.on("data", b => body += b);
+      s.on("end", () => {
+        expect(JSON.parse(body)).toMatchObject({ vmid: 103, node: "pve", auth: { ticket: "fixture" }, script: "echo hi" });
+        s.end(JSON.stringify(reply));
+      });
     });
-    setTimeout(() => ws.emit("open"), 0);
-    return { ws, typed };
+    await new Promise<void>(r => server.listen(socket, r));
+    try { await check(socket); } finally { await new Promise<void>(r => server.close(() => r())); await rm(dir, { recursive: true }); }
   }
-  const pve = { terminalTarget: async () => ({ url: "wss://x/ws", headers: {}, handshake: "root@pam:ticket\n" }) } as unknown as ProxmoxClient;
-
-  it("returns exactly what the command printed and its exit code, without the markers or the typed line", async () => {
-    const t = fakeTerminal();
-    const r = await execInGuest({ pve: async () => pve, connect: () => t.ws as never }, { type: "lxc", vmid: 103, node: "pve" }, "echo one; echo two >&2; exit 4", { timeoutMs: 5000 });
-    expect(r.exitCode).toBe(4);
-    expect(r.output).toBe("one\ntwo");
-    expect(r.timedOut).toBe(false);
-    expect(t.typed.join("")).not.toContain("echo one"); // the script travels as base64
-    expect(r.output).not.toContain("__EPC_");
+  const host = (socket: string) => ({ pve: async () => pve, connect: () => { throw new Error("no console"); }, localNode: "pve", execSocket: socket });
+  for (const result of [
+    { exitCode: 4, output: "hi\n", timedOut: false, truncated: false },
+    { exitCode: null, output: "", timedOut: true, truncated: false },
+    { exitCode: 0, output: "x".repeat(65536), timedOut: false, truncated: true },
+  ]) it(`returns helper result (timeout=${result.timedOut}, truncated=${result.truncated})`, async () => {
+    await withHelper(result, async socket => { expect(await execInGuest(host(socket), guest, "echo hi", { timeoutMs: 1000 })).toEqual(result); });
   });
-
-  it("stops waiting at the timeout and says so, with whatever it had", async () => {
-    const t = fakeTerminal();
-    const r = await execInGuest({ pve: async () => pve, connect: () => ({ ...t.ws, on: t.ws.on.bind(t.ws), send: () => undefined, terminate() {} }) as never }, { type: "lxc", vmid: 103, node: "pve" }, "sleep 99", { timeoutMs: 50 });
-    expect(r.timedOut).toBe(true);
+  it("surfaces independent authorization refusal", async () => {
+    await withHelper({ error: "VM.Console required" }, async socket => { await expect(execInGuest(host(socket), guest, "echo hi", { timeoutMs: 1000 })).rejects.toThrow(/VM.Console/); });
   });
-
-  it("tells the person when the console wants a login", async () => {
-    const t = fakeTerminal({ login: true });
-    await expect(execInGuest({ pve: async () => pve, connect: () => t.ws as never }, { type: "lxc", vmid: 103, node: "pve" }, "ls", { timeoutMs: 3000 })).rejects.toThrow(/asks for a login/);
+  it("explains a missing helper", async () => {
+    await expect(execInGuest(host("/tmp/epc-missing-socket"), guest, "echo hi", { timeoutMs: 1000 })).rejects.toThrow(/exec helper on node pve/);
+  });
+  it("refuses a remote node before connecting", async () => {
+    await expect(execInGuest(host("/not-used"), { ...guest, node: "remote" }, "echo hi", { timeoutMs: 1000 })).rejects.toThrow(/node that hosts the container \(remote\)/);
   });
 });

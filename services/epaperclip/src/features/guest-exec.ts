@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import WebSocket from "ws";
+import { createConnection } from "node:net";
+import { hostname } from "node:os";
 import { ProxmoxError, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { Connect } from "../console.ts";
 
@@ -8,8 +8,8 @@ import type { Connect } from "../console.ts";
  *
  *   VM         through the QEMU guest agent (`agent/exec`): needs the agent running in the guest, a Linux guest with /bin/sh,
  *              and the privilege Proxmox asks for (VM.GuestAgent.Unrestricted; VM.Monitor on older versions).
- *   Container  through the terminal Proxmox gives that person (the same one the console uses, VM.Console). The command is
- *              sent as a base64 script between two markers the shell prints, so the output is exactly what it printed.
+ *   Container  through the local root-owned, socket-activated exec helper, which independently verifies VM.Console.
+ *              Private lxc-attach pipes carry the script on stdin; the shared console is never opened. Local guests only.
  *
  * Proxmox's own permissions decide who may do either; nothing here widens them. The caller (Pin's actions) decides when to
  * ask the person first (docs/PIN.md).
@@ -26,6 +26,8 @@ export interface ExecHost {
   pve: () => Promise<ProxmoxClient>;
   connect: Connect;
   sleep?: (ms: number) => Promise<void>;
+  execSocket?: string;
+  localNode?: string;
 }
 
 export interface Guest {
@@ -36,11 +38,6 @@ export interface Guest {
 
 /** The most output handed back to a caller; the rest is cut and the result says so. */
 export const MAX_OUTPUT = 64 * 1024;
-const COLLECT_MAX = 256 * 1024;
-
-const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b[()][A-Z0-9]|\u001b[=>]/g;
-const clean = (s: string) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(ANSI, "");
-
 function cut(text: string): { output: string; truncated: boolean } {
   return text.length > MAX_OUTPUT ? { output: `${text.slice(0, MAX_OUTPUT)}\n… (output cut at ${MAX_OUTPUT / 1024} KiB)`, truncated: true } : { output: text, truncated: false };
 }
@@ -76,77 +73,32 @@ async function execInVm(h: ExecHost, pve: ProxmoxClient, g: Guest, script: strin
 }
 
 function execInContainer(h: ExecHost, pve: ProxmoxClient, g: Guest, script: string, timeoutMs: number): Promise<ExecResult> {
-  return new Promise<ExecResult>((resolve, reject) => {
-    pve.terminalTarget(g.node, { type: "lxc", vmid: g.vmid }).then((target) => {
-      const ws = h.connect({ url: target.url, headers: target.headers, handshake: target.handshake });
-      const nonce = randomBytes(6).toString("hex");
-      const START = `__EPC_S_${nonce}__`;
-      const END = new RegExp(`__EPC_E_${nonce}_(\\d+)__`);
-      let buf = "";
-      let greeted = false;
-      let settled = false;
-      let timer: NodeJS.Timeout | null = null;
-      let sent = false;
-      const frame = (data: string) => `0:${Buffer.byteLength(data)}:${data}`;
-      const done = (r: ExecResult | Error) => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        try {
-          ws.terminate();
-        } catch {
-          // already closed
-        }
-        r instanceof Error ? reject(r) : resolve(r);
-      };
-      const result = (timedOut: boolean): ExecResult => {
-        const text = clean(buf);
-        const start = text.indexOf(START);
-        const body = start >= 0 ? text.slice(start + START.length).replace(/^\n/, "") : "";
-        const m = END.exec(body);
-        const out = (m ? body.slice(0, m.index) : body).replace(/\n+$/, "");
-        const c = cut(out);
-        return { exitCode: m ? Number(m[1]) : null, output: c.output, timedOut, truncated: c.truncated || buf.length >= COLLECT_MAX };
-      };
-      const send = () => {
-        if (sent) return;
-        sent = true;
-        const b64 = Buffer.from(script, "utf8").toString("base64");
-        // The markers are built by the shell, so the typed line never contains them literally (a terminal that echoes can't confuse the parse).
-        const line =
-          `stty -echo 2>/dev/null; printf '__EPC_%s_%s__\\n' S ${nonce}; printf %s ${b64} | base64 -d | sh 2>&1; printf '\\n__EPC_%s_%s_%s__\\n' E ${nonce} "$?"\n`;
-        ws.send(frame(line));
-      };
-      timer = setTimeout(() => {
-        try {
-          ws.send(frame("\u0003"));
-        } catch {
-          // closed
-        }
-        done(result(true));
-      }, timeoutMs);
-      ws.on("open", () => ws.send(target.handshake));
-      ws.on("error", (e) => done(new Error(`Couldn't reach that machine's terminal (${(e as NodeJS.ErrnoException).code ?? e.message}).`)));
-      ws.on("close", () => done(buf.includes(START) ? result(false) : new Error("The terminal closed before the command ran.")));
-      ws.on("message", (data) => {
-        const text = data.toString();
-        if (!greeted) {
-          greeted = true;
-          if (!text.startsWith("OK")) return done(new Error(/permission|forbidden|denied/i.test(text) ? "Your Proxmox account can't open a terminal on that machine (it needs VM.Console)." : "Proxmox refused the terminal session."));
-          // The shell may still be starting; a newline wakes the prompt, then the command goes in.
-          ws.send(frame("\n"));
-          setTimeout(send, 400);
-          const rest = text.slice(2);
-          if (rest) buf += rest;
-          return;
-        }
-        if (buf.length < COLLECT_MAX) buf += text;
-        const seen = clean(buf);
-        if (!seen.includes(START) && /(^|\n)[^\n]{0,60}login:\s*$/.test(seen)) return done(new Error("That container's console asks for a login, so a command can't be run in it. Set the container's console_mode to shell (set_machine_config, then restart it) so its console opens straight into a root shell, or tell the person to run pct set <vmid> --cmode shell on the host."));
-        if (!sent) return;
-        if (END.test(seen.slice(seen.indexOf(START) >= 0 ? seen.indexOf(START) : seen.length))) done(result(false));
-      });
-    }, reject);
+  const local = h.localNode ?? process.env.EPC_PVE_NODE ?? hostname().split(".")[0];
+  if (g.node !== local) return Promise.reject(new Error(`Commands in containers must run on the node that hosts the container (${g.node}). Open ePaperclip on that node; remote forwarding is not available.`));
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(h.execSocket ?? "/run/epaperclip-exec/exec.sock");
+    let data = "";
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error("The container exec helper did not answer before its deadline.")); }, timeoutMs + 10_000);
+    socket.on("connect", () => {
+      socket.end(JSON.stringify({ vmid: g.vmid, node: g.node, script, timeoutMs, auth: pve.execAuth() }));
+    });
+    socket.on("data", b => {
+      data += b.toString();
+      if (Buffer.byteLength(data) > 512 * 1024) socket.destroy(new Error("Exec helper response exceeded its limit."));
+    });
+    socket.on("error", () => {
+      clearTimeout(timer);
+      reject(new Error(`Commands in containers need the ePaperclip exec helper on node ${g.node}. Install or update ePaperclip there and enable epaperclip-exec.socket.`));
+    });
+    socket.on("end", () => {
+      clearTimeout(timer);
+      try {
+        const r = JSON.parse(data) as ExecResult & { error?: string };
+        if (r.error) return reject(new Error(r.error));
+        if (!(r.exitCode === null || Number.isInteger(r.exitCode)) || typeof r.output !== "string" || typeof r.timedOut !== "boolean" || typeof r.truncated !== "boolean") throw new Error();
+        resolve(r);
+      } catch { reject(new Error("The container exec helper returned an invalid response.")); }
+    });
   });
 }
 

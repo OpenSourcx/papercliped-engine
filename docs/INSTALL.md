@@ -89,7 +89,9 @@ It needs: the `ssh` client on the host (Proxmox hosts have it), internet access 
 
 | Path | What |
 | --- | --- |
-| `/opt/epaperclip/` | the programs: `node/` (private Node.js), `epaperclip.mjs` (host service), `console/`, `engine/` (Paperclip and its packages, about 1.4 GB), `plugins/proxmox-sandbox/` (the agent container provider: built code, the template scripts and its production packages, about 45 MB, installed from its own lockfile like the engine's and readable by the engine's user), `VERSION` |
+| `/run/epaperclip-exec/` | root-owned private execution socket (`root:epaperclip`, 0660) and root-only per-container lock files; recreated at boot |
+| `/etc/systemd/system/epaperclip-exec.socket`, `epaperclip-exec@.service` | socket-activated root helper; installer enables the socket, rollback restores matching units, uninstall removes them |
+| `/opt/epaperclip/` | `exec/epaperclip-exec.mjs` (root-owned private container execution helper), and the programs: `node/` (private Node.js), `epaperclip.mjs` (host service), `console/`, `engine/` (Paperclip and its packages, about 1.4 GB), `plugins/proxmox-sandbox/` (the agent container provider: built code, the template scripts and its production packages, about 45 MB, installed from its own lockfile like the engine's and readable by the engine's user), `VERSION` |
 | `/opt/epaperclip.prev/` | the previous version, kept for `--rollback` |
 | `/etc/systemd/system/epaperclip.service` | the host service: port 443, user `epaperclip` |
 | `/etc/systemd/system/epaperclip-engine.service` | the engine: `127.0.0.1:3100` only, user `epaperclip-engine` |

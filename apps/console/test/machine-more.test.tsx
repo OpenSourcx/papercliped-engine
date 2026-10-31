@@ -232,7 +232,10 @@ describe("guest agent (GU-095, GU-096)", () => {
     type(d.getByLabelText(/^Type/), "run");
     fireEvent.click(run);
     expect(await d.findByText(/Finished with exit code 0/)).toBeTruthy();
+    const closingDialog = screen.getByRole("dialog");
     fireEvent.click(d.getAllByRole("button", { name: "Close" })[0]);
+    // The close animation schedules onClose; opening another modal first lets that callback close the new one.
+    await waitFor(() => expect(document.body.contains(closingDialog)).toBe(false));
     fireEvent.click(await screen.findByRole("button", { name: /Set a user's password/ }));
     d = await dialog();
     type(d.getByLabelText(/User name/), "ubuntu");

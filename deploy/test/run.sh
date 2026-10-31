@@ -63,8 +63,21 @@ leftovers() { compgen -G "$H/.epaperclip-engine-test.*" >/dev/null || [ -e "$H/p
 new_host() {
   H="$WORK/$1"; mkdir -p "$H/bin" "$H/stub"; HOSTS+=("$H")
   for s in "$HERE"/stubs/*; do ln -s "$s" "$H/bin/$(basename "$s")"; done
-  [ "${2:-}" = no-proxmox ] && rm "$H/bin/pveversion"
-  export PATH="$H/bin:$BASE_PATH"
+  if [ "${2:-}" = no-proxmox ]; then
+    rm "$H/bin/pveversion"
+    # Also hide a real host pveversion. Removing only the stub doesn't isolate this fixture on Proxmox itself.
+    mkdir -p "$H/basebin"
+    local dir file
+    while IFS= read -r dir; do
+      for file in "$dir"/*; do
+        [ -x "$file" ] && [ ! -d "$file" ] && [ "${file##*/}" != pveversion ] || continue
+        [ -e "$H/basebin/${file##*/}" ] || ln -s "$file" "$H/basebin/${file##*/}"
+      done
+    done < <(tr ':' '\n' <<<"$BASE_PATH")
+    export PATH="$H/bin:$H/basebin"
+  else
+    export PATH="$H/bin:$BASE_PATH"
+  fi
   export STUB_STATE="$H/stub" EPC_PREFIX="$H/prefix" EPC_UNIT_DIR="$H/units" EPC_DEFAULTS="$H/default/epaperclip" \
     EPC_ETC_DIR="$H/etc" EPC_ENGINE_HOME="$H/engine-home" EPC_HOST_STATE_DIR="$H/host-state" EPC_MEMINFO="$H/meminfo" EPC_BIN_DIR="$H/usrbin"
   export EPC_SKIP_NODE=1 EPC_SKIP_CERT_CHECK=1 EPC_SKIP_ENGINE_NPM=1 EPC_ENGINE_WAIT=30 EPC_HOST_WAIT=20
@@ -81,7 +94,7 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
@@ -136,6 +149,7 @@ install() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" bash "$R/deploy/install.sh" "$@
 # ---- scenarios ----------------------------------------------------------------------------------------------------
 s_fresh() {
   new_host fresh; make_release 1.0.0 2026.1005.0; install
+  check "private exec helper installed and socket active" eval '[ -f "$H/prefix/exec/epaperclip-exec.mjs" ] && [ -f "$H/units/epaperclip-exec@.service" ] && active epaperclip-exec.socket'
   check "installs (exit 0)" [ "$RC" -eq 0 ]
   check "leaves an epaperclip command behind (get.sh and npm installs have no package to provide one)" [ -x "$H/usrbin/epaperclip" ]
   check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
@@ -315,6 +329,7 @@ s_uninstall() {
   new_host uninstall; make_release 1.0.0 2026.1005.0; install; make_release 1.1.0 2026.1005.0; install
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
   install --uninstall
+  check "uninstall removes private exec units and socket" eval '[ ! -e "$H/units/epaperclip-exec.socket" ] && [ ! -e "$H/units/epaperclip-exec@.service" ] && inactive epaperclip-exec.socket'
   check "--uninstall (exit 0)" [ "$RC" -eq 0 ]
   check "programs (including the agent container provider) and units removed, services stopped" eval '[ ! -e "$H/prefix" ] && [ ! -e "$H/prefix/plugins" ] && [ ! -e "$H/prefix.prev" ] && [ -z "$(ls -A "$H/units")" ] && inactive epaperclip && inactive epaperclip-engine'
   check "engine data, vault and settings kept" eval '[ "$(schema)" = 2026.1005.0 ] && [ -d "$H/host-state" ] && [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ] && [ -f "$H/default/epaperclip" ]'
