@@ -2,7 +2,8 @@ name: release
 
 # Pushing a tag like v0.1.0 builds and tests everything, then publishes:
 #   - a GitHub release with epaperclip.tar.gz, its checksum, the signed manifest and signature, get.sh and the .deb
-#   - the signed APT repository on GitHub Pages (gh-pages branch, apt/), when the APT_SIGNING_KEY secret is set
+#   - the signed APT repository and the signed update feed on Cloudflare R2 (https://updates.papercliped.co), when the
+#     R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY secrets are set (and APT_SIGNING_KEY, for the APT repository)
 #   - the epaperclip npm package, over npm Trusted Publishing (OIDC, no token); a failure there never fails the release
 # A tag needs the RELEASE_SIGNING_KEY secret (see docs/RELEASING.md): without it the build FAILS, so nothing unsigned is ever
 # published. A tag with a hyphen (v1.0.0-rc1) is a release candidate: a GitHub pre-release, npm dist-tag "next", no APT update.
@@ -80,8 +81,12 @@ jobs:
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
           APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           command -v dpkg-scanpackages >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev >/dev/null; }
+          command -v aws >/dev/null || pipx install --quiet awscli
           bash scripts/publish-apt.sh
       - name: Publish the signed update feed (what installed devices read to find updates)
         if: startsWith(github.ref, 'refs/tags/')
@@ -90,7 +95,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-        run: bash scripts/publish-update-feed.sh
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          command -v aws >/dev/null || pipx install --quiet awscli
+          bash scripts/publish-update-feed.sh
       - name: Publish the npm package (Trusted Publishing; the GitHub release above is the artifact, so this never fails the run)
         if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true

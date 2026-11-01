@@ -39,8 +39,8 @@ Requires Node 22 or later and pnpm.
 In the host's shell, as root, add the signed APT repository and install (or use `npx epaperclip install`, or the `get.sh` one-liner; all three run the same installer):
 
 ```sh
-curl -fsSL https://opensourcx.github.io/papercliped-engine/apt/epaperclip-archive-keyring.gpg -o /usr/share/keyrings/epaperclip-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://opensourcx.github.io/papercliped-engine/apt stable main" > /etc/apt/sources.list.d/epaperclip.list
+curl -fsSL https://updates.papercliped.co/apt/epaperclip-archive-keyring.gpg -o /usr/share/keyrings/epaperclip-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://updates.papercliped.co/apt stable main" > /etc/apt/sources.list.d/epaperclip.list
 apt update && apt install epaperclip
 ```
 
