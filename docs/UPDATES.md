@@ -15,7 +15,7 @@ How an ePaperclip device learns about updates, installs them, and what it keeps 
 
 Releases are published by the project's CI: a GitHub release (tarball, signed manifest, `get.sh`, `.deb`) and, for final releases, the signed APT repository.
 
-CI also publishes the **update feed**, `updates/feed.json` plus `updates/feed.sig` on the project's Pages site. It lists every release with its channel and notes, and which releases were withdrawn. It is signed with the same Ed25519 release key every installation pins, so a device checks it against the key installed with its own version (never anything downloaded). If the feed is unreachable, or its signature doesn't verify, the device uses GitHub's release list instead and says so. Either way, the update helper checks the release's own signature, checksum and version before installing anything, and refuses one older than what is running.
+CI also publishes the **update feed**, `feed.json` plus `feed.sig` at `https://updates.papercliped.co` (a Cloudflare R2 bucket; see [RELEASING.md](RELEASING.md)). It lists every release with its channel and notes, and which releases were withdrawn. It is signed with the same Ed25519 release key every installation pins, so a device checks it against the key installed with its own version (never anything downloaded). If the feed is unreachable, or its signature doesn't verify, the device uses GitHub's release list instead and says so. Either way, the update helper checks the release's own signature, checksum and version before installing anything, and refuses one older than what is running.
 
 Set `EPC_UPDATE_FEED` to point devices at your own mirror of GitHub's release list (an internal mirror for air-gapped fleets); the format is GitHub's `releases` answer.
 

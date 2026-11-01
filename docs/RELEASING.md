@@ -29,6 +29,24 @@ release can be built (CI stops on a tag) and no build of the code installs anyth
 Also worth doing once: restrict who can push `v*` tags (Settings, Rules), and attach the secret to a `release` environment with
 required reviewers.
 
+## One-time setup: where devices get updates (Cloudflare R2)
+
+The signed update feed and the APT repository are static files in the Cloudflare R2 bucket `epaperclip-updates`, served at
+`https://updates.papercliped.co` (`scripts/r2.sh`). They are signed, so the host serving them doesn't need to be trusted.
+
+1. R2 → Create bucket `epaperclip-updates`. In its Settings → Custom domains, connect `updates.papercliped.co`.
+2. R2 → Manage API tokens → Create API token: **Object Read & Write**, limited to that bucket.
+3. Store what it shows as repository secrets, pasting each when asked, so they never land in a shell history or a log:
+
+```sh
+gh secret set R2_ENDPOINT            # https://<account id>.r2.cloudflarestorage.com
+gh secret set R2_ACCESS_KEY_ID
+gh secret set R2_SECRET_ACCESS_KEY
+```
+
+Without them a release still publishes; the feed and APT steps say what was skipped, and devices fall back to GitHub's
+release list.
+
 ## Cutting a release candidate
 
 ```sh
@@ -60,7 +78,7 @@ optionally `-rc1`, `-beta1`. After it is out, check one release by hand (see SEC
 A release is not only the tag. After the GitHub release is published, CI:
 
 1. publishes the signed APT repository (final releases only),
-2. publishes the **signed update feed** (`updates/feed.json` and `feed.sig` on the Pages site) with every release, its channel and notes. The step never fails a release; devices fall back to GitHub's release list,
+2. publishes the **signed update feed** (`feed.json` and `feed.sig` at `https://updates.papercliped.co`, the Cloudflare R2 bucket `epaperclip-updates`) with every release, its channel and notes. The step never fails a release; devices fall back to GitHub's release list,
 3. publishes the npm package.
 
 Installed devices read the feed on their channel, so the order that matters to users is: **tag a release candidate, let people on the candidate channel try it, then tag the final release** (same commit or later). A final tag (no hyphen) is what everyone on the default channel is offered. See [UPDATES.md](UPDATES.md).

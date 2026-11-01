@@ -2,6 +2,21 @@
 
 Each phase ends with something that runs on a real Proxmox host.
 
+## Road to 1.0 (planned 2026-10-31)
+
+`v1.0.0-rc23` runs on the first host. 1.0.0 is the first release every device on the default channel is offered, so it waits
+until each milestone below has shipped as release candidates and soaked. Dates are targets, not promises.
+
+| When | Milestone | What ships | Release |
+| --- | --- | --- | --- |
+| Nov 2–8 | Distribution on our domain | Update feed and APT repository on Cloudflare R2 at `updates.papercliped.co` instead of GitHub Pages; an expiry in the signed feed, so a device rejects an old copy that would hide a withdrawal; console fixes (whole characters to the browser, a prompt stop that doesn't wait 90 s on open consoles) | rc24 |
+| Nov 9–22 | Console and context, part 1 | Multi-shell console: tabs, splits, working window controls. Context phase 0 (the Projects rename) and phase 1 (the context store), `docs/CONTEXT.md` | rc25–26 |
+| Nov 23 – Dec 6 | Agents share context | Context phase 2 (agent bridge, managed instructions block, TLS listener) and phases 3–4 (outputs, Pin). Private interactive shells per container | rc27–28 |
+| Dec 7–13 | Prove the installer | Clean Proxmox 8 and 9 hosts: single node, cluster, ZFS and LVM. QA pass; no screen left on demo data | rc29 |
+| Dec 14–31 | Freeze and soak | 1.0 release candidate, fixes only, on two hosts for two weeks | rc30+ |
+| Dec 7 – Jan 4 | Site | An ePaperclip page on `papercliped.co` (what it is, the install line, screenshots, signing and security, docs), ready but unpublished | — |
+| Week of Jan 4, 2027 | **1.0.0** | Tag `v1.0.0`: APT repository, npm `latest`, offered to every device; the site page goes live the same day | 1.0.0 |
+
 ## Phase 1: the host core (in progress)
 
 - [x] Proxmox API client
@@ -73,7 +88,7 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Store: signed marketplace index (Ed25519, expiry, no rollback, strict entry formats, npm entries pinned by integrity hash), fetched only by the host service; publish and key scripts in `scripts/`, rotation documented in `marketplace/README.md`
 - [x] Installer hardening: preflight checks, pinned and verified private Node.js, staged install with automatic rollback, `--status`/`--rollback`/`--uninstall`, release packaging and workflow, `get.sh` and `from-source.sh`
 - [x] Installer tests on simulated hosts in CI (`deploy/test/run.sh`): install, upgrade, rollback, broken versions, services that won't start, preflight refusals, uninstall and purge, the .deb and the npm command, and a real engine install
-- [x] Packages: `.deb` with a signed APT repository on GitHub Pages, the `epaperclip` npm package, all running the same installer
+- [x] Packages: `.deb` with a signed APT repository on Cloudflare R2 (`updates.papercliped.co`), the `epaperclip` npm package, all running the same installer
 - [ ] Installer: test on clean Proxmox 8 and 9 hosts (single node, cluster, ZFS and LVM), publish the first release
 - [ ] Marketplace: generate and pin the first-party signing key, create the public catalog repository, CI publish job; install npm entries through Paperclip's adapter and plugin APIs once the runtime exists
 - [ ] Store: remove an installed ISO or template from the Store, and update plugins from a published index

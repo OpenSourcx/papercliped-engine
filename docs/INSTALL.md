@@ -18,10 +18,10 @@ Three ways, one installer. Whichever you pick, the same `deploy/install.sh` does
 Add ePaperclip's signed package repository once, then install:
 
 ```sh
-curl -fsSL https://opensourcx.github.io/papercliped-engine/apt/epaperclip-archive-keyring.gpg \
+curl -fsSL https://updates.papercliped.co/apt/epaperclip-archive-keyring.gpg \
   -o /usr/share/keyrings/epaperclip-archive-keyring.gpg
 gpg --show-keys /usr/share/keyrings/epaperclip-archive-keyring.gpg   # check the fingerprint below
-echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://opensourcx.github.io/papercliped-engine/apt stable main" \
+echo "deb [signed-by=/usr/share/keyrings/epaperclip-archive-keyring.gpg] https://updates.papercliped.co/apt stable main" \
   > /etc/apt/sources.list.d/epaperclip.list
 apt update
 apt install epaperclip
@@ -155,7 +155,7 @@ If an apt upgrade fails, the installer has already put the previous version back
 A tag like `v0.1.0` runs `.github/workflows/release.yml`. It builds and tests (including `deploy/test/run.sh`, the installer's tests on simulated hosts, and a real engine install from the lockfile), then publishes:
 
 - the GitHub release: `epaperclip.tar.gz`, its checksum, the signed manifest and signature (`epaperclip.manifest.json`, `epaperclip.manifest.sig`), `get.sh` and `epaperclip_<version>_all.deb`. A tag with a hyphen is marked as a pre-release; the build fails for any tag if the `RELEASE_SIGNING_KEY` secret is missing. See [RELEASING.md](RELEASING.md).
-- the APT repository: `scripts/publish-apt.sh` signs it and pushes it to the `gh-pages` branch under `apt/`. GitHub Pages must serve that branch (Settings → Pages → Deploy from a branch → `gh-pages`, `/`). It needs the secret `APT_SIGNING_KEY` (and `APT_SIGNING_PASSPHRASE` if the key has one). It signs only with the key whose public half is in `deploy/apt/epaperclip-archive-keyring.asc`, and skips with a notice when the secret isn't set.
+- the APT repository: `scripts/publish-apt.sh` signs it and uploads it to the Cloudflare R2 bucket `epaperclip-updates` under `apt/`, served at `https://updates.papercliped.co/apt` (the bucket's custom domain). It needs the secrets `R2_ENDPOINT`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (an R2 token limited to that bucket, Object Read & Write) and `APT_SIGNING_KEY` (and `APT_SIGNING_PASSPHRASE` if the key has one). It signs only with the key whose public half is in `deploy/apt/epaperclip-archive-keyring.asc`, and skips with a notice when the secret isn't set.
 - the npm package `epaperclip` (`npm/epaperclip`), over npm Trusted Publishing (OIDC, with provenance; no token is stored). A failure there never fails the release, because the GitHub release is the artifact.
 
 To replace the signing key (it expires 2029-10-11; see `deploy/apt/README.md`), on a trusted machine:
