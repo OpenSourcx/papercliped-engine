@@ -192,6 +192,11 @@ beforeEach(async () => {
       rec.frames.push(t);
       if (rec.frames.length === 1) return ws.send(t === "sam@pve:PVEVNC:abc\n" || t === "sam@pve:PVEVNC:node\n" ? "OK" : "NO");
       const input = t.match(/^0:(\d+):(.*)$/s);
+      // Real terminal output arrives in chunks that can end inside a multi-byte character.
+      if (input?.[2] === "utf8") {
+        const b = Buffer.from("┌─┐ ✅ done");
+        return void [b.subarray(0, 4), b.subarray(4, 11), b.subarray(11)].forEach((part) => ws.send(part));
+      }
       if (input) ws.send(`echo:${input[2]}`);
     });
   });
@@ -906,6 +911,18 @@ describe("live consoles", () => {
     expect(consoleSeen[0].cookie).toMatch(/^PVEAuthCookie=PVE%3Asam%40pve/);
     expect(consoleSeen[0].frames[0]).toBe("sam@pve:PVEVNC:abc\n");
     expect(out.join("")).not.toContain("PVE");
+    ws.close();
+  });
+
+  it("keeps a character split across Proxmox's chunks whole, so the browser never gets invalid UTF-8", async () => {
+    const c = await signIn();
+    const { ws, out } = await open("/api/console/guests/101", { Cookie: c, Origin: base });
+    let closed: number | null = null;
+    ws.on("close", (code) => (closed = code));
+    ws.send("0:4:utf8");
+    await until(() => out.join("").includes("done") || closed !== null);
+    expect(closed).toBeNull();
+    expect(out.join("")).toContain("┌─┐ ✅ done");
     ws.close();
   });
 
