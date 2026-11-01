@@ -9,7 +9,7 @@ until each milestone below has shipped as release candidates and soaked. Dates a
 
 | When | Milestone | What ships | Release |
 | --- | --- | --- | --- |
-| Nov 2–8 | Distribution on our domain | Update feed and APT repository on Cloudflare R2 at `updates.papercliped.co` instead of GitHub Pages; console fixes (whole characters to the browser, a prompt stop that doesn't wait 90 s on open consoles) | rc24 |
+| Nov 2–8 | Distribution on our domain | Update feed and APT repository on Cloudflare R2 at `updates.papercliped.co` instead of GitHub Pages; an expiry in the signed feed, so a device rejects an old copy that would hide a withdrawal; console fixes (whole characters to the browser, a prompt stop that doesn't wait 90 s on open consoles) | rc24 |
 | Nov 9–22 | Console and context, part 1 | Multi-shell console: tabs, splits, working window controls. Context phase 0 (the Projects rename) and phase 1 (the context store), `docs/CONTEXT.md` | rc25–26 |
 | Nov 23 – Dec 6 | Agents share context | Context phase 2 (agent bridge, managed instructions block, TLS listener) and phases 3–4 (outputs, Pin). Private interactive shells per container | rc27–28 |
 | Dec 7–13 | Prove the installer | Clean Proxmox 8 and 9 hosts: single node, cluster, ZFS and LVM. QA pass; no screen left on demo data | rc29 |

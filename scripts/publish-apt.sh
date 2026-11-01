@@ -38,14 +38,39 @@ want="$(gpg --batch --with-colons --show-keys "$PUBLIC_KEY" | awk -F: '$1=="fpr"
 sign=(gpg --batch --yes --pinentry-mode loopback --local-user "$fpr")
 [ -z "${APT_SIGNING_PASSPHRASE:-}" ] || sign+=(--passphrase-fd 3)
 
+# Every file in <pool> must be listed, with its SHA-256, in the Packages index named by <prev>/InRelease, and that InRelease
+# must be signed by this key ($fpr). Anything else stops the publish before anything is signed.
+verify_pool() {
+  local pool="$1" prev="$2" status want got f rel
+  status="$(gpg --batch --status-fd 1 --output "$prev/Release" --decrypt "$prev/InRelease" 2>/dev/null)" || die "the published InRelease doesn't verify; nothing was published"
+  grep -q "^\[GNUPG:\] VALIDSIG $fpr " <<<"$status" || die "the published InRelease isn't signed by $fpr; nothing was published"
+  want="$(awk '/^SHA256:/{s=1; next} /^[^ ]/{s=0} s && $3=="main/binary-all/Packages"{print $1}' "$prev/Release")"
+  got="$(sha256sum "$prev/Packages" | cut -d' ' -f1)"
+  [ -n "$want" ] && [ "$want" = "$got" ] || die "the published Packages index doesn't match its signed InRelease; nothing was published"
+  while IFS= read -r -d '' f; do
+    rel="pool/${f#"$pool/"}"
+    want="$(awk -v f="$rel" '/^Filename: /{n=($2==f)} n && /^SHA256: /{print $2; exit}' "$prev/Packages")"
+    got="$(sha256sum "$f" | cut -d' ' -f1)"
+    [ -n "$want" ] && [ "$want" = "$got" ] || die "$rel in the bucket isn't in the last signed index (or changed since); nothing was published"
+  done < <(find "$pool" -type f -print0)
+}
+
 if [ "$mode" = push ]; then
   if ! r2_ready; then
     echo "::notice::publish-apt: R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY aren't set, so the APT repository was not published."
     exit 0
   fi
   site="$(mktemp -d)"; apt="$site/apt"
-  # The packages already published, so the new index keeps every earlier version.
+  # The packages already published, so the new index keeps every earlier version. Whoever can write to the bucket could add a
+  # file there, and this run signs whatever it indexes, so a file is kept only if the last index this key signed lists it with
+  # the same SHA-256 (verify_pool). The first publish starts from an empty pool.
   r2 sync "s3://$R2_BUCKET/apt/pool/" "$apt/pool/"
+  if [ -n "$(find "$apt/pool" -type f -print -quit 2>/dev/null)" ]; then
+    prev="$site/prev"; install -d "$prev"
+    r2 cp "s3://$R2_BUCKET/apt/dists/stable/InRelease" "$prev/InRelease" || die "the bucket has packages but no signed index; nothing was published"
+    r2 cp "s3://$R2_BUCKET/apt/dists/stable/main/binary-all/Packages" "$prev/Packages" || die "the bucket has packages but no Packages index; nothing was published"
+    verify_pool "$apt/pool" "$prev"
+  fi
 else
   apt="$out"
 fi
