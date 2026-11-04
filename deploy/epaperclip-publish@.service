@@ -1,0 +1,27 @@
+[Unit]
+Description=ePaperclip private publishing helper
+
+[Service]
+ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/publish/epaperclip-publish.mjs
+User=root
+Group=root
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+TimeoutStartSec=40
+RuntimeMaxSec=40
+KillMode=control-group
+UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/etc/epaperclip /etc/systemd/system /run/epaperclip-publish
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX

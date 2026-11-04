@@ -60,11 +60,11 @@ async function chat(c: string, messages: unknown = [{ role: "user", content: "Wh
 const text = (events: { event: string; data: any }[]) => events.filter((e) => e.event === "delta").map((e) => e.data.text).join("");
 
 describe("connectors", () => {
-  it("lists every provider without secrets, and tells administrators they can manage them", async () => {
+  it("lists model and machine-wide connectors without secrets, and tells administrators they can manage them", async () => {
     const c = await signIn();
     const r = await j(await get("/api/connectors", c));
     expect(r.canManage).toBe(true);
-    expect(r.connectors.map((x: { id: string; configured: boolean }) => [x.id, x.configured])).toEqual([["anthropic", false], ["openai", false], ["gemini", false], ["openrouter", false]]);
+    expect(r.connectors.map((x: { id: string; configured: boolean }) => [x.id, x.configured])).toEqual([["anthropic", false], ["openai", false], ["gemini", false], ["openrouter", false], ["cloudflare", false]]);
     expect((await j(await get("/api/connectors", await signIn("lee")))).canManage).toBe(false);
   });
 

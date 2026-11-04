@@ -74,6 +74,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
   const [key, setKey] = useState("");
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const name = nameOf(c);
+  const publishing = c.kind === "hosting";
   const busy = act.isPending;
   const save = () => {
     if (!key.trim() || busy) return;
@@ -99,18 +100,19 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
         </div>
         {c.configured ? (c.ok === false ? <Status kind="warning" label="Needs attention" /> : <Status kind="good" label="Connected" />) : <Status kind="off" label="Not set up" />}
         {canManage && <div className="flex gap-2">
-          <Button size="sm" onClick={() => { setEditing(!editing); setResult(null); act.reset(); }} disabled={busy}>{c.configured ? "Replace key" : "Set key"}</Button>
+          <Button size="sm" onClick={() => { setEditing(!editing); setResult(null); act.reset(); }} disabled={busy}>{c.configured ? (publishing ? "Replace token" : "Replace key") : (publishing ? "Connect" : "Set key")}</Button>
           {c.configured && <Button size="sm" variant="ghost" onClick={test} disabled={busy}>Test</Button>}
           {c.configured && <Button size="sm" variant="ghost" onClick={() => act.mutate({ id: c.id, kind: "remove" }, { onSuccess: () => setResult(null) })} disabled={busy}>Remove</Button>}
         </div>}
       </div>
       {editing && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Input type="password" autoComplete="off" spellCheck={false} aria-label={`${name} key`} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Paste the key" className="h-9 text-sm font-mono flex-1 min-w-[220px]" autoFocus />
+          <Input type="password" autoComplete="off" spellCheck={false} aria-label={`${name} ${publishing ? "token" : "key"}`} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder={publishing ? "Paste a scoped Cloudflare API token" : "Paste the key"} className="h-9 text-sm font-mono flex-1 min-w-[220px]" autoFocus />
           <Button size="sm" variant="primary" onClick={save} disabled={!key.trim() || busy}>Save</Button>
         </div>
       )}
-      {editing && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are.</p>}
+      {editing && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are. {publishing ? "Use a token scoped to Cloudflare Tunnel:Edit, DNS:Edit and Zone:Read." : ""}</p>}
+      {publishing && c.configured && <a href="?settings=advertising" className="inline-flex text-compact text-accent hover:underline mt-2">Manage advertising</a>}
       {!result && c.configured && c.ok === false && c.error && <p className="text-compact text-critical mt-2">{c.error}</p>}
       {result && <p className={`text-compact mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
       {act.isError && act.variables?.kind !== "test" && <p className="text-compact text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}

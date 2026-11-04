@@ -94,7 +94,7 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
@@ -149,7 +149,7 @@ install() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" bash "$R/deploy/install.sh" "$@
 # ---- scenarios ----------------------------------------------------------------------------------------------------
 s_fresh() {
   new_host fresh; make_release 1.0.0 2026.1005.0; install
-  check "private exec helper installed and socket active" eval '[ -f "$H/prefix/exec/epaperclip-exec.mjs" ] && [ -f "$H/units/epaperclip-exec@.service" ] && active epaperclip-exec.socket'
+  check "private helpers installed and sockets active" eval '[ -f "$H/prefix/exec/epaperclip-exec.mjs" ] && [ -f "$H/prefix/publish/epaperclip-publish.mjs" ] && [ -f "$H/units/epaperclip-exec@.service" ] && [ -f "$H/units/epaperclip-publish@.service" ] && active epaperclip-exec.socket && active epaperclip-publish.socket'
   check "installs (exit 0)" [ "$RC" -eq 0 ]
   check "leaves an epaperclip command behind (get.sh and npm installs have no package to provide one)" [ -x "$H/usrbin/epaperclip" ]
   check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
@@ -329,7 +329,7 @@ s_uninstall() {
   new_host uninstall; make_release 1.0.0 2026.1005.0; install; make_release 1.1.0 2026.1005.0; install
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
   install --uninstall
-  check "uninstall removes private exec units and socket" eval '[ ! -e "$H/units/epaperclip-exec.socket" ] && [ ! -e "$H/units/epaperclip-exec@.service" ] && inactive epaperclip-exec.socket'
+  check "uninstall removes private helper units and sockets" eval '[ ! -e "$H/units/epaperclip-exec.socket" ] && [ ! -e "$H/units/epaperclip-exec@.service" ] && [ ! -e "$H/units/epaperclip-publish.socket" ] && [ ! -e "$H/units/epaperclip-publish@.service" ] && inactive epaperclip-exec.socket && inactive epaperclip-publish.socket'
   check "--uninstall (exit 0)" [ "$RC" -eq 0 ]
   check "programs (including the agent container provider) and units removed, services stopped" eval '[ ! -e "$H/prefix" ] && [ ! -e "$H/prefix/plugins" ] && [ ! -e "$H/prefix.prev" ] && [ -z "$(ls -A "$H/units")" ] && inactive epaperclip && inactive epaperclip-engine'
   check "engine data, vault and settings kept" eval '[ "$(schema)" = 2026.1005.0 ] && [ -d "$H/host-state" ] && [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ] && [ -f "$H/default/epaperclip" ]'

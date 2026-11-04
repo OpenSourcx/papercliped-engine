@@ -40,8 +40,9 @@ SERVICE="$UNIT_DIR/epaperclip.service"
 ENGINE_SERVICE="$UNIT_DIR/epaperclip-engine.service"
 UPDATE_SERVICE="$UNIT_DIR/epaperclip-update.service"
 UPDATE_PATH="$UNIT_DIR/epaperclip-update.path"
-UNITS=(epaperclip epaperclip-engine epaperclip-exec@)
+UNITS=(epaperclip epaperclip-engine epaperclip-exec@ epaperclip-publish@ epaperclip-cloudflared)
 EXEC_SOCKET="$UNIT_DIR/epaperclip-exec.socket"
+PUBLISH_SOCKET="$UNIT_DIR/epaperclip-publish.socket"
 BIN_DIR="${EPC_BIN_DIR:-/usr/local/bin}"
 STAGE="$PREFIX.new"
 PREV="$PREFIX.prev"
@@ -166,6 +167,7 @@ save_units() {
   local u; install -d -m 0755 "$1"
   for u in "${UNITS[@]}"; do [ -f "$UNIT_DIR/$u.service" ] && cp -f "$UNIT_DIR/$u.service" "$1/$u.service"; done
   [ ! -f "$EXEC_SOCKET" ] || cp -f "$EXEC_SOCKET" "$1/epaperclip-exec.socket"
+  [ ! -f "$PUBLISH_SOCKET" ] || cp -f "$PUBLISH_SOCKET" "$1/epaperclip-publish.socket"
   return 0
 }
 restore_units() {
@@ -177,12 +179,15 @@ restore_units() {
     else systemctl disable "$u" >/dev/null 2>&1 || true; rm -f "$UNIT_DIR/$u.service"; fi
   done
   systemctl disable --now epaperclip-exec.socket >/dev/null 2>&1 || true
+  systemctl disable --now epaperclip-publish.socket >/dev/null 2>&1 || true
   if [ -f "$1/epaperclip-exec.socket" ]; then install -m 0644 "$1/epaperclip-exec.socket" "$EXEC_SOCKET"; else rm -f "$EXEC_SOCKET"; fi
+  if [ -f "$1/epaperclip-publish.socket" ]; then install -m 0644 "$1/epaperclip-publish.socket" "$PUBLISH_SOCKET"; else rm -f "$PUBLISH_SOCKET"; fi
   rm -f "$SERVICE.prev"
   systemctl daemon-reload
 }
 start_all() { # the engine first, if this version has one
   [ ! -f "$EXEC_SOCKET" ] || systemctl enable --now epaperclip-exec.socket || true
+  [ ! -f "$PUBLISH_SOCKET" ] || systemctl enable --now epaperclip-publish.socket || true
   [ -f "$ENGINE_SERVICE" ] && { systemctl enable epaperclip-engine >/dev/null 2>&1 || true; systemctl start epaperclip-engine || true; }
   systemctl enable epaperclip >/dev/null 2>&1 || true
   systemctl start epaperclip || true
@@ -190,6 +195,7 @@ start_all() { # the engine first, if this version has one
 healthy_all() { { [ ! -f "$ENGINE_SERVICE" ] || wait_engine; } && wait_healthy && { [ ! -f "$EXEC_SOCKET" ] || systemctl is-active -q epaperclip-exec.socket; }; }
 stop_all() {
   systemctl stop epaperclip-exec.socket 'epaperclip-exec@*.service' 2>/dev/null || true
+  systemctl stop epaperclip-publish.socket 'epaperclip-publish@*.service' epaperclip-cloudflared 2>/dev/null || true
   systemctl stop epaperclip epaperclip-engine 2>/dev/null || true
 }
 
@@ -447,6 +453,8 @@ VERSION_OUT="$(cd "$ROOT" && { cat VERSION 2>/dev/null || git describe --tags --
 echo "$VERSION_OUT" > "$STAGE/VERSION"
 install -d -m 0755 "$STAGE/exec"
 install -m 0644 "$ROOT/deploy/epaperclip-exec.mjs" "$STAGE/exec/epaperclip-exec.mjs"
+install -d -m 0755 "$STAGE/publish"
+install -m 0644 "$ROOT/deploy/epaperclip-publish.mjs" "$STAGE/publish/epaperclip-publish.mjs"
 
 # The update helper the console's "Update" button uses (root-owned, outside the sandboxed host service): this installer
 # is kept beside it so a rollback can be asked for the same way. Releases from before the helper simply don't have it.
@@ -576,6 +584,8 @@ if [ -f "$ROOT/deploy/epaperclip-update.path" ]; then
 fi
 install -m 0644 "$ROOT/deploy/epaperclip-exec.socket" "$EXEC_SOCKET"
 install -m 0644 "$ROOT/deploy/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-exec@.service"
+install -m 0644 "$ROOT/deploy/epaperclip-publish.socket" "$PUBLISH_SOCKET"
+install -m 0644 "$ROOT/deploy/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-publish@.service"
 [ -f "$DEFAULTS" ] || { install -d "$(dirname "$DEFAULTS")"; install -m 0644 "$ROOT/deploy/epaperclip.default" "$DEFAULTS"; created+=("$DEFAULTS"); }
 systemctl daemon-reload
 # The update helper's trigger is best effort: the console says so when "Update" isn't available, and nothing else depends on it.
@@ -622,8 +632,8 @@ if [ "$first_install" -eq 0 ]; then
   if healthy_all >/dev/null; then die "installation failed; the previous version ($(installed_version)) was restored and is running."; fi
   die "installation failed; the previous version ($(installed_version)) was restored, but it isn't answering yet. See: journalctl -u epaperclip-engine -u epaperclip -n 50"
 fi
-systemctl disable epaperclip epaperclip-engine epaperclip-update.path epaperclip-exec.socket >/dev/null 2>&1 || true
-rm -f "$SERVICE" "$ENGINE_SERVICE" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$UNIT_DIR/epaperclip-exec@.service"; systemctl daemon-reload
+systemctl disable epaperclip epaperclip-engine epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared >/dev/null 2>&1 || true
+rm -f "$SERVICE" "$ENGINE_SERVICE" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"; systemctl daemon-reload
 rm -rf "${PREFIX:?}"
 undo_created
 die "installation failed and was removed. Proxmox's interface is unchanged at https://$(host_ip):8006/"

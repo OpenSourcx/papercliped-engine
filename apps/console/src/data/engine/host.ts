@@ -33,6 +33,16 @@ export interface ConnectorList {
   canManage: boolean;
 }
 
+/** A domain the connected Cloudflare account can publish from. */
+export interface PublishZone { id: string; name: string }
+export interface PublicationPlan {
+  provider: "cloudflare";
+  hostname: string;
+  origin: "https://127.0.0.1:443";
+  access: "epaperclip-login";
+  mode: "named-tunnel";
+}
+
 /** A resource group: the organization's Proxmox pool and the limits its agents' containers live within. */
 export interface ResourceGroupSize {
   cores: number;
@@ -119,6 +129,10 @@ export const host = {
     setKey: (id: string, apiKey: string) => call<{ connector: ConnectorState }>("PUT", `/api/connectors/${enc(id)}/credential`, { apiKey }).then((r) => r.connector),
     test: (id: string) => call<{ connector: ConnectorState }>("POST", `/api/connectors/${enc(id)}/test`, {}).then((r) => r.connector),
     remove: (id: string) => call<unknown>("DELETE", `/api/connectors/${enc(id)}/credential`),
+  },
+  publishing: {
+    cloudflareZones: () => call<{ zones: PublishZone[] }>("GET", "/api/publishing/cloudflare/zones").then((r) => r.zones ?? []),
+    cloudflarePlan: (zone: string, subdomain: string) => call<{ plan: PublicationPlan }>("POST", "/api/publishing/cloudflare/plan", { zone, subdomain }).then((r) => r.plan),
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
