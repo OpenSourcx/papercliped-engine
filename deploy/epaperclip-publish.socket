@@ -1,0 +1,14 @@
+[Unit]
+Description=ePaperclip private publishing socket
+
+[Socket]
+ListenStream=/run/epaperclip-publish/publish.sock
+SocketUser=root
+SocketGroup=epaperclip
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -25,6 +25,7 @@ import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
+import { Publishing } from "./publishing.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
 import { draftCeo } from "./features/pin-company.ts";
 import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
@@ -458,6 +459,7 @@ export function createApp(d: AppDeps) {
   const oidcStarts = new Map<string, { n: number; start: number }>();
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
+  const publishing = new Publishing(state, outbound, now);
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
@@ -860,25 +862,38 @@ export function createApp(d: AppDeps) {
       const canManage = await asUser(req, res, (pve) => isNodeAdmin(pve));
       // Connections added in Connectors (local models, other hosted providers) are offered to Pin beside the built-in four.
       const added = connections.forPin().usable().map((u) => ({ id: u.id, kind: "model" as const, label: u.label, configured: true }));
-      return sendJson(res, 200, { connectors: [...connectors.list(), ...added], canManage });
+      // Publishing connections are machine-wide. They appear here so there is one
+      // place to audit all external connections, but they are never Pin tools.
+      return sendJson(res, 200, { connectors: [...connectors.list(), ...publishing.list(), ...added], canManage });
     }
 
     const conn = path.match(/^\/api\/connectors\/([a-z]{1,32})\/(credential|test)$/);
     if (conn) {
       const id = conn[1];
-      if (!isProvider(id)) throw new HttpError(404, "not_found", "Unknown connector");
+      if (!isProvider(id) && id !== "cloudflare") throw new HttpError(404, "not_found", "Unknown connector");
       const allowed = conn[2] === "credential" ? method === "PUT" || method === "DELETE" : method === "POST";
       if (!allowed) throw new HttpError(405, "method", "Method not allowed");
       requireSameSite(req);
       const s = requireSession(req);
       const body = method === "PUT" ? await readJson(req) : null;
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change connectors");
-      if (method === "PUT") return sendJson(res, 200, { connector: connectors.setKey(id, body!.apiKey, s.username) });
+      if (method === "PUT") return sendJson(res, 200, { connector: id === "cloudflare" ? publishing.setToken(body!.apiKey, s.username) : connectors.setKey(id, body!.apiKey, s.username) });
       if (method === "DELETE") {
-        connectors.remove(id);
+        if (id === "cloudflare") publishing.remove(); else connectors.remove(id);
         return sendJson(res, 200, { ok: true });
       }
-      return sendJson(res, 200, { connector: await connectors.test(id) });
+      return sendJson(res, 200, { connector: id === "cloudflare" ? await publishing.test() : await connectors.test(id) });
+    }
+
+    if (path === "/api/publishing/cloudflare/zones" && method === "GET") {
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      return sendJson(res, 200, { zones: await publishing.zones() });
+    }
+    if (path === "/api/publishing/cloudflare/plan" && method === "POST") {
+      requireSameSite(req);
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      const body = await readJson(req);
+      return sendJson(res, 200, { plan: publishing.plan(body.zone, body.subdomain) });
     }
 
     if (path === "/api/pin/settings" && (method === "GET" || method === "PUT")) {
