@@ -130,6 +130,8 @@ export interface SettingsSection {
   label: string;
   icon: ReactNode;
   group: string;
+  /** Detail pages can be reached from a hub without competing with it in Settings navigation. */
+  hidden?: boolean;
   render: () => ReactNode;
 }
 
@@ -138,7 +140,8 @@ export function SettingsModal({ sections, active, onSelect, onClose, footer }: {
   const panel = useRef<HTMLDivElement>(null);
   const { id, closing, close } = useModalLifecycle(onClose, panel);
   const current = sections.find((s) => s.id === active) ?? sections[0];
-  const groups = [...new Set(sections.map((s) => s.group))];
+  const navigationSections = sections.filter((s) => !s.hidden);
+  const groups = [...new Set(navigationSections.map((s) => s.group))];
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => {
     if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
@@ -150,7 +153,7 @@ export function SettingsModal({ sections, active, onSelect, onClose, footer }: {
           {groups.map((g) => (
             <div key={g} className="mb-5">
               <div className="px-2.5 mb-1 text-micro font-semibold uppercase tracking-label text-ink-3">{g}</div>
-              {sections.filter((s) => s.group === g).map((s) => (
+              {navigationSections.filter((s) => s.group === g).map((s) => (
                 <button
                   key={s.id}
                   type="button"

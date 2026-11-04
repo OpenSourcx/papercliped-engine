@@ -28,6 +28,7 @@ function Logo({ c }: { c: Connection }) {
 /** Agent models: every model service Pin and the agents can use (docs/CONNECTORS.md). Keys are write-only. */
 export function LiveConnections() {
   const qc = useQueryClient();
+  const modals = useModals();
   const q = useQuery({ queryKey: KEY, queryFn: connectApi.connections, retry: 1 });
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export function LiveConnections() {
       <PageHeader
         title="Agent models"
         subtitle="The AI services Pin and your agents can use: hosted providers with a key, and models you run yourself. Keys are kept in this device's vault and are never shown again."
-        actions={can ? <Button variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" />Add a connection</Button> : undefined}
+        actions={<div className="flex gap-2"><Button variant="ghost" onClick={() => modals.selectSection("connectors")}>Back to Connectors</Button>{can && <Button variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" />Add a connection</Button>}</div>}
       />
       {q.isPending && <div className="py-10 flex justify-center"><Spinner /></div>}
       {q.error && <p role="alert" className="text-compact text-critical mb-3">{errorText(q.error)}</p>}

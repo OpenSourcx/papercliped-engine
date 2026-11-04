@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Bot, Cable, Code2, Mail, MessageSquare, Network } from "lucide-react";
+import { ArrowRight, Bot, Cable, Code2, Mail, MessageSquare, Network } from "lucide-react";
 import { BRAND_ICONS } from "../data/brandIcons.ts";
 import { useEngine } from "../data/store.tsx";
 import type { Connector } from "../data/types.ts";
@@ -64,10 +64,36 @@ function ConnectorHub() {
   return <PageFrame width="4xl">
     <PageHeader title="Connectors" subtitle="One hub for two different things: Providers supply AI models to Pin and agents; Plugins extend or publish this device." />
     <div className="grid gap-4 sm:grid-cols-2">
-      <Card className="p-5"><h2 className="font-medium">Providers</h2><p className="text-compact text-ink-3 mt-1">AI model services for Pin and agents. These are not device plugins.</p><Button className="mt-4" onClick={() => modals.selectSection("agent-models")}>Manage providers</Button></Card>
-      <Card className="p-5"><h2 className="font-medium">Plugins</h2><p className="text-compact text-ink-3 mt-1">Machine-wide integrations such as Cloudflare. Plugin credentials never become agent model credentials.</p><Button className="mt-4" onClick={() => modals.selectSection("plugins")}>Manage plugins</Button></Card>
+      <button type="button" onClick={() => modals.selectSection("agent-models")} className="text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <Card interactive className="h-full p-5">
+          <BrandStack ids={["anthropic", "openai", "gemini"]} />
+          <h2 className="mt-4 font-medium">Providers</h2>
+          <p className="text-compact text-ink-3 mt-1">AI model services for Pin and agents. These are not device plugins.</p>
+          <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent">Manage providers <ArrowRight className="h-4 w-4" /></span>
+        </Card>
+      </button>
+      <button type="button" onClick={() => modals.selectSection("plugins")} className="text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <Card interactive className="h-full p-5">
+          <BrandStack ids={["cloudflared"]} />
+          <h2 className="mt-4 font-medium">Plugins</h2>
+          <p className="text-compact text-ink-3 mt-1">Machine-wide integrations such as Cloudflare. Plugin credentials never become agent model credentials.</p>
+          <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent">Manage plugins <ArrowRight className="h-4 w-4" /></span>
+        </Card>
+      </button>
     </div>
   </PageFrame>;
+}
+
+/** Brand marks identify a vendor; the category name remains the accessible label. */
+function BrandStack({ ids }: { ids: string[] }) {
+  return <div className="flex items-center -space-x-2" aria-hidden="true">
+    {ids.map((id) => {
+      const brand = BRAND_ICONS[id];
+      return <span key={id} className="h-9 w-9 rounded-lg border-2 border-surface bg-surface-2 flex items-center justify-center text-ink-2">
+        {brand ? <svg viewBox="0 0 24 24" width={19} height={19} fill="currentColor"><path d={brand.path} /></svg> : <Cable className="h-4 w-4" />}
+      </span>;
+    })}
+  </div>;
 }
 
 const KNOWN: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", github: "GitHub", slack: "Slack", gmail: "Gmail", google: "Google", gemini: "Gemini", openrouter: "OpenRouter", mistral: "Mistral", groq: "Groq", xai: "xAI" };
@@ -135,9 +161,10 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
 /** Live: the host's machine-wide plugins. Credentials go in once and are never read back. */
 export function LiveConnectors() {
   const list = useConnectors();
+  const modals = useModals();
   return (
     <PageFrame width="6xl">
-      <PageHeader title="Plugins" subtitle="Machine-wide integrations such as Cloudflare. Credentials stay in this device’s vault and are separate from Agent models, Pin, and organizations." />
+      <PageHeader title="Plugins" subtitle="Machine-wide integrations such as Cloudflare. Credentials stay in this device’s vault and are separate from Agent models, Pin, and organizations." actions={<Button variant="ghost" onClick={() => modals.selectSection("connectors")}>Back to Connectors</Button>} />
       <Card className="divide-y divide-line">
         {list.isPending && <p className="px-5 py-6 text-sm text-ink-3" aria-busy="true">Loading connectors…</p>}
         {list.error && <p className="px-5 py-4 text-sm text-ink-2" role="alert">{errorText(list.error)}</p>}
