@@ -329,7 +329,7 @@ s_uninstall() {
   new_host uninstall; make_release 1.0.0 2026.1005.0; install; make_release 1.1.0 2026.1005.0; install
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
   install --uninstall
-  check "uninstall removes private helper units and sockets" eval '[ ! -e "$H/units/epaperclip-exec.socket" ] && [ ! -e "$H/units/epaperclip-exec@.service" ] && [ ! -e "$H/units/epaperclip-publish.socket" ] && [ ! -e "$H/units/epaperclip-publish@.service" ] && inactive epaperclip-exec.socket && inactive epaperclip-publish.socket'
+  check "uninstall removes private helper units and sockets" eval '[ ! -e "$H/units/epaperclip-exec.socket" ] && [ ! -e "$H/units/epaperclip-exec@.service" ] && [ ! -e "$H/units/epaperclip-publish.socket" ] && [ ! -e "$H/units/epaperclip-publish@.service" ] && [ ! -e "$H/units/epaperclip-cloudflared.service" ] && inactive epaperclip-exec.socket && inactive epaperclip-publish.socket && inactive epaperclip-cloudflared'
   check "--uninstall (exit 0)" [ "$RC" -eq 0 ]
   check "programs (including the agent container provider) and units removed, services stopped" eval '[ ! -e "$H/prefix" ] && [ ! -e "$H/prefix/plugins" ] && [ ! -e "$H/prefix.prev" ] && [ -z "$(ls -A "$H/units")" ] && inactive epaperclip && inactive epaperclip-engine'
   check "engine data, vault and settings kept" eval '[ "$(schema)" = 2026.1005.0 ] && [ -d "$H/host-state" ] && [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ] && [ -f "$H/default/epaperclip" ]'
