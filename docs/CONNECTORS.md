@@ -4,6 +4,12 @@ Everything that connects ePaperclip to AI: apps that use this device (Claude, Ch
 
 Rules that hold everywhere below: every call acts as the signed-in Proxmox person; changes need `X-EPC-Request: 1` and a same-site `Origin`; input is validated strictly and unknown fields are refused; keys and tokens are sealed or hashed, returned once at most, and never logged; the content security policy is untouched.
 
+## Provider identity in the console
+
+Every first-party provider or plugin connector must use that service's recognized provider mark wherever it is presented for selection or management (the Connectors hub, catalog choices, connected rows, and setup dialogs). Do not substitute a generic bot, cable, cloud, or product-category icon for a known provider. The exception is an unknown/custom endpoint, which uses the appropriate generic icon and is explicitly labelled as custom.
+
+Artwork is bundled in `apps/console/src/data/brandIcons.ts`, not fetched from a vendor at runtime. Add a reviewed mark to that registry when adding a connector; preserve its proportions, provide an accessible text label, and use the existing monogram fallback only when a reviewed provider mark is unavailable. A provider mark identifies the service; it does not imply that the connector is installed, configured, trusted, or available to agents.
+
 ## How the pieces fit
 
 | Piece | What it is | Studied from |
