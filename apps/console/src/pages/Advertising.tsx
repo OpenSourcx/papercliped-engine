@@ -13,7 +13,8 @@ export function Advertising() {
   const [zone, setZone] = useState("");
   const [subdomain, setSubdomain] = useState("app");
   const plan = useMutation({ mutationFn: () => host.publishing.cloudflarePlan(zone, subdomain) });
-  const selectedZone = zone || zones.data?.[0]?.name || "";
+  const availableZones = zones.data ?? [];
+  const selectedZone = zone || availableZones[0]?.name || "";
 
   return (
     <PageFrame width="3xl">
@@ -29,8 +30,8 @@ export function Advertising() {
           <div className="flex items-center gap-3"><Cloud className="h-5 w-5 text-ink-2" /><div><h2 className="font-medium">Cloudflare</h2><p className="text-compact text-ink-3">Choose a domain and one subdomain. ePaperclip will use a stable named tunnel to its local HTTPS service.</p></div></div>
           {zones.isPending && <p className="text-compact text-ink-3"><Loader2 className="h-3.5 w-3.5 animate-spin inline mr-1.5" />Loading domains…</p>}
           {zones.error && <Notice tone="warning" title="Could not load Cloudflare domains">Check the token’s Zone:Read permission, then test the Cloudflare connector.</Notice>}
-          {zones.data && zones.data.length === 0 && <Notice tone="warning" title="No active Cloudflare domains">You can still use a temporary Cloudflare URL for a preview. It changes on restart and is not suitable for Pin’s streaming features.</Notice>}
-          {(zones.data?.length ?? 0) > 0 && <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end"><label className="block text-compact">Subdomain<Input value={subdomain} onChange={(e) => setSubdomain(e.target.value)} spellCheck={false} className="mt-1" aria-label="Subdomain" /></label><label className="block text-compact">Domain<Select value={selectedZone} onChange={(e) => setZone(e.target.value)} className="mt-1" aria-label="Cloudflare domain">{zones.data.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)}</Select></label><Button variant="primary" onClick={() => plan.mutate()} disabled={!selectedZone || !subdomain.trim() || plan.isPending}>{plan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Prepare"}</Button></div>}
+          {zones.data && availableZones.length === 0 && <Notice tone="warning" title="No active Cloudflare domains">You can still use a temporary Cloudflare URL for a preview. It changes on restart and is not suitable for Pin’s streaming features.</Notice>}
+          {availableZones.length > 0 && <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end"><label className="block text-compact">Subdomain<Input value={subdomain} onChange={(e) => setSubdomain(e.target.value)} spellCheck={false} className="mt-1" aria-label="Subdomain" /></label><label className="block text-compact">Domain<Select value={selectedZone} onChange={(e) => setZone(e.target.value)} className="mt-1" aria-label="Cloudflare domain">{availableZones.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)}</Select></label><Button variant="primary" onClick={() => plan.mutate()} disabled={!selectedZone || !subdomain.trim() || plan.isPending}>{plan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Prepare"}</Button></div>}
         </Card>
         {plan.error && <p className="text-compact text-critical mt-3" role="alert">{plan.error instanceof Error ? plan.error.message : "Could not prepare the publication."}</p>}
         {plan.data && <Card className="p-5 mt-4"><div className="flex gap-3"><ShieldCheck className="h-5 w-5 text-good shrink-0" /><div><h2 className="font-medium">{plan.data.hostname}</h2><p className="text-compact text-ink-3 mt-1">Will route through a named Cloudflare Tunnel to ePaperclip’s local HTTPS service. Visitors must still sign in through ePaperclip; publishing does not bypass its Proxmox-backed access control.</p><p className="text-xs text-ink-3 mt-2">The privileged host publisher will create the tunnel and DNS record in the next installation step.</p></div></div></Card>}
