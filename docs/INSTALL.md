@@ -33,6 +33,21 @@ Updates come with the rest of the system: `apt update && apt upgrade`. The packa
 
 Every install method leaves the `epaperclip` command on the host (`get.sh` and `npx` link it as `/usr/local/bin/epaperclip`; the package ships its own): `epaperclip status | version | update [--tag v1.0.0-rc4] | rollback | uninstall [--purge]`. `epaperclip update` finds the newest release in the public release feed, checks its signature and installs it, exactly as `get.sh` does. While you run a release candidate it follows release candidates too; from a final version it takes only final releases unless you add `--pre`. `epaperclip update --tag v1.0.0-rc5` installs that exact release. It says `already on vX` when there is nothing newer, and it never goes back to an older release.
 
+### Device CLI
+
+The same root-only command manages ePaperclip's local services without reaching into arbitrary Proxmox services:
+
+```sh
+epaperclip device status
+epaperclip device restart                 # console and engine
+epaperclip device restart engine
+epaperclip device logs engine --lines 200
+epaperclip device logs console --follow
+epaperclip device publish status
+```
+
+`device start`, `stop`, and `restart` accept only `console`, `engine`, `cloudflared`, or `all`. The Cloudflare publishing helper reports its configuration state without printing a token. The command never restarts Proxmox itself; use the Proxmox interface or its own tools for host and virtual-machine operations.
+
 ### With npm
 
 If the host has Node.js 18 or newer:

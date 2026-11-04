@@ -155,6 +155,10 @@ s_fresh() {
   check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
   check "epaperclip status runs the installed installer" eval 'EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" status >"$H/cli-out" 2>&1; grep -q "engine health" "$H/cli-out"'
   check "epaperclip with no arguments shows its commands" eval '"$H/usrbin/epaperclip" help | grep -q "rollback"'
+  check "device CLI status uses the installed health check" eval '"$H/usrbin/epaperclip" device status >"$H/cli-out" 2>&1; grep -q "engine health" "$H/cli-out"'
+  check "device CLI only restarts the requested ePaperclip service" eval '"$H/usrbin/epaperclip" device restart console >/dev/null && grep -q "systemctl restart epaperclip" "$H/stub/calls"'
+  check "device CLI reads named service logs" eval '"$H/usrbin/epaperclip" device logs engine --lines 12 >/dev/null && grep -q "journalctl -u epaperclip-engine --no-pager -n 12" "$H/stub/calls"'
+  check "device CLI reports publishing helper state without credentials" eval '"$H/usrbin/epaperclip" device publish status >"$H/cli-out" && grep -q "publishing helper socket" "$H/cli-out" && ! grep -q "token" "$H/cli-out"'
   feed() { { echo "<feed>"; for t in "$@"; do echo "<entry><link rel=\"alternate\" href=\"https://github.com/OpenSourcx/papercliped-engine/releases/tag/$t\"/></entry>"; done; echo "</feed>"; } >"$H/feed.atom"; }
   upd() { EPC_PREFIX="$H/prefix" EPC_FEED="file://$H/feed.atom" EPC_DOWNLOADS="file://$H/dl" EPC_UPDATE_DRY=1 "$H/usrbin/epaperclip" update "$@" 2>&1; }
   # Which releases really have an installer to download (a failed build leaves a tag in the feed with nothing behind it).

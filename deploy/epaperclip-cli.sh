@@ -10,6 +10,7 @@
 #                                   follows release candidates too; --pre does that from a stable version, --tag picks one
 #   epaperclip rollback             put the previous version back
 #   epaperclip uninstall [--purge]  remove it (keeps its data and settings; --purge removes those too)
+#   epaperclip device ...           operate ePaperclip's own services on this host
 set -euo pipefail
 
 PREFIX="${EPC_PREFIX:-/opt/epaperclip}"
@@ -28,6 +29,14 @@ ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
   ${B}update${R} --tag vX      install a particular release, such as v1.0.0-rc5
   ${B}rollback${R}             put the previous version back
   ${B}uninstall${R} [--purge]  remove it; your data and settings stay unless you add --purge
+  ${B}device status${R}        show installed versions and service health
+  ${B}device restart${R} [console|engine|all]
+                           restart only ePaperclip services (default: all)
+  ${B}device start|stop${R} [console|engine|cloudflared|all]
+                           start or stop an ePaperclip service (default: all)
+  ${B}device logs${R} [console|engine|cloudflared] [--lines N] [--follow]
+                           read ePaperclip service logs (default: console)
+  ${B}device publish status${R} show the local Cloudflare publishing helper state
 
 Proxmox's own interface on :8006 is never touched.
 TXT
@@ -36,12 +45,96 @@ die() { echo "epaperclip: $*" >&2; exit 1; }
 need_root() { [ "$(id -u)" -eq 0 ] || die "run as root (on Proxmox you already are; elsewhere put sudo in front): epaperclip $1"; }
 [ -f "$INSTALLER" ] || die "the installer isn't at $INSTALLER; reinstall with: curl -fsSL https://github.com/$REPO/releases/latest/download/get.sh | bash"
 
+unit_for() {
+  case "$1" in
+    console) echo epaperclip ;;
+    engine) echo epaperclip-engine ;;
+    cloudflared) echo epaperclip-cloudflared ;;
+    *) return 1 ;;
+  esac
+}
+
+units_for() {
+  case "$1" in
+    all) printf '%s\n' epaperclip-engine epaperclip ;;
+    console|engine|cloudflared) unit_for "$1" ;;
+    *) die "unknown ePaperclip service '$1' (use console, engine, cloudflared or all)" ;;
+  esac
+}
+
+device_usage() {
+  cat <<TXT
+usage: epaperclip device <command>
+
+  status
+  start|stop|restart [console|engine|cloudflared|all]
+  logs [console|engine|cloudflared] [--lines N] [--follow]
+  publish status
+
+Only ePaperclip's own systemd units can be controlled here. Proxmox itself is never restarted or reconfigured.
+TXT
+}
+
+device_service() {
+  local action="${1:-}" target="${2:-all}" unit
+  case "$action" in start|stop|restart) ;; *) die "device service action must be start, stop or restart" ;; esac
+  [ "$#" -le 2 ] || die "usage: epaperclip device $action [console|engine|cloudflared|all]"
+  need_root "device $action"
+  while IFS= read -r unit; do
+    echo "epaperclip: $action $unit"
+    systemctl "$action" "$unit"
+  done < <(units_for "$target")
+}
+
+device_logs() {
+  local target="console" lines=80 follow=0 unit
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      console|engine|cloudflared) target="$1" ;;
+      --lines)
+        lines="${2:-}"; [[ "$lines" =~ ^[1-9][0-9]{0,3}$ ]] || die "device logs --lines needs a number from 1 to 9999"; shift ;;
+      --follow|-f) follow=1 ;;
+      *) die "unknown device logs option '$1'" ;;
+    esac
+    shift
+  done
+  need_root "device logs"
+  unit="$(unit_for "$target")"
+  args=(-u "$unit" --no-pager -n "$lines")
+  [ "$follow" = 1 ] && args+=(--follow)
+  exec journalctl "${args[@]}"
+}
+
+device_publish_status() {
+  local etc="${EPC_ETC_DIR:-/etc/epaperclip}" socket_state cloudflared_state config="not configured"
+  need_root "device publish status"
+  [ -f "$etc/cloudflared.yml" ] && config="configured"
+  socket_state="stopped"; systemctl is-active -q epaperclip-publish.socket && socket_state="active"
+  cloudflared_state="stopped"; systemctl is-active -q epaperclip-cloudflared && cloudflared_state="active"
+  echo "epaperclip: publishing helper socket: $socket_state"
+  echo "epaperclip: Cloudflare tunnel: $cloudflared_state ($config)"
+  [ "$config" = configured ] || echo "epaperclip: configure Cloudflare in Settings → Connectors → Plugins before starting a named tunnel."
+}
+
+device() {
+  local sub="${1:-status}"; [ "$#" -eq 0 ] || shift
+  case "$sub" in
+    status) [ "$#" -eq 0 ] || die "usage: epaperclip device status"; exec bash "$INSTALLER" --status ;;
+    start|stop|restart) device_service "$sub" "$@" ;;
+    logs) device_logs "$@" ;;
+    publish) [ "${1:-}" = status ] && [ "$#" -eq 1 ] || { device_usage >&2; exit 2; }; device_publish_status ;;
+    help|-h|--help) device_usage ;;
+    *) device_usage >&2; exit 2 ;;
+  esac
+}
+
 cmd="${1:-help}"; [ "$#" -eq 0 ] || shift
 case "$cmd" in
   status) exec bash "$INSTALLER" --status ;;
   version) tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null && echo || die "not installed" ;;
   rollback) need_root rollback; exec bash "$INSTALLER" --rollback ;;
   uninstall) need_root uninstall; if [ "${1:-}" = "--purge" ]; then exec bash "$INSTALLER" --purge; else exec bash "$INSTALLER" --uninstall; fi ;;
+  device) device "$@" ;;
   update)
     need_root update
     command -v curl >/dev/null || die "curl is needed (apt-get install -y curl)"
