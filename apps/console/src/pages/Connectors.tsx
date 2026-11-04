@@ -8,6 +8,7 @@ import { HostError, type ConnectorState } from "../data/engine/host.ts";
 import { errorText, useConnectorAction, useConnectors } from "../data/engine/queries.ts";
 import { ago } from "../data/engine/map.ts";
 import { PinOrb } from "../pin/PinIsland.tsx";
+import { useModals } from "../modals/useModals.ts";
 
 const ICON: Record<Connector["kind"], ReactNode> = { model: <Bot className="h-4 w-4" />, code: <Code2 className="h-4 w-4" />, chat: <MessageSquare className="h-4 w-4" />, mail: <Mail className="h-4 w-4" />, storage: <Cable className="h-4 w-4" />, network: <Network className="h-4 w-4" /> };
 
@@ -54,7 +55,19 @@ function DemoConnectors() {
 }
 
 export function Connectors() {
-  return useEngine().live ? <LiveConnectors /> : <DemoConnectors />;
+  return useEngine().live ? <ConnectorHub /> : <DemoConnectors />;
+}
+
+/** Connectors is the hub; AI providers and device plugins are deliberately different categories. */
+function ConnectorHub() {
+  const modals = useModals();
+  return <PageFrame width="4xl">
+    <PageHeader title="Connectors" subtitle="One hub for two different things: Providers supply AI models to Pin and agents; Plugins extend or publish this device." />
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Card className="p-5"><h2 className="font-medium">Providers</h2><p className="text-compact text-ink-3 mt-1">AI model services for Pin and agents. These are not device plugins.</p><Button className="mt-4" onClick={() => modals.selectSection("agent-models")}>Manage providers</Button></Card>
+      <Card className="p-5"><h2 className="font-medium">Plugins</h2><p className="text-compact text-ink-3 mt-1">Machine-wide integrations such as Cloudflare. Plugin credentials never become agent model credentials.</p><Button className="mt-4" onClick={() => modals.selectSection("plugins")}>Manage plugins</Button></Card>
+    </div>
+  </PageFrame>;
 }
 
 const KNOWN: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", github: "GitHub", slack: "Slack", gmail: "Gmail", google: "Google", gemini: "Gemini", openrouter: "OpenRouter", mistral: "Mistral", groq: "Groq", xai: "xAI" };
@@ -120,7 +133,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
 }
 
 /** Live: the host's machine-wide plugins. Credentials go in once and are never read back. */
-function LiveConnectors() {
+export function LiveConnectors() {
   const list = useConnectors();
   return (
     <PageFrame width="6xl">
