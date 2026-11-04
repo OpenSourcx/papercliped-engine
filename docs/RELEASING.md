@@ -60,7 +60,7 @@ optionally `-rc1`, `-beta1`. After it is out, check one release by hand (see SEC
 A release is not only the tag. After the GitHub release is published, CI:
 
 1. publishes the signed APT repository (final releases only),
-2. publishes the **signed update feed** (`updates/feed.json` and `feed.sig` on the Pages site) with every release, its channel and notes. The step never fails a release; devices fall back to GitHub's release list,
+2. publishes the **signed update feed** (`https://updates.papercliped.co/feed.json` and its signature) with every release, its channel and notes. The step never fails a release; devices fall back to GitHub's release list,
 3. publishes the npm package.
 
 Installed devices read the feed on their channel, so the order that matters to users is: **tag a release candidate, let people on the candidate channel try it, then tag the final release** (same commit or later). A final tag (no hyphen) is what everyone on the default channel is offered. See [UPDATES.md](UPDATES.md).

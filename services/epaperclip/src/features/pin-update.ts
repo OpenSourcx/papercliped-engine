@@ -23,7 +23,7 @@ import { applyPolicy, failedBefore, inWindow, isPaused, isSnoozed, nextWindow, r
  * The signed update feed: every release with its channel, notes and whether it was withdrawn, signed with the release key
  * that every installation pins. It is what lets a bad release be pulled; GitHub's own list is the fallback.
  */
-export const SIGNED_FEED = "https://opensourcx.github.io/papercliped-engine/updates/feed.json";
+export const SIGNED_FEED = "https://updates.papercliped.co/feed.json";
 
 /** Every published release, newest first, so the final releases and the release candidates come from one request. */
 export const FEED = "https://api.github.com/repos/OpenSourcx/papercliped-engine/releases?per_page=30";
