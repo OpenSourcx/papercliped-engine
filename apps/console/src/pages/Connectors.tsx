@@ -15,7 +15,7 @@ function DemoConnectors() {
   const { data, setConnectorAccess } = useEngine();
   return (
     <PageFrame width="6xl">
-      <PageHeader title="Connectors" subtitle="System-wide connections, set up once. For each one, choose who can use it: Pin, and any of your organizations. An org's agents only see the connectors granted to it." />
+      <PageHeader title="Plugins" subtitle="Machine-wide integrations, set up once. Cloudflare and other hosting or service plugins stay on this device and are separate from AI models." />
       <Card className="overflow-x-auto edge-fade-x">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
@@ -48,7 +48,7 @@ function DemoConnectors() {
           </tbody>
         </table>
       </Card>
-      <p className="text-xs text-ink-3 mt-3">Credentials stay in the Vault. Agents and Pin receive short-lived, run-scoped access, never the key itself.</p>
+      <p className="text-xs text-ink-3 mt-3">Plugin credentials stay in the device vault. They are never made available to Pin, agents, or organizations unless a plugin explicitly supports a safe, scoped integration.</p>
     </PageFrame>
   );
 }
@@ -119,19 +119,19 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
   );
 }
 
-/** Live: the host service's connectors. Keys go in once and are never read back. */
+/** Live: the host's machine-wide plugins. Credentials go in once and are never read back. */
 function LiveConnectors() {
   const list = useConnectors();
   return (
     <PageFrame width="6xl">
-      <PageHeader title="Connectors" subtitle="System-wide connections, set up once. Keys are kept in this device's vault; agents and Pin get short-lived, run-scoped access, never the key itself." />
+      <PageHeader title="Plugins" subtitle="Machine-wide integrations such as Cloudflare. Credentials stay in this device’s vault and are separate from Agent models, Pin, and organizations." />
       <Card className="divide-y divide-line">
         {list.isPending && <p className="px-5 py-6 text-sm text-ink-3" aria-busy="true">Loading connectors…</p>}
         {list.error && <p className="px-5 py-4 text-sm text-ink-2" role="alert">{errorText(list.error)}</p>}
-        {list.data?.connectors.length === 0 && <EmptyState icon={<Cable className="h-5 w-5" />} title="No connectors" body="The host service doesn't offer any connectors yet." />}
+        {list.data?.connectors.length === 0 && <EmptyState icon={<Cable className="h-5 w-5" />} title="No plugins" body="This device does not have any configurable plugins yet." />}
         {(list.data?.connectors ?? []).map((c) => <ConnectorRow key={c.id} c={c} canManage={list.data?.canManage === true} />)}
       </Card>
-      {list.data && !list.data.canManage && <p className="text-xs text-ink-3 mt-3">Only Proxmox administrators can add, test or remove keys. You can see which connectors are set up.</p>}
+      {list.data && !list.data.canManage && <p className="text-xs text-ink-3 mt-3">Only Proxmox administrators can add, test, or remove plugin credentials. You can see which plugins are set up.</p>}
     </PageFrame>
   );
 }

@@ -10,7 +10,8 @@ export const modalHref = (name: string) => `?modal=${name}`;
 
 export function useModals() {
   const [params, setParams] = useSearchParams();
-  const settings = params.get("settings");
+  // `connectors` was the old name for device-wide plugins. Preserve old links while all new navigation uses `plugins`.
+  const settings = params.get("settings") === "connectors" ? "plugins" : params.get("settings");
   const modal = params.get("modal");
   const update = useCallback(
     (fn: (p: URLSearchParams) => void, replace = false) =>

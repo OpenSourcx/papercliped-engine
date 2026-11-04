@@ -29,7 +29,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "general", group: "Device", label: "General", icon: <Gear className="h-4 w-4" />, render: () => <Settings /> },
   { id: "access", group: "Access", label: "Access control", icon: <ShieldCheck className="h-4 w-4" />, render: () => <Access /> },
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
-  { id: "connectors", group: "Access", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
+  { id: "plugins", group: "Device", label: "Plugins", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
   { id: "advertising", group: "Access", label: "Advertising", icon: <Cloud className="h-4 w-4" />, render: () => <Advertising /> },
   { id: "agent-models", group: "AI", label: "Agent models", icon: <Bot className="h-4 w-4" />, render: () => <LiveConnections /> },
   { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },

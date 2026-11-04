@@ -22,7 +22,7 @@ export function Advertising() {
       {!connectors.data?.canManage && connectors.data && <Notice tone="warning" title="Administrator access required">Only a Proxmox administrator can connect a hosting provider or publish a device address.</Notice>}
       {!cloudflare?.configured && !connectors.isPending && (
         <Card className="p-5">
-          <div className="flex gap-3"><Cloud className="h-5 w-5 text-ink-2 shrink-0" /><div><h2 className="font-medium">Connect Cloudflare first</h2><p className="text-compact text-ink-3 mt-1">In Settings → Connectors, add a scoped Cloudflare API token. It is stored in this device’s vault and is never available to Pin, agents, or organisations.</p><a className="inline-flex text-compact text-accent hover:underline mt-3" href="?settings=connectors">Open Connectors <ExternalLink className="h-3.5 w-3.5 ml-1" /></a></div></div>
+          <div className="flex gap-3"><Cloud className="h-5 w-5 text-ink-2 shrink-0" /><div><h2 className="font-medium">Connect Cloudflare first</h2><p className="text-compact text-ink-3 mt-1">In Settings → Plugins, add a scoped Cloudflare API token. It is stored in this device’s vault and is never available to Pin, agents, or organisations.</p><a className="inline-flex text-compact text-accent hover:underline mt-3" href="?settings=plugins">Open Plugins <ExternalLink className="h-3.5 w-3.5 ml-1" /></a></div></div>
         </Card>
       )}
       {cloudflare?.configured && <>

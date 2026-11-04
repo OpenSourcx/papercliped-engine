@@ -136,7 +136,7 @@ export function PinPage() {
               ))}
             </Card>
             <Card className="p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Connectors</h2><Link to="?settings=connectors" className="text-compact text-ink-3 hover:text-ink">Manage</Link></div>
+              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Agent models</h2><Link to="?settings=agent-models" className="text-compact text-ink-3 hover:text-ink">Manage</Link></div>
               {engine.live ? (
                 hostConnectors.length === 0 ? (
                   <p className="text-compact text-ink-3">No connectors yet.</p>
@@ -421,7 +421,7 @@ function PinSkills({ onAsk, onGo }: { onAsk: (q: string) => void; onGo: (to: str
     { icon: <Network className="h-4 w-4" />, name: "Network", body: "Bridges, addresses and which machine is on which network.", on: access.system, needs: "Manage this device", ask: "Which machines are on which bridge?", to: `/${device}/network` },
     { icon: <Workflow className="h-4 w-4" />, name: "Automations", body: "Turns plain words into rules a strict validator checks before they run.", on: access.system, needs: "Manage this device", ask: "If a container uses more than 50% of its memory, shut it down", to: `/${device}/automations` },
     { icon: <Building2 className="h-4 w-4" />, name: "Organizations", body: "Creates organizations, sizes their resource groups, checks on their agents.", on: access.orgs, needs: "Manage organizations", ask: "Which agents are idle?", to: `/${device}/home` },
-    { icon: <Cable className="h-4 w-4" />, name: "Connectors", body: "Uses the connectors you've shared with Pin, never anyone else's.", on: access.connectors, needs: "Use connectors", ask: "Which connectors can you use?", to: "?settings=connectors" },
+    { icon: <Cable className="h-4 w-4" />, name: "Agent models", body: "Uses only the AI models and tools you have shared with Pin, never device plugins.", on: access.connectors, needs: "Use connectors", ask: "Which agent models can you use?", to: "?settings=agent-models" },
     { icon: <BookOpen className="h-4 w-4" />, name: "Proxmox docs", body: "Looks things up in the Proxmox VE documentation when it answers.", on: access.docs, needs: "Read the Proxmox docs", ask: "How do I add a serial console to a VM?", to: "" },
   ];
   return (

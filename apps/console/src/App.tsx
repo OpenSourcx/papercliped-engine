@@ -90,7 +90,7 @@ export function App() {
           <Route path="updates/advanced" element={<LiveOnly fallback=".."><UpdatesAdvancedPage /></LiveOnly>} />
           {FEATURES.flatMap((f) => f.routes.map((r) => <Route key={`${f.id}:${r.path}`} path={r.path} element={r.element} />))}
           {/* Older addresses open the matching modal over Home. */}
-          {["access", "connectors", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id}`} replace />} />)}
+          {["access", "connectors", "plugins", "apps", "appearance"].map((id) => <Route key={id} path={id} element={<Navigate to={`../home?settings=${id === "connectors" ? "plugins" : id}`} replace />} />)}
           <Route path="settings" element={<Navigate to="../home?settings=general" replace />} />
           <Route path="orgs/new" element={<Navigate to="../home?modal=new-org" replace />} />
           <Route path=":org" element={<OrgRoute />}>
