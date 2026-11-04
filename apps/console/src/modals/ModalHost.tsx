@@ -1,10 +1,11 @@
-import { Cable, Cloud, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
+import { Bot, Cable, Cloud, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
 import { Advertising } from "../pages/Advertising.tsx";
 import { Access } from "../pages/Access.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
 import { AgentSignIn } from "../pages/AgentSignIn.tsx";
 import { Apps } from "../pages/Apps.tsx";
 import { Connectors } from "../pages/Connectors.tsx";
+import { LiveConnections } from "../pages/connect/LiveConnections.tsx";
 import { AgentContainersSettings } from "../pages/containers/AgentContainers.tsx";
 import { NewMachineModal } from "../pages/machines/NewMachine.tsx";
 import { NewOrgModal } from "../pages/NewOrg.tsx";
@@ -30,6 +31,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
   { id: "connectors", group: "Access", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
   { id: "advertising", group: "Access", label: "Advertising", icon: <Cloud className="h-4 w-4" />, render: () => <Advertising /> },
+  { id: "agent-models", group: "AI", label: "Agent models", icon: <Bot className="h-4 w-4" />, render: () => <LiveConnections /> },
   { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },
   { id: "vault", group: "Access", label: "Vault", icon: <KeyRound className="h-4 w-4" />, render: () => <Vault /> },
   { id: "agent-containers", group: "Access", label: "Agent containers", icon: <Container className="h-4 w-4" />, render: () => <AgentContainersSettings /> },

@@ -25,7 +25,7 @@ function Logo({ c }: { c: Connection }) {
   );
 }
 
-/** Live Connectors: every model service Pin and the agents can use (docs/CONNECTORS.md). Keys are write-only. */
+/** Agent models: every model service Pin and the agents can use (docs/CONNECTORS.md). Keys are write-only. */
 export function LiveConnections() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: KEY, queryFn: connectApi.connections, retry: 1 });
@@ -40,7 +40,7 @@ export function LiveConnections() {
   return (
     <PageFrame width="6xl">
       <PageHeader
-        title="Connectors"
+        title="Agent models"
         subtitle="The AI services Pin and your agents can use: hosted providers with a key, and models you run yourself. Keys are kept in this device's vault and are never shown again."
         actions={can ? <Button variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" />Add a connection</Button> : undefined}
       />

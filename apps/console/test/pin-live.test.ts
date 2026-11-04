@@ -67,13 +67,13 @@ describe("Pin's chat stream", () => {
     expect(toStreamEvent({ event: "done", data: '{"stopReason":"end"}' })).toEqual({ type: "done" });
     expect(toStreamEvent({ event: "error", data: '{"code":"provider_auth","message":"Anthropic rejected the key."}' })).toEqual({
       type: "error",
-      error: { message: "Anthropic rejected the key.", code: "provider_auth", fix: { label: "Check the provider's key in Connectors", to: "?settings=connectors" } },
+      error: { message: "Anthropic rejected the key.", code: "provider_auth", fix: { label: "Check the provider's key", to: "?settings=agent-models" } },
     });
     expect(toStreamEvent({ event: "ping", data: "" })).toBeNull();
   });
 
   it("names the fix for errors people can solve", () => {
-    expect(fixFor("no_provider", "")?.label).toBe("Add a model provider in Connectors");
+    expect(fixFor("no_provider", "")?.label).toBe("Add a model provider");
     expect(fixFor("no_model", "")?.to).toBe("pin?tab=settings");
     expect(fixFor("provider_overloaded", "Busy, try again")).toBeUndefined();
     for (const code of ["provider_rate_limited", "provider_no_credit", "provider_no_tools", "provider_empty", "provider_rejected"]) expect(fixFor(code, "x")).toEqual({ label: "Choose another model in Pin's settings", to: "pin?tab=settings" });
@@ -96,7 +96,7 @@ describe("Pin's chat stream", () => {
     const { f } = fakeHost({ "/api/pin/chat": () => json({ code: "no_provider", error: "Pin needs a model provider. An administrator can add an API key in Connectors." }, 400) });
     const events: PinStreamEvent[] = [];
     await streamChat({ messages: [], context: { page: "/", device: "pve" } }, (e) => events.push(e), { fetch: f });
-    expect(events).toEqual([{ type: "error", error: { message: "Pin needs a model provider. An administrator can add an API key in Connectors.", code: "no_provider", fix: { label: "Add a model provider in Connectors", to: "?settings=connectors" } } }]);
+    expect(events).toEqual([{ type: "error", error: { message: "Pin needs a model provider. An administrator can add an API key in Connectors.", code: "no_provider", fix: { label: "Add a model provider", to: "?settings=agent-models" } } }]);
   });
 
   it("ends quietly when stopped", async () => {

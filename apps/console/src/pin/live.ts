@@ -141,7 +141,7 @@ export interface PinToolEvent {
 export interface PinChatError {
   message: string;
   code?: string;
-  /** What to do about it, as a label and a console address, e.g. "Add a model provider" → "?settings=connectors". */
+  /** What to do about it, as a label and a console address, e.g. "Add a model provider" → "?settings=agent-models". */
   fix?: { label: string; to: string };
 }
 
@@ -158,9 +158,9 @@ export interface PinChatRequest {
 /** The fix for the errors we can name, so every error says what to do next. */
 export function fixFor(code: string | undefined, message: string): PinChatError["fix"] {
   const t = `${code ?? ""} ${message}`.toLowerCase();
-  if (/no_provider|provider_missing|no provider|model provider|not configured|missing.*key/.test(t)) return { label: "Add a model provider in Connectors", to: "?settings=connectors" };
+  if (/no_provider|provider_missing|no provider|model provider|not configured|missing.*key/.test(t)) return { label: "Add a model provider", to: "?settings=agent-models" };
   if (/no_model|model_missing|choose a model|no model/.test(t)) return { label: "Choose a model in Pin's settings", to: "pin?tab=settings" };
-  if (/provider_auth|invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the provider's key in Connectors", to: "?settings=connectors" };
+  if (/provider_auth|invalid_key|unauthorized|401|api key/.test(t)) return { label: "Check the provider's key", to: "?settings=agent-models" };
   if (/chat_not_found/.test(t)) return undefined;
   if (/provider_(rejected|no_tools|rate_limited|no_credit|empty)/.test(t)) return { label: "Choose another model in Pin's settings", to: "pin?tab=settings" };
   return undefined;

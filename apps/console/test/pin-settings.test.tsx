@@ -65,7 +65,7 @@ describe("Pin settings", () => {
   it("asks for a model provider when none is set up", async () => {
     mount(fakeSource({ provider: null, model: null, mode: "assistant", permission: "ask", connectors: [] }, CONNECTORS.map((c) => ({ ...c, configured: c.kind === "model" ? false : c.configured }))));
     await screen.findByText("Pin needs a model provider");
-    expect(screen.getByRole("link", { name: "Add a model provider" }).getAttribute("href")).toContain("settings=connectors");
+    expect(screen.getByRole("link", { name: "Add a model provider" }).getAttribute("href")).toContain("settings=agent-models");
   });
 
   it("says when a save fails and keeps the changes", async () => {

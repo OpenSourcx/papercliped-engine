@@ -126,8 +126,8 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
             <span className="block">Pin's mode below can still be changed.</span>
           </Notice>
         ) : ready.length === 0 ? (
-          <Notice tone="warning" title="Pin needs a model provider" action={<Link to="?settings=connectors" className="transition-control inline-flex h-8 items-center rounded-md bg-surface-2 border border-line px-3 text-compact font-medium hover:bg-surface-3">Add a model provider</Link>}>
-            Add a provider's key in Connectors, then pick it here. Until then Pin answers from its built-in demo replies.
+          <Notice tone="warning" title="Pin needs a model provider" action={<Link to="?settings=agent-models" className="transition-control inline-flex h-8 items-center rounded-md bg-surface-2 border border-line px-3 text-compact font-medium hover:bg-surface-3">Add a model provider</Link>}>
+            Add a provider's key in Agent models, then pick it here. Until then Pin answers from its built-in demo replies.
           </Notice>
         ) : (
           <div role="radiogroup" aria-label="Model provider" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -179,14 +179,14 @@ export function PinSettingsPanel({ source, onSaved }: { source: PinSettingsSourc
         {connectorsError ? (
           <p className="text-compact text-ink-3">Connectors show here once the list loads.</p>
         ) : tools.length === 0 ? (
-          <p className="text-compact text-ink-3">No connectors yet. <Link to="?settings=connectors" className="text-accent hover:underline">Add one in Connectors</Link>.</p>
+          <p className="text-compact text-ink-3">No connectors yet. <Link to="?settings=agent-models" className="text-accent hover:underline">Add one in Agent models</Link>.</p>
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {tools.map((c) => (
               <li key={c.id} className="flex items-center gap-3 px-3.5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">{c.name}</div>
-                  <div className="text-xs text-ink-3">{c.configured ? (draft.connectors.includes(c.id) ? "Pin may use this" : "Off for Pin") : <>Not set up. <Link to="?settings=connectors" className="text-accent hover:underline">Set up in Connectors</Link></>}</div>
+                  <div className="text-xs text-ink-3">{c.configured ? (draft.connectors.includes(c.id) ? "Pin may use this" : "Off for Pin") : <>Not set up. <Link to="?settings=agent-models" className="text-accent hover:underline">Set up in Agent models</Link></>}</div>
                 </div>
                 <Toggle checked={c.configured && draft.connectors.includes(c.id)} disabled={!c.configured} label={`Let Pin use ${c.name}`} onChange={(on) => set({ connectors: on ? [...draft.connectors, c.id] : draft.connectors.filter((x) => x !== c.id) })} />
               </li>
