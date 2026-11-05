@@ -10,7 +10,7 @@ import type { StateStore } from "./state.ts";
  */
 const VAULT_KEY = "papercliped.connect.deviceKey";
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACCOUNT_ID = /^[A-Za-z0-9_-]{3,128}$/;
 
 export interface ConnectDeviceIdentity {
