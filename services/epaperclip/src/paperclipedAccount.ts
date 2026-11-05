@@ -14,13 +14,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACCOUNT_ID = /^[A-Za-z0-9_-]{3,128}$/;
 
 export interface ConnectDeviceIdentity {
-  publicKeyJwk: JsonWebKey;
+  publicKeyJwk: { kty: string; crv?: string; x?: string; y?: string };
   deviceKeyThumbprint: string;
 }
 
 /** Must only be instantiated by the local-admin-authorized host service. */
 export class PaperclipedDeviceIdentity {
-  constructor(private readonly state: StateStore) {}
+  private readonly state: StateStore;
+  constructor(state: StateStore) { this.state = state; }
 
   private privateKey() {
     const stored = this.state.getSecret(VAULT_KEY);
@@ -42,7 +43,7 @@ export class PaperclipedDeviceIdentity {
   publicIdentity(): ConnectDeviceIdentity {
     const key = this.privateKey();
     const pub = createPublicKey(key);
-    const publicKeyJwk = pub.export({ format: "jwk" }) as JsonWebKey;
+    const publicKeyJwk = pub.export({ format: "jwk" }) as ConnectDeviceIdentity["publicKeyJwk"];
     const spki = pub.export({ format: "der", type: "spki" });
     return {
       publicKeyJwk,
