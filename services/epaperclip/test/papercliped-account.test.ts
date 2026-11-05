@@ -15,7 +15,7 @@ describe("Managed Papercliped account connector device identity",()=>{
     expect(first.deviceKeyThumbprint).toEqual(second.deviceKeyThumbprint);
     expect(first.publicKeyJwk).toEqual(second.publicKeyJwk);
     expect(first.deviceKeyThumbprint).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(first.publicKeyJwk.d).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(first.publicKeyJwk, "d")).toBe(false);
     expect(state.getSetting("papercliped.connect.deviceKey")).toBeUndefined();
     expect(state.getSecret("papercliped.connect.deviceKey")).toContain("BEGIN PRIVATE KEY");
     expect(JSON.stringify(first)).not.toContain("PRIVATE");
