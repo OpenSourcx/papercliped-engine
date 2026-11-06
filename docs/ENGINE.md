@@ -6,19 +6,19 @@ ePaperclip is three things: **an interface** that replaces Proxmox's web UI, **a
 
 [Paperclip](https://github.com/paperclipai/paperclip) is MIT licensed and is published to npm as `paperclipai` (Node >= 24.11). ePaperclip runs the published package at an exact version, installed from a lockfile with integrity hashes. There is no fork to carry for v1. Anything Proxmox-specific goes in through Paperclip's own extension points (plugins, environments, its HTTP API), so upgrading the engine is a version bump, not a merge.
 
-Licence: Paperclip's MIT notice and copyright are kept with the installed package. See `docs/THIRD-PARTY.md`.
+Licence: Paperclip's MIT notice and copyright are kept with the installed package. See `docs/THIRD-PARTY.md`. Supported versions, upgrade and rollback: [UPGRADING.md](UPGRADING.md).
 
-Measured with the real package (`paperclipai@2026.1005.0`, embedded Postgres, idle):
+Measured with the real package (`paperclipai@2026.1005.0`, embedded Postgres, idle; only the disk and install-time rows were re-measured on `2026.1023.0`, see below):
 
 | | |
 | --- | --- |
 | Server process | about 0.5 GB resident |
 | Embedded Postgres | about 0.4 GB across its backends |
-| Disk, installed packages | about 1.4 GB (agent SDKs and CLIs are most of it) |
+| Disk, installed packages | about 2.3 GB on 2026.1023.0 (1.4 GB on 2026.1005.0; agent SDKs and native agent programs are most of it) |
 | Disk, an empty instance | about 75 MB |
-| Install time | about 2 minutes on a good connection |
+| Install time | 1 to 6 minutes depending on the connection (1023: 5.5 min cold, 1 min with a warm npm cache) |
 
-Plan for 2 GB of free RAM and 3 GB of disk for the engine. Agents do not run on the host: they run in containers (below).
+Plan for 2 GB of free RAM and 5 GB of disk for the engine (the previous engine tree is kept for rollback). Agents do not run on the host: they run in containers (below).
 
 ## How people get in: managed accounts behind the Proxmox sign-in
 
@@ -81,7 +81,7 @@ Paperclip stores secrets with its own `local_encrypted` provider (a master key f
 
 ## The interface
 
-Our console stays the front end. Paperclip's own UI is about 490 components with a deep provider stack and no support for a path prefix, so it is not embedded. The console consumes the engine's HTTP API through a typed client generated from `/api/openapi.json` (728 paths), with `@paperclipai/shared` as the contract, pinned to the engine version. Where a Paperclip screen is better than ours, we copy the idea (MIT) rather than embed it.
+Our console stays the front end. Paperclip's own UI is about 490 components with a deep provider stack and no support for a path prefix, so it is not embedded. The console consumes the engine's HTTP API through a typed client whose routes are checked against a snapshot of `/api/openapi.json` (815 paths on 2026.1023.0; `packages/engine-client/test/spec-drift.test.ts` fails when the table, the method used, the pin or the snapshot drift; refresh with `scripts/refresh-engine-spec.mjs`), with `@paperclipai/shared` as the contract, pinned to the engine version. Where a Paperclip screen is better than ours, we copy the idea (MIT) rather than embed it.
 
 ## Pin
 

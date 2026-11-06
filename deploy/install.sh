@@ -193,6 +193,32 @@ start_all() { # the engine first, if this version has one
   systemctl start epaperclip || true
 }
 healthy_all() { { [ ! -f "$ENGINE_SERVICE" ] || wait_engine; } && wait_healthy && { [ ! -f "$EXEC_SOCKET" ] || systemctl is-active -q epaperclip-exec.socket; }; }
+# Paperclip 2026.1006 and later serialize workspace restores with OS-level SQLite file locks under
+# <engine data>/instances/default/locks/directory-merge. A process of an older engine does not take them, so an old and a new
+# engine must never write to the same data at once (the same on rollback). stop_all ends the engine's unit, which takes its
+# whole process group with it; this makes sure nothing of the engine's user is left (agent and plugin workers included), and
+# with "quarantine" moves the older protocol's <hash>.lock/ folders out of the lock root (an old folder would block the new
+# engine for good). It moves them and deletes nothing: they can be evidence of an unfinished run. The *.lock.sqlite files are
+# never touched. Returns 1 if a process survives.
+LOCK_ROOT="$ENGINE_HOME/instances/default/locks/directory-merge"
+drain_engine() {
+  local i d moved=0 dest
+  for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -u "$ENGINE_USER" >/dev/null 2>&1 || break; sleep 1; done
+  if pgrep -u "$ENGINE_USER" >/dev/null 2>&1; then
+    warn "something of the engine was still running after it was stopped; ending it"
+    pkill -KILL -u "$ENGINE_USER" 2>/dev/null || true; sleep 1
+    ! pgrep -u "$ENGINE_USER" >/dev/null 2>&1 || return 1
+  fi
+  if [ "${1:-}" = quarantine ] && [ -d "$LOCK_ROOT" ]; then
+    dest="$ENGINE_HOME/legacy-locks-$(date +%Y%m%d-%H%M%S)"
+    for d in "$LOCK_ROOT"/*.lock; do
+      [ -d "$d" ] || continue
+      install -d -m 0700 "$dest"; mv "$d" "$dest/"; moved=$((moved + 1))
+    done
+    [ "$moved" -eq 0 ] || say "moved $moved workspace lock folder(s) of the older engine to $dest (kept, not deleted)"
+  fi
+  return 0
+}
 stop_all() {
   systemctl stop epaperclip-exec.socket 'epaperclip-exec@*.service' 2>/dev/null || true
   systemctl stop epaperclip-publish.socket 'epaperclip-publish@*.service' epaperclip-cloudflared 2>/dev/null || true
@@ -269,6 +295,7 @@ if [ "$ACTION" = "--rollback" ]; then
   [ -d "$PREV" ] || die "there is no previous version to go back to"
   cur_engine="$(engine_version "$PREFIX/engine")"; prev_engine="$(engine_version "$PREV/engine")"
   stop_all
+  drain_engine || { start_all; healthy_all >/dev/null 2>&1 || true; die "the engine still has processes running after it was stopped, so it was not rolled back (the old and the new engine must never write to the same data at once). Nothing was changed."; }
   rm -rf "${PREFIX:?}.failed"
   mv "$PREFIX" "$PREFIX.failed"
   mv "$PREV" "$PREFIX"
@@ -342,9 +369,9 @@ if { [ "$engine_reuse" -eq 0 ] || [ "$plugin_reuse" -eq 0 ]; } && [ "${EPC_SKIP_
   curl -fsI --max-time 15 https://registry.npmjs.org/paperclipai >/dev/null 2>&1 || need "the engine is installed from registry.npmjs.org, which this host can't reach right now"
 fi
 
-# Disk: about 1.4 GB for a new engine tree (the previous one is kept for rollback), 400 MB for the rest, and room for
-# the engine's data, plus a copy of its database before an engine upgrade.
-opt_mb=450; [ "$engine_reuse" -eq 1 ] || opt_mb=$((opt_mb + 1800))
+# Disk: about 2.4 GB for a new engine tree (2026.1023 measured 2.3 GB; the previous one is kept for rollback), 400 MB for the
+# rest, and room for the engine's data, plus a copy of its database before an engine upgrade.
+opt_mb=450; [ "$engine_reuse" -eq 1 ] || opt_mb=$((opt_mb + 2600))
 var_mb=$((500 + snapshot_mb))
 if [ "$(dev_of "$(dirname "$PREFIX")")" = "$(dev_of "$(dirname "$ENGINE_HOME")")" ]; then
   free="$(mb_free "$(dirname "$PREFIX")")"
@@ -562,8 +589,10 @@ fi
 
 # ---- swap it in, with the way back ready --------------------------------------------------------------------------
 first_install=1; [ -d "$PREFIX" ] && first_install=0
-SWAPPED=1
 stop_all
+# Nothing is changed yet, so if the old engine can't be fully stopped the old version just carries on.
+drain_engine quarantine || { start_all; healthy_all >/dev/null 2>&1 || true; die "the engine still has processes running after it was stopped, so nothing was upgraded (the old and the new engine must never write to the same data at once). Nothing was changed; the old version was started again."; }
+SWAPPED=1
 # A new engine version migrates its database forward on first start. Keep a copy of the database as it is now, so a
 # rollback (automatic below, or --rollback later) can put it back. Only the latest copy is kept.
 snapshot_taken=0
@@ -624,6 +653,7 @@ warn "the new version didn't become healthy; putting things back."
   echo "--- console log (last 20 lines) ---"; journalctl -u epaperclip -n 20 --no-pager -o cat 2>/dev/null | cut -c1-220 || true
 } >&2
 stop_all
+drain_engine || warn "the engine still has processes running; going on with the restore anyway"
 if [ "$snapshot_taken" -eq 1 ]; then rm -rf "${DB_DIR:?}"; mv "$SNAPSHOT/db" "$DB_DIR"; rm -rf "${SNAPSHOT:?}"; fi
 if [ "$first_install" -eq 0 ]; then
   rm -rf "${PREFIX:?}"; mv "$PREV" "$PREFIX"

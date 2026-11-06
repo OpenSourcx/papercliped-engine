@@ -35,9 +35,19 @@ Software the installer fetches, rather than ships
     - The engine's and the sandbox provider's npm dependencies, from their lockfiles (see THIRD_PARTY_LICENSES.md), including:
         . the embedded PostgreSQL binaries (PostgreSQL License);
         . the sharp image library's libvips builds (LGPL-3.0-or-later): used as a separate, replaceable library;
-        . @anthropic-ai/claude-agent-sdk and @cursor/sdk, which declare "SEE LICENSE IN ..." and are under their own terms,
-          not an open-source license. They are the engine's dependencies, not ours. Anyone who redistributes an image that
+        . @anthropic-ai/claude-agent-sdk (with its per-platform package that contains a native "claude" program of about
+          215 MB), @cursor/sdk (and its platform package) and @github/copilot-<platform>, which declare "SEE LICENSE IN ..."
+          and are under their owners' own terms (Anthropic's legal agreements, Cursor's terms of service, GitHub's), not an
+          open-source license. The engine's agent adapters depend on them, we do not. Our downloads contain none of them:
+          the release holds only engine/package.json and engine/package-lock.json, and the installer fetches these from
+          registry.npmjs.org onto the host, where each runs under its own terms. Anyone who redistributes an image that
           bundles them must read and follow those terms first.
+        . the opencode-<platform> packages (prebuilt "opencode" programs of about 180 MB each): the packages declare no license
+          and carry no license file, so THIRD_PARTY_LICENSES.md lists them as UNKNOWN. The upstream project is published
+          under the MIT License; the packages themselves do not say so. Treat them like the proprietary ones above before
+          redistributing.
+        . busboy, ssh2, cpu-features and buildcheck also appear as UNKNOWN: their package.json uses the old "licenses" array
+          (MIT, with a LICENSE file in each package), which the generator does not read.
 
 If you build an image that bundles the engine
   Redistributing the engine's installed packages (an installer image, a container image) makes you the distributor of every

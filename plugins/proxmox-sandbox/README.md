@@ -6,7 +6,7 @@ Setup, the minimal Proxmox token and roles, installation into the engine and the
 
 ## Development
 
-A standalone npm package (not in the root pnpm workspace), pinned to `@paperclipai/plugin-sdk@2026.1005.0`. Node 24.11 or later.
+A standalone npm package (not in the root pnpm workspace), pinned to `@paperclipai/plugin-sdk@2026.1023.0`. Node 24.11 or later.
 
 ```sh
 npm ci

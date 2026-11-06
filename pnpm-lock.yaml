@@ -105,8 +105,8 @@ importers:
   packages/engine-client:
     dependencies:
       '@paperclipai/shared':
-        specifier: 2026.1005.0
-        version: 2026.1005.0
+        specifier: 2026.1023.0
+        version: 2026.1023.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -433,8 +433,8 @@ packages:
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
 
-  '@paperclipai/shared@2026.1005.0':
-    resolution: {integrity: sha512-BHeRJ6L2QcZFYT4NoAmVi7LJwwj/XKxmLqZ9+cFsu6kjzPJvPo8ZsluSDGKhI7tETUCUQirsSTPhUdqzLDaDYg==}
+  '@paperclipai/shared@2026.1023.0':
+    resolution: {integrity: sha512-IWW78idhIw2MDM41tznnN83Fi/O8WlTIS6Sa6eoQYG1COQDEXaTTKsRO7+ekDd0DhNDuPNpi5Dzrc4ocUREmWQ==}
     engines: {node: '>=24.11.0'}
 
   '@rolldown/binding-android-arm-eabi@1.2.13':
@@ -1747,7 +1747,7 @@ snapshots:
 
   '@oxc-project/types@0.153.0': {}
 
-  '@paperclipai/shared@2026.1005.0':
+  '@paperclipai/shared@2026.1023.0':
     dependencies:
       three: 0.185.1
       zod: 4.6.6
