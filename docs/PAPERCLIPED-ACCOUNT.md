@@ -38,3 +38,15 @@ Hosted account ownership NEVER automatically creates Proxmox credentials, IAM ro
 Build admin-only host APIs and functional Settings → Remote Access → Papercliped Connect panel after Connect's public pairing API, session validation, and trusted database credentials exist. UI refinement follows working authorization, not before.
 
 Current code does **not** enable a hosted browser sign-in, activate tunnels or modify Proxmox user permissions.
+
+## Pairing and remote-access mode (device side)
+
+Administrator-only API under `/api/papercliped/connect/`: `GET status`; `POST mode`, `pairing/start`, `pairing/poll`, `pairing/confirm`, `pairing/cancel`, `unpair`. Base URL: `EPC_CONNECT_URL` (default `https://connect.papercliped.co`, https only).
+
+1. `pairing/start`: gets a one-time challenge from Connect and proves possession of this machine's device key. The response carries only the approval page address, never the challenge.
+2. The account owner signs in at Connect and approves that page.
+3. `pairing/poll` shows which account approved. The administrator must confirm that exact account in `pairing/confirm`; the device then signs a message naming that account and pairing id, and Connect binds the device to it. Any other account is refused.
+
+Exactly one remote-access mode is active: `local` (default), `cloudflare-self` or `connect`. Switching between the two remote modes goes through `local`. While `connect` is active the Cloudflare self-management endpoints return 409, so the two can't share the tunnel service, token file or public URL. If Connect is unreachable the API answers 502 and nothing local changes.
+
+Not yet built: the managed tunnel client itself, and removing the device on the Connect side when you unpair.

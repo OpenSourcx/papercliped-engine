@@ -26,6 +26,7 @@ import { RoutineIngress } from "./routine-ingress.ts";
 import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
+import { ConnectLink } from "./connectLink.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
 import { draftCeo } from "./features/pin-company.ts";
 import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
@@ -74,6 +75,8 @@ export interface AppDeps {
   publicUrl?: string;
   /** Where the Router's own listener is (EPC_ROUTER_LISTEN), shown in the console; null when it is switched off. */
   routerListen?: string | null;
+  /** Papercliped Connect base URL (tests); defaults to EPC_CONNECT_URL or https://connect.papercliped.co. */
+  connectUrl?: string;
 }
 
 const COOKIE_BASE = "epc_session";
@@ -460,6 +463,7 @@ export function createApp(d: AppDeps) {
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
   const publishing = new Publishing(state, outbound, now);
+  const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now);
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
@@ -877,6 +881,7 @@ export function createApp(d: AppDeps) {
       const s = requireSession(req);
       const body = method === "PUT" ? await readJson(req) : null;
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change connectors");
+      if (id === "cloudflare") link.assertSelfManagedAllowed();
       if (method === "PUT") return sendJson(res, 200, { connector: id === "cloudflare" ? publishing.setToken(body!.apiKey, s.username) : connectors.setKey(id, body!.apiKey, s.username) });
       if (method === "DELETE") {
         if (id === "cloudflare") publishing.remove(); else connectors.remove(id);
@@ -887,13 +892,34 @@ export function createApp(d: AppDeps) {
 
     if (path === "/api/publishing/cloudflare/zones" && method === "GET") {
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      link.assertSelfManagedAllowed();
       return sendJson(res, 200, { zones: await publishing.zones() });
     }
     if (path === "/api/publishing/cloudflare/plan" && method === "POST") {
       requireSameSite(req);
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      link.assertSelfManagedAllowed();
       const body = await readJson(req);
       return sendJson(res, 200, { plan: publishing.plan(body.zone, body.subdomain) });
+    }
+
+    // Papercliped Connect: remote-access mode and ownership pairing. Machine-wide, so Proxmox administrators only.
+    if (path.startsWith("/api/papercliped/connect/")) {
+      const action = path.slice("/api/papercliped/connect/".length);
+      const known = { status: "GET", mode: "POST", "pairing/start": "POST", "pairing/poll": "POST", "pairing/confirm": "POST", "pairing/cancel": "POST", unpair: "POST" } as Record<string, string>;
+      if (!(action in known)) throw new HttpError(404, "not_found", "Unknown Connect action");
+      if (known[action] !== method) throw new HttpError(405, "method", "Method not allowed");
+      if (method !== "GET") requireSameSite(req);
+      requireSession(req);
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage Papercliped Connect");
+      const body = method === "POST" ? await readJson(req) : {};
+      if (action === "status") return sendJson(res, 200, link.status());
+      if (action === "mode") return sendJson(res, 200, link.setMode(body.mode));
+      if (action === "pairing/start") return sendJson(res, 200, await link.start());
+      if (action === "pairing/poll") return sendJson(res, 200, await link.poll());
+      if (action === "pairing/confirm") return sendJson(res, 200, await link.confirm(body.accountId, body.deviceName));
+      if (action === "pairing/cancel") return sendJson(res, 200, link.cancel());
+      return sendJson(res, 200, link.unpair());
     }
 
     if (path === "/api/pin/settings" && (method === "GET" || method === "PUT")) {
