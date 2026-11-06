@@ -82,3 +82,5 @@ Unpairing is local only. Connect has no owner or device route to retire a device
 
 ### Verified only against fakes
 The Connect credentials endpoint (real signature and freshness checks, but not Connect's code), the privileged helper (real program, fake `systemctl`, temporary directories, a real unix socket) and every `cloudflared`/systemd effect. Nothing here has run against live Connect, a real tunnel token or a real `cloudflared`.
+
+Unpair also removes the machine on the Connect side: `POST /api/v1/devices/:deviceId/device-revoke` with `{publicKeyJwk, ts, signature}` (signature over `papercliped-connect:revoke:v1:<id>:<ts>`). Local unpair always happens immediately; if Connect is unreachable the removal stays pending and is retried at the next reconcile or start.

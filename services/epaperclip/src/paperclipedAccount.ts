@@ -69,6 +69,13 @@ export class PaperclipedDeviceIdentity {
     return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
   }
 
+  /** Proof that THIS machine asks Connect to remove it (unpair). Same message as Connect's deviceActionMessage("revoke"). */
+  signRevokeRequest(deviceId: string, tsSec: number): string {
+    if (!UUID.test(deviceId) || !Number.isSafeInteger(tsSec)) throw new Error("Invalid revoke request");
+    const msg = Buffer.from("papercliped-connect:revoke:v1:" + deviceId.toLowerCase() + ":" + tsSec);
+    return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
+  }
+
   /** Proof for one tunnel-credentials request. Same message as Connect's deviceTunnelMessage (device-crypto.mjs). */
   signTunnelRequest(deviceId: string, tsSec: number): string {
     if (!UUID.test(deviceId) || !Number.isSafeInteger(tsSec)) throw new Error("Invalid tunnel request");
