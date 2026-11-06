@@ -6,6 +6,7 @@ import { GRANT_TTL_MS, SCOPES, SCOPE_CONTROL, SCOPE_READ, connectOf, type Connec
 import { MCP_TOOLS, toolFailureText, toolsFor } from "./connect-tools.ts";
 import { DENIED_SCHEMES, checkAllowEntry, readBodyText, readFormOrJson, cleanText } from "./connect-util.ts";
 import type { FeatureCtx } from "./index.ts";
+import { clientIp } from "../clientIp.ts";
 
 /**
  * Routes of the Papercliped bridge (docs/CONNECTORS.md): the OAuth endpoints and `/mcp` at the root of the host
@@ -90,7 +91,7 @@ export async function connectRoot(ctx: FeatureCtx): Promise<boolean> {
     if (method !== "POST") throw new HttpError(405, "method", "POST only");
     try {
       const body = await readFormOrJson(req, 16 * 1024);
-      return oauthJson(ctx, 201, svc.register(body, req.socket.remoteAddress ?? "?")), true;
+      return oauthJson(ctx, 201, svc.register(body, clientIp(req))), true;
     } catch (e) {
       return oauthFail(ctx, e);
     }
@@ -99,7 +100,7 @@ export async function connectRoot(ctx: FeatureCtx): Promise<boolean> {
     if (method !== "POST") throw new HttpError(405, "method", "POST only");
     try {
       const body = await readFormOrJson(req);
-      return oauthJson(ctx, 200, await svc.token(body, req.socket.remoteAddress ?? "?")), true;
+      return oauthJson(ctx, 200, await svc.token(body, clientIp(req))), true;
     } catch (e) {
       return oauthFail(ctx, e);
     }
@@ -233,7 +234,7 @@ async function mcpEndpoint(ctx: FeatureCtx, svc: ConnectService, origin: string)
         }
         svc.logCall({ grantId: principal.grant.id, user: principal.session.username, client: principal.grant.clientName, tool: name, ok, control: tool.access === "control", ...(ok ? {} : { note: text.slice(0, 160) }) });
         // Anything that can change something also goes in the main audit trail, with the app's name.
-        if (tool.access === "control") svc.auditFor(principal.session.username, "app.tool", `grant ${principal.grant.id}`, `${principal.grant.clientName}: ${name}${ok ? "" : " (failed)"}`, req.socket.remoteAddress ?? undefined);
+        if (tool.access === "control") svc.auditFor(principal.session.username, "app.tool", `grant ${principal.grant.id}`, `${principal.grant.clientName}: ${name}${ok ? "" : " (failed)"}`, clientIp(req));
         reply(rpcResult(m.id, { content: [{ type: "text", text }], isError: !ok }));
         break;
       }
@@ -314,7 +315,7 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
     for (const k of ["client_id", "redirect_uri", "response_type", "scope", "state", "code_challenge", "code_challenge_method", "resource"]) if (typeof b[k] === "string") q.set(k, b[k] as string);
     const req = svc.validateAuthRequest(q, origin);
     if (b.approve !== true) {
-      svc.auditFor(s.username, "oauth.deny", req.client.id, req.client.name, ctx.req.socket.remoteAddress ?? undefined);
+      svc.auditFor(s.username, "oauth.deny", req.client.id, req.client.name, clientIp(ctx.req));
       return ctx.json(200, { redirect: svc.redirectWith(req, origin, { error: "access_denied", error_description: "The person declined." }) }), true;
     }
     // What the person chose: how far (this can only narrow the request), whether the app may act directly, which organizations.
@@ -344,7 +345,7 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
       throw e;
     }
     const { code, grant } = svc.createGrant({ req: { ...req, scope }, userid: s.username, direct, orgs, tokenId: id });
-    svc.auditFor(s.username, "oauth.consent", `grant ${grant.id}`, `${req.client.name} (${level}${direct ? ", direct" : ""}${orgs ? `, ${orgs.length} org(s)` : ""})`, ctx.req.socket.remoteAddress ?? undefined);
+    svc.auditFor(s.username, "oauth.consent", `grant ${grant.id}`, `${req.client.name} (${level}${direct ? ", direct" : ""}${orgs ? `, ${orgs.length} org(s)` : ""})`, clientIp(ctx.req));
     // Tidy up Proxmox tokens that earlier unfinished approvals left behind.
     await ctx.asUser((pve, sess) => svc.sweepOrphans(pve, sess.username, false)).catch(() => ({ deleted: 0, failed: 0 }));
     return ctx.json(200, { redirect: svc.redirectWith(req, origin, { code }) }), true;
@@ -416,12 +417,12 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
       const b = await ctx.readJson();
       const e = checkAllowEntry(b.uri, b.kind);
       if (typeof b.confirm !== "string" || b.confirm.trim() !== `allow ${e.scheme}`) throw new E(409, "confirm", `Type "allow ${e.scheme}" to allow apps to return to ${e.uri}.`);
-      return ctx.json(200, { entry: svc.addRedirectAllow(b.uri, b.kind, who, ctx.req.socket.remoteAddress ?? undefined), entries: svc.redirectAllow() }), true;
+      return ctx.json(200, { entry: svc.addRedirectAllow(b.uri, b.kind, who, clientIp(ctx.req)), entries: svc.redirectAllow() }), true;
     }
     if (method === "DELETE") {
       ctx.sameSite();
       const uri = ctx.url.searchParams.get("uri");
-      if (uri === null || !svc.removeRedirectAllow(uri, ctx.url.searchParams.get("kind"), who, ctx.req.socket.remoteAddress ?? undefined)) throw new E(404, "not_found", "That address is not on the list.");
+      if (uri === null || !svc.removeRedirectAllow(uri, ctx.url.searchParams.get("kind"), who, clientIp(ctx.req))) throw new E(404, "not_found", "That address is not on the list.");
       return ctx.json(200, { entries: svc.redirectAllow() }), true;
     }
   }

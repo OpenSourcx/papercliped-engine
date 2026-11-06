@@ -106,6 +106,8 @@ if (routerListen) {
   routerServer.on("error", (e) => activity.error("router", "router.listen", `The Router couldn't listen on ${routerListen}: ${e.message}`));
   routerServer.listen(rport, rhost, () => activity.info("router", "router.start", `Router listening on http://${routerListen}`));
 }
+// Papercliped Connect: in Connect mode fetch the tunnel credentials now and keep them fresh; otherwise remove any leftover Connect tunnel.
+handle.link.watch();
 // Settle the engine's service account in the background, retrying while the engine starts.
 // Once the engine is up, keep agents off the host: it refuses to run them anywhere but in a container (docs/ENGINE.md).
 // Then keep organizations' container environments in step (new organizations, new agents) every minute.
@@ -122,6 +124,7 @@ void handle.engine?.start((m) => activity.info("engine", "engine.start", m)).the
 });
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
+    handle.link.unwatch();
     handle.engine?.stop();
     routerServer?.close();
     server.close(() => process.exit(0));

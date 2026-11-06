@@ -41,4 +41,16 @@ describe("Managed Papercliped account connector device identity",()=>{
     expect(url).not.toContain(token);
     expect(()=>pairingApprovalUrl("https://evil.example/")).toThrow();
   });
+  it("signs the tunnel-credentials request over the exact message Connect verifies",()=>{
+    const signer=new PaperclipedDeviceIdentity(new StateStore(null));
+    const pub=createPublicKey({key:signer.publicIdentity().publicKeyJwk,format:"jwk"});
+    const device="B3B5B205-DAB1-410F-8ACB-1BB16D34D8D3", ts=1_780_000_000;
+    const sig=Buffer.from(signer.signTunnelRequest(device,ts),"base64url");
+    expect(sig).toHaveLength(64);
+    // device-crypto.mjs deviceTunnelMessage: lowercase device id, decimal seconds
+    expect(verify("sha256",Buffer.from("papercliped-connect:tunnel:v1:"+device.toLowerCase()+":"+ts),{key:pub,dsaEncoding:"ieee-p1363"},sig)).toBe(true);
+    expect(verify("sha256",Buffer.from("papercliped-connect:tunnel:v1:"+device.toLowerCase()+":"+(ts+1)),{key:pub,dsaEncoding:"ieee-p1363"},sig)).toBe(false);
+    expect(()=>signer.signTunnelRequest("not-a-uuid",ts)).toThrow();
+    expect(()=>signer.signTunnelRequest(device,1.5)).toThrow();
+  });
 });

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { EngineDown, engineUnavailable, type EngineGateway } from "./engine.ts";
 import { HttpError, sendJson } from "./http.ts";
 import type { StateStore } from "./state.ts";
+import { clientIp } from "./clientIp.ts";
 
 /**
  * Routine webhooks from outside the device. The engine's own webhook address is its loopback URL, unreachable from
@@ -169,7 +170,7 @@ export class RoutineIngress {
       res.setHeader("Allow", "POST");
       throw new HttpError(405, "method", "Method not allowed");
     }
-    const ip = req.socket.remoteAddress ?? "?";
+    const ip = clientIp(req);
     if (this.counter.over("all", LIMITS.overall) || this.counter.over(`ip:${ip}`, LIMITS.perAddress) || this.counter.over(`id:${m[1]}`, LIMITS.perTrigger)) {
       res.setHeader("Retry-After", "60");
       throw new HttpError(429, "rate_limited", "Too many requests. Slow down.");

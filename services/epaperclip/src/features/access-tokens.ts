@@ -5,6 +5,7 @@ import { HttpError } from "../http.ts";
 import type { ApiTokenPrincipal, Session, SessionStore } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import type { FeatureCtx } from "./index.ts";
+import { clientIp } from "../clientIp.ts";
 
 /**
  * ePaperclip API tokens: long-lived Bearer credentials for automation.
@@ -209,7 +210,7 @@ export class BearerAuth {
     if (header === undefined) return;
     const m = /^Bearer[ ]+(\S+)$/i.exec(header);
     if (!m) return; // Some other scheme: not ours.
-    const ip = req.socket.remoteAddress ?? "?";
+    const ip = clientIp(req);
     if (this.failures.blocked(ip)) throw new HttpError(429, "too_many_attempts", "Too many invalid API tokens from this address. Wait a few minutes.");
     if (!m[1].startsWith("epc_")) return; // Not ours (the engine strips Authorization before forwarding).
     const parts = TOKEN_RE.exec(m[1]);
@@ -278,7 +279,7 @@ export class BearerAuth {
   rejectedByProxmox(s: Session, req: IncomingMessage) {
     if (!s.apiToken) return;
     this.valid.delete(s.apiToken.id);
-    this.audit("token.use.failed", req.socket.remoteAddress ?? "?", s.username, "Proxmox rejected the mapped token", `token ${s.apiToken.id}`);
+    this.audit("token.use.failed", clientIp(req), s.username, "Proxmox rejected the mapped token", `token ${s.apiToken.id}`);
   }
 }
 
@@ -328,7 +329,7 @@ export async function handleEpcTokens(ctx: FeatureCtx): Promise<boolean> {
       await ctx.asUser((pve) => pve.call("DELETE", `/access/users/${enc(s.username)}/token/${enc(pveName)}`)).catch(() => {});
       throw e;
     }
-    appendAudit(ctx.state, ctx.now, { actor: s.username, action: "token.create", target: `token ${id}`, detail: `${name}${readOnly ? " (read-only)" : ""}`, ip: ctx.req.socket.remoteAddress ?? "?" });
+    appendAudit(ctx.state, ctx.now, { actor: s.username, action: "token.create", target: `token ${id}`, detail: `${name}${readOnly ? " (read-only)" : ""}`, ip: clientIp(ctx.req) });
     ctx.json(201, { token, record: pub, proxmoxTokenId: `${s.username}!${pveName}`, note: privsep ? "Privilege-separated: this token has no permissions until you give it ACLs in Roles & permissions." : "This token acts as you, with all your permissions." });
     return true;
   }
@@ -354,7 +355,7 @@ export async function handleEpcTokens(ctx: FeatureCtx): Promise<boolean> {
     const secret = rotate ? newTokenParts().secret : undefined;
     const next = updateToken(ctx.state, rec.id, { expiresAt, ...(secret ? { secret } : {}) });
     if (!next) throw new HttpError(404, "not_found", "No such API token");
-    appendAudit(ctx.state, ctx.now, { actor: s.username, action: rotate ? "token.rotate" : "token.renew", target: `token ${rec.id}`, detail: `${rec.name} (${rec.userid}) until ${new Date(expiresAt).toISOString().slice(0, 10)}`, ip: ctx.req.socket.remoteAddress ?? "?" });
+    appendAudit(ctx.state, ctx.now, { actor: s.username, action: rotate ? "token.rotate" : "token.renew", target: `token ${rec.id}`, detail: `${rec.name} (${rec.userid}) until ${new Date(expiresAt).toISOString().slice(0, 10)}`, ip: clientIp(ctx.req) });
     ctx.json(200, { record: toPublic(next), ...(secret ? { token: `epc_${rec.id}_${secret}` } : {}) });
     return true;
   }
@@ -369,7 +370,7 @@ export async function handleEpcTokens(ctx: FeatureCtx): Promise<boolean> {
       if (!admin) throw new HttpError(403, "forbidden", "Only the token's owner or a Proxmox administrator can revoke it");
     }
     removeToken(ctx.state, rec.id); // Dead for ePaperclip from this moment.
-    appendAudit(ctx.state, ctx.now, { actor: s.username, action: "token.revoke", target: `token ${rec.id}`, detail: `${rec.name} (${rec.userid})`, ip: ctx.req.socket.remoteAddress ?? "?" });
+    appendAudit(ctx.state, ctx.now, { actor: s.username, action: "token.revoke", target: `token ${rec.id}`, detail: `${rec.name} (${rec.userid})`, ip: clientIp(ctx.req) });
     const warnings: string[] = [];
     await ctx
       .asUser((pve) => pve.call("DELETE", `/access/users/${enc(rec.userid)}/token/${enc(rec.pveName)}`))

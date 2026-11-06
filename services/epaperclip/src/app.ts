@@ -27,6 +27,7 @@ import { EngineGateway, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
 import { ConnectLink } from "./connectLink.ts";
+import { type TunnelHelper } from "./tunnelHelper.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
 import { draftCeo } from "./features/pin-company.ts";
 import { ConnectionsStore, registerConnections } from "./features/connect-connections.ts";
@@ -35,6 +36,7 @@ import { Router, RouterKeys } from "./router/router.ts";
 import { routerHandler } from "./router/server.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
+import { clientIp, trustTunnelWhen } from "./clientIp.ts";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -77,6 +79,8 @@ export interface AppDeps {
   routerListen?: string | null;
   /** Papercliped Connect base URL (tests); defaults to EPC_CONNECT_URL or https://connect.papercliped.co. */
   connectUrl?: string;
+  /** The privileged tunnel helper (tests inject a fake; default is the root helper's socket). */
+  tunnelHelper?: TunnelHelper;
 }
 
 const COOKIE_BASE = "epc_session";
@@ -395,7 +399,7 @@ export function createApp(d: AppDeps) {
   const audit = (req: IncomingMessage, action: string, target?: string, detail?: string) => {
     try {
       const s = requireSession(req);
-      appendAudit(state, now, { actor: s.username, action, ip: req.socket.remoteAddress ?? "?", ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
+      appendAudit(state, now, { actor: s.username, action, ip: clientIp(req), ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
     } catch {
       /* the audit trail must never break a request */
     }
@@ -447,7 +451,7 @@ export function createApp(d: AppDeps) {
   // The Papercliped bridge: OAuth for MCP apps and /mcp (docs/CONNECTORS.md). Read only apps get a Proxmox client that can only GET.
   const readOnlyTransport = (t: Transport): Transport => (r) => (r.method === "GET" ? t(r) : Promise.reject(new Error("read-only connection")));
   const connect = new ConnectService({
-    state, now, secure: d.secureCookies, publicUrl: d.publicUrl, epoch: (u) => d.sessions.epoch(u),
+    state, now, secure: d.secureCookies, publicUrl: () => link.publicUrl() ?? d.publicUrl, epoch: (u) => d.sessions.epoch(u),
     pve: (tokenId, tokenSecret, readOnly) => {
       const t = d.pve.transport ?? nodeTransport(d.pve.caPem);
       return new ProxmoxClient({ ...pveOpts, tokenId, tokenSecret, ...(readOnly ? { transport: readOnlyTransport(t), streamTransport: () => Promise.reject(new Error("read-only connection")) } : {}) });
@@ -463,7 +467,8 @@ export function createApp(d: AppDeps) {
   const outbound: HttpFetch = d.fetch ?? ((u, init) => fetch(u, init));
   const connectors = new Connectors(state, outbound, now);
   const publishing = new Publishing(state, outbound, now);
-  const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now);
+  const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now, { helper: d.tunnelHelper });
+  trustTunnelWhen(() => link.tunnelTrusted());
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
@@ -492,8 +497,8 @@ export function createApp(d: AppDeps) {
 
   const signIn = (req: IncomingMessage, res: ServerResponse, username: string, ticket: string, csrf: string, via: "password" | "openid" = "password", extraCookies: string[] = []) => {
     const ua = req.headers["user-agent"];
-    const s = d.sessions.create(username, ticket, csrf, { ip: req.socket.remoteAddress ?? undefined, agent: typeof ua === "string" ? ua : undefined, via });
-    appendAudit(state, now, { actor: username, action: "session.sign-in", detail: via === "openid" ? "OpenID Connect" : "password", ip: req.socket.remoteAddress ?? "?" });
+    const s = d.sessions.create(username, ticket, csrf, { ip: clientIp(req), agent: typeof ua === "string" ? ua : undefined, via });
+    appendAudit(state, now, { actor: username, action: "session.sign-in", detail: via === "openid" ? "OpenID Connect" : "password", ip: clientIp(req) });
     sendJson(res, 200, { user: { username } }, { "Set-Cookie": [cookie(s.id, 12 * 3600), ...extraCookies] });
     // Open (or create) the person's engine account in the background; sign-in to the console never waits on the engine.
     // Proxmox node administrators administer the engine too (they can create organizations); checked on every sign-in.
@@ -556,7 +561,7 @@ export function createApp(d: AppDeps) {
   async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
     const method = req.method ?? "GET";
     const path = url.pathname;
-    const ip = req.socket.remoteAddress ?? "?";
+    const ip = clientIp(req);
 
     if (method === "GET" && path === "/api/health") return sendJson(res, 200, { ok: true });
 
@@ -913,13 +918,13 @@ export function createApp(d: AppDeps) {
       requireSession(req);
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage Papercliped Connect");
       const body = method === "POST" ? await readJson(req) : {};
-      if (action === "status") return sendJson(res, 200, link.status());
-      if (action === "mode") return sendJson(res, 200, link.setMode(body.mode));
+      if (action === "status") return sendJson(res, 200, await link.statusLive());
+      if (action === "mode") return sendJson(res, 200, await link.setMode(body.mode));
       if (action === "pairing/start") return sendJson(res, 200, await link.start());
       if (action === "pairing/poll") return sendJson(res, 200, await link.poll());
       if (action === "pairing/confirm") return sendJson(res, 200, await link.confirm(body.accountId, body.deviceName));
       if (action === "pairing/cancel") return sendJson(res, 200, link.cancel());
-      return sendJson(res, 200, link.unpair());
+      return sendJson(res, 200, await link.unpair());
     }
 
     if (path === "/api/pin/settings" && (method === "GET" || method === "PUT")) {
@@ -2007,5 +2012,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }) });
+  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }) });
 }

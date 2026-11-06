@@ -9,9 +9,10 @@ import type { Transport } from "@papercliped-engine/proxmox-client";
 import { backupOf, checksum, createApp, parseBackupJob, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
 import { generateSigningKey, signIndex, trustedKey } from "@papercliped-engine/marketplace";
 import { SessionStore } from "../src/sessions.ts";
-import { fakeConnect } from "./fakes-papercliped.ts";
+import { fakeConnect, fakeTunnelHelper } from "./fakes-papercliped.ts";
 
 let connect: ReturnType<typeof fakeConnect>;
+let tunnel: ReturnType<typeof fakeTunnelHelper>;
 
 /** A fake Proxmox: users, optional TFA, tickets, and permissions per ticket. */
 function fakePve() {
@@ -205,7 +206,10 @@ beforeEach(async () => {
   vendorHits = [];
   market = null;
   connect = fakeConnect();
+  connect.state.now = now;
+  tunnel = fakeTunnelHelper();
   const handle = createApp({
+    tunnelHelper: tunnel.helper,
     connectUrl: "https://connect.test", fetch: (u, i) => connect.fetch(u, i),
     marketplace: { url: "https://catalog.example/index.json", keys: [trustedKey(signer.publicKeyPem)] },
     fetchText: async (url) => {
@@ -1077,3 +1081,94 @@ describe("Papercliped Connect routes", () => {
     expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
   });
 });
+
+describe("Papercliped Connect tunnel through the console", () => {
+  const api = (path: string, cookie: string, body?: unknown, method = body === undefined ? "GET" : "POST") =>
+    fetch(base + "/api/papercliped/connect/" + path, { method, headers: { Cookie: cookie, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const pair = async (sam: string) => {
+    await api("pairing/start", sam, {}); connect.approve("acct_owner"); await api("pairing/poll", sam, {});
+    await api("pairing/confirm", sam, { accountId: "acct_owner", deviceName: "rack" });
+  };
+  const issuer = async () => ((await (await fetch(base + "/.well-known/oauth-authorization-server")).json()) as any).issuer as string;
+  const register = (ip?: string) => fetch(base + "/oauth/register", { method: "POST", headers: { "Content-Type": "application/json", ...(ip ? { "CF-Connecting-IP": ip } : {}) }, body: JSON.stringify({ redirect_uris: ["https://a.example/cb"] }) });
+
+  it("reports the real tunnel, moves the OAuth issuer to the Connect address and back, and never shows the token", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    expect(await issuer()).toBe(base.replace("http:", "https:")); // secure cookies: the console advertises https
+    const on = await (await api("mode", sam, { mode: "connect" })).json() as any;
+    expect(on.tunnel).toMatchObject({ state: "running", hostname: connect.state.hostname, lastResult: "ok", helper: { owner: "connect", installed: true, active: true } });
+    expect(tunnel.h.token).toBe(connect.state.token);
+    const live = await (await api("status", sam)).text();
+    expect(live).not.toContain(connect.state.token);
+    expect(await issuer()).toBe("https://" + connect.state.hostname);
+    tunnel.h.active = false; // the service died: status says so instead of assuming
+    expect(((await (await api("status", sam)).json()) as any).tunnel).toMatchObject({ state: "stopped", helper: { active: false } });
+    tunnel.h.fail = true; // helper unreachable: reported, not thrown
+    expect(((await (await api("status", sam)).json()) as any).tunnel.helper).toMatchObject({ error: expect.any(String) });
+    tunnel.h.fail = false;
+    const off = await (await api("mode", sam, { mode: "local" })).json() as any;
+    expect(off.tunnel).toBeUndefined();
+    expect(tunnel.h).toMatchObject({ owner: null, token: null });
+    expect(await issuer()).toBe(base.replace("http:", "https:")); // secure cookies: the console advertises https
+  });
+
+  it("unpairing removes the Connect tunnel and token", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    await api("mode", sam, { mode: "connect" });
+    expect(tunnel.h.owner).toBe("connect");
+    expect(((await (await api("unpair", sam, {})).json()) as any)).toMatchObject({ paired: false, mode: "local" });
+    expect(tunnel.h).toMatchObject({ owner: null, token: null, active: false });
+  });
+
+  it("an ended subscription stops the tunnel and says so, without touching local sign-in", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    connect.state.tunnel = "no_entitlement";
+    const r = await (await api("mode", sam, { mode: "connect" })).json() as any;
+    expect(r.tunnel).toMatchObject({ state: "subscription_needed" });
+    expect(r.tunnel.message).toMatch(/Subscription needed/);
+    expect(tunnel.h.owner).toBeNull();
+    expect(await issuer()).toBe(base.replace("http:", "https:")); // secure cookies: the console advertises https
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
+  });
+
+  it("through the tunnel the console still demands login, CSRF headers and tokens", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    await api("mode", sam, { mode: "connect" });
+    const via = { "CF-Connecting-IP": "203.0.113.9" };
+    expect((await fetch(base + "/api/me", { headers: via })).status).toBe(401);
+    expect((await fetch(base + "/api/papercliped/connect/status", { headers: via })).status).toBe(401);
+    expect((await fetch(base + "/api/papercliped/connect/mode", { method: "POST", headers: { ...via, Cookie: sam, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "local" }) })).status).toBe(403); // no X-EPC-Request
+    expect((await fetch(base + "/api/papercliped/connect/mode", { method: "POST", headers: { ...via, Cookie: sam, "Content-Type": "application/json", "X-EPC-Request": "1", Origin: "https://evil.example" }, body: JSON.stringify({ mode: "local" }) })).status).toBe(403); // cross-site
+    expect((await fetch(base + "/mcp", { method: "POST", headers: { ...via, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) })).status).toBe(401);
+    expect((await fetch(base + "/mcp", { method: "POST", headers: { ...via, Authorization: "Bearer epo_nope", "Content-Type": "application/json" }, body: "{}" })).status).toBe(401);
+  });
+
+  it("rate limits follow the real client address only while the tunnel is ours", async () => {
+    const sam = await signIn("sam");
+    // Not in Connect mode: the header is ignored, so one peer (this test) shares one bucket.
+    for (let i = 0; i < 10; i++) expect((await register(`198.51.100.${i}`)).status).toBe(201);
+    expect((await register("198.51.100.99")).status).toBe(429);
+  });
+});
+
+describe("Papercliped Connect tunnel: client addresses", () => {
+  it("separates internet clients behind cloudflared and ignores the header otherwise", async () => {
+    const sam = await signIn("sam");
+    await api2("pairing/start", sam, {}); connect.approve("acct_owner"); await api2("pairing/poll", sam, {});
+    await api2("pairing/confirm", sam, { accountId: "acct_owner", deviceName: "rack" });
+    await api2("mode", sam, { mode: "connect" });
+    const reg = (ip: string) => fetch(base + "/oauth/register", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ redirect_uris: ["https://a.example/cb"] }) });
+    for (let i = 0; i < 12; i++) expect((await reg(`198.51.100.${i}`)).status).toBe(201); // 12 clients, one loopback peer
+    for (let i = 0; i < 10; i++) expect((await reg("203.0.113.5")).status).toBe(201);
+    expect((await reg("203.0.113.5")).status).toBe(429); // the same client is still limited
+    expect((await reg("2001:db8:1:2:aaaa::1")).status).toBe(201);
+    for (let i = 0; i < 9; i++) await reg(`2001:db8:1:2::${i + 2}`);
+    expect((await reg("2001:db8:1:2:ffff::7")).status).toBe(429); // same /64
+  });
+});
+const api2 = (path: string, cookie: string, body?: unknown) =>
+  fetch(base + "/api/papercliped/connect/" + path, { method: body === undefined ? "GET" : "POST", headers: { Cookie: cookie, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: body === undefined ? undefined : JSON.stringify(body) });

@@ -7,6 +7,7 @@ import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { appendAudit, getToken, newTokenParts, pveTokenName, removeToken, storeToken } from "./access-tokens.ts";
 import { CHALLENGE_RE, FailureCounter, type RedirectAllow, checkAllowEntry, RateWindow, VERIFIER_RE, checkRedirectUri, cleanText, hashSecret, newHexId, newSalt, newSecret, pkceMatches, redirectMatches, sameHash } from "./connect-util.ts";
+import { clientIp } from "../clientIp.ts";
 
 /**
  * The OAuth 2.1 authorization server for MCP clients (Claude, ChatGPT, Codex, any MCP client), docs/CONNECTORS.md.
@@ -36,6 +37,7 @@ const CODE_TTL_MS = 60_000;
 const PENDING_TTL_MS = 10 * 60_000;
 const UNUSED_CLIENT_MS = 24 * 3600_000;
 const MAX_CLIENTS = 500;
+const MAX_PENDING_CLIENTS = 100;
 const REDIRECT_ALLOW = "connect.redirectAllow";
 const MAX_REDIRECT_ALLOW = 50;
 const MAX_GRANTS_PER_USER = 30;
@@ -114,7 +116,7 @@ export interface ConnectOptions {
   /** Epoch of a person's sessions: bumps when their access is removed, so the app's Proxmox token is re-checked at once. */
   epoch: (userid: string) => number;
   /** The address people use to reach this device, when known (otherwise taken from the request's Host header). */
-  publicUrl?: string;
+  publicUrl?: string | (() => string | undefined);
   secure: boolean;
 }
 
@@ -144,6 +146,10 @@ export class ConnectService {
   private readonly codes = new Map<string, CodeRec>();
   private readonly failures: FailureCounter;
   readonly registerLimit: RateWindow;
+  /** Registration is open to anyone who can reach the device; this caps all addresses together so a botnet can't fill the table. */
+  readonly registerAll: RateWindow;
+  /** Bearer attempts at /mcp before authentication, per address: unknown tokens still cost a hash each. */
+  readonly mcpProbe: RateWindow;
   readonly tokenLimit: RateWindow;
   readonly consentLimit: RateWindow;
   readonly mcpLimit: RateWindow;
@@ -155,6 +161,8 @@ export class ConnectService {
     this.o = o;
     this.failures = new FailureCounter(20, 5 * 60_000, o.now);
     this.registerLimit = new RateWindow(10, 3600_000, o.now);
+    this.registerAll = new RateWindow(120, 3600_000, o.now);
+    this.mcpProbe = new RateWindow(1200, 60_000, o.now);
     this.tokenLimit = new RateWindow(60, 60_000, o.now);
     this.consentLimit = new RateWindow(20, 60_000, o.now);
     this.mcpLimit = new RateWindow(240, 60_000, o.now);
@@ -165,7 +173,8 @@ export class ConnectService {
 
   /** `https://host` as people reach this device. */
   origin(req: IncomingMessage): string {
-    if (this.o.publicUrl) return this.o.publicUrl.replace(/\/+$/, "");
+    const pub = typeof this.o.publicUrl === "function" ? this.o.publicUrl() : this.o.publicUrl;
+    if (pub) return pub.replace(/\/+$/, "");
     const host = String(req.headers.host ?? "");
     if (!/^(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:]{2,45}\])(?::\d{1,5})?$/.test(host)) throw new HttpError(400, "bad_host", "Unusable Host header");
     return `${this.o.secure ? "https" : "http"}://${host}`;
@@ -232,6 +241,7 @@ export class ConnectService {
 
   register(body: Record<string, unknown>, ip: string): Record<string, unknown> {
     if (!this.registerLimit.take(ip)) throw oauthError(429, "slow_down", "Too many registrations from this address. Try again later.");
+    if (!this.registerAll.take("all")) throw oauthError(429, "slow_down", "Too many registrations right now. Try again later.");
     const uris = body.redirect_uris;
     if (!Array.isArray(uris) || uris.length === 0 || uris.length > 5) throw oauthError(400, "invalid_redirect_uri", "Send 1 to 5 redirect addresses.");
     let redirectUris: string[];
@@ -253,6 +263,8 @@ export class ConnectService {
     const t = this.o.now();
     // Apps that registered but were never approved are forgotten after a day, and the table has a ceiling.
     for (const [id, c] of Object.entries(all)) if (!c.authorizedAt && t - c.createdAt > UNUSED_CLIENT_MS) delete all[id];
+    // Never-approved registrations can't crowd out the apps people actually use.
+    if (Object.values(all).filter((c) => !c.authorizedAt).length >= MAX_PENDING_CLIENTS) throw oauthError(503, "temporarily_unavailable", "Too many apps are waiting for approval. Try again later.");
     if (Object.keys(all).length >= MAX_CLIENTS) throw oauthError(503, "temporarily_unavailable", "Too many registered apps. Remove unused ones in Connected apps.");
     const id = `epc_client_${randomBytes(12).toString("base64url")}`;
     all[id] = { id, name, redirectUris, createdAt: t, authorizedAt: null };
@@ -423,11 +435,12 @@ export class ConnectService {
 
   /** Authenticates `Authorization: Bearer epo_...`. Throws a 401 with the RFC 9728 challenge when it isn't good. */
   async authenticate(req: IncomingMessage): Promise<McpPrincipal> {
-    const ip = req.socket.remoteAddress ?? "?";
+    const ip = clientIp(req);
     const header = req.headers.authorization;
     const m = header ? /^Bearer[ ]+(\S+)$/i.exec(header) : null;
     if (!m) throw this.challenge(req);
     if (this.failures.blocked(ip)) throw new HttpError(429, "too_many_attempts", "Too many invalid tokens from this address. Wait a few minutes.");
+    if (!this.mcpProbe.take(ip)) throw new HttpError(429, "rate_limited", "Too many requests from this address. Slow down.");
     const parts = ACCESS_RE.exec(m[1]);
     if (!parts) {
       this.failures.fail(ip);

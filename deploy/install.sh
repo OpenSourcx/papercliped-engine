@@ -246,6 +246,7 @@ if [ "$ACTION" = "--uninstall" ] || [ "$ACTION" = "--purge" ]; then
   systemctl disable --now epaperclip epaperclip-engine epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared 2>/dev/null || true
   systemctl stop 'epaperclip-exec@*.service' 'epaperclip-publish@*.service' 2>/dev/null || true
   rm -f "$SERVICE" "$ENGINE_SERVICE" "$SERVICE.prev" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"
+  rm -f "$ETC_DIR/cloudflared.env" "$ETC_DIR/cloudflared.owner" # the tunnel token never outlives an uninstall, even a non-purging one
   systemctl daemon-reload 2>/dev/null || true
   rm -rf "${PREFIX:?}" "${PREV:?}" "${STAGE:?}" "${PREFIX:?}.failed"
   [ ! -L "$BIN_DIR/epaperclip" ] || rm -f "$BIN_DIR/epaperclip"

@@ -5,6 +5,7 @@ import { USERID } from "../iac.ts";
 import { appendAudit, readAudit, type AuditEntry } from "./access-tokens.ts";
 import { handlePeople } from "./access-people.ts";
 import type { FeatureCtx } from "./index.ts";
+import { clientIp } from "../clientIp.ts";
 
 /**
  * Access control, administration side: your own password, signed-in sessions, the audit log (filters and export), the
@@ -219,7 +220,7 @@ export async function accessAdmin(ctx: FeatureCtx): Promise<boolean> {
   const ticketOnly = (what: string) => {
     if (ctx.session().apiToken) throw new HttpError(403, "ticket_only", `${what} needs a signed-in browser session; API tokens can't do it.`);
   };
-  const ip = () => ctx.req.socket.remoteAddress ?? "?";
+  const ip = () => clientIp(ctx.req);
   const audit = (action: string, target?: string, detail?: string) => appendAudit(ctx.state, ctx.now, { actor: ctx.session().username, action, ip: ip(), ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
   const adminOnly = async (what: string) => {
     const ok = await ctx.asUser((pve) => ctx.isNodeAdmin(pve));
