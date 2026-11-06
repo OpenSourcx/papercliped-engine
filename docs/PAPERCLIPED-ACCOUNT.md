@@ -49,4 +49,36 @@ Administrator-only API under `/api/papercliped/connect/`: `GET status`; `POST mo
 
 Exactly one remote-access mode is active: `local` (default), `cloudflare-self` or `connect`. Switching between the two remote modes goes through `local`. While `connect` is active the Cloudflare self-management endpoints return 409, so the two can't share the tunnel service, token file or public URL. If Connect is unreachable the API answers 502 and nothing local changes.
 
-Not yet built: the managed tunnel client itself, and removing the device on the Connect side when you unpair.
+## The managed tunnel (device side)
+
+When the mode is `connect` and the machine is paired, `ConnectLink` (`services/epaperclip/src/connectLink.ts`) keeps this machine's tunnel in line with Connect:
+
+1. It signs `papercliped-connect:tunnel:v1:<deviceId lowercase>:<unix seconds>` with the device key (`PaperclipedDeviceIdentity.signTunnelRequest`, ECDSA P-256 SHA-256, ieee-p1363, base64url) and posts `{publicKeyJwk, ts, signature}` to `POST /api/v1/devices/:deviceId/tunnel-credentials`. The device clock must be within about a minute of Connect's.
+2. Answers:
+
+| Connect says | Device does |
+|---|---|
+| 200 `{hostname, tunnelToken, origin: "https://127.0.0.1:443"}` | validates it (hostname shape, token charset, the exact origin), hands the token to the root helper, re-checks in 15 minutes |
+| 409 `not_ready` (provisioning or paused) | keeps polling, 5 s doubling to 5 min; nothing is changed meanwhile |
+| 403 `no_entitlement` | stops and removes the tunnel; status says "Subscription needed"; the OAuth address falls back to the local one; keeps checking every 10 minutes and comes back by itself |
+| 403 `not_available` | counted; the tunnel is stopped after 3 in a row (a skewed clock looks identical to a removed device); status says Connect doesn't recognise the machine |
+| network error, 429, 5xx | keeps the last known state (a running tunnel keeps running); backoff 10 s doubling to 10 min, plus up to 20% jitter |
+| anything else | `invalid`: reported, nothing changed |
+
+A Connect or helper failure only changes the reported state; sign-in, the console and local MCP never depend on it.
+
+**One helper owns the tunnel.** `deploy/epaperclip-publish.mjs` (socket `/run/epaperclip-publish/publish.sock`, root) is the only writer of `epaperclip-cloudflared.service` and `/etc/epaperclip/cloudflared.env`. Operations: `install {owner, token}`, `remove {owner}`, `status`. The owner, `self` (own Cloudflare account) or `connect`, is recorded in `/etc/epaperclip/cloudflared.owner`; installing for one owner while the other holds the service is refused, and `remove` only removes the caller's own tunnel. An install from before owners existed counts as `self`. The token file is root-owned `0600`, is only ever sent over the private socket, and is never logged, stored in the host's state, or returned by `status` or any API. `--uninstall` deletes the token file and owner marker even without `--purge`.
+
+**Status** (`GET /api/papercliped/connect/status`) includes `tunnel` while in Connect mode: `state` (`connecting`, `waiting`, `running`, `stopped`, `subscription_needed`, `unavailable`, `offline`, `error`), a plain-language `message`, `hostname`, `lastResult`, `lastCheckedAt`, `lastOkAt`, `nextCheckAt`, and `helper` (`{owner, installed, active}` read live from the helper, or `{error}` if the helper can't be reached). `running` requires the helper to report the service active.
+
+**Public address.** In `connect` mode with a hostname, the OAuth issuer, protected-resource metadata and MCP URL become `https://<hostname>`; in any other mode (or after the subscription ends) they revert to `EPC_PUBLIC_URL` or the request's Host. Apps that registered against the old address re-discover on their next sign-in.
+
+**Internet exposure.** Tunnel traffic reaches the host service from cloudflared on loopback, so nothing is trusted because it is local: sign-in, the CSRF header plus same-origin check, the bearer-token checks on `/mcp`, and consent are unchanged. While in `connect` mode, and only for a loopback peer, `CF-Connecting-IP` is used as the client address (IPv6 by /64) for login lockouts, token-failure counters, rate limits and the audit trail; otherwise every internet client would share one address bucket and one attacker could lock everyone out. Added for exposure: a cap of 100 registered-but-never-approved apps, 120 registrations per hour across all addresses (besides 10 per address), and a per-address limit on `/mcp` attempts before authentication. Still true: anyone on the internet can reach `/api/login`, so use Proxmox two-factor for administrators; a username can be locked out for 15 minutes by failed guesses (the same as on the LAN).
+
+**Leaving Connect.** Switching mode, unpairing or uninstalling removes the Connect token and service through the helper. If the helper can't be reached the mode still changes and removal is retried until it succeeds (at start and on every re-check).
+
+### Missing on the Connect side
+Unpairing is local only. Connect has no owner or device route to retire a device, so its tunnel, DNS record and seat remain until the owner removes them in the console (or an admin revokes them). Contract needed: `POST /api/v1/devices/:deviceId/revoke` with the same `{publicKeyJwk, ts, signature}` body, signed over `papercliped-connect:revoke:v1:<deviceId lowercase>:<ts>`, answering 200 `{ok: true}` (idempotent), 403 `not_available`; it enqueues the provisioning `revoke` job (tunnel and DNS removal) and releases the seat. Once it exists, `ConnectLink.unpair()` should call it before forgetting the device and keep a retry record if Connect is unreachable.
+
+### Verified only against fakes
+The Connect credentials endpoint (real signature and freshness checks, but not Connect's code), the privileged helper (real program, fake `systemctl`, temporary directories, a real unix socket) and every `cloudflared`/systemd effect. Nothing here has run against live Connect, a real tunnel token or a real `cloudflared`.

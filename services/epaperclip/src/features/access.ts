@@ -5,6 +5,7 @@ import { PRIVILEGES, PRIVILEGE_NAMES, ROLE_ID } from "./access-privs.ts";
 import { REALM_ID, REALM_TYPES, SECRET_FIELDS, canCreate, canSync, realmSchema, validateRealm, validateSync } from "./access-realms.ts";
 import { appendAudit, handleEpcTokens, isManagedPveToken, listTokens, readAudit, removeToken } from "./access-tokens.ts";
 import type { FeatureCtx } from "./index.ts";
+import { clientIp } from "../clientIp.ts";
 
 /**
  * Access control beyond users: groups, roles, permissions (ACLs), API tokens, two-factor, realms and resource pools.
@@ -90,7 +91,7 @@ export async function access(ctx: FeatureCtx): Promise<boolean> {
     if (ctx.session().apiToken) throw new HttpError(403, "ticket_only", "Proxmox doesn't let API tokens manage two-factor settings. Use a signed-in browser session.");
   };
   const audit = (action: string, target?: string, detail?: string) =>
-    appendAudit(ctx.state, ctx.now, { actor: ctx.session().username, action, ip: ctx.req.socket.remoteAddress ?? "?", ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
+    appendAudit(ctx.state, ctx.now, { actor: ctx.session().username, action, ip: clientIp(ctx.req), ...(target ? { target } : {}), ...(detail ? { detail } : {}) });
 
   // ---------------------------------------------------------------- audit trail
   if (path === "/api/access/audit" && read) {

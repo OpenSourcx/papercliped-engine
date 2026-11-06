@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ConnectLink } from "../src/connectLink.ts";
 import { StateStore } from "../src/state.ts";
-import { fakeConnect } from "./fakes-papercliped.ts";
+import { fakeConnect, fakeTunnelHelper } from "./fakes-papercliped.ts";
 
 const make = () => {
   const fc = fakeConnect();
   const state = new StateStore(null);
-  const link = new ConnectLink(state, fc.fetch, "https://connect.test", () => fc.state.now());
+  const link = new ConnectLink(state, fc.fetch, "https://connect.test", () => fc.state.now(), { helper: fakeTunnelHelper().helper });
   return { fc, state, link };
 };
 
@@ -50,16 +50,16 @@ describe("Papercliped Connect pairing (device side)", () => {
 
   it("modes are exclusive: remote modes switch only via local-only, and Connect needs a pairing", async () => {
     const { fc, link } = make();
-    expect(link.setMode("cloudflare-self").mode).toBe("cloudflare-self");
-    expect(() => link.setMode("connect")).toThrow(/local-only first|Pair/);
-    link.setMode("local");
-    expect(() => link.setMode("connect")).toThrow(/Pair this machine/);
-    expect(() => link.setMode("bogus")).toThrow(/Mode must be/);
+    expect((await link.setMode("cloudflare-self")).mode).toBe("cloudflare-self");
+    await expect(link.setMode("connect")).rejects.toThrow(/local-only first|Pair/);
+    await link.setMode("local");
+    await expect(link.setMode("connect")).rejects.toThrow(/Pair this machine/);
+    await expect(link.setMode("bogus")).rejects.toThrow(/Mode must be/);
     await link.start(); fc.approve("acct_a1"); await link.poll(); await link.confirm("acct_a1", "box");
-    expect(link.setMode("connect").mode).toBe("connect");
+    expect((await link.setMode("connect")).mode).toBe("connect");
     expect(() => link.assertSelfManagedAllowed()).toThrow(/Connect is managing/);
-    expect(() => link.setMode("cloudflare-self")).toThrow(/local-only first/);
-    expect(link.unpair()).toEqual({ mode: "local", paired: false });
+    await expect(link.setMode("cloudflare-self")).rejects.toThrow(/local-only first/);
+    expect(await link.unpair()).toEqual({ mode: "local", paired: false });
     expect(() => link.assertSelfManagedAllowed()).not.toThrow();
   });
 

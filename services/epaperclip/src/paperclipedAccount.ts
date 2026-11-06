@@ -68,6 +68,13 @@ export class PaperclipedDeviceIdentity {
     const msg = Buffer.from("papercliped-connect:completion:v1:" + pairingId + ":" + accountId + ":" + token);
     return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
   }
+
+  /** Proof for one tunnel-credentials request. Same message as Connect's deviceTunnelMessage (device-crypto.mjs). */
+  signTunnelRequest(deviceId: string, tsSec: number): string {
+    if (!UUID.test(deviceId) || !Number.isSafeInteger(tsSec)) throw new Error("Invalid tunnel request");
+    const msg = Buffer.from("papercliped-connect:tunnel:v1:" + deviceId.toLowerCase() + ":" + tsSec);
+    return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
+  }
 }
 
 /** Share only a handle, never a raw pairing challenge in the browser URL. */
