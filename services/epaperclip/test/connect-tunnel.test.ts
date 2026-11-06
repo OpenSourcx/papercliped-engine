@@ -136,7 +136,20 @@ describe("Connect tunnel (device side)", () => {
     expect(th.h).toMatchObject({ owner: null, token: null, active: false });
   });
 
-  it("never touches the other mode's tunnel when leaving", async () => {
+  it("unpairing also asks Connect to remove the device, with a real signature; an outage keeps it pending until it succeeds", async () => {
+    const { fc, link } = await paired();
+    const deviceId = link.status().device!.deviceId;
+    fc.state.revoke = "error";
+    expect((await link.unpair()).paired).toBe(false);                 // local unpair is immediate
+    expect(fc.state.revokedDevices).toEqual([]);
+    fc.state.revoke = "ok";
+    await link.reconcile();                                           // retried later
+    expect(fc.state.revokedDevices).toEqual([deviceId]);
+    await link.reconcile();
+    expect(fc.state.revokedDevices).toEqual([deviceId]);              // not repeated once confirmed
+  });
+
+  it("never touches the other mode\'s tunnel when leaving", async () => {
     const { th, link } = await paired();
     await link.setMode("cloudflare-self");
     await th.helper.install("self", "selfmanaged-token-0123456789");

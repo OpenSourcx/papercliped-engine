@@ -6,7 +6,7 @@ export function fakeConnect() {
   const calls: string[] = [];
   const devices = new Map<string, JsonWebKey>();
   /** `tunnel`: what the credentials endpoint answers once the signature checks out. */
-  const state = { down: false, now: () => Date.now(), tunnel: "ok" as "ok" | "not_ready" | "no_entitlement" | "not_available" | "error" | "garbage", hostname: "lab-1a2b3c.connect.papercliped.co", token: "eyJhIjoiYWNjdCIsInQiOiJ0dW5uZWwiLCJzIjoic2VjcmV0In0=", tunnelCalls: 0 };
+  const state = { down: false, now: () => Date.now(), tunnel: "ok" as "ok" | "not_ready" | "no_entitlement" | "not_available" | "error" | "garbage", hostname: "lab-1a2b3c.connect.papercliped.co", token: "eyJhIjoiYWNjdCIsInQiOiJ0dW5uZWwiLCJzIjoic2VjcmV0In0=", tunnelCalls: 0, revoke: "ok" as "ok" | "error", revokedDevices: [] as string[] };
   const ok = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
   const check = (jwk: JsonWebKey, msg: string, sig: unknown) =>
     typeof sig === "string" && verify("sha256", Buffer.from(msg), { key: createPublicKey({ key: jwk, format: "jwk" }), dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url"));
@@ -16,6 +16,15 @@ export function fakeConnect() {
     const path = new URL(url).pathname;
     calls.push(path);
     const b = JSON.parse(String(init.body ?? "{}"));
+    const rev = /^\/api\/v1\/devices\/([0-9a-f-]{36})\/device-revoke$/.exec(path);
+    if (rev) {
+      const jwk = devices.get(rev[1]!);
+      const fresh = Number.isSafeInteger(b.ts) && Math.abs(Math.floor(state.now() / 1000) - b.ts) <= 60;
+      if (!jwk || !fresh || JSON.stringify(b.publicKeyJwk) !== JSON.stringify(jwk) || !check(jwk, `papercliped-connect:revoke:v1:${rev[1]}:${b.ts}`, b.signature)) return ok({ error: "not_available" }, 403);
+      if (state.revoke === "error") return ok({ error: "boom" }, 500);
+      state.revokedDevices.push(rev[1]!); devices.delete(rev[1]!);
+      return ok({ revoked: true }, 202);
+    }
     const dev = /^\/api\/v1\/devices\/([0-9a-f-]{36})\/tunnel-credentials$/.exec(path);
     if (dev) {
       state.tunnelCalls++;

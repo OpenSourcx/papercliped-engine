@@ -27,7 +27,8 @@ interface DeviceRecord { deviceId: string; accountId: string; name: string; pair
 /** What Connect last said about this device's tunnel. The run token itself is never kept here: the root helper owns it. */
 export type TunnelResult = "ok" | "not_ready" | "no_entitlement" | "not_available" | "unreachable" | "invalid" | "helper_error" | "conflict";
 interface TunnelRecord { hostname?: string; tokenId?: string; lastResult?: TunnelResult; lastAt?: number; lastOkAt?: number; nextAt?: number; attempts: number; denied: number; cleanup?: boolean }
-interface LinkRecord { mode: PublishMode; pairing?: PairingRecord; device?: DeviceRecord; tunnel?: TunnelRecord }
+/** pendingRevoke: this machine was unpaired locally but Connect has not confirmed removing its hosted device/tunnel/seat yet. */
+interface LinkRecord { mode: PublishMode; pairing?: PairingRecord; device?: DeviceRecord; tunnel?: TunnelRecord; pendingRevoke?: { deviceId: string } }
 
 export interface ConnectStatus {
   mode: PublishMode;
@@ -190,12 +191,29 @@ export class ConnectLink {
     return this.status();
   }
 
-  /** Forget the ownership binding locally, stop and delete the tunnel, return to local-only. (Revoking the device on the hosted side needs an owner route Connect doesn't have yet: docs/PAPERCLIPED-ACCOUNT.md.) */
+  /** Forget the ownership binding locally, stop and delete the tunnel, return to local-only, and ask Connect to remove this device (tunnel, DNS, seat). Local always wins: if Connect is unreachable the removal is retried at the next reconcile/start. */
   async unpair(): Promise<ConnectStatus> {
     const r = this.rec();
     this.state.deleteSecret(TOKEN);
-    this.save(this.withoutTunnel({ mode: "local" }, r));
+    const next = this.withoutTunnel({ mode: "local" }, r);
+    if (r.device) next.pendingRevoke = { deviceId: r.device.deviceId };
+    this.save(next);
     return this.serial(() => this.reconcile());
+  }
+
+  /** Tell Connect to remove this machine. Done when Connect confirms or already doesn't know the device; kept pending on any outage. */
+  private async revokeRemote(deviceId: string) {
+    const ts = Math.floor(this.now() / 1000);
+    try {
+      const id = this.identity.publicIdentity();
+      const res = await this.fetch(this.baseUrl + "/api/v1/devices/" + deviceId + "/device-revoke", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKeyJwk: id.publicKeyJwk, ts, signature: this.identity.signRevokeRequest(deviceId, ts) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.status >= 500 || res.status === 429) return;           // outage: keep pending
+      const c = this.rec(); delete c.pendingRevoke; this.save(c);       // 2xx = removed; 403 = Connect no longer knows this device
+    } catch { /* unreachable: keep pending */ }
   }
 
   status(): ConnectStatus {
@@ -263,6 +281,7 @@ export class ConnectLink {
         if (r.tunnel?.cleanup || await this.ownsTunnel()) {
           if (await this.helperRemove()) { const c = this.rec(); delete c.tunnel; this.save(c); }
         }
+        if (r.pendingRevoke) await this.revokeRemote(r.pendingRevoke.deviceId);
         return this.statusLive();
       }
       await this.checkCredentials(r.device);
