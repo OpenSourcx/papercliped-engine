@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Test stand-in for `pkill -KILL -u <engine user>`: ends the stray process a test left in STUB_STATE/stray.pid, unless
+# STUB_STRAY_IMMORTAL=1 (a process that can't be killed).
+S="${STUB_STATE:-$(cd "$(dirname "$0")/.." && pwd)/stub}"
+echo "pkill $*" >>"$S/calls"
+[ "${STUB_STRAY_IMMORTAL:-}" = 1 ] && exit 0
+p="$(cat "$S/stray.pid" 2>/dev/null)"; [ -n "$p" ] && kill -KILL "$p" 2>/dev/null
+exit 0

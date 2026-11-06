@@ -7,6 +7,7 @@ import { createProxmoxSandboxPlugin, buildTags, sanitizeTag } from "../src/plugi
 import { validateSshPrivateKey } from "../src/config.js";
 import { derivePublicKey } from "../src/ssh-keys.js";
 import { buildExecScript } from "../src/ssh.js";
+import { PLUGIN_API_VERSION, pluginManifestV1Schema } from "@paperclipai/shared";
 import manifest from "../src/manifest.js";
 import { FakeProxmox } from "./fake-proxmox.js";
 import { baseConfig, createLocalShell, generateOpenSshKey, generatePemKey, hasBinary, noSleep, type LocalShell } from "./helpers.js";
@@ -57,6 +58,12 @@ async function acquire(overrides: Record<string, unknown> = {}, runId = "run-1")
 }
 
 describe("manifest", () => {
+  it("is accepted by Paperclip's own manifest schema (what the engine runs on install), and says which host it needs", () => {
+    const parsed = pluginManifestV1Schema.safeParse(manifest);
+    expect(parsed.error?.issues ?? []).toEqual([]);
+    expect(manifest.apiVersion).toBe(PLUGIN_API_VERSION);
+  });
+
   it("declares the proxmox sandbox driver", () => {
     expect(manifest.id).toBe("epaperclip.proxmox-sandbox-provider");
     expect(manifest.apiVersion).toBe(1);

@@ -2,7 +2,7 @@
 
 `plugins/proxmox-sandbox` is a Paperclip plugin that runs Paperclip's agents inside Proxmox VE LXC containers instead of on the host. It is a standard sandbox provider (driver key `proxmox`), so the engine stays unmodified: it is installed like any other plugin and selected per environment.
 
-Checked against `paperclipai@2026.1005.0` and `@paperclipai/plugin-sdk@2026.1005.0`, and installed into a running engine of that version (see [Verification](#verification)).
+Checked against `paperclipai@2026.1023.0` and `@paperclipai/plugin-sdk@2026.1023.0` (manifest validated by `pluginManifestV1Schema`, SDK conformance harness, and installed into a running 2026.1023.0 engine where it reached `ready`; the longer probe below was run on 2026.1005.0) (see [Verification](#verification)).
 
 ## Set up from the console
 

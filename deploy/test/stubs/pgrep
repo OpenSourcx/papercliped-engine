@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test stand-in for `pgrep -u <engine user>`: the engine's user has no processes unless a test leaves a pid in
+# STUB_STATE/stray.pid (a process that outlived the unit).
+S="${STUB_STATE:-$(cd "$(dirname "$0")/.." && pwd)/stub}"
+p="$(cat "$S/stray.pid" 2>/dev/null)"; echo "pgrep $*" >>"$S/calls"
+[ -n "$p" ] && kill -0 "$p" 2>/dev/null && { echo "$p"; exit 0; }
+exit 1

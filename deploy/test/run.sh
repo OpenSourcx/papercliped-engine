@@ -239,6 +239,36 @@ s_upgrade() {
   check "--status shows engine and previous engine" has "engine: paperclipai 2026.1100.0 (previous: 2026.1005.0)"
 }
 
+# Paperclip 2026.1006+ locks workspace restores with OS-level file locks that an older engine process does not take: an upgrade or
+# rollback must leave nothing of the old engine running, and must move the older protocol's lock folders aside (never delete them).
+s_drain() {
+  new_host drain; make_release 1.0.0 2026.1005.0; install
+  local locks="$H/engine-home/instances/default/locks/directory-merge"
+  mkdir -p "$locks/aaaa.lock" "$locks/bbbb.lock"; echo '{"pid":1}' >"$locks/aaaa.lock/owner.json"; : >"$locks/cccc.lock.sqlite"
+  sleep 300 & echo $! >"$H/stub/stray.pid"; local stray; stray="$(cat "$H/stub/stray.pid")"   # an engine child that outlived the unit
+  make_release 2.0.0 2026.1023.0; install
+  check "upgrade with a stray engine process (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 2.0.0 ] && engine_health | grep -q 2026.1023.0'
+  check "the stray process was ended before anything was copied or migrated" eval '! kill -0 "$stray" 2>/dev/null && has "was still running after it was stopped"'
+  check "older lock folders moved aside (kept), the SQLite lock file left alone" eval '[ ! -d "$locks/aaaa.lock" ] && [ ! -d "$locks/bbbb.lock" ] && [ -f "$locks/cccc.lock.sqlite" ] && [ -f "$H"/engine-home/legacy-locks-*/aaaa.lock/owner.json ]'
+  check "database copied before the upgrade" [ "$(cat "$H/engine-home/pre-upgrade/ENGINE_VERSION")" = 2026.1005.0 ]
+
+  # A process that can't be ended: the upgrade is refused and the old version keeps running, untouched.
+  sleep 300 & echo $! >"$H/stub/stray.pid"; stray="$(cat "$H/stub/stray.pid")"; export STUB_STRAY_IMMORTAL=1
+  make_release 3.0.0 2026.1100.0; install
+  check "an engine process that survives refuses the upgrade" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 2.0.0 ] && has "nothing was upgraded" && engine_health | grep -q 2026.1023.0 && host_health'
+  check "nothing swapped: no previous-version folder from the refused upgrade, no staging left" eval '[ "$(cat "$H/prefix.prev/VERSION")" = 1.0.0 ] && ! leftovers'
+
+  # Rollback drains too, and puts the database from before the upgrade back.
+  install --rollback
+  check "rollback refuses while the engine has a process left" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 2.0.0 ] && has "was not rolled back"'
+  unset STUB_STRAY_IMMORTAL
+  install --rollback
+  check "rollback after the stray is gone (exit 0), old engine and its database back" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ] && engine_health | grep -q 2026.1005.0 && [ "$(schema)" = 2026.1005.0 ]'
+  check "the 2026.1023 database is kept aside, not deleted" compgen -G "$H/engine-home/instances/default/db.from-2026.1023.0-*"
+  kill "$stray" 2>/dev/null
+  install --uninstall >/dev/null 2>&1
+}
+
 s_rollback() {
   new_host rollback; make_release 1.0.0 2026.1005.0; install; make_release 2.0.0 2026.1100.0; install
   local env_sum; env_sum="$(sum_of "$H/etc/engine.env")"
@@ -599,7 +629,7 @@ s_get() {
   install --uninstall >/dev/null 2>&1
 }
 
-ALL=(update_helper signing get fresh upgrade rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+ALL=(update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"

@@ -9,6 +9,8 @@ Run it: `node --experimental-strip-types services/epaperclip/scripts/e2e-real-en
 Files: `services/epaperclip/scripts/e2e-real-engine.mts` (harness), `e2e-stages.mts` (stages),
 `services/epaperclip/test/fakes-e2e.ts` (one router over the area fakes, plus a scripted model provider).
 
+> The harness was last run in full against `2026.1005.0`. It has not been re-run against `2026.1023.0`; the 1023 checks that were run are in [UPGRADING.md](UPGRADING.md#what-was-verified-for-2026-1023-0).
+
 ## What it proves (last full run on the merged completion push: 40 passed, 0 failed)
 
 Sign-in for an admin and a non-admin; organization creation (engine UUID, `epc-<name>` pool, creator is pool admin,
