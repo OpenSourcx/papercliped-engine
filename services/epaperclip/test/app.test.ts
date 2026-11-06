@@ -9,6 +9,9 @@ import type { Transport } from "@papercliped-engine/proxmox-client";
 import { backupOf, checksum, createApp, parseBackupJob, fileName, parseMachineSpec, parseVmSpec, templateName, vmParams, volumeId } from "../src/app.ts";
 import { generateSigningKey, signIndex, trustedKey } from "@papercliped-engine/marketplace";
 import { SessionStore } from "../src/sessions.ts";
+import { fakeConnect } from "./fakes-papercliped.ts";
+
+let connect: ReturnType<typeof fakeConnect>;
 
 /** A fake Proxmox: users, optional TFA, tickets, and permissions per ticket. */
 function fakePve() {
@@ -59,6 +62,7 @@ function fakePve() {
     if (req.method === "POST" && !req.headers.CSRFPreventionToken) return { status: 401, body: "" };
     const admin = users[user].admin;
     if (path === "/version") return ok({ version: "9.0.3" });
+    if (path === "/access/permissions") return ok({ "/": { "Sys.Modify": admin ? 1 : 0 } });
     if (path === "/cluster/resources" && u.searchParams.get("type") === "storage") return ok([{ id: "storage/pve/local", type: "storage", node: "pve", storage: "local", plugintype: "dir", content: "iso,vztmpl,backup", status: "available", disk: 40, maxdisk: 100 }, { id: "storage/pve/drive2", type: "storage", node: "pve", storage: "drive2", plugintype: "dir", content: "images,rootdir", status: "available", disk: 5, maxdisk: 2000 }, { id: "storage/other/x", type: "storage", node: "other", storage: "x" }]);
     if (path === "/cluster/resources") return ok([...(state.extra ? [{ id: "lxc/103", type: "lxc", vmid: 103, node: "pve", name: "old", status: "stopped" }, { id: "lxc/104", type: "lxc", vmid: 104, node: "pve", name: "keep", status: "stopped" }, { id: "qemu/105", type: "qemu", vmid: 105, node: "pve", name: "base", status: "stopped", template: 1 }] : []), { id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, { id: "qemu/102", type: "qemu", vmid: 102, node: "pve", name: "lab", status: "running" }, { id: "node/pve", type: "node", node: "pve" }]);
     if (path === "/nodes/pve/status") return admin ? ok({ cpu: 0.1, memory: { used: 1, total: 2 } }) : { status: 403, body: "" };
@@ -200,7 +204,9 @@ beforeEach(async () => {
   const now = () => clock;
   vendorHits = [];
   market = null;
+  connect = fakeConnect();
   const handle = createApp({
+    connectUrl: "https://connect.test", fetch: (u, i) => connect.fetch(u, i),
     marketplace: { url: "https://catalog.example/index.json", keys: [trustedKey(signer.publicKeyPem)] },
     fetchText: async (url) => {
       vendorHits.push(url);
@@ -1027,5 +1033,47 @@ describe("serving the console", () => {
 
   it("doesn't accept writes outside the API", async () => {
     expect((await fetch(base + "/", { method: "POST" })).status).toBe(405);
+  });
+});
+
+
+describe("Papercliped Connect routes", () => {
+  const api = (path: string, cookie: string, body?: unknown, method = body === undefined ? "GET" : "POST") =>
+    fetch(base + "/api/papercliped/connect/" + path, { method, headers: { Cookie: cookie, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+  it("is administrators only and needs a session", async () => {
+    expect((await fetch(base + "/api/papercliped/connect/status")).status).toBe(401);
+    const lee = await signIn("lee");
+    expect((await api("status", lee)).status).toBe(403);
+    expect((await api("pairing/start", lee, {})).status).toBe(403);
+    expect(connect.calls).toEqual([]); // a non-admin never reached Connect
+  });
+
+  it("pairs a machine through the console API and then locks Cloudflare self-management while Connect is on", async () => {
+    const sam = await signIn("sam");
+    expect(await (await api("status", sam)).json()).toEqual({ mode: "local", paired: false });
+    const start = await (await api("pairing/start", sam, {})).json() as any;
+    expect(start.pairing.approvalUrl).toContain("console.papercliped.co/devices/pair?pairing_id=");
+    connect.approve("acct_owner");
+    expect((await (await api("pairing/poll", sam, {})).json() as any).pairing.selectedOwner).toBe("acct_owner");
+    expect((await api("pairing/confirm", sam, { accountId: "acct_intruder", deviceName: "rack" })).status).toBe(409);
+    const done = await (await api("pairing/confirm", sam, { accountId: "acct_owner", deviceName: "rack" })).json() as any;
+    expect(done).toMatchObject({ paired: true, mode: "local", device: { accountId: "acct_owner", name: "rack" } });
+    expect((await api("mode", sam, { mode: "connect" })).status).toBe(200);
+    // Cloudflare self-management is refused while Connect owns the tunnel
+    const put = await fetch(base + "/api/connectors/cloudflare/credential", { method: "PUT", headers: { Cookie: sam, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: JSON.stringify({ apiKey: "cf-test-token-0123456789abcdef" }) });
+    expect(put.status).toBe(409);
+    expect((await api("mode", sam, { mode: "cloudflare-self" })).status).toBe(409); // must go via local-only
+    expect((await api("mode", sam, { mode: "local" })).status).toBe(200);
+    expect((await (await api("unpair", sam, {})).json() as any).paired).toBe(false);
+  });
+
+  it("a Connect outage is a clear 502 and leaves local use untouched", async () => {
+    const sam = await signIn("sam");
+    connect.state.down = true;
+    const r = await api("pairing/start", sam, {});
+    expect(r.status).toBe(502);
+    expect(((await r.json()) as any).code).toBe("connect_unreachable");
+    expect((await fetch(base + "/api/me", { headers: { Cookie: sam } })).status).toBe(200);
   });
 });
