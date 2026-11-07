@@ -1,39 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PinApps, type EngineCall } from "../src/pin-apps.ts";
 import { StateStore } from "../src/state.ts";
+import { fakeEngine } from "./fakes-pin-apps.ts";
 import { ACTS } from "../src/features/pin-act.ts";
 
-/** A small stand-in for the engine routes PinApps uses, recording every call. Decisions mirror what the real 2026.1023.0 engine returned in docs/PIN-APP-EXECUTION.md. */
-function fakeEngine() {
-  const calls: { method: string; path: string; body?: any }[] = [];
-  const policies: any[] = [];
-  const agents = new Map<string, any>();
-  const conns = new Map<string, any>([["conn-a", { id: "conn-a", companyId: "co-a" }], ["conn-b", { id: "conn-b", companyId: "co-b" }]]);
-  const catalog = [{ id: "e-read", toolName: "read_note", status: "active" }, { id: "e-write", toolName: "write_note", status: "active" }, { id: "e-del", toolName: "delete_note", status: "active" }, { id: "e-gone", toolName: "gone", status: "disabled" }];
-  let n = 0;
-  const call: EngineCall = async (method, path, body: any) => {
-    calls.push({ method, path, body });
-    let m: RegExpMatchArray | null;
-    if (method === "POST" && (m = path.match(/^\/api\/companies\/([\w-]+)\/agents$/))) { const a = { id: `agent-${++n}`, companyId: m[1], status: "paused", name: body.name }; agents.set(a.id, a); return a; }
-    if (method === "GET" && (m = path.match(/^\/api\/agents\/([\w-]+)$/))) { const a = agents.get(m[1]); if (!a) throw new Error("404"); return a; }
-    if (method === "GET" && path.endsWith("/tools/policies")) return { policies: [...policies] };
-    if (method === "POST" && path.endsWith("/tools/policies")) { const p = { id: `p-${++n}`, ...body }; policies.push(p); return p; }
-    if (method === "DELETE" && (m = path.match(/\/tools\/policies\/([\w-]+)$/))) { policies.splice(policies.findIndex((p) => p.id === m![1]), 1); return {}; }
-    if (method === "GET" && (m = path.match(/^\/api\/tool-connections\/([\w-]+)$/))) return conns.get(m[1]);
-    if (method === "GET" && path.endsWith("/catalog")) return { catalog };
-    if (method === "POST" && path.endsWith("/test-calls")) {
-      const entry = catalog.find((c) => c.toolName === body.toolName);
-      const mine = policies.filter((p) => p.selectors.agentId === body.agentId && (p.selectors.catalogEntryId === entry?.id || !p.selectors.catalogEntryId)).sort((x, y) => x.priority - y.priority);
-      const first = mine[0];
-      if (first?.policyType === "allow") return { decision: "allowed", result: { content: `ok ${body.toolName}` } };
-      if (first?.policyType === "require_approval") return { decision: "ask_first", actionRequestId: "ar-1" };
-      return { decision: "off", error: { message: "Tool access is blocked by policy." } };
-    }
-    if (method === "GET" && path.includes("/test-calls/")) return { phase: "waiting" };
-    throw new Error(`unexpected ${method} ${path}`);
-  };
-  return { call, calls, policies, agents };
-}
 const mk = () => { const e = fakeEngine(); return { ...e, pin: new PinApps(new StateStore(null)) }; };
 
 describe("Pin's identity for organization apps", () => {
@@ -51,6 +21,19 @@ describe("Pin's identity for organization apps", () => {
     expect(await pin.callTool(call, "co-a", "conn-a", "read_note", {})).toMatchObject({ outcome: "denied" });
   });
 
+  it("adopts its own identity after state was lost, but never an agent that merely has the same name", async () => {
+    const { pin, call, agents } = mk();
+    const { agentId } = await pin.enable(call, "co-a");
+    const fresh = new PinApps(new StateStore(null)); // state lost
+    expect((await fresh.enable(call, "co-a")).agentId).toBe(agentId);
+    expect([...agents.values()]).toHaveLength(1);
+    // An impostor with the same name but another adapter is not adopted.
+    const e2 = mk();
+    e2.agents.set("imp", { id: "imp", companyId: "co-a", status: "paused", name: "Pin (host)", adapterType: "claude_local", adapterConfig: {} });
+    const made = await e2.pin.enable(e2.call, "co-a");
+    expect(made.agentId).not.toBe("imp");
+  });
+
   it("allowed, approval-required and denied actions come back as the engine decided, and Pin never approves", async () => {
     const { pin, call, calls } = mk();
     await pin.setAccess(call, "co-a", "conn-a", [{ catalogEntryId: "e-read", mode: "allow" }, { catalogEntryId: "e-write", mode: "ask" }, { catalogEntryId: "e-del", mode: "off" }]);
@@ -60,6 +43,12 @@ describe("Pin's identity for organization apps", () => {
     expect(await pin.callTool(call, "co-a", "conn-a", "never_listed", {})).toMatchObject({ outcome: "denied" });
     expect(calls.some((c) => /approve|decline/.test(c.path))).toBe(false);
     expect(await pin.callStatus(call, "co-a", "conn-a", "ar-1")).toEqual({ phase: "waiting" });
+  });
+
+  it("reports a provider error under an allowed policy as failed, not done", async () => {
+    const { pin, call } = mk();
+    await pin.setAccess(call, "co-a", "conn-a", [{ catalogEntryId: "e-broken", mode: "allow" }]);
+    expect(await pin.callTool(call, "co-a", "conn-a", "broken_tool", {})).toEqual({ outcome: "failed", message: "boom" });
   });
 
   it("revoking an action or everything takes effect on the next call", async () => {

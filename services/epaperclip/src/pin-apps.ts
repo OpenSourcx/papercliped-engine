@@ -30,6 +30,7 @@ export type PinAppMode = "off" | "ask" | "allow";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const IDENTITY_NAME = "Pin (host)";
 const POLICY_PREFIX = "Pin (host): ";
+const SENTINEL_URL = "http://127.0.0.1:9/pin-host-identity-never-runs";
 const DEFAULT_DENY = `${POLICY_PREFIX}default deny`;
 const SETTING = "pin.appIdentities";
 const MAX_RESULT = 4000;
@@ -45,7 +46,8 @@ const idOf = (v: unknown, what: string): string => {
 export type CallOutcome =
   | { outcome: "done"; result: string }
   | { outcome: "approval_required"; actionRequestId: string; message: string }
-  | { outcome: "denied"; message: string };
+  | { outcome: "denied"; message: string }
+  | { outcome: "failed"; message: string };
 
 export class PinApps {
   private readonly state: StateStore;
@@ -71,12 +73,24 @@ export class PinApps {
     idOf(companyId, "companyId");
     let agentId = await this.verified(call, companyId);
     if (!agentId) {
+      // After a reinstall or lost state the identity may already exist in the engine (agent names are unique). Adopt it only if
+      // it is exactly what this host creates: a paused agent on the sentinel http adapter. Anything else is left alone.
+      const existing = (await call("GET", `/api/companies/${enc(companyId)}/agents`).catch(() => [])) as { id?: string; name?: string; status?: string; adapterType?: string; adapterConfig?: { url?: string } | null }[];
+      const mine = Array.isArray(existing) ? existing.find((a) => a.name === IDENTITY_NAME && a.status === "paused" && a.adapterType === "http" && a.adapterConfig?.url === SENTINEL_URL) : undefined;
+      if (mine?.id) {
+        agentId = mine.id;
+        const me = this.ids();
+        me[companyId] = agentId;
+        this.state.setSetting(SETTING, me);
+      }
+    }
+    if (!agentId) {
       const made = (await call("POST", `/api/companies/${enc(companyId)}/agents`, {
         name: IDENTITY_NAME,
         role: "general",
         adapterType: "http",
         // Never called: the agent stays paused, so nothing runs. A closed loopback port keeps it harmless if someone resumes it.
-        adapterConfig: { url: "http://127.0.0.1:9/pin-host-identity-never-runs" },
+        adapterConfig: { url: SENTINEL_URL },
         runtimeConfig: { heartbeat: { enabled: false } },
       })) as { id?: string; status?: string };
       if (!made?.id) throw new HttpError(502, "engine_error", "The engine did not create Pin's identity.");
@@ -173,9 +187,11 @@ export class PinApps {
     if (!agentId) throw new HttpError(403, "pin_not_enabled", "Pin has no access to apps in this organization. An organization administrator enables it in Organization apps.");
     const conn = (await call("GET", `/api/tool-connections/${enc(connectionId)}`)) as { companyId?: string };
     if (conn?.companyId !== companyId) throw new HttpError(404, "not_found", "That connection isn't in this organization.");
-    const r = (await call("POST", `/api/tool-connections/${enc(connectionId)}/test-calls`, { agentId, toolName, parameters })) as { decision?: string; actionRequestId?: string; result?: { content?: unknown }; error?: { message?: string } };
+    const r = (await call("POST", `/api/tool-connections/${enc(connectionId)}/test-calls`, { agentId, toolName, parameters })) as { decision?: string; actionRequestId?: string; result?: { content?: unknown; data?: { isError?: boolean } }; error?: { message?: string } };
+    // Allowed by policy but the provider (or the engine's call to it) failed: say so instead of reporting success.
+    if (r.decision === "allowed" && (r.result?.data?.isError === true || r.error)) return { outcome: "failed", message: summarize(r.error?.message ?? r.result?.content ?? "The app reported an error.") };
     if (r.decision === "allowed") return { outcome: "done", result: summarize(r.result?.content) };
-    if (r.decision === "ask_first" && typeof r.actionRequestId === "string") return { outcome: "approval_required", actionRequestId: r.actionRequestId, message: "This action needs approval. A person with access approves or declines it in the organization's approvals; Pin cannot." };
+    if (r.decision === "ask_first" && typeof r.actionRequestId === "string") return { outcome: "approval_required", actionRequestId: r.actionRequestId, message: "This action needs approval. A person with access approves or declines it in the console: open the organization, then Connectors, Organization apps, Held app actions. Pin cannot." };
     return { outcome: "denied", message: r.error?.message ?? "The organization's policy does not allow Pin to do this." };
   }
 

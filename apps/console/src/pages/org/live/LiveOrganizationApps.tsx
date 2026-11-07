@@ -10,6 +10,7 @@ import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { AppSetup, ChannelSetup, ToolReview } from "./OrganizationAppSetup.tsx";
 import { ConnectionRow } from "./ConnectionRow.tsx";
 import { PinAppAccess } from "./PinAppAccess.tsx";
+import { HeldAppActions } from "./HeldAppActions.tsx";
 
 const CORE = new Set(["github", "discord", "slack", "notion", "vercel"]);
 export const appKey = (companyId: string) => ["engine", "co", companyId, "apps"];
@@ -40,6 +41,7 @@ export function LiveOrganizationApps() {
     <div className="mt-6 space-y-3">{connections.data?.connections.filter((connection) => connection.transport !== "chat_sdk" && connection.transport !== "runtime_auth").map((connection) => <ConnectionRow key={connection.id} apps={gallery.data?.apps ?? []} connection={connection} canManage={canManage} onReview={() => setReview(connection.id)} refresh={refresh} />)}
       {channels.data?.map((endpoint) => <Card key={endpoint.id} className="flex items-center gap-3 p-4"><ProviderMark id={endpoint.provider} name={endpoint.provider} /><div className="flex-1"><div className="font-medium capitalize">{endpoint.provider}</div><div className="text-xs text-ink-3">{endpoint.assignedAgentName ?? "Assigned agent"} · {endpoint.healthMessage ?? endpoint.status}</div></div><Button size="sm" disabled={!canManage} onClick={() => setChannel(endpoint)}>Manage</Button></Card>)}
     </div>
+    <HeldAppActions companyId={companyId} canDecide={canManage} />
     <PinAppAccess companyId={companyId} canManage={canManage} connections={(connections.data?.connections ?? []).filter((connection) => connection.transport !== "chat_sdk" && connection.transport !== "runtime_auth")} />
     {picked && (picked.method.purpose === "channel" || picked.method.transport === "chat_sdk" ? <ChannelSetup companyId={companyId} picked={picked} onClose={() => { setPicked(null); refresh(); }} /> : <AppSetup companyId={companyId} picked={picked} onClose={() => { setPicked(null); refresh(); }} onReview={(id) => { setPicked(null); setReview(id); refresh(); }} />)}
     {review && <ToolReview companyId={companyId} connectionId={review} onClose={() => { setReview(null); refresh(); }} />}

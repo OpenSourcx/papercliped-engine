@@ -139,6 +139,9 @@ export const ENGINE_PATHS = {
   toolConnections: "/api/companies/{companyId}/tools/connections",
   toolConnect: "/api/companies/{companyId}/tools/apps/connect",
   toolFinish: "/api/companies/{companyId}/tools/apps/{connectionId}/finish",
+  toolActionRequests: "/api/companies/{companyId}/tools/action-requests",
+  toolActionApprove: "/api/tool-gateway/action-requests/{id}/approve",
+  toolActionDecline: "/api/tool-gateway/action-requests/{id}/decline",
   toolProfiles: "/api/companies/{companyId}/tools/profiles",
   toolPolicies: "/api/companies/{companyId}/tools/policies",
   toolConnection: "/api/tool-connections/{connectionId}",
@@ -274,6 +277,17 @@ export const ENGINE_PATHS_UNDOCUMENTED = {
   chatWith: "/api/companies/{companyId}/chats/{agentRef}",
 } as const;
 
+/** What the console reads of a held app action (engine 2026.1023.0). */
+export interface HeldActionRequest {
+  request: { id: string; status: string; previewMarkdown?: string | null; canonicalArgumentsSummary?: { summary?: string } | null; createdAt?: string; expiresAt?: string | null; requestedByUserId?: string | null; requestedByAgentId?: string | null };
+  toolName: string;
+  toolTitle?: string | null;
+  connectionId: string;
+  connectionName?: string | null;
+  applicationName?: string | null;
+  riskLevel?: string | null;
+}
+
 export interface OnboardingSeed {
   revision: string;
   mission?: string;
@@ -365,6 +379,10 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       connect: (companyId: string, body: ConnectToolApp) => call<ConnectToolAppResult>("POST", P.toolConnect, { companyId }, body),
       finish: (companyId: string, connectionId: string, body: FinishToolApp) => call<FinishToolAppResult>("POST", P.toolFinish, { companyId, connectionId }, body),
       /** Read-only: the console reads the current grants so reopening Agent access starts from them. */
+      /** Held (ask-first) actions. The listing carries a signed-arguments blob the console never uses or shows. */
+      actionRequests: (companyId: string) => call<{ actionRequests: HeldActionRequest[] }>("GET", P.toolActionRequests, { companyId }, undefined, { status: "pending" }),
+      approveAction: (id: string, companyId: string) => call<unknown>("POST", P.toolActionApprove, { id }, { companyId }),
+      declineAction: (id: string, companyId: string, reason?: string) => call<unknown>("POST", P.toolActionDecline, { id }, { companyId, ...(reason ? { reason } : {}) }),
       profiles: (companyId: string) => call<{ profiles: ToolProfileWithDetails[] }>("GET", P.toolProfiles, { companyId }),
       policies: (companyId: string) => call<{ policies: ToolPolicy[] }>("GET", P.toolPolicies, { companyId }),
       get: (connectionId: string) => call<ToolConnection>("GET", P.toolConnection, { connectionId }),

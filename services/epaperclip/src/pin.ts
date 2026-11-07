@@ -121,6 +121,8 @@ const MODELS_TTL_MS = 5 * 60_000;
 export const CHATS_PER_MINUTE = 20;
 export const CHATS_AT_ONCE = 3;
 const ORG_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** Where a person approves a held app action in the console (Pin's replies point here). */
+export const APPROVALS_WHERE = "Open the organization, then Connectors, Organization apps, Held app actions.";
 const MODEL_ID = /^[\w.:/@+-]{1,200}$/;
 
 const noArgs = { type: "object", properties: {}, additionalProperties: false };
@@ -487,11 +489,13 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
     case "list_app_action_requests": {
       const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
       if (!id) throw new PinError("bad_args", "companyId must be an organization id from list_organizations");
-      const raw = await host.engine<unknown>(`/api/companies/${encodeURIComponent(id)}/tools/action-requests`);
-      const list = (Array.isArray(raw) ? raw : (raw as { actionRequests?: unknown[]; requests?: unknown[] } | null)?.actionRequests ?? (raw as { requests?: unknown[] } | null)?.requests ?? []) as Record<string, unknown>[];
+      const raw = await host.engine<unknown>(`/api/companies/${encodeURIComponent(id)}/tools/action-requests?status=pending`);
+      const list = (Array.isArray(raw) ? raw : (raw as { actionRequests?: unknown[] } | null)?.actionRequests ?? []) as Record<string, any>[];
       const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : null);
       return {
-        requests: list.slice(0, 50).map((r) => ({ id: str(r.id), tool: str(r.toolName) ?? str(r.tool), status: str(r.status), agentId: str(r.agentId), connectionId: str(r.connectionId), createdAt: str(r.createdAt) })),
+        // Shape verified against engine 2026.1023.0: { request: {...}, toolName, connectionName, riskLevel, ... }. The signed arguments blob and the full arguments are never returned.
+        requests: list.slice(0, 50).map((r) => ({ id: str(r.request?.id ?? r.id), tool: str(r.toolTitle) ?? str(r.toolName) ?? str(r.tool), connection: str(r.connectionName), risk: str(r.riskLevel), status: str(r.request?.status ?? r.status), createdAt: str(r.request?.createdAt ?? r.createdAt), expiresAt: str(r.request?.expiresAt) })),
+        approveIn: APPROVALS_WHERE,
         note: "Pin can't approve or decline these. A person decides in the organization's approvals.",
       };
     }

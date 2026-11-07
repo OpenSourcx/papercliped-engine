@@ -266,6 +266,7 @@ export const ACTS: Record<string, ActDef> = {
       const out = await h.apps.pin.callTool(h.apps.call, a.companyId as string, a.connectionId as string, a.tool as string, a.parameters as Record<string, unknown>);
       if (out.outcome === "done") return { result: `Done: ${out.result}` };
       if (out.outcome === "approval_required") return { result: `Waiting for approval (request ${out.actionRequestId}). ${out.message} Nothing has been done yet.` };
+      if (out.outcome === "failed") throw bad(`The app reported an error: ${out.message}`);
       throw bad(`Refused: ${out.message}`);
     },
   },

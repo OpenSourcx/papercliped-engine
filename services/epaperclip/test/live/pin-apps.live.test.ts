@@ -8,6 +8,7 @@ import http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PinApps, type EngineCall } from "../../src/pin-apps.ts";
 import { StateStore } from "../../src/state.ts";
+import { MCP_TOOLS, type ToolEnv } from "../../src/features/connect-tools.ts";
 
 const BASE = process.env.EPC_LIVE_ENGINE ?? "";
 const suite = BASE ? describe : describe.skip;
@@ -39,7 +40,8 @@ const stamp = Date.now().toString(36);
 const admin = new Person("admin@test.invalid");
 const outsider = new Person(`outsider-${stamp}@test.invalid`);
 let alpha = "", bravo = "", conn = "", bravoConn = "", cat: { id: string; toolName: string }[] = [];
-const pin = new PinApps(new StateStore(null));
+const pinState = new StateStore(null);
+const pin = new PinApps(pinState);
 
 async function mcpConnection(companyId: string, port: number, name: string) {
   const r = await admin.raw("POST", `/api/companies/${companyId}/tools/apps/connect`, { link: `http://127.0.0.1:${port}/mcp`, name, authMode: "none", grantKind: "organization" });
@@ -77,7 +79,6 @@ suite("Pin's identity against the real engine", () => {
     bravoConn = await mcpConnection(bravo, 3187, `Notes B ${stamp}`);
     cat = (await admin.raw("GET", `/api/tool-connections/${conn}/catalog`)).data.catalog;
   }, 60_000);
-  afterAll(async () => { await new Promise((r) => provider.server?.close(r)); });
   const id = (n: string) => cat.find((c) => c.toolName === n)!.id;
 
   it("nothing is possible before an administrator enables Pin; enabling alone still refuses every action", async () => {
@@ -145,3 +146,54 @@ suite("Pin's identity against the real engine", () => {
     expect((await admin.raw("GET", `/api/agents/${agentId}`)).data.status).toBe("paused");
   }, 60_000);
 });
+
+// The same backend through the remote MCP tools (src/features/connect-tools.ts). Runs after the suite above, which creates the organizations and the connection.
+suite("call_app_tool through the MCP path, against the real engine", () => {
+  const mcp = (name: string) => MCP_TOOLS.find((t) => t.name === name)!;
+  const envFor = (o: { direct?: boolean; orgs?: string[] | null } = {}) => ({
+    grant: { direct: o.direct ?? true, orgs: o.orgs === undefined ? [alpha] : o.orgs, clientName: "Claude" }, username: "sam@pve", node: "pve", pve: {}, session: {}, state: mcpState, now: () => Date.now(), allowFetch: false,
+    gateway: { userJson: (_s: unknown, m: string, p: string, b?: unknown) => admin.call(m as never, p, b) },
+  }) as unknown as ToolEnv;
+  const mcpState = pinState; // one host, one state: the console path and the MCP path share Pin's identity
+  const id = (n: string) => cat.find((c) => c.toolName === n)!.id;
+  const callTool = (t: string, env = envFor(), conn_ = conn, company = alpha) => mcp("call_app_tool").run({ companyId: company, connectionId: conn_, tool: t, parameters: { id: "7", text: "via mcp" } }, env);
+
+  it("allowed, approval-required (then approved by a person), denied and revoked", async () => {
+    const mcpPin = pin;
+    await mcpPin.setAccess(admin.call, alpha, conn, [{ catalogEntryId: id("read_note"), mode: "allow" }, { catalogEntryId: id("write_note"), mode: "ask" }, { catalogEntryId: id("delete_note"), mode: "off" }]);
+    const before = provider.calls.length;
+    expect(await callTool("read_note")).toMatchObject({ status: "done" });
+    expect(provider.calls.length).toBe(before + 1);
+    const held = (await callTool("write_note")) as { status: string; actionRequestId: string; approveIn: string };
+    expect(held).toMatchObject({ status: "approval_required", approveIn: expect.stringContaining("Held app actions") });
+    expect(provider.calls.length).toBe(before + 1); // not run yet
+    const listed = (await mcp("list_app_action_requests").run({ companyId: alpha }, envFor())) as { requests: { id: string }[] };
+    expect(listed.requests.map((r) => r.id)).toContain(held.actionRequestId);
+    expect(JSON.stringify(listed)).not.toMatch(/signedArguments|eyJ/);
+    expect((await admin.raw("POST", `/api/tool-gateway/action-requests/${held.actionRequestId}/approve`, { companyId: alpha })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(await mcp("app_tool_status").run({ companyId: alpha, connectionId: conn, actionRequestId: held.actionRequestId }, envFor())).toMatchObject({ phase: "done" });
+    expect(provider.calls.at(-1)).toBe("write_note");
+    expect(await callTool("delete_note")).toMatchObject({ status: "denied" });
+    await mcpPin.revokeAll(admin.call, alpha);
+    expect(await callTool("read_note")).toMatchObject({ status: "denied" });
+  }, 90_000);
+
+  it("a host that lost its state adopts the existing identity instead of failing on the duplicate name", async () => {
+    const lost = new PinApps(new StateStore(null));
+    const before = (await pin.access(admin.call, alpha)).agentId;
+    expect((await lost.enable(admin.call, alpha)).agentId).toBe(before);
+  }, 60_000);
+
+  it("cross-organization and scope: another organization's connection, an app limited to other organizations, and no 'act without asking'", async () => {
+    const before = provider.calls.length;
+    await expect(callTool("read_note", envFor(), bravoConn)).rejects.toMatchObject({ status: 404 });
+    await expect(callTool("read_note", envFor({ orgs: [bravo] }))).rejects.toMatchObject({ code: "not_allowed" });
+    const proposed = (await callTool("read_note", envFor({ direct: false }))) as { status: string };
+    expect(proposed.status).toBe("proposed");
+    expect(provider.calls.length).toBe(before);
+  }, 60_000);
+});
+
+// The fake provider and the suites above share one process; close it once, after all of them.
+afterAll(async () => { await new Promise((r) => provider.server?.close(r)); });

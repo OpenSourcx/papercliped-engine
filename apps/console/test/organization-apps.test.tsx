@@ -205,3 +205,23 @@ describe("Pin's access to organization apps", () => {
     expect(get).toHaveBeenCalled();
   });
 });
+
+import { HeldAppActions } from "../src/pages/org/live/HeldAppActions.tsx";
+describe("Held app actions", () => {
+  it("shows what is waiting, never the signed blob, and runs only after a confirmed approval", async () => {
+    vi.spyOn(engine.apps, "actionRequests").mockResolvedValue({ actionRequests: [{ request: { id: "r1", status: "pending", canonicalArgumentsSummary: { summary: "{\"id\":\"5\"}" }, signedArguments: "SECRET-BLOB" }, toolName: "mcp.app:write-note", toolTitle: "Write note", connectionId: "x1", connectionName: "Notes", riskLevel: "write" }] } as never);
+    const approve = vi.spyOn(engine.apps, "approveAction").mockResolvedValue({});
+    const decline = vi.spyOn(engine.apps, "declineAction").mockResolvedValue({});
+    wrap(<HeldAppActions companyId="c1" canDecide />);
+    expect(await screen.findByText("Write note")).toBeTruthy();
+    expect(screen.getByText(/"id":"5"/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/SECRET-BLOB/);
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(approve).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Approve and run" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith("r1", "c1"));
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Decline" }).at(-1)!);
+    await waitFor(() => expect(decline).toHaveBeenCalledWith("r1", "c1"));
+  });
+});
