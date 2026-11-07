@@ -40,3 +40,20 @@ Read-only SSH inspection found the test Proxmox device on **v1.0.0-rc30**, with 
 ## Stable release gate
 
 Do not tag stable from local tests alone. Record a candidate revision and package, verify installation and rollback, complete the fresh-device path, perform real provider authorization and permitted/denied agent calls, verify chat identity and replies, exercise resource isolation and quota contention, and review the console at desktop/mobile sizes. Keep failures and missing external-account prerequisites visible here until resolved.
+
+## Reconciliation with the ecosystem acceptance gates (2026-11-07)
+
+This gradebook (local ePaperclip behaviour) and the ecosystem gates stay separate; neither replaces the other. No document literally titled "ecosystem acceptance matrix" exists under `/project/papercliped*`, `/project/.agents` or `docs`; the ecosystem gates were taken from `papercliped-connect/docs/ROADMAP.md` (phases and "Production release"), `papercliped-connect/docs/v1/LEDGER.md` (findings, blockers) and `papercliped-engine/docs/PAPERCLIPED-ACCOUNT.md`. If the owner has a separate matrix, give its path and the rows below should be re-mapped.
+
+| Ecosystem gate (source) | Local gradebook area | Combined status |
+|---|---|---|
+| Pairing with local administrator approval and owner approval (ROADMAP phase 1, PAPERCLIPED-ACCOUNT) | Access (new in this pass) | Device client implemented and tested against fakes; Access UI added. Live Connect pairing not run. |
+| Identity linking to a local Proxmox principal (ADR-001, proposed contract) | Access, permissions | Contract written (`docs/ACCESS-IDENTITY-LINK-CONTRACT.md`); not implemented; Connect side not agreed. |
+| Real `<device>.connect.papercliped.co` TLS and dedicated tunnel on a real host (ROADMAP phase 2) | Installation and updates | Not run. Blocked on broker approval / Cloudflare access (Connect LEDGER B2). |
+| Provision, reconnect, revoke, outage recovery (ROADMAP phase 2) | Access | Tunnel client and unpair/revoke tested with fakes only. |
+| ePaperclip managed Connect UI separate from bring-your-own-Cloudflare (ROADMAP phase 3) | Access | Implemented in the console (Remote access: three modes); component tests only; no browser pass. |
+| Cross-tenant E2E, real-device smoke tests, staging rollback, signed-off security review (Production release) | Stable release gate; resource isolation; installation | Not started. |
+| Stripe test-mode billing and entitlements (ROADMAP phase 3, LEDGER B1) | none locally | Out of scope for the device; the device only reacts to `no_entitlement`. |
+| Engine pin 2026.1005.0 -> 2026.1023.0 (LEDGER U1) | Reference and acceptance rule | Pin is 1023 on main. This gradebook's contracts were audited against 1005; agent-access reads were re-verified against 1023 types in this pass. Other rows still cite 1005 and need re-audit. |
+
+Gradebook rows changed by this pass: "Organization tool apps" now also covers retained grants (existing grants are read back and saved unchanged; unrepresentable grants block saving; unit-tested with fakes). "Installation and updates": the simulated deploy suite now passes as a non-root user as well, and CI runs it.

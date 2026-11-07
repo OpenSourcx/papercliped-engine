@@ -80,39 +80,50 @@ The snapshot has two models: an early host-side "app record" API (`/api/organiza
 | `services/epaperclip/test/pin-apps.test.ts` | new-untracked | INTEGRATED (applied/copied; typecheck + tests pass at this commit) |
 | `services/host-broker/src/registry.ts` | new-untracked | INTEGRATED (applied/copied; typecheck + tests pass at this commit) |
 
-## Validation evidence (at the PR head commit, this worktree)
-- `pnpm install --frozen-lockfile`: OK.
-- `pnpm -r typecheck`: 8 projects OK.
-- `pnpm -r --workspace-concurrency=1 test`: all green. console 501, host service 987, host-broker 20, engine-client 14, proxmox-client 84, automations 16, marketplace 6, os-library 9. (Snapshot's 2 machine.test.tsx failures did not reproduce serially; cause of the earlier parallel flake still unproven.)
-- `bash deploy/test/run.sh` (simulated lifecycle): 162 passed, 2 failed (`update_helper` root-helper/path-unit check; `fresh` container-provider readable-by-engine-user). Identical 162/2 on unmodified main a708864 run as user miah, so not introduced by this branch; cause not investigated (likely needs root/real file ownership). `node --test scripts/*.test.mjs`: 21 pass, 0 fail. Console production build output not captured; rerun pending.
-- Limits: all of the above are unit/fake-backed tests. Nothing here was run against real providers, a real device or real model execution. Nothing is deployed.
-- CI: not yet inspected for this branch (see Next action).
+## Completed since the checkpoint (commits on PR #15)
+- **Agent access editing (outstanding item 1).** `engine.apps.profiles/policies` (read-only client methods, types exported, host allowlist entries) and `appAccess.ts` read the gallery-managed profile `app:<connectionId>` and its `app_gallery_finish` ask-first policies against engine 2026.1023.0 types. Reopening starts from existing grants; a company binding is kept as `all_agents`; any other selector, exclusion, condition, non-default profile action or non-agent/company binding disables Save with an explanation; a failed read disables Save (never looks like "no access"). Tests: reopen+save preserves grants, all-agents preserved, unsafe/unreadable blocks saving (`apps/console/test/organization-apps.test.tsx`, 7 tests). Note: the host allowlist is path-only (existing design), so POST to these two paths is also reachable; the engine authorizes it.
+- **Console production build:** `pnpm --filter ./apps/console build` exit 0 (only the usual >500 kB chunk warning); log `/project/.work/stable-v1-logs/build.log`.
+- **Deploy test failures, root cause:** `update_helper` and `fresh` asserted `stat -c %u == 0` on installed files. The suite's stand-ins cannot chown, so these fail for any non-root runner and pass only as root (CI uses `sudo`). Fix: `root_owned` helper in `deploy/test/run.sh`: real uid check as root, otherwise require the installer's recorded `chown -R root:root` call. The root-mode assertion is unchanged. Non-root: 64/64 for `fresh update_helper`. Not yet run as real root here.
+- **PR CI:** new `.github/workflows/ci.yml` on every pull request and push to main: frozen install, typecheck, tests, console build, PVE API conformance, script tests, provider typecheck/test/build, and the deploy simulation as root (`sudo`). No existing workflow or test was changed or weakened.
+- **Gradebook reconciled** with ecosystem gates (section appended to `docs/STABILITY-GRADEBOOK.md`; no file named "ecosystem acceptance matrix" exists, see there).
+- **Access (merged destination).** Settings section "Access" (`pages/access/AccessHub.tsx`) has People and permissions (existing Access control) and Remote access (`RemoteAccess.tsx`): Local only, Self-managed Cloudflare (existing publishing flow in `CloudflareAccess.tsx`, copy says tunnel not Worker), Papercliped Connect (pairing UI over the existing `/api/papercliped/connect/*` API: link, approval page, confirm the shown account, tunnel state, unlink). Switching between remote modes goes through Local only. `?settings=advertising` redirects to `?settings=access&access=remote`; Connectors link updated. Tests: `apps/console/test/remote-access.test.tsx` (4). Console suite 508 passing, `check:design` 0 violations.
+- **Identity linking contract** written: `docs/ACCESS-IDENTITY-LINK-CONTRACT.md` (proposal only; not implemented).
+- **Brand kit index:** `brand/BRAND-KIT.md`.
 
-## Outstanding (from HANDOFF-2026-11-05, unchanged unless noted)
-1. Existing agent-access editing: reopening starts empty and Save replaces grants; needs typed read of tool profiles/policies, all_agents semantics, block advanced selectors. Re-verify against pinned engine 2026.1023.0 (snapshot was written against 1005).
-2. Device public-address setup for OAuth callbacks; real provider round trip.
-3. Native agent create/configure/run-test; real model execution.
-4. Broker setup and aggregate org quota enforcement in the real sandbox allocation path; Pin not charged to org.
+## Validation evidence (latest head)
+- Frozen install OK; `pnpm -r typecheck` OK; console 508/508, engine-client 14, host service 987+ (allowlist sync test passes), host-broker 20, others unchanged; scripts tests 21/0; `check:design` clean; console build OK.
+- Everything is unit/fake-backed. Not verified with real services, real devices, real providers, a browser, or deployed.
+- GitHub Actions: see PR #15 checks after the new `ci.yml` run (recorded below when read).
+
+## shadcn MCP
+Not available in this session: no shadcn tools appear in my tool list and a tool search found none. It is registered in `~/.claude.json` per the owner but was not connected here (possibly needs a session restart). Not used; no `shadcn init` or token change was made.
+
+## Outstanding (current)
+1. Provider form fields (checkbox/textarea/datetime/extension), manual OAuth client UI, provider marks on existing connection rows.
+2. Device public-address setup for provider callbacks; live round trip.
+3. Native agent create/configure/run-test and real model execution.
+4. Broker setup and aggregate org quota in the real sandbox allocation path; Pin not charged to org.
 5. Pin governed external tool execution.
 6. Plugin install/upgrade/revoke qualification.
-7. Provider form fields (checkbox/textarea/etc.), manual OAuth client, marks on existing connection rows.
-8. Browser desktop/mobile review; candidate install/upgrade/rollback on an approved test host.
-9. Advertising -> Access rename and identity linking (below): not started.
+7. Identity linking implementation (device side) after Connect agrees the contract; Connect-side routes.
+8. Self-managed Cloudflare: tunnel/DNS creation by the privileged publisher is still "next installation step" in the UI; real cloudflared attachment unverified.
+9. Align auth-site palette/mark with official assets (Connect repo); brand visual check.
+10. Browser desktop/mobile review; candidate install/upgrade/rollback on an approved test host; real-root run of deploy simulation.
 
-## Access / identity plan (not implemented)
+## Access / identity plan (Access UI done; identity linking not implemented)
 - Rename user-facing Advertising to Access; audit existing Access Control nav first; keep old routes redirecting. Three modes: Local only, self-managed Cloudflare (device plugin; cloudflared Tunnel vs Worker described accurately; creds stay in device vault), Papercliped Connect (reuse `connectLink.ts`, `tunnelHelper.ts`, `paperclipedAccount.ts` from main).
 - Identity linking: single-use, expiring, device/session-bound state; restricted return URLs; shows cloud account + local Proxmox principal/realm before confirm; no auto-admin from login/subscription; local access works with Connect offline; same permission checks for console and /mcp.
 - **Shared contracts to agree with the Connect/identity agent before changing** (nothing changed unilaterally): the device-link request/confirm payloads, account-to-principal mapping record, unlink/revoke events, entitlement states shown in UI.
 
 ## Blockers
-- Needs product/contract confirmation from Connect agent for identity-link API shape.
+- Identity-link contract proposed in `docs/ACCESS-IDENTITY-LINK-CONTRACT.md`. I could not reach the Connect agent: `ListAgents` is not in my toolset and SendMessage to `papercliped-connect` failed ("No agent named ... is reachable"). **Dependency:** Connect must implement/approve the `/api/v1/devices/{id}/identity-links*` routes and answer the 4 open questions in that doc. Coordinator: please relay.
 - Real-service evidence needs approved test host and provider accounts.
 
 ## Running jobs
-None after this commit (deploy lifecycle test was run locally; see PR).
+None.
 
 ## Next action
-Push branch, open PR, inspect GitHub Actions logs, then implement outstanding item 1 and the Access rename.
+Read PR #15 CI logs; then device-side identity link state (after contract agreement), provider form fields, public-address setup, broker enforcement.
 
 ## Brand kit (owner directive 2026-11-07)
 Order of authority followed: `/project/design/CORE.md` (project DESIGN doc > CORE > frontend-design plugin), `apps/console/DESIGN.md`, `brand/README.md`, papercliped `LAUNCH-KIT.md`/`SITEMAP.md`, Connect `docs/AUTH-SITE.md`. Rules adopted for all Access, onboarding and Connect-handoff work: console product register, tokens only (`src/index.css`), no new colors or marks, user-facing names "Access" and "Papercliped Connect", product is "ePaperclip", copilot is "Pin", sentence case, verbs on buttons, no native controls.
