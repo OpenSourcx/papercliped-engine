@@ -20,6 +20,7 @@ import { connectApi } from "./connect.ts";
 import { connectionRoutes } from "./connect-connections.ts";
 import { loginRoutes } from "./connect-login.ts";
 import { adapterRoutes } from "./connect-adapters.ts";
+import { pluginRoutes } from "./connect-plugins.ts";
 import { handleMachineSettings } from "./machineSettings.ts";
 import { handleMachineCloud } from "./machineCloud.ts";
 import { handleMachineRun } from "./machineRun.ts";
@@ -91,6 +92,7 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "connections", handle: connectionRoutes },
   { name: "connect-login", handle: loginRoutes },
   { name: "connect-adapters", handle: adapterRoutes },
+  { name: "connect-plugins", handle: pluginRoutes },
   { name: "machine-settings", handle: handleMachineSettings },
   { name: "machine-cloud", handle: handleMachineCloud },
   { name: "machine-run", handle: handleMachineRun },

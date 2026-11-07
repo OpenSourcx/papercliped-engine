@@ -58,6 +58,6 @@ export const PLUGINS: PluginEntry[] = [
 export const DEFAULT_PLUGINS = ["claude_local", "codex_local"];
 
 /** A marketplace catalog entry as a Store plugin. */
-export const fromMarket = (e: MarketEntry): PluginEntry => ({ id: e.id, name: e.name, vendor: e.vendor, summary: e.summary, kind: e.kind, connectorKind: e.connectorKind, version: e.version, permissions: e.permissions });
+export const fromMarket = (e: MarketEntry): PluginEntry => ({ id: e.id, name: e.name, vendor: e.vendor, summary: e.summary, kind: e.kind as PluginKind, /* "plugin" entries are filtered out before this (useStore): they install through Community plugins */ connectorKind: e.connectorKind, version: e.version, permissions: e.permissions });
 
 export const pluginById = (id: string) => PLUGINS.find((p) => p.id === id);

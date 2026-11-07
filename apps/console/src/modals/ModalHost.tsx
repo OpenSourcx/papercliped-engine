@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bot, Cable, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
+import { CommunityPlugins } from "../pages/access/CommunityPlugins.tsx";
 import { AccessHub } from "../pages/access/AccessHub.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
 import { AgentSignIn } from "../pages/AgentSignIn.tsx";
@@ -32,6 +33,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
   { id: "connectors", group: "Device", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
   { id: "plugins", group: "Connectors", label: "Plugins", icon: <Cable className="h-4 w-4" />, hidden: true, render: () => <LiveConnectors /> },
+  { id: "community-plugins", group: "Connectors", label: "Community plugins", icon: <Cable className="h-4 w-4" />, render: () => <CommunityPlugins /> },
   { id: "agent-models", group: "Connectors", label: "Providers", icon: <Bot className="h-4 w-4" />, hidden: true, render: () => <LiveConnections /> },
   { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },
   { id: "vault", group: "Access", label: "Vault", icon: <KeyRound className="h-4 w-4" />, render: () => <Vault /> },

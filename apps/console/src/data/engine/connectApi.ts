@@ -150,6 +150,15 @@ export interface AdapterList {
   marketProblem: { code: string; message: string } | null;
 }
 
+export interface PluginList {
+  plugins: { id: string; key: string | null; status: string | null; packageName: string | null; version: string | null; verified: boolean; catalogId: string | null; grantedPermissions: string[] | null }[];
+  available: { id: string; name: string; vendor: string; summary: string; version: string; permissions: string[]; packageName: string }[];
+  updates: { id: string; from: string; to: string; permissions: string[]; needsConsent: boolean }[];
+  catalog: { trusted: boolean; problem: { code: string; message: string } | null };
+  engine: { ok: boolean; problem?: string };
+  note: string;
+}
+
 export interface RedirectAllowEntry { uri: string; kind: "exact" | "prefix"; addedBy: string; addedAt: number }
 
 export const connectApi = {
@@ -188,6 +197,11 @@ export const connectApi = {
   sendLoginCode: (company: string, id: string, browserCode: string) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/code`, { browserCode }),
   cancelLogin: (company: string, id: string) => req<{ ok: boolean }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/cancel`, {}),
 
+  plugins: () => req<PluginList>("GET", "/api/connect/plugins"),
+  installPlugin: (id: string, acceptedPermissions: string[]) => req<{ installed: boolean }>("POST", "/api/connect/plugins/install", { id, acceptedPermissions }),
+  upgradePlugin: (id: string, acceptedPermissions: string[]) => req<{ upgraded: boolean }>("POST", `/api/connect/plugins/${enc(id)}/upgrade`, { acceptedPermissions }),
+  setPlugin: (id: string, enabled: boolean) => req<{ ok: boolean }>("POST", `/api/connect/plugins/${enc(id)}/${enabled ? "enable" : "disable"}`, {}),
+  revokePlugin: (id: string) => req<{ ok: boolean }>("DELETE", `/api/connect/plugins/${enc(id)}`),
   adapters: () => req<AdapterList>("GET", "/api/connect/adapters"),
   setAdapter: (type: string, enabled: boolean) => req<{ type: string; enabled: boolean }>("PUT", `/api/connect/adapters/${enc(type)}`, { enabled }),
   installAdapter: (id: string) => req<{ installed: boolean }>("POST", "/api/connect/adapters/install", { id }),
