@@ -926,8 +926,11 @@ export class AgentContainers {
     // The organization's agents default to it, unless someone chose a different non-local environment on purpose.
     const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
     const known = new Map(envs.map((e) => [e.id, e]));
+    // Pin's own identity in this organization is only a subject for tool policy (src/pin-apps.ts). It never runs, so it must
+    // not be given the organization's container environment, which would let a wake-up allocate a container for it.
+    const pinIdentity = (this.d.state.getSetting<Record<string, string>>("pin.appIdentities") ?? {})[companyId];
     for (const a of agents) {
-      if (a.status === "terminated") continue;
+      if (a.status === "terminated" || a.id === pinIdentity) continue;
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.

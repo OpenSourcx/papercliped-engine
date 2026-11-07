@@ -63,6 +63,8 @@ export interface PinToolHost {
   engine: <T>(path: string) => Promise<T>;
   /** Creates something in the engine as the person (Agent mode's create_task). */
   enginePost?: (path: string, body: unknown) => Promise<{ id?: string; identifier?: string }>;
+  /** Pin's identity for organization apps, with the engine as the signed-in person. */
+  apps?: { pin: import("./pin-apps.ts").PinApps; call: import("./pin-apps.ts").EngineCall };
   /** The system vault's variables (no values), or null when the person isn't an administrator. */
   vault?: () => Promise<{ name: string; description: string; share: "pin" | "ceos"; targets: unknown[] }[] | null>;
 }
@@ -134,6 +136,8 @@ export const TOOLS: ToolDef[] = [
   { name: "org_summary", description: "One organization's agents, reporting structure, open issues and pending approvals.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "list_organization_apps", description: "An organization's native app connections and agent conversation channels, including their health. Credentials and access tokens are never returned. A connected app does not imply every agent has permission to use it.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "list_app_action_requests", description: "Actions that organization apps are holding for approval (an agent asked to use a connected app and the policy says ask first). Read only: Pin cannot approve or decline them; a person decides in the organization's approvals. Tool inputs and credentials are never returned.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
+  { name: "list_app_tools", description: "The actions of one connected app and what Pin may do with each in this organization (off, ask or allow). Use it before call_app_tool. Credentials are never returned.", parameters: { type: "object", properties: { companyId: { type: "string" }, connectionId: { type: "string" } }, required: ["companyId", "connectionId"], additionalProperties: false } },
+  { name: "app_tool_status", description: "Where an app action that was waiting for approval now stands (waiting, done, declined). Read only; Pin cannot approve it.", parameters: { type: "object", properties: { companyId: { type: "string" }, connectionId: { type: "string" }, actionRequestId: { type: "string" } }, required: ["companyId", "connectionId", "actionRequestId"], additionalProperties: false } },
   { name: "power_machine", action: true, description: "Propose starting, shutting down, stopping or rebooting a machine. The person must confirm; it is not done until they do.", parameters: { type: "object", properties: { vmid: { type: "integer" }, action: { type: "string", enum: ["start", "shutdown", "stop", "reboot"] } }, required: ["vmid", "action"], additionalProperties: false } },
   { name: "snapshot_machine", action: true, description: "Propose taking a snapshot of a machine. The person must confirm.", parameters: { type: "object", properties: { vmid: { type: "integer" }, name: { type: "string", description: "2 to 40 letters, digits, - or _, starting with a letter" }, description: { type: "string" } }, required: ["vmid", "name"], additionalProperties: false } },
   { name: "create_task", action: true, description: "Propose creating a task (an issue) in an organization. The person must confirm.", parameters: { type: "object", properties: { companyId: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["companyId", "title"], additionalProperties: false } },
@@ -490,6 +494,23 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
         requests: list.slice(0, 50).map((r) => ({ id: str(r.id), tool: str(r.toolName) ?? str(r.tool), status: str(r.status), agentId: str(r.agentId), connectionId: str(r.connectionId), createdAt: str(r.createdAt) })),
         note: "Pin can't approve or decline these. A person decides in the organization's approvals.",
       };
+    }
+    case "list_app_tools": {
+      const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
+      const conn = typeof args.connectionId === "string" && ORG_ID.test(args.connectionId) ? args.connectionId : null;
+      if (!id || !conn) throw new PinError("bad_args", "companyId and connectionId must come from list_organizations and list_organization_apps");
+      if (!host.apps) throw new PinError("unavailable", "The engine isn't set up on this host.");
+      const [cat, acc] = await Promise.all([host.engine<{ catalog: { id: string; toolName: string; title?: string | null; description?: string | null; status: string; isReadOnly?: boolean; isDestructive?: boolean }[] }>(`/api/tool-connections/${encodeURIComponent(conn)}/catalog`), host.apps.pin.access(host.apps.call, id)]);
+      const mode = new Map(acc.entries.filter((e) => e.connectionId === conn).map((e) => [e.catalogEntryId, e.mode]));
+      return { pinEnabled: acc.enabled, tools: cat.catalog.map((t) => ({ tool: t.toolName, title: t.title ?? null, readOnly: t.isReadOnly === true, destructive: t.isDestructive === true, pinMode: mode.get(t.id) ?? "off" })), note: "Only actions with pinMode ask or allow can be used. Everything else is refused." };
+    }
+    case "app_tool_status": {
+      const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
+      const conn = typeof args.connectionId === "string" && ORG_ID.test(args.connectionId) ? args.connectionId : null;
+      const req = typeof args.actionRequestId === "string" && ORG_ID.test(args.actionRequestId) ? args.actionRequestId : null;
+      if (!id || !conn || !req) throw new PinError("bad_args", "companyId, connectionId and actionRequestId are needed");
+      if (!host.apps) throw new PinError("unavailable", "The engine isn't set up on this host.");
+      return host.apps.pin.callStatus(host.apps.call, id, conn, req);
     }
     case "org_summary": {
       const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;

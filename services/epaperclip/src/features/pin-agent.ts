@@ -7,6 +7,7 @@ import { PLANS_MAX, newId, runtimeFor, type Plan, type PlanStep, type PinRuntime
 import { pushNotice } from "./pin-notify.ts";
 import { NOTE_STEP_KEYS, describeNoteStep, isNoteStep, parseNoteStep, runNoteStep } from "./notes-steps.ts";
 import { ACTS, ACT_NAMES, ActProblem } from "./pin-act.ts";
+import { PinApps } from "../pin-apps.ts";
 
 /**
  * Pin's Agent mode: a multi-step plan the person reviews and approves one step at a time. Pin (or an automation in
@@ -239,7 +240,7 @@ async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: str
     return { result: `Created task ${issue.identifier ?? issue.id ?? ""}`.trim() };
   }
   if (step.kind === "act") {
-    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, connect, sleep: rt.sleep, maxWaitMs: 100_000 }, a.params as Record<string, unknown>);
+    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, connect, sleep: rt.sleep, maxWaitMs: 100_000, ...(gw ? { apps: { pin: new PinApps(rt.state), call: (m, p, b) => gw.userJson(s, m, p, b) } } : {}) }, a.params as Record<string, unknown>);
     return { ...(r.upid ? { upid: r.upid } : {}), result: r.result };
   }
   const vmid = a.vmid as number;

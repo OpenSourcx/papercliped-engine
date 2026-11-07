@@ -50,6 +50,8 @@ export interface ActHost {
   /** Legacy console connector, unused by private guest execution. */
   connect?: Connect;
   sleep?: (ms: number) => Promise<void>;
+  /** Pin's identity for organization apps and the engine as the signed-in person; absent when the engine isn't set up. */
+  apps?: { pin: import("../pin-apps.ts").PinApps; call: import("../pin-apps.ts").EngineCall };
   /** Longest an action may hold its caller waiting for Proxmox (an approval request must answer in time); longer tasks keep running and are reported as such. */
   maxWaitMs?: number;
 }
@@ -241,6 +243,32 @@ async function runInMachine(h: ActHost, vmid: number, script: string, timeoutMs:
 }
 
 export const ACTS: Record<string, ActDef> = {
+  call_app_tool: {
+    name: "call_app_tool",
+    description: "Use one action of an organization's connected app (for example create an issue in GitHub) under Pin's own identity in that organization. The organization's policy decides: it may run, wait for a person's approval (then say so and stop; you cannot approve), or be refused. Only actions an administrator allowed Pin can run.",
+    parameters: noProps({ companyId: { type: "string" }, connectionId: { type: "string" }, tool: { type: "string", description: "The tool name as listed by list_app_tools" }, parameters: { type: "object", description: "The tool's arguments" } }, ["companyId", "connectionId", "tool"]),
+    parse(r) {
+      only(r, ["companyId", "connectionId", "tool", "parameters"], "call_app_tool");
+      const id = /^[A-Za-z0-9_-]{1,64}$/;
+      if (typeof r.companyId !== "string" || !id.test(r.companyId)) throw bad("companyId must be an organization id from list_organizations");
+      if (typeof r.connectionId !== "string" || !id.test(r.connectionId)) throw bad("connectionId must come from list_organization_apps");
+      const tool = clean(r.tool, 200);
+      if (!tool) throw bad("tool is needed");
+      const parameters = r.parameters === undefined ? {} : r.parameters;
+      if (!parameters || typeof parameters !== "object" || Array.isArray(parameters) || JSON.stringify(parameters).length > 20_000) throw bad("parameters must be an object of up to 20 kB");
+      return { companyId: r.companyId, connectionId: r.connectionId, tool, parameters };
+    },
+    // An app's effect is outside this host and cannot be undone from here, so it is never "safe": ask or plan modes always confirm it.
+    risk: () => "disruptive",
+    describe: (a) => ({ label: `Use ${a.tool} in connection ${String(a.connectionId).slice(0, 8)} with ${JSON.stringify(a.parameters).slice(0, 160)}`, phrase: null }),
+    async run(h, a) {
+      if (!h.apps) throw bad("The engine isn't set up on this host.");
+      const out = await h.apps.pin.callTool(h.apps.call, a.companyId as string, a.connectionId as string, a.tool as string, a.parameters as Record<string, unknown>);
+      if (out.outcome === "done") return { result: `Done: ${out.result}` };
+      if (out.outcome === "approval_required") return { result: `Waiting for approval (request ${out.actionRequestId}). ${out.message} Nothing has been done yet.` };
+      throw bad(`Refused: ${out.message}`);
+    },
+  },
   power_machine: {
     name: "power_machine",
     description: "Start, shut down (clean), stop (cut power) or reboot a machine.",

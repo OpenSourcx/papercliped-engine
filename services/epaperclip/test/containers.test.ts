@@ -338,6 +338,19 @@ describe("agent containers setup", () => {
     expect(eng.st.agents.get(o.co)![1].defaultEnvironmentId).toBe([...eng.st.envs.values()][0].id);
   });
 
+  it("never gives Pin's own identity agent the organization's container environment, so it can never take a container", async () => {
+    const sam = await admin();
+    const o = await org(sam, "Pinned", false);
+    expect((await runSetup(sam)).status).toBe("done");
+    state.setSetting("pin.appIdentities", { [o.co]: "pin-id" });
+    eng.st.agents.get(o.co)!.push({ id: "pin-id", name: "Pin (host)", status: "paused", defaultEnvironmentId: null });
+    eng.st.agents.get(o.co)!.push({ id: "a3", name: "Ordinary", status: "idle", defaultEnvironmentId: null });
+    await app.containers.reconcile();
+    const list = eng.st.agents.get(o.co)!;
+    expect(list.find((a: any) => a.id === "pin-id").defaultEnvironmentId).toBeNull();
+    expect(list.find((a: any) => a.id === "a3").defaultEnvironmentId).toBe([...eng.st.envs.values()][0].id);
+  });
+
   it("puts agents on the direct command-line lane unless they chose one, and leaves other adapters alone", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);

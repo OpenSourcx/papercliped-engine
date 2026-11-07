@@ -38,6 +38,7 @@ import { routerHandler } from "./router/server.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
 import { clientIp, trustTunnelWhen } from "./clientIp.ts";
+import { PinApps } from "./pin-apps.ts";
 import { BrokerAdmin, type BrokerGroupPolicy } from "./broker-client.ts";
 
 /**
@@ -1000,7 +1001,7 @@ export function createApp(d: AppDeps) {
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
-      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), connect: connectWs, engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), connect: connectWs, engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), apps: gateway ? { pin: new PinApps(state), call: (m, p, b) => gateway.userJson(s, m, p, b) } : undefined, vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
       try {
         return await pin.chat(res, prepared, host, gone.signal);
       } finally {

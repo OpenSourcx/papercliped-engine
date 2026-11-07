@@ -212,6 +212,7 @@ s_fresh() {
   check "units are the ones in deploy/" eval 'cmp "$H/units/epaperclip.service" "$REPO/deploy/epaperclip.service" && cmp "$H/units/epaperclip-engine.service" "$REPO/deploy/epaperclip-engine.service"'
   check "host service gets EPC_STATE_DIR and the EPC_ENGINE_* settings from its unit" eval 'host_health | grep -q "\"stateDir\":\"$H/host-state\",\"engineUrl\":\"http://127.0.0.1:3100\",\"enginePublicUrl\":\"http://127.0.0.1:3100\",\"engineDir\":\"$H/prefix/engine\""'
   check "engine.env is mode 0600" [ "$(stat -c %a "$H/etc/engine.env")" = 600 ]
+  check "engine.env has a fresh 64-hex approval-signing secret, different from the other two" eval 'grep -Eq "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(sed -n "s/^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=//p" "$H/etc/engine.env")" != "$(sed -n "s/^BETTER_AUTH_SECRET=//p" "$H/etc/engine.env")" ]'
   check "engine.env has two fresh 64-hex secrets" eval 'grep -Eq "^BETTER_AUTH_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && grep -Eq "^PAPERCLIP_AGENT_JWT_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(sed -n "s/^BETTER_AUTH_SECRET=//p" "$H/etc/engine.env")" != "$(sed -n "s/^PAPERCLIP_AGENT_JWT_SECRET=//p" "$H/etc/engine.env")" ]'
   local line all=1
   for line in PAPERCLIP_DEPLOYMENT_MODE=authenticated PAPERCLIP_DEPLOYMENT_EXPOSURE=private HOST=127.0.0.1 PORT=3100 \
@@ -236,6 +237,11 @@ s_upgrade() {
   make_release 2.0.0 2026.1005.0; install
   check "upgrade to 2.0.0 (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 2.0.0 ] && [ "$(cat "$H/prefix.prev/VERSION")" = 1.0.0 ]'
   check "engine.env and its secrets kept" [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ]
+  # An engine.env from before approvals could be signed: the upgrade adds a fresh secret and changes nothing else.
+  local keep; keep="$(grep -v '^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=\|^# .*approval\|^# Signs tool' "$H/etc/engine.env")"
+  sed -i '/^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=/d' "$H/etc/engine.env"
+  install
+  check "a missing approval-signing secret is generated on upgrade, other settings untouched, still mode 0600" eval '[ "$RC" -eq 0 ] && grep -Eq "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(grep -v "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=\|^# .*approval\|^# Signs tool" "$H/etc/engine.env" | grep -vx "# Added by the upgrade: signs tool-approval requests.")" = "$keep" ] && [ "$(stat -c %a "$H/etc/engine.env")" = 600 ]'
   # An engine.env from before a fixed value existed: the upgrade adds it and changes nothing else.
   local secrets; secrets="$(grep SECRET= "$H/etc/engine.env")"
   sed -i '/^PAPERCLIP_AUTH_RATE_LIMIT_ENABLED=/d' "$H/etc/engine.env"

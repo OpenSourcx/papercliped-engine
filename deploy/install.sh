@@ -472,6 +472,8 @@ if [ ! -f "$ENGINE_ENV" ]; then
      echo "# Restart after changing: systemctl restart epaperclip-engine"
      echo "BETTER_AUTH_SECRET=$(rand_hex)"
      echo "PAPERCLIP_AGENT_JWT_SECRET=$(rand_hex)"
+     echo "# Signs tool-approval requests. Without it the engine cannot issue an approval and every ask-first action fails."
+     echo "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=$(rand_hex)"
      printf '%s\n' "${ENGINE_FIXED[@]}"
      echo "# Paperclip's anonymous usage reporting is off here. Remove this line to turn it on."
      echo "PAPERCLIP_TELEMETRY_DISABLED=1"
@@ -479,6 +481,11 @@ if [ ! -f "$ENGINE_ENV" ]; then
   chown root:root "$ENGINE_ENV.tmp"; chmod 0600 "$ENGINE_ENV.tmp"; mv "$ENGINE_ENV.tmp" "$ENGINE_ENV"
   created+=("$ENGINE_ENV")
 else
+  # An engine.env from before 2026.1023 has no approval-signing secret; add one (generated here, never overwritten).
+  if ! grep -q '^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=' "$ENGINE_ENV"; then
+    printf '%s\n' "# Added by the upgrade: signs tool-approval requests." "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=$(rand_hex)" >>"$ENGINE_ENV"
+    say "added to $ENGINE_ENV: PAPERCLIP_TOOL_ACTION_SIGNING_SECRET"
+  fi
   missing=(); for kv in "${ENGINE_FIXED[@]}"; do grep -q "^${kv%%=*}=" "$ENGINE_ENV" || missing+=("$kv"); done
   if [ "${#missing[@]}" -gt 0 ]; then
     ENV_ORIG="$TMPDIR_EPC/engine.env.orig"; cp -p "$ENGINE_ENV" "$ENV_ORIG"
