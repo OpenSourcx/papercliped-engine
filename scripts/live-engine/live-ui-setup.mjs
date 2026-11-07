@@ -1,0 +1,21 @@
+// LIVE UI check, step 1: with the host (scripts/live-engine/host-live.ts) in front of a real engine, signs in as sam, creates an organization and connects a fake MCP provider (127.0.0.1:3188). Playwright is taken from /project/aftercard (a browser from `playwright install chromium-headless-shell`). HOST=<host address> EXE=<chrome-headless-shell> node live-ui-setup.mjs
+import { chromium } from "/project/aftercard/node_modules/playwright-core/index.mjs";
+const BASE = process.env.HOST, EXE = process.env.EXE;
+const browser = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await ctx.newPage();
+const h = { "X-EPC-Request": "1", "Content-Type": "application/json" };
+let r = await page.request.post(BASE + "/api/login", { headers: h, data: { username: "sam", password: "right", realm: "pve" } }); console.log("login", r.status());
+await page.waitForTimeout(4000);
+const api = async (method, path, data) => { const x = await page.request.fetch(BASE + "/engine" + path, { method, headers: h, data }); let j; try { j = await x.json(); } catch { j = await x.text(); } return { s: x.status(), j }; };
+let me = await api("GET", "/api/cli-auth/me"); console.log("me", me.s, JSON.stringify(me.j).slice(0, 200));
+let co = await api("POST", "/api/companies", { name: "Live UI Co" }); console.log("company", co.s, co.j?.id ?? JSON.stringify(co.j).slice(0, 200));
+const cid = co.j?.id;
+let c = await api("POST", `/api/companies/${cid}/tools/apps/connect`, { link: "http://127.0.0.1:3188/mcp", name: "Notes", authMode: "none", grantKind: "organization" }); console.log("connect", c.s, c.j?.connectionId);
+await api("POST", `/api/tool-connections/${c.j.connectionId}/catalog/refresh`, {});
+await api("POST", `/api/companies/${cid}/tools/apps/${c.j.connectionId}/finish`, { preserveExistingAccess: false, access: { agentIds: [] }, enabledCatalogEntryIds: [], askFirstCatalogEntryIds: [] });
+await page.goto(BASE + "/", { waitUntil: "networkidle" }); await page.waitForTimeout(1500);
+console.log("url", page.url());
+await page.screenshot({ path: "/project/.work/shots/live-landing.png" });
+console.log(JSON.stringify({ cid, conn: c.j.connectionId }));
+await browser.close();

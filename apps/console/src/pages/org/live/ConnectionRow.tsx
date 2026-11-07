@@ -15,6 +15,18 @@ export function appForConnection(connection: ToolConnection, apps: AppDefinition
   return apps.find((app) => name === app.name.toLowerCase() || name.startsWith(`${app.name.toLowerCase()} `) || name.startsWith(`${app.name.toLowerCase()}:`));
 }
 
+/** The engine's health words (found against a real engine: a working connection reports "ok", not only "healthy"). */
+export function healthView(status: string): { kind: "good" | "warning" | "critical"; label: string } {
+  switch (status) {
+    case "healthy": case "ok": return { kind: "good", label: "Healthy" };
+    case "failed": case "error": return { kind: "critical", label: "Not working" };
+    case "missing_secret": return { kind: "warning", label: "Credential missing" };
+    case "unchecked": case "unknown": return { kind: "warning", label: "Not checked yet" };
+    case "degraded": return { kind: "warning", label: "Degraded" };
+    default: return { kind: "warning", label: status.replaceAll("_", " ") };
+  }
+}
+
 const when = (value?: Date | string | null) => { const t = value ? new Date(value).getTime() : NaN; return Number.isNaN(t) ? null : new Date(t).toLocaleString(); };
 
 /** One connected app: provider mark, health (never colour alone), actions available, refresh, reauthorize, and revoke. */
@@ -26,8 +38,9 @@ export function ConnectionRow({ connection, apps, canManage, onReview, refresh }
   const [removing, setRemoving] = useState(false);
   const remove = useMutation({ mutationFn: () => engine.apps.remove(connection.id), onSuccess: refresh });
   const reauth = connection.requiresReauthorization === true;
-  const healthy = connection.healthStatus === "healthy" && !reauth;
-  const label = !connection.enabled ? "Disabled" : reauth ? "Sign in again" : connection.healthStatus.replaceAll("_", " ");
+  const view = healthView(connection.healthStatus);
+  const kind = !connection.enabled || reauth ? "warning" : view.kind;
+  const label = !connection.enabled ? "Disabled" : reauth ? "Sign in again" : view.label;
   const actions = catalog.data?.catalog.filter((entry) => entry.status !== "disabled").length;
   const checked = when(connection.healthCheckedAt ?? connection.lastHealthAt);
   return <Card className="p-4">
@@ -35,7 +48,7 @@ export function ConnectionRow({ connection, apps, canManage, onReview, refresh }
       <ProviderMark id={app?.slug ?? connection.name.toLowerCase()} name={app?.name ?? connection.name} />
       <div className="min-w-0 flex-1 basis-48"><div className="truncate font-medium">{connection.name}</div>
         <div className="text-xs text-ink-3">{connection.healthMessage ?? connection.lastError}{checked ? `${connection.healthMessage || connection.lastError ? " · " : ""}Checked ${checked}` : ""}{actions !== undefined ? ` · ${actions} action${actions === 1 ? "" : "s"} available` : ""}</div></div>
-      <Status kind={healthy ? "good" : "warning"} label={label} />
+      <Status kind={kind} label={label} />
     </div>
     {canManage && <div className="mt-3 flex flex-wrap gap-2"><Button onClick={onReview}>Agent access</Button><Button loading={health.isPending} onClick={() => health.mutate()}>Check connection</Button><Button loading={refreshCatalog.isPending} onClick={() => refreshCatalog.mutate()}>Refresh actions</Button><Button variant="ghost" onClick={() => setRemoving(true)}>Disconnect</Button></div>}
     <ActionError error={health.error ?? refreshCatalog.error ?? remove.error} />

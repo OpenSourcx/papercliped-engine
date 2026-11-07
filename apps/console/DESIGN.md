@@ -39,7 +39,7 @@ All tokens live in one file, `src/index.css`. Runtime-tunable values (anything A
 
 Radius assignments: chips and tags `sm`; buttons, inputs and menu rows `md`/`lg`; cards and popovers `xl`; modals and the island `2xl`; avatars and pills `full`. A nested element steps down one tier from its container.
 
-Control heights: 32px (`sm`), 40px (`md`, the default for buttons, inputs and selects), 44px (`lg`). Touch targets are at least 40px; icon-only buttons are 32px only inside dense chrome that also has a larger target nearby.
+Control heights: 32px (`sm`), 40px (`md`, the default for buttons, inputs and selects), 44px (`lg`). With a mouse, buttons, inputs and selects are 40px by default. With a touch screen (`pointer: coarse`) every button, switch, radio, tab, select and input is at least 44px (`--touch-target`, set once in `src/index.css`; `/project/design/CORE.md` asks for 44px), icon-only buttons included.
 
 ### 2. Semantic (roles, set per theme)
 
