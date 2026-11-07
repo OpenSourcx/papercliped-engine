@@ -41,19 +41,31 @@ Read-only SSH inspection found the test Proxmox device on **v1.0.0-rc30**, with 
 
 Do not tag stable from local tests alone. Record a candidate revision and package, verify installation and rollback, complete the fresh-device path, perform real provider authorization and permitted/denied agent calls, verify chat identity and replies, exercise resource isolation and quota contention, and review the console at desktop/mobile sizes. Keep failures and missing external-account prerequisites visible here until resolved.
 
-## Reconciliation with the ecosystem acceptance gates (2026-11-07)
+## Reconciliation with the ecosystem acceptance matrix (2026-11-07)
 
-This gradebook (local ePaperclip behaviour) and the ecosystem gates stay separate; neither replaces the other. No document literally titled "ecosystem acceptance matrix" exists under `/project/papercliped*`, `/project/.agents` or `docs`; the ecosystem gates were taken from `papercliped-connect/docs/ROADMAP.md` (phases and "Production release"), `papercliped-connect/docs/v1/LEDGER.md` (findings, blockers) and `papercliped-engine/docs/PAPERCLIPED-ACCOUNT.md`. If the owner has a separate matrix, give its path and the rows below should be re-mapped.
+The matrix is `OpenSourcx/papercliped-connect` `docs/v1/ACCEPTANCE.md` (71 items, refreshed 2026-11-06 late; fetched from the remote into `/project/.work/scratch`). An earlier version of this section wrongly said no such document exists; that was a search miss on my side. This gradebook (local ePaperclip behaviour) and the matrix stay separate; neither replaces the other. The matrix's own caveat applies: it is not a V1 sign-off. Statuses below use the matrix vocabulary (verified-live, verified-test, built-unverified, blocked, not-started) plus this branch's effect. Matrix rows owned only by Connect, billing, gateway or the owner (ID-1..10, CN-1..4, CN-7, CN-9..13, BL-*, MC-1..3, SR-1, SR-3..10, SR-12, SR-13, RL-2..6, UI-1, UI-2) are not touched by this branch and keep the matrix's status.
 
-| Ecosystem gate (source) | Local gradebook area | Combined status |
-|---|---|---|
-| Pairing with local administrator approval and owner approval (ROADMAP phase 1, PAPERCLIPED-ACCOUNT) | Access (new in this pass) | Device client implemented and tested against fakes; Access UI added. Live Connect pairing not run. |
-| Identity linking to a local Proxmox principal (ADR-001, proposed contract) | Access, permissions | Contract written (`docs/ACCESS-IDENTITY-LINK-CONTRACT.md`); not implemented; Connect side not agreed. |
-| Real `<device>.connect.papercliped.co` TLS and dedicated tunnel on a real host (ROADMAP phase 2) | Installation and updates | Not run. Blocked on broker approval / Cloudflare access (Connect LEDGER B2). |
-| Provision, reconnect, revoke, outage recovery (ROADMAP phase 2) | Access | Tunnel client and unpair/revoke tested with fakes only. |
-| ePaperclip managed Connect UI separate from bring-your-own-Cloudflare (ROADMAP phase 3) | Access | Implemented in the console (Remote access: three modes); component tests only; no browser pass. |
-| Cross-tenant E2E, real-device smoke tests, staging rollback, signed-off security review (Production release) | Stable release gate; resource isolation; installation | Not started. |
-| Stripe test-mode billing and entitlements (ROADMAP phase 3, LEDGER B1) | none locally | Out of scope for the device; the device only reacts to `no_entitlement`. |
-| Engine pin 2026.1005.0 -> 2026.1023.0 (LEDGER U1) | Reference and acceptance rule | Pin is 1023 on main. This gradebook's contracts were audited against 1005; agent-access reads were re-verified against 1023 types in this pass. Other rows still cite 1005 and need re-audit. |
+| Matrix row | Matrix status | This gradebook / branch | Reconciled status |
+|---|---|---|---|
+| EP-1 installs on a real Proxmox host | built-unverified | Simulated install suite now passes for non-root runners as well as root (`deploy/test/run.sh`, see ledger); never run on a real host | built-unverified (unchanged) |
+| EP-2 stable 1.0.0 via APT/latest/npm | blocked | Not touched; no stable tag | blocked (unchanged) |
+| EP-3 local login with Proxmox accounts | built-unverified | Gradebook area "Pin/permissions"; fake Proxmox only | built-unverified |
+| EP-4 agent containers run agents | built-unverified | Gradebook "Resource control": broker registry persistence tested; actual allocation-path enforcement not shown | built-unverified; gradebook gap stays open |
+| EP-5 organizations, agents, tasks on live engine data | not-started | **Stale in the matrix.** Main already has live engine data (`Live*` pages); this branch adds live org apps, hierarchy, onboarding. Evidence: unit tests and a pinned-engine install fixture only, no real onboarding walkthrough | built-unverified (matrix row should be updated; not verified live) |
+| EP-6 machine management | built-unverified | Not touched | built-unverified |
+| EP-7 modes exclusive | verified-test | Console now exposes them (EP-11); same backend tests | verified-test |
+| EP-8 updates, rollback, uninstall | built-unverified | Simulated suite only | built-unverified |
+| EP-9 engine pin 1023 | verified-test | Pin is 1023 on main; this branch's agent-access reads are typed against 1023. Gradebook rows citing 1005 (tool-access, chat endpoints, provider OAuth) still need re-audit against 1023 | verified-test for the upgrade; gradebook contracts partly unaudited on 1023 |
+| EP-10 real-host validation | not-started | Same gate as the gradebook "Stable release gate" | not-started |
+| EP-11 Connect panel in Settings, Remote access | not-started | **Implemented on this branch** (Access, Remote access, Papercliped Connect pairing UI over `/api/papercliped/connect/*`); 4 component tests, console suite 508 pass; no browser pass, no live Connect | built-unverified once merged |
+| UI-3 Remote access, Connect panel | not-started | Same as EP-11 | built-unverified once merged |
+| UI-4 design review vs CORE.md and accessibility | not-started | `check:design` 0 violations; clip palette contrast computed (all text pairs above 4.5:1); no human or browser accessibility review | not-started (partial automated evidence) |
+| CN-5 device tunnel client attaches a real tunnel | built-unverified | Fakes only (fake Connect, helper, cloudflared) | built-unverified |
+| CN-6 / MC-5 remote MCP through a managed hostname | not-started | Gradebook "remote console and MCP" required evidence | not-started |
+| CN-8 device-initiated unpair | verified-live (Connect side) | Engine side unpair calls it, tested with a fake; real engine-to-Connect path unproven | as matrix |
+| MC-4 local MCP with consent, Proxmox-bounded | built-unverified | Gradebook "Pin": host-native, read tools; governed execution not established | built-unverified |
+| SR-2 engine vulnerable dependencies | not-started | **Stale in the matrix.** Main has `ws` 8.22 (#14); `pnpm audit --prod` on this branch: "No known vulnerabilities found" (2026-11-07) | verified-test (audit run); matrix row should be updated |
+| SR-11 local control when Connect pauses/fails | verified-test | Console Access page keeps local usable; copy states it; unit tests only | verified-test |
+| ID-1..ID-10 identity | mixed | Identity linking to a Proxmox principal is not an ID row yet; a proposed contract is owned by the Connect-contract subagent | add a row (owner: engine + connect-backend) |
 
-Gradebook rows changed by this pass: "Organization tool apps" now also covers retained grants (existing grants are read back and saved unchanged; unrepresentable grants block saving; unit-tested with fakes). "Installation and updates": the simulated deploy suite now passes as a non-root user as well, and CI runs it.
+Gradebook rows changed by this pass: "Organization tool apps" covers retained grants (existing grants read back and saved unchanged; unrepresentable grants block saving; unit-tested with fakes). "Installation and updates": the simulated deploy suite passes as non-root too, with a target-specific ownership assertion. Matrix rows I recommend the Connect side update: EP-5, EP-11, UI-3, SR-2.
