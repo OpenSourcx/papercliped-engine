@@ -14,7 +14,10 @@ const suite = BASE ? describe : describe.skip;
 
 class Person {
   jar = "";
-  constructor(readonly email: string) {}
+  readonly email: string;
+  constructor(email: string) {
+    this.email = email;
+  }
   async raw(method: string, path: string, body?: unknown) {
     const r = await fetch(BASE + path, { method, headers: { "Content-Type": "application/json", Origin: BASE, ...(this.jar ? { Cookie: this.jar } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     const sc = r.headers.getSetCookie?.() ?? [];

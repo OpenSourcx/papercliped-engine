@@ -172,3 +172,30 @@ describe("existing connection rows", () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith("x1"));
   });
 });
+
+import { PinAppAccess } from "../src/pages/org/live/PinAppAccess.tsx";
+import { connectApi } from "../src/data/engine/connectApi.ts";
+describe("Pin's access to organization apps", () => {
+  const conn = { id: "x1", name: "GitHub (acme)", transport: "mcp_remote" } as never;
+  it("starts Off, enables explicitly, saves per-action choices, and revokes only after confirmation", async () => {
+    const get = vi.spyOn(connectApi.pinApps, "get").mockResolvedValueOnce({ enabled: false, agentId: null, entries: [] }).mockResolvedValue({ enabled: true, agentId: "p", entries: [{ connectionId: "x1", catalogEntryId: "read", mode: "allow" }] });
+    const enable = vi.spyOn(connectApi.pinApps, "enable").mockResolvedValue({ enabled: true });
+    const set = vi.spyOn(connectApi.pinApps, "set").mockResolvedValue({ enabled: true, agentId: "p", entries: [] });
+    const revoke = vi.spyOn(connectApi.pinApps, "revoke").mockResolvedValue({ ok: true });
+    vi.spyOn(engine.apps, "catalog").mockResolvedValue({ catalog: [{ id: "read", title: "Read", isReadOnly: true, status: "active" }, { id: "write", title: "Write", status: "active" }] } as never);
+    wrap(<PinAppAccess companyId="c1" connections={[conn]} canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Let Pin use apps here" }));
+    await waitFor(() => expect(enable).toHaveBeenCalledWith("c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Set Pin access" }));
+    await waitFor(() => expect((screen.getByLabelText("Read") as HTMLSelectElement).value).toBe("allow"));
+    expect((screen.getByLabelText("Write") as HTMLSelectElement).value).toBe("off");
+    fireEvent.change(screen.getByLabelText("Write"), { target: { value: "ask" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(set).toHaveBeenCalledWith("c1", "x1", [{ catalogEntryId: "read", mode: "allow" }, { catalogEntryId: "write", mode: "ask" }]));
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke Pin’s access" }));
+    expect(revoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith("c1"));
+    expect(get).toHaveBeenCalled();
+  });
+});

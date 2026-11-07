@@ -150,6 +150,8 @@ export interface AdapterList {
   marketProblem: { code: string; message: string } | null;
 }
 
+export interface PinAppAccess { enabled: boolean; agentId: string | null; entries: { connectionId: string; catalogEntryId: string; mode: "ask" | "allow" }[] }
+
 export interface PluginList {
   plugins: { id: string; key: string | null; status: string | null; packageName: string | null; version: string | null; verified: boolean; catalogId: string | null; grantedPermissions: string[] | null }[];
   available: { id: string; name: string; vendor: string; summary: string; version: string; permissions: string[]; packageName: string }[];
@@ -197,6 +199,12 @@ export const connectApi = {
   sendLoginCode: (company: string, id: string, browserCode: string) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/code`, { browserCode }),
   cancelLogin: (company: string, id: string) => req<{ ok: boolean }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/cancel`, {}),
 
+  pinApps: {
+    get: (companyId: string) => req<PinAppAccess>("GET", `/api/pin/apps/${enc(companyId)}`),
+    enable: (companyId: string) => req<{ enabled: boolean }>("POST", `/api/pin/apps/${enc(companyId)}`, {}),
+    set: (companyId: string, connectionId: string, choices: { catalogEntryId: string; mode: "off" | "ask" | "allow" }[]) => req<PinAppAccess>("PUT", `/api/pin/apps/${enc(companyId)}/connections/${enc(connectionId)}`, { choices }),
+    revoke: (companyId: string) => req<{ ok: boolean }>("DELETE", `/api/pin/apps/${enc(companyId)}`),
+  },
   plugins: () => req<PluginList>("GET", "/api/connect/plugins"),
   installPlugin: (id: string, acceptedPermissions: string[]) => req<{ installed: boolean }>("POST", "/api/connect/plugins/install", { id, acceptedPermissions }),
   upgradePlugin: (id: string, acceptedPermissions: string[]) => req<{ upgraded: boolean }>("POST", `/api/connect/plugins/${enc(id)}/upgrade`, { acceptedPermissions }),
