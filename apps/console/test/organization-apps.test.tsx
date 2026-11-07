@@ -246,3 +246,27 @@ describe("Held app actions", () => {
     await waitFor(() => expect(decline).toHaveBeenCalledWith("r1", "c1"));
   });
 });
+
+describe("existing connections that were set up before Off was enforced", () => {
+  const apps = [{ slug: "github", name: "GitHub", methods: [] }] as never;
+  const conn = { id: "x1", name: "GitHub (acme)", enabled: true, healthStatus: "ok", transportConfig: {} } as never;
+  it("flags them, offers the review that enforces, and clears the flag once the default-deny rule exists", async () => {
+    vi.spyOn(engine.apps, "catalog").mockResolvedValue({ catalog: [] } as never);
+    const onReview = vi.fn();
+    const { rerender } = wrap(<ConnectionRow connection={conn} apps={apps} canManage onReview={onReview} refresh={() => {}} enforced={false} />);
+    expect(await screen.findByText("Access is not enforced yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Review and enforce access" }));
+    expect(onReview).toHaveBeenCalled();
+    rerender(<QueryClientProvider client={new QueryClient()}><MemoryRouter><ConnectionRow connection={conn} apps={apps} canManage onReview={onReview} refresh={() => {}} enforced /></MemoryRouter></QueryClientProvider>);
+    await waitFor(() => expect(screen.queryByText("Access is not enforced yet")).toBeNull());
+    expect(screen.getByRole("button", { name: "Agent access" })).toBeTruthy();
+  });
+  it("reads enforcement from the host's policies only (name, type, enabled and selector must all match)", async () => {
+    const { enforcedConnections, readAppAccess } = await import("../src/pages/org/live/appAccess.ts");
+    const good = { name: "ePaperclip app:x1:default", policyType: "block", enabled: true, selectors: { connectionId: "x1" } };
+    expect([...enforcedConnections([good] as never)]).toEqual(["x1"]);
+    for (const bad of [{ ...good, enabled: false }, { ...good, policyType: "allow" }, { ...good, selectors: { connectionId: "other" } }, { ...good, name: "ePaperclip app:x1:saving" }]) expect(enforcedConnections([bad] as never).size).toBe(0);
+    expect(readAppAccess("x1", [], [good] as never).enforced).toBe(true);
+    expect(readAppAccess("x1", [], []).enforced).toBe(false);
+  });
+});

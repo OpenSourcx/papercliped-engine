@@ -4,7 +4,7 @@ import type { AppDefinition, ToolConnection } from "@papercliped-engine/engine-c
 import { engine } from "../../../data/engine/queries.ts";
 import { Modal } from "../../../ui/Modal.tsx";
 import { ProviderMark } from "../../../ui/ProviderMark.tsx";
-import { Button, Card, Status } from "../../../ui/primitives.tsx";
+import { Button, Card, Notice, Status } from "../../../ui/primitives.tsx";
 import { ActionError } from "./common.tsx";
 
 /** Which gallery app a connection belongs to: its recorded gallery key if the engine stored one, else the app whose name its name starts with. */
@@ -30,7 +30,7 @@ export function healthView(status: string): { kind: "good" | "warning" | "critic
 const when = (value?: Date | string | null) => { const t = value ? new Date(value).getTime() : NaN; return Number.isNaN(t) ? null : new Date(t).toLocaleString(); };
 
 /** One connected app: provider mark, health (never colour alone), actions available, refresh, reauthorize, and revoke. */
-export function ConnectionRow({ connection, apps, canManage, onReview, refresh }: { connection: ToolConnection; apps: AppDefinition[]; canManage: boolean; onReview: () => void; refresh: () => void }) {
+export function ConnectionRow({ connection, apps, canManage, onReview, refresh, enforced }: { connection: ToolConnection; apps: AppDefinition[]; canManage: boolean; onReview: () => void; refresh: () => void; /** undefined while unknown */ enforced?: boolean }) {
   const app = appForConnection(connection, apps);
   const catalog = useQuery({ queryKey: ["engine", "connection", connection.id, "catalog-count"], queryFn: () => engine.apps.catalog(connection.id), staleTime: 60_000 });
   const health = useMutation({ mutationFn: () => engine.apps.health(connection.id), onSuccess: refresh });
@@ -50,7 +50,8 @@ export function ConnectionRow({ connection, apps, canManage, onReview, refresh }
         <div className="text-xs text-ink-3">{connection.healthMessage ?? connection.lastError}{checked ? `${connection.healthMessage || connection.lastError ? " · " : ""}Checked ${checked}` : ""}{actions !== undefined ? ` · ${actions} action${actions === 1 ? "" : "s"} available` : ""}</div></div>
       <Status kind={kind} label={label} />
     </div>
-    {canManage && <div className="mt-3 flex flex-wrap gap-2"><Button onClick={onReview}>Agent access</Button><Button loading={health.isPending} onClick={() => health.mutate()}>Check connection</Button><Button loading={refreshCatalog.isPending} onClick={() => refreshCatalog.mutate()}>Refresh actions</Button><Button variant="ghost" onClick={() => setRemoving(true)}>Disconnect</Button></div>}
+    {enforced === false && <Notice tone="warning" title="Access is not enforced yet">This app was set up before Off was enforced. Agents with default access can still use actions you did not allow. Review and save its access to enforce your choices.</Notice>}
+    {canManage && <div className="mt-3 flex flex-wrap gap-2"><Button variant={enforced === false ? "primary" : "secondary"} onClick={onReview}>{enforced === false ? "Review and enforce access" : "Agent access"}</Button><Button loading={health.isPending} onClick={() => health.mutate()}>Check connection</Button><Button loading={refreshCatalog.isPending} onClick={() => refreshCatalog.mutate()}>Refresh actions</Button><Button variant="ghost" onClick={() => setRemoving(true)}>Disconnect</Button></div>}
     <ActionError error={health.error ?? refreshCatalog.error ?? remove.error} />
     {removing && <Modal title={`Disconnect ${connection.name}?`} onClose={() => setRemoving(false)} footer={<><Button onClick={() => setRemoving(false)}>Cancel</Button><Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Revoke and disconnect</Button></>}><p className="text-sm text-ink-2">The engine will revoke this connection and every agent’s access to it. Running work that needs it may fail. You can connect it again later and choose access again.</p><ActionError error={remove.error} /></Modal>}
   </Card>;

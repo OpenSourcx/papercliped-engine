@@ -95,6 +95,7 @@ export function ToolReview({ companyId, connectionId, onClose }: { companyId: st
   const refresh = useMutation({ mutationFn: () => engine.apps.refresh(connectionId), onSuccess: () => void catalog.refetch() });
   return <Modal title="Set agent access" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={save.isPending} disabled={!catalog.data || !agents.data || !base || !!base.advanced || refresh.isPending} onClick={() => save.mutate()}>Save access</Button></>}>
     <div className="space-y-4">
+      {base && !base.enforced && !base.saving && <Notice tone="warning">Off is not enforced for this app yet. Until you save access here, agents that kept the engine’s default access can still use actions you set to Off or never enabled. Saving enforces what you choose below.</Notice>}
       {base?.saving && <Notice tone="warning">The last access save did not finish. This app is blocked, including for Pin. Save access again to finish safely.</Notice>}
       {current.error && <LoadError error={current.error} retry={() => void current.refetch()} />}
       {base?.advanced && <Notice tone="warning">This connection has {base.advanced}, which this editor cannot show. Saving here would remove it, so editing is disabled. Change it in the engine’s tool access settings.</Notice>}

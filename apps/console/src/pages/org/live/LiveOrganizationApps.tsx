@@ -9,6 +9,7 @@ import { Button, Card, PageFrame, PageHeader, Status } from "../../../ui/primiti
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { AppSetup, ChannelSetup, ToolReview } from "./OrganizationAppSetup.tsx";
 import { ConnectionRow } from "./ConnectionRow.tsx";
+import { enforcedConnections } from "./appAccess.ts";
 import { PinAppAccess } from "./PinAppAccess.tsx";
 import { HeldAppActions } from "./HeldAppActions.tsx";
 
@@ -23,6 +24,8 @@ export function LiveOrganizationApps() {
   const gallery = useQuery({ queryKey: [...appKey(companyId), "gallery"], queryFn: () => engine.apps.gallery(companyId) });
   const connections = useQuery({ queryKey: [...appKey(companyId), "connections"], queryFn: () => engine.apps.list(companyId) });
   const channels = useQuery({ queryKey: [...appKey(companyId), "channels"], queryFn: () => engine.channels.list(companyId) });
+  const policies = useQuery({ queryKey: [...appKey(companyId), "policies"], queryFn: async () => (await engine.apps.policies(companyId)).policies });
+  const enforced = policies.data ? enforcedConnections(policies.data) : null;
   const [picked, setPicked] = useState<PickedApp | null>(null);
   const [review, setReview] = useState<string | null>(null);
   const [channel, setChannel] = useState<ChatEndpoint | null>(null);
@@ -38,7 +41,7 @@ export function LiveOrganizationApps() {
       <div className="mt-4 flex flex-wrap gap-2">{app.methods.filter((method) => method.purpose !== "ai" && method.transport !== "runtime_auth").map((method) => <Button key={method.key} size="sm" disabled={!canManage || app.availability?.available === false} onClick={() => setPicked({ app, method })}><Plus className="h-3.5 w-3.5" />{method.label ?? (method.auth === "oauth" ? `Connect ${app.name}` : "Set up")}</Button>)}</div>
     </Card>)}</div>
     {gallery.data && !canManage && <p className="mt-3 text-compact text-ink-3">{gallery.data.capabilities.organizationGrantReason ?? "An organization connection manager can connect apps."}</p>}
-    <div className="mt-6 space-y-3">{connections.data?.connections.filter((connection) => connection.transport !== "chat_sdk" && connection.transport !== "runtime_auth").map((connection) => <ConnectionRow key={connection.id} apps={gallery.data?.apps ?? []} connection={connection} canManage={canManage} onReview={() => setReview(connection.id)} refresh={refresh} />)}
+    <div className="mt-6 space-y-3">{connections.data?.connections.filter((connection) => connection.transport !== "chat_sdk" && connection.transport !== "runtime_auth").map((connection) => <ConnectionRow key={connection.id} enforced={enforced ? enforced.has(connection.id) : undefined} apps={gallery.data?.apps ?? []} connection={connection} canManage={canManage} onReview={() => setReview(connection.id)} refresh={refresh} />)}
       {channels.data?.map((endpoint) => <Card key={endpoint.id} className="flex items-center gap-3 p-4"><ProviderMark id={endpoint.provider} name={endpoint.provider} /><div className="flex-1"><div className="font-medium capitalize">{endpoint.provider}</div><div className="text-xs text-ink-3">{endpoint.assignedAgentName ?? "Assigned agent"} · {endpoint.healthMessage ?? endpoint.status}</div></div><Button size="sm" disabled={!canManage} onClick={() => setChannel(endpoint)}>Manage</Button></Card>)}
     </div>
     <HeldAppActions companyId={companyId} canDecide={canManage} />
