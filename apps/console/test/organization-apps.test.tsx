@@ -148,3 +148,27 @@ describe("native organization apps", () => {
     expect(screen.queryByDisplayValue("s3cret-test")).toBeNull();
   });
 });
+
+import { ConnectionRow, appForConnection } from "../src/pages/org/live/ConnectionRow.tsx";
+describe("existing connection rows", () => {
+  const apps = [{ slug: "github", name: "GitHub", methods: [] }, { slug: "notion", name: "Notion", methods: [] }] as never;
+  const conn = (o: Record<string, unknown> = {}) => ({ id: "x1", name: "GitHub (acme)", enabled: true, healthStatus: "healthy", transportConfig: {}, ...o }) as never;
+  it("finds the provider by recorded key, else by name, never by a loose substring", () => {
+    expect(appForConnection(conn({ config: { galleryKey: "notion" } }), apps)?.slug).toBe("notion");
+    expect(appForConnection(conn(), apps)?.slug).toBe("github");
+    expect(appForConnection(conn({ name: "Githubber" }), apps)).toBeUndefined();
+  });
+  it("shows health with a label, action count, and revokes only after confirmation", async () => {
+    vi.spyOn(engine.apps, "catalog").mockResolvedValue({ catalog: [{ id: "a", status: "active" }, { id: "b", status: "disabled" }] } as never);
+    const remove = vi.spyOn(engine.apps, "remove").mockResolvedValue({} as never);
+    const refresh = vi.fn();
+    wrap(<ConnectionRow connection={conn({ requiresReauthorization: true, healthStatus: "healthy", healthMessage: "Token expired" })} apps={apps} canManage onReview={() => {}} refresh={refresh} />);
+    expect(await screen.findByText("Sign in again")).toBeTruthy();
+    expect(await screen.findByText(/1 action available/)).toBeTruthy();
+    expect(screen.getByLabelText("GitHub")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke and disconnect" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("x1"));
+  });
+});
