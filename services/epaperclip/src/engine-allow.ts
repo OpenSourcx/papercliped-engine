@@ -8,6 +8,23 @@
  * engine's own router.
  */
 export const ENGINE_ALLOWED: readonly string[] = [
+  "/api/chat-identity-links/preview",
+  "/api/chat-identity-links/confirm",
+  "/api/companies/{companyId}/chat-endpoints",
+  "/api/chat-endpoints/{endpointId}",
+  "/api/chat-endpoints/{endpointId}/setup",
+  "/api/chat-endpoints/{endpointId}/test",
+  "/api/chat-endpoints/{endpointId}/resources",
+  "/api/companies/{companyId}/tools/gallery",
+  "/api/companies/{companyId}/tools/connections",
+  "/api/companies/{companyId}/tools/apps/connect",
+  "/api/companies/{companyId}/tools/apps/{connectionId}/finish",
+  "/api/companies/{companyId}/tools/profiles",
+  "/api/companies/{companyId}/tools/policies",
+  "/api/tool-connections/{connectionId}",
+  "/api/tool-connections/{connectionId}/health-check",
+  "/api/tool-connections/{connectionId}/catalog",
+  "/api/tool-connections/{connectionId}/catalog/refresh",
   "/api/health",
   "/api/cli-auth/me",
   "/api/companies",

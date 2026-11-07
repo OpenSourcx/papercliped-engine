@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createEngineClient, EngineError, type CreateAgentBody, type CreateGoalBody, type CreateIssueBody, type CreateProjectBody, type UpdateIssueBody } from "@papercliped-engine/engine-client";
+import { createEngineClient, EngineError, type CreateAgentBody, type CreateGoalBody, type CreateIssueBody, type CreateProjectBody, type HeartbeatRun, type UpdateIssueBody } from "@papercliped-engine/engine-client";
 import { useSession } from "../../auth/session.tsx";
 import { usePollInterval } from "./events.ts";
 import { host, HostError, type EngineStatus, type ResourceGroupSize } from "./host.ts";
@@ -87,6 +87,18 @@ export const useDashboard = (companyId: string | null | undefined) => useCompany
 export const useAgents = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.agents(companyId ?? ""), (id) => engine.agents.list(id));
 export const useAgent = (companyId: string | null | undefined, agentId: string) => useCompanyQuery(companyId, qk.agent(companyId ?? "", agentId), () => engine.agents.get(agentId));
 export const useRuns = (companyId: string | null | undefined, agentId?: string) => useCompanyQuery(companyId, qk.runs(companyId ?? "", agentId), (id) => engine.agents.runs(id, agentId, 10));
+/** Latest run for each visible agent. Each is keyed by its own agent ID, so a result is never shown on the wrong card. */
+export function useLatestRuns(companyId: string | null | undefined, agentIds: string[]) {
+  const ready = useEngineReady();
+  const interval = usePollInterval(companyId);
+  return useQueries({ queries: agentIds.map((agentId) => ({
+    queryKey: qk.latestRun(companyId ?? "", agentId),
+    queryFn: () => engine.agents.runs(companyId!, agentId, 1),
+    enabled: ready && !!companyId,
+    refetchInterval: interval,
+    select: (runs: HeartbeatRun[]) => runs[0] ?? null,
+  })) });
+}
 export const useIssues = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.issues(companyId ?? ""), (id) => engine.issues.list(id));
 export const useIssue = (companyId: string | null | undefined, ref: string) => useCompanyQuery(companyId, qk.issue(companyId ?? "", ref), () => engine.issues.get(ref));
 export const useComments = (companyId: string | null | undefined, ref: string) => useCompanyQuery(companyId, qk.comments(companyId ?? "", ref), () => engine.issues.comments(ref));
@@ -131,7 +143,8 @@ export async function createOrganization(input: { name: string; description?: st
   const company = await engine.companies.create({ name: input.name.trim(), description: input.description || null });
   let resourceGroupError: string | null = null;
   try {
-    await host.resourceGroups.put(company.id, { name: company.name, ...input.size });
+    const group = await host.resourceGroups.put(company.id, { name: company.name, ...input.size });
+    if (group.provisioning && group.provisioning.state !== "ready") resourceGroupError = group.provisioning.error ?? "Resource setup has not finished.";
   } catch (e) {
     resourceGroupError = errorText(e);
   }

@@ -10,6 +10,7 @@ const version = JSON.parse(readFileSync(new URL("../apps/console/node_modules/si
 
 /** Store item id -> simple-icons export. */
 const MAP = {
+  notion: "siNotion", vercel: "siVercel",
   anthropic: "siAnthropic", gemini: "siGooglegemini", github: "siGithub", linear: "siLinear", discord: "siDiscord", gmail: "siGmail", tailscale: "siTailscale", cloudflared: "siCloudflare",
   claude_local: "siClaude", cursor: "siCursor", cursor_cloud: "siCursor", gemini_local: "siGooglegemini", kimi_local: "siMoonshotai", opencode_local: "siOpencode",
 };

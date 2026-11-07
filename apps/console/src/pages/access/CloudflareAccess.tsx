@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Cloud, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { host } from "../data/engine/host.ts";
-import { useConnectors } from "../data/engine/queries.ts";
-import { Button, Card, Input, Notice, PageFrame, PageHeader, Select } from "../ui/primitives.tsx";
+import { host } from "../../data/engine/host.ts";
+import { useConnectors } from "../../data/engine/queries.ts";
+import { Button, Card, Input, Notice, Select } from "../../ui/primitives.tsx";
 
-/** Settings → Advertising. Publishing belongs to the device, never to one organisation or an agent. */
-export function Advertising() {
+/** Access → Remote access → Self-managed Cloudflare. Publishing belongs to the device, never to one organisation or an agent. */
+export function CloudflareAccess() {
   const connectors = useConnectors();
   const cloudflare = connectors.data?.connectors.find((c) => c.id === "cloudflare");
   const zones = useQuery({ queryKey: ["publishing", "cloudflare", "zones"], queryFn: host.publishing.cloudflareZones, enabled: cloudflare?.configured === true && connectors.data?.canManage === true, retry: 1 });
@@ -17,8 +17,7 @@ export function Advertising() {
   const selectedZone = zone || availableZones[0]?.name || "";
 
   return (
-    <PageFrame width="3xl">
-      <PageHeader title="Advertising" subtitle="Publish this ePaperclip device without opening inbound ports. Publishing is machine-wide and managed only by device administrators." />
+    <div className="space-y-4">
       {!connectors.data?.canManage && connectors.data && <Notice tone="warning" title="Administrator access required">Only a Proxmox administrator can connect a hosting provider or publish a device address.</Notice>}
       {!cloudflare?.configured && !connectors.isPending && (
         <Card className="p-5">
@@ -37,6 +36,6 @@ export function Advertising() {
         {plan.data && <Card className="p-5 mt-4"><div className="flex gap-3"><ShieldCheck className="h-5 w-5 text-good shrink-0" /><div><h2 className="font-medium">{plan.data.hostname}</h2><p className="text-compact text-ink-3 mt-1">Will route through a named Cloudflare Tunnel to ePaperclip’s local HTTPS service. Visitors must still sign in through ePaperclip; publishing does not bypass its Proxmox-backed access control.</p><p className="text-xs text-ink-3 mt-2">The privileged host publisher will create the tunnel and DNS record in the next installation step.</p></div></div></Card>}
       </>}
       <p className="text-xs text-ink-3 mt-4">No domain? A Cloudflare Quick Tunnel can provide a temporary <span className="font-mono">trycloudflare.com</span> preview URL, but it changes at restart, has no uptime guarantee, and cannot carry Pin’s server-sent-event stream. Use a named tunnel for a real device address.</p>
-    </PageFrame>
+    </div>
   );
 }

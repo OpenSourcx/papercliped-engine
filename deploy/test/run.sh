@@ -43,6 +43,21 @@ for (const n of ["fx", "other"]) { const k = generateReleaseKey(); writeFileSync
 ok()  { pass=$((pass + 1)); echo "  ok   $1"; }
 bad() { fail=$((fail + 1)); failed+=("$SCEN: $1"); echo "  FAIL $1"; [ -f "$H/out" ] && sed 's/^/       | /' "$H/out" | tail -n 25; }
 check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d"; fi; }
+# Root ownership of one installed file. As root (CI) it is the real uid check. Anyone else cannot chown, so the stand-in
+# only records calls; then the recorded operations must show that THIS file's tree was handed to root: a
+# `chown -R root:root <prefix>.new` (the staged tree the installer later moves to <prefix>) naming exactly this host's
+# prefix, with the file inside that prefix, and no later recorded chown giving anything under it to someone else.
+root_owned() {
+  local f="$1" pre="${EPC_PREFIX:?}"
+  [ -e "$f" ] || return 1
+  if [ "$(/usr/bin/id -u)" -eq 0 ]; then [ "$(stat -c %u "$f")" = 0 ]; return; fi
+  case "$f" in "$pre"/*) ;; *) return 1 ;; esac
+  awk -v want="chown -R root:root $pre.new" -v pre="$pre" '
+    $0 == want { seen = 1; next }
+    seen && $1 == "chown" { o = ""; for (i = 2; i <= NF; i++) if ($i !~ /^-/) { o = $i; break }
+      if (o != "root:root" && o != "root" && index($0, pre) > 0) bad = 1 }
+    END { exit !(seen && !bad) }' "$STUB_STATE/calls"
+}
 has() { grep -q -- "$1" "$H/out"; }
 free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 active() { systemctl is-active -q "$1"; }
@@ -93,8 +108,9 @@ new_host() {
 # A release folder laid out like the downloaded one. make_release <version> <engine version> [variant]
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
-  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/broker" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
+  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip-broker.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  cp "$HERE/fake-epaperclip.mjs" "$R/broker/epaperclip-broker.mjs"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"
@@ -196,6 +212,7 @@ s_fresh() {
   check "units are the ones in deploy/" eval 'cmp "$H/units/epaperclip.service" "$REPO/deploy/epaperclip.service" && cmp "$H/units/epaperclip-engine.service" "$REPO/deploy/epaperclip-engine.service"'
   check "host service gets EPC_STATE_DIR and the EPC_ENGINE_* settings from its unit" eval 'host_health | grep -q "\"stateDir\":\"$H/host-state\",\"engineUrl\":\"http://127.0.0.1:3100\",\"enginePublicUrl\":\"http://127.0.0.1:3100\",\"engineDir\":\"$H/prefix/engine\""'
   check "engine.env is mode 0600" [ "$(stat -c %a "$H/etc/engine.env")" = 600 ]
+  check "engine.env has a fresh 64-hex approval-signing secret, different from the other two" eval 'grep -Eq "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(sed -n "s/^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=//p" "$H/etc/engine.env")" != "$(sed -n "s/^BETTER_AUTH_SECRET=//p" "$H/etc/engine.env")" ]'
   check "engine.env has two fresh 64-hex secrets" eval 'grep -Eq "^BETTER_AUTH_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && grep -Eq "^PAPERCLIP_AGENT_JWT_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(sed -n "s/^BETTER_AUTH_SECRET=//p" "$H/etc/engine.env")" != "$(sed -n "s/^PAPERCLIP_AGENT_JWT_SECRET=//p" "$H/etc/engine.env")" ]'
   local line all=1
   for line in PAPERCLIP_DEPLOYMENT_MODE=authenticated PAPERCLIP_DEPLOYMENT_EXPOSURE=private HOST=127.0.0.1 PORT=3100 \
@@ -207,7 +224,7 @@ s_fresh() {
   check "new engine was test-started as its own user first" grep -q "setpriv --reuid=epaperclip-engine" "$H/stub/calls"
   check "says where the engine data and its backups are" has "backs itself up every hour into $H/engine-home/instances/default/data/backups"
   check "nothing left behind" eval '! leftovers'
-  check "the agent container provider is installed (built code, template scripts, packages dir) and readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" ] && [ -f "$H/prefix/plugins/proxmox-sandbox/template/provision.sh" ] && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ] && [ "$(stat -c %u "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js")" = 0 ] && [ "$(stat -c %A "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" | cut -c8)" = r ] && [ "$(stat -c %A "$H/prefix/plugins" | cut -c10)" = x ]'
+  check "the agent container provider is installed (built code, template scripts, packages dir) and readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" ] && [ -f "$H/prefix/plugins/proxmox-sandbox/template/provision.sh" ] && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ] && root_owned "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" && [ "$(stat -c %A "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" | cut -c8)" = r ] && [ "$(stat -c %A "$H/prefix/plugins" | cut -c10)" = x ]'
   install --status
   check "--status names the provider" has "agent container provider: 1.0.0"
   check "--status: both services" eval 'has "epaperclip.service: running" && has "epaperclip-engine.service: running"'
@@ -220,6 +237,11 @@ s_upgrade() {
   make_release 2.0.0 2026.1005.0; install
   check "upgrade to 2.0.0 (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 2.0.0 ] && [ "$(cat "$H/prefix.prev/VERSION")" = 1.0.0 ]'
   check "engine.env and its secrets kept" [ "$(sum_of "$H/etc/engine.env")" = "$env_sum" ]
+  # An engine.env from before approvals could be signed: the upgrade adds a fresh secret and changes nothing else.
+  local keep; keep="$(grep -v '^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=\|^# .*approval\|^# Signs tool' "$H/etc/engine.env")"
+  sed -i '/^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=/d' "$H/etc/engine.env"
+  install
+  check "a missing approval-signing secret is generated on upgrade, other settings untouched, still mode 0600" eval '[ "$RC" -eq 0 ] && grep -Eq "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=[0-9a-f]{64}$" "$H/etc/engine.env" && [ "$(grep -v "^PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=\|^# .*approval\|^# Signs tool" "$H/etc/engine.env" | grep -vx "# Added by the upgrade: signs tool-approval requests.")" = "$keep" ] && [ "$(stat -c %a "$H/etc/engine.env")" = 600 ]'
   # An engine.env from before a fixed value existed: the upgrade adds it and changes nothing else.
   local secrets; secrets="$(grep SECRET= "$H/etc/engine.env")"
   sed -i '/^PAPERCLIP_AUTH_RATE_LIMIT_ENABLED=/d' "$H/etc/engine.env"
@@ -374,6 +396,25 @@ s_uninstall() {
   check "--purge removes data, settings and users too" eval '[ "$RC" -eq 0 ] && [ ! -e "$H/prefix" ] && [ ! -e "$H/engine-home" ] && [ ! -e "$H/host-state" ] && [ ! -e "$H/etc" ] && [ ! -e "$H/default/epaperclip" ] && [ ! -s "$H/stub/users" ]'
 }
 
+s_public_url() {
+  new_host public-url; make_release 1.0.0 2026.1005.0; install
+  local before; before="$(grep -c . "$H/etc/engine.env")"
+  install --set-public-url https://Pve.Example.com:8443
+  check "a public https address is accepted (exit 0) and says where providers return" eval '[ "$RC" -eq 0 ] && has "https://pve.example.com:8443/api/tools/oauth/callback"'
+  check "the engine's public URL and allowed hostnames now name it, loopback kept" eval 'grep -qx "PAPERCLIP_PUBLIC_URL=https://pve.example.com:8443" "$H/etc/engine.env" && grep -qx "PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost,pve.example.com" "$H/etc/engine.env"'
+  check "the secrets and other engine settings are untouched, each key still appears once" eval '[ "$(grep -c "^BETTER_AUTH_SECRET=" "$H/etc/engine.env")" = 1 ] && [ "$(grep -c "^PAPERCLIP_PUBLIC_URL=" "$H/etc/engine.env")" = 1 ] && [ "$(grep -c . "$H/etc/engine.env")" = "$before" ]'
+  check "engine.env keeps its mode (not world-readable)" eval '[ "$(stat -c %a "$H/etc/engine.env")" = 600 ]'
+  check "the host service is told the same address" eval 'grep -qx "EPC_ENGINE_PUBLIC_URL=https://pve.example.com:8443" "$H/default/epaperclip" && grep -qx "EPC_PUBLIC_URL=https://pve.example.com:8443" "$H/default/epaperclip"'
+  local bad
+  for bad in http://pve.example.com https://pve.example.com/path "https://user@pve.example.com" "https://pve.example.com?x=1" https://localhost https://127.0.0.1:3100 https://0.0.0.0 "https://pve.example.com:99999" "javascript:alert(1)" ""; do
+    local sum; sum="$(sum_of "$H/etc/engine.env")"
+    install --set-public-url "$bad"
+    check "refuses '$bad' and changes nothing" eval '[ "$RC" -ne 0 ] && [ "$(sum_of "$H/etc/engine.env")" = "$sum" ]'
+  done
+  install --set-public-url --clear
+  check "--clear puts the loopback address back and removes the host settings" eval '[ "$RC" -eq 0 ] && grep -qx "PAPERCLIP_PUBLIC_URL=http://127.0.0.1:3100" "$H/etc/engine.env" && grep -qx "PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost" "$H/etc/engine.env" && ! grep -q "^EPC_ENGINE_PUBLIC_URL=" "$H/default/epaperclip" && ! grep -q "^EPC_PUBLIC_URL=" "$H/default/epaperclip"'
+}
+
 s_deb() {
   # The built Debian package (release/epaperclip_*_all.deb, from scripts/build-deb.sh), unpacked: its maintainer scripts
   # parse, its files match their checksums, and its payload installs with the real host service.
@@ -467,7 +508,7 @@ s_real_engine() {
 s_update_helper() {
   new_host update-helper; make_release 1.0.0 2026.1005.0; install
   check "installs with the update helper (run.sh, a copy of the installer, both units)" eval '[ -x "$H/prefix/update/run.sh" ] && [ -f "$H/prefix/update/install.sh" ] && [ -f "$H/units/epaperclip-update.path" ] && [ -f "$H/units/epaperclip-update.service" ]'
-  check "the helper is root's and the path unit watches the request file" eval '[ "$(stat -c %u "$H/prefix/update/run.sh")" = 0 ] && grep -q "^PathExists=/var/lib/epaperclip/update/request$" "$H/units/epaperclip-update.path"'
+  check "the helper is root's and the path unit watches the request file" eval 'root_owned "$H/prefix/update/run.sh" && grep -q "^PathExists=/var/lib/epaperclip/update/request$" "$H/units/epaperclip-update.path"'
   local old="$R" web="$H/web" st="$H/host-state/update"
   # A release server: v1.1.0 as a tarball with its checksum, laid out like GitHub's release downloads.
   make_release 1.1.0 2026.1005.0; local new="$R"
@@ -629,7 +670,7 @@ s_get() {
   install --uninstall >/dev/null 2>&1
 }
 
-ALL=(update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+ALL=(public_url update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"

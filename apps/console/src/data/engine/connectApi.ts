@@ -34,6 +34,11 @@ async function req<T>(method: "GET" | "PUT" | "POST" | "PATCH" | "DELETE", path:
 
 const enc = encodeURIComponent;
 
+export const nativeAppApi = {
+  status: () => req<{ callbackUrl: string }>("GET", "/api/native-apps/status"),
+  complete: (fields: Record<string, string>) => req<{ ok: true }>("POST", "/api/native-apps/complete", fields),
+};
+
 /** The Router (docs/ROUTER.md): its address, the models clients can name, connections resting after failures, and its keys (never the keys themselves). */
 export interface RouterKey { id: string; name: string; last4: string; createdAt: number; createdBy: string; lastUsedAt?: number }
 export interface RouterStatus { listen: string | null; models: { id: string; owner: string; label: string }[]; resting: { pid: string; fails: number; openUntil: number }[]; keys: RouterKey[] }
@@ -145,6 +150,17 @@ export interface AdapterList {
   marketProblem: { code: string; message: string } | null;
 }
 
+export interface PinAppAccess { enabled: boolean; agentId: string | null; entries: { connectionId: string; catalogEntryId: string; mode: "ask" | "allow" }[] }
+
+export interface PluginList {
+  plugins: { id: string; key: string | null; status: string | null; packageName: string | null; version: string | null; verified: boolean; catalogId: string | null; grantedPermissions: string[] | null }[];
+  available: { id: string; name: string; vendor: string; summary: string; version: string; permissions: string[]; packageName: string }[];
+  updates: { id: string; from: string; to: string; permissions: string[]; needsConsent: boolean }[];
+  catalog: { trusted: boolean; problem: { code: string; message: string } | null };
+  engine: { ok: boolean; problem?: string };
+  note: string;
+}
+
 export interface RedirectAllowEntry { uri: string; kind: "exact" | "prefix"; addedBy: string; addedAt: number }
 
 export const connectApi = {
@@ -183,6 +199,17 @@ export const connectApi = {
   sendLoginCode: (company: string, id: string, browserCode: string) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/code`, { browserCode }),
   cancelLogin: (company: string, id: string) => req<{ ok: boolean }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/cancel`, {}),
 
+  pinApps: {
+    get: (companyId: string) => req<PinAppAccess>("GET", `/api/pin/apps/${enc(companyId)}`),
+    enable: (companyId: string) => req<{ enabled: boolean }>("POST", `/api/pin/apps/${enc(companyId)}`, {}),
+    set: (companyId: string, connectionId: string, choices: { catalogEntryId: string; mode: "off" | "ask" | "allow" }[]) => req<PinAppAccess>("PUT", `/api/pin/apps/${enc(companyId)}/connections/${enc(connectionId)}`, { choices }),
+    revoke: (companyId: string) => req<{ ok: boolean }>("DELETE", `/api/pin/apps/${enc(companyId)}`),
+  },
+  plugins: () => req<PluginList>("GET", "/api/connect/plugins"),
+  installPlugin: (id: string, acceptedPermissions: string[]) => req<{ installed: boolean }>("POST", "/api/connect/plugins/install", { id, acceptedPermissions }),
+  upgradePlugin: (id: string, acceptedPermissions: string[]) => req<{ upgraded: boolean }>("POST", `/api/connect/plugins/${enc(id)}/upgrade`, { acceptedPermissions }),
+  setPlugin: (id: string, enabled: boolean) => req<{ ok: boolean }>("POST", `/api/connect/plugins/${enc(id)}/${enabled ? "enable" : "disable"}`, {}),
+  revokePlugin: (id: string) => req<{ ok: boolean }>("DELETE", `/api/connect/plugins/${enc(id)}`),
   adapters: () => req<AdapterList>("GET", "/api/connect/adapters"),
   setAdapter: (type: string, enabled: boolean) => req<{ type: string; enabled: boolean }>("PUT", `/api/connect/adapters/${enc(type)}`, { enabled }),
   installAdapter: (id: string) => req<{ installed: boolean }>("POST", "/api/connect/adapters/install", { id }),

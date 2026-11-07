@@ -14,6 +14,7 @@ export const qk = {
   agents: (id: string) => ["engine", "co", id, "agents"] as const,
   agent: (id: string, agentId: string) => ["engine", "co", id, "agent", agentId] as const,
   runs: (id: string, agentId?: string) => (agentId ? (["engine", "co", id, "runs", agentId] as const) : (["engine", "co", id, "runs"] as const)),
+  latestRun: (id: string, agentId: string) => ["engine", "co", id, "latest-run", agentId] as const,
   issues: (id: string) => ["engine", "co", id, "issues"] as const,
   issue: (id: string, ref: string) => ["engine", "co", id, "issue", ref] as const,
   comments: (id: string, ref: string) => ["engine", "co", id, "comments", ref] as const,

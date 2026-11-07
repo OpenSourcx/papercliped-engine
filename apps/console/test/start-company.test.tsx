@@ -62,6 +62,42 @@ async function throughName() {
 }
 
 describe("start a company", () => {
+  it("goes back through an existing company without creating it twice", async () => {
+    wrap();
+    await throughName();
+    next("Back");
+    expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(true);
+    next("Continue");
+    await screen.findByText("Create your first agent");
+    expect(sent("POST", "/engine/api/companies")).toHaveLength(1);
+    expect(sent("PUT", "/api/resource-groups/c1")).toHaveLength(1);
+  });
+
+  it("updates the same CEO and preserves the first task when navigating backward", async () => {
+    wrap();
+    await throughName();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Ada" } });
+    next("Next");
+    await screen.findByText("Connect a model");
+    next("Skip for now");
+    fireEvent.change(screen.getByLabelText("First task"), { target: { value: "Keep this draft" } });
+    next("Back");
+    next("Back");
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Grace" } });
+    next("Next");
+    await screen.findByText("Connect a model");
+    expect(sent("PATCH", "/engine/api/agents/a1")[0].body).toEqual({ name: "Grace", title: null });
+    expect(sent("POST", "/engine/api/companies/c1/onboarding-seed")).toHaveLength(1);
+    next("Skip for now");
+    expect((screen.getByLabelText("First task") as HTMLTextAreaElement).value).toBe("Keep this draft");
+  });
+
+  it("shows a failed resource provision even when the host request succeeded", async () => {
+    handlers["PUT /api/resource-groups/c1"] = () => ({ group: { provisioning: { state: "failed", error: "Broker unavailable" } } });
+    wrap();
+    await throughName();
+    expect(await screen.findByText(/Broker unavailable/)).toBeTruthy();
+  });
   it("makes the organization and its resource group on Continue, with the mission as its description", async () => {
     wrap();
     expect(screen.getByLabelText("Step 1 of 4")).toBeTruthy();
@@ -82,7 +118,7 @@ describe("start a company", () => {
     next("Skip for now");
     fireEvent.change(await screen.findByLabelText("First task"), { target: { value: "Plan the first week\nPropose a plan and the team we need." } });
     expect(screen.getByText("What should Chief of staff do first?")).toBeTruthy();
-    next("Launch");
+    next("Create task");
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(sent("POST", "/engine/api/companies/c1/onboarding-seed")[1].body).toMatchObject({ revision: "2", agent: { name: "Chief of staff" }, firstTask: { title: "Plan the first week", details: "Propose a plan and the team we need." } });
     expect(localStorage.getItem("epc.start.draft")).toBeNull();

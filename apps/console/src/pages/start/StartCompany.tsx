@@ -42,6 +42,7 @@ interface Draft {
   ceoName: string;
   ceoTitle: string;
   agentId: string | null;
+  firstTask?: string;
 }
 const EMPTY: Draft = { step: "name", company: null, mission: "", ceoName: "", ceoTitle: "", agentId: null };
 
@@ -164,10 +165,11 @@ export function StartCompany({ onClose }: { onClose: () => void }) {
 function NameStep({ c }: { c: Ctx }) {
   const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
   const containers = useQuery({ queryKey: ["start", "containers"], queryFn: host.agentContainers.get, retry: false });
-  const dupe = name.trim() && eng.data.orgs.some((o) => o.name.toLowerCase() === name.trim().toLowerCase());
+  const dupe = name.trim() && eng.data.orgs.some((o) => o.engine?.companyId !== draft.company?.id && o.name.toLowerCase() === name.trim().toLowerCase());
   const blocked = gate.state !== "ready" ? "The engine isn't ready yet." : canCreate === false ? "Organizations on this device are created by a Proxmox administrator, who can then invite you." : null;
   const next = async () => {
-    if (!name.trim() || dupe || busy) return;
+    if (!name.trim() || dupe || busy || blocked) return;
+    if (draft.company) { patch({ step: "ceo" }); return; }
     setBusy(true);
     setError(null);
     try {
@@ -190,7 +192,7 @@ function NameStep({ c }: { c: Ctx }) {
         </Notice>
       )}
       <Field label="Name" htmlFor="org-name" error={dupe ? "An organization with that name already exists." : undefined}>
-        <Input id="org-name" autoFocus size="lg" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void next()} placeholder="e.g. Northwind Labs" />
+        <Input id="org-name" autoFocus size="lg" disabled={!!draft.company} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void next()} placeholder="e.g. Northwind Labs" />
       </Field>
       <Field label="What is it for? (optional)" htmlFor="org-mission" hint="It becomes the organization's mission, its first goal.">
         <textarea id="org-mission" rows={3} value={draft.mission} onChange={(e) => patch({ mission: e.target.value })} className={textareaClass} placeholder="Build the best invoicing tool for small studios" />
@@ -227,6 +229,11 @@ function CeoStep({ c }: { c: Ctx }) {
     setBusy(true);
     setError(null);
     try {
+      if (draft.agentId) {
+        await engine.agents.update(draft.agentId, { name: draft.ceoName.trim(), title: draft.ceoTitle.trim() || null });
+        patch({ step: "model" });
+        return;
+      }
       const r = await engine.companies.seed(draft.company!.id, { revision: "1", ...(draft.mission.trim() ? { mission: draft.mission.trim() } : {}), agent: { name: draft.ceoName.trim(), ...(draft.ceoTitle.trim() ? { role: draft.ceoTitle.trim() } : {}) } });
       patch({ agentId: r.agentId, step: "model" });
     } catch (e) {
@@ -322,7 +329,7 @@ function ModelStep({ c }: { c: Ctx }) {
 
 function TaskStep({ c }: { c: Ctx }) {
   const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
-  const [text, setText] = useState("");
+  const text = draft.firstTask ?? "";
   const launch = async (withTask: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -340,9 +347,9 @@ function TaskStep({ c }: { c: Ctx }) {
     }
   };
   return (
-    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. The agent starts as soon as you launch." onBack={() => patch({ step: "model" })} next={{ label: "Launch", onClick: () => void launch(true), disabled: !text.trim(), loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
+    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. Your agent can work on it once its model and container are ready." onBack={() => patch({ step: "model" })} next={{ label: "Create task", onClick: () => void launch(true), disabled: !text.trim(), loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
       <Field label="First task" htmlFor="first-task">
-        <textarea id="first-task" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} className={textareaClass} placeholder={"Plan the first week\nPropose a plan and the team we need."} />
+        <textarea id="first-task" autoFocus rows={5} value={text} onChange={(e) => patch({ firstTask: e.target.value })} className={textareaClass} placeholder={"Plan the first week\nPropose a plan and the team we need."} />
       </Field>
       {error && <p role="alert" className="text-compact text-critical">{error}</p>}
     </Screen>
@@ -361,9 +368,9 @@ function Screen({ title, subtitle, children, onBack, next, secondary, avatar }: 
       </div>
       <div className="flex flex-col gap-4">{children}</div>
       <div className="flex items-center justify-between gap-3 pt-2">
-        {onBack ? <Button variant="ghost" onClick={onBack}><ArrowLeft className="h-4 w-4" />Back</Button> : <span />}
+        {onBack ? <Button variant="ghost" disabled={next.loading} onClick={onBack}><ArrowLeft className="h-4 w-4" />Back</Button> : <span />}
         <div className="flex items-center gap-2">
-          {secondary && <Button variant="ghost" onClick={secondary.onClick}>{secondary.label}</Button>}
+          {secondary && <Button variant="ghost" disabled={next.loading} onClick={secondary.onClick}>{secondary.label}</Button>}
           <Button variant={next.variant ?? "primary"} onClick={next.onClick} disabled={next.disabled} loading={next.loading}>{next.label}<ArrowRight className="h-4 w-4" /></Button>
         </div>
       </div>

@@ -57,7 +57,7 @@ export function useStoreItems() {
 
   useEffect(() => {
     let gone = false;
-    backend.marketplace().then((m) => { if (gone) return; setMarket(m.entries.map(fromMarket)); setCatalogProblem(m.problem?.message ?? null); }, () => {});
+    backend.marketplace().then((m) => { if (gone) return; setMarket(m.entries.filter((e) => e.kind !== "plugin").map(fromMarket)); setCatalogProblem(m.problem?.message ?? null); }, () => {});
     return () => { gone = true; };
   }, [backend]);
 

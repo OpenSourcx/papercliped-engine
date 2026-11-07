@@ -596,6 +596,27 @@ export class EngineGateway {
 
   // ---- The /engine/api proxy
 
+  /** The engine's public OAuth client metadata; no user or service credentials are sent. */
+  async oauthClientMetadata(): Promise<unknown> {
+    const reply = await this.send("GET", "/api/tools/oauth/client-metadata", { timeoutMs: 10_000 });
+    return EngineGateway.settle({ status: reply.status, data: json(reply.text) });
+  }
+
+  /** Signed provider traffic reaches only the native chat ingress, never a credentialed engine route. */
+  relayChatWebhook(publicId: string, provider: string, headers: Record<string, string>, body: Buffer): Promise<{ status: number; contentType: string; text: string }> {
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(publicId) || !["slack", "github", "discord"].includes(provider)) return Promise.reject(new HttpError(404, "not_found", "Not found"));
+    return new Promise((resolve, reject) => {
+      const up = this.open("POST", `/api/chat-webhooks/${publicId}/${provider}`, { ...headers, "content-length": String(body.length) }, (res) => {
+        const parts: Buffer[] = []; let size = 0;
+        res.on("data", (part: Buffer) => { size += part.length; if (size > 2 * 1024 * 1024) up.destroy(new EngineDown("answer too large")); else parts.push(part); });
+        res.on("end", () => resolve({ status: res.statusCode ?? 502, contentType: String(res.headers["content-type"] ?? "").split(";")[0], text: Buffer.concat(parts).toString("utf8") }));
+        res.on("error", () => reject(engineUnavailable()));
+      }, () => reject(engineUnavailable()));
+      up.setTimeout(15_000, () => up.destroy(new EngineDown("timed out")));
+      up.end(body);
+    });
+  }
+
   /** Forwards one browser request to the engine as the signed-in person, streaming both bodies. */
   async forward(req: IncomingMessage, res: ServerResponse, s: Session, maxBytes: number, hooks: ForwardHooks = {}): Promise<void> {
     const method = req.method ?? "GET";

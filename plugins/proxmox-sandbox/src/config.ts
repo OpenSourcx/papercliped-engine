@@ -36,6 +36,10 @@ export interface ProxmoxDriverConfig {
   memoryMb: number;
   /** Root disk size. For clones it is a minimum: the disk is grown, never shrunk. */
   diskGb: number | null;
+  /** Aggregate organization limits across every container in the pool; null means no aggregate limit. */
+  quotaGuests: number | null;
+  quotaCores: number | null;
+  quotaMemoryMb: number | null;
   unprivileged: boolean;
   allowPrivileged: boolean;
   sshPrivateKey: string | null;
@@ -146,6 +150,9 @@ export function parseConfig(raw: Record<string, unknown>): ProxmoxDriverConfig {
     cores: int(raw.cores, DEFAULT_CORES),
     memoryMb: int(raw.memoryMb, DEFAULT_MEMORY_MB),
     diskGb: optionalInt(raw.diskGb),
+    quotaGuests: optionalInt(raw.quotaGuests),
+    quotaCores: optionalInt(raw.quotaCores),
+    quotaMemoryMb: optionalInt(raw.quotaMemoryMb),
     unprivileged: bool(raw.unprivileged, true),
     allowPrivileged: bool(raw.allowPrivileged, false),
     sshPrivateKey: block(raw.sshPrivateKey),
@@ -230,6 +237,9 @@ export function checkConfig(config: ProxmoxDriverConfig): { errors: string[]; wa
   if (!Number.isInteger(config.cores) || config.cores < 1 || config.cores > 512) errors.push("cores must be between 1 and 512.");
   if (!Number.isInteger(config.memoryMb) || config.memoryMb < 256 || config.memoryMb > 4_194_304) {
     errors.push("memoryMb must be between 256 and 4194304.");
+  }
+  for (const [name, v] of [["quotaGuests", config.quotaGuests], ["quotaCores", config.quotaCores], ["quotaMemoryMb", config.quotaMemoryMb]] as const) {
+    if (v != null && (!Number.isInteger(v) || v < 1)) errors.push(`${name} must be a whole number of at least 1.`);
   }
   if (config.diskGb != null && (!Number.isInteger(config.diskGb) || config.diskGb < 1 || config.diskGb > 131_072)) {
     errors.push("diskGb must be between 1 and 131072.");

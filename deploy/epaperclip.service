@@ -15,6 +15,8 @@ SupplementaryGroups=www-data
 Environment=EPC_STATE_DIR=/var/lib/epaperclip EPC_ENGINE_DIR=/opt/epaperclip/engine
 Environment=EPC_ENGINE_URL=http://127.0.0.1:3100 EPC_ENGINE_PUBLIC_URL=http://127.0.0.1:3100
 EnvironmentFile=-/etc/default/epaperclip
+# The broker management capability is local-only and may update resource policy, never invoke Proxmox directly.
+EnvironmentFile=-/etc/epaperclip/broker.env
 ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/epaperclip.mjs
 # Its vault key and settings (every secret in them encrypted by the vault).
 StateDirectory=epaperclip

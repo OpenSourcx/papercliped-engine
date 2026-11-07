@@ -329,6 +329,41 @@ describe("acquire", () => {
   });
 });
 
+describe("organization limits", () => {
+  const live = () => [...pve.containers.values()].filter((c) => c.pool === "epaperclip" && !c.config.template);
+  it("refuses a container that would pass the machine limit, before anything is created", async () => {
+    await acquire({ quotaGuests: 1 }, "run-a");
+    const clones = pve.find("POST", "/lxc/9000/clone").length;
+    await expect(acquire({ quotaGuests: 1 }, "run-b")).rejects.toThrow(/resource limit is reached: machines \(1 of 1 in use\)/);
+    expect(pve.find("POST", "/lxc/9000/clone").length).toBe(clones);
+    expect(live()).toHaveLength(1);
+  });
+  it("adds up cores and memory across everything in the pool, counting the new container", async () => {
+    await acquire({ cores: 2, memoryMb: 2048, quotaCores: 4, quotaMemoryMb: 8192 }, "run-a");
+    await acquire({ cores: 2, memoryMb: 2048, quotaCores: 4, quotaMemoryMb: 8192 }, "run-b");
+    await expect(acquire({ cores: 2, memoryMb: 2048, quotaCores: 4, quotaMemoryMb: 8192 }, "run-c")).rejects.toThrow(/CPU cores \(4 of 4 in use, this one needs 2\)/);
+    await expect(acquire({ cores: 1, memoryMb: 6000, quotaMemoryMb: 8192 }, "run-d")).rejects.toThrow(/memory \(4096 of 8192 MiB in use, this one needs 6000\)/);
+    expect(live()).toHaveLength(2);
+  });
+  it("lets only one of two simultaneous requests take the last slot", async () => {
+    const results = await Promise.allSettled([acquire({ quotaGuests: 1 }, "run-x"), acquire({ quotaGuests: 1 }, "run-y")]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(live()).toHaveLength(1);
+  });
+  it("does not count guests outside the pool (the host's own machines and Pin are not charged to the organization)", async () => {
+    pve.addContainer(500, { status: "running", config: { cores: 64, memory: 262144 } });
+    await acquire({ quotaGuests: 1, quotaCores: 2, quotaMemoryMb: 2048, cores: 2, memoryMb: 2048 });
+    expect(live()).toHaveLength(1);
+  });
+  it("has no aggregate limit unless one is configured, and rejects nonsense limits", async () => {
+    await acquire({}, "run-a"); await acquire({}, "run-b");
+    expect(live()).toHaveLength(2);
+    const r = await hooks.onEnvironmentValidateConfig!({ driverKey: "proxmox", config: config({ quotaGuests: 0 }) });
+    expect(JSON.stringify(r)).toMatch(/quotaGuests must be a whole number of at least 1/);
+  });
+});
+
 describe("resume", () => {
   it("resumes a running container without restarting it", async () => {
     const lease = await acquire();

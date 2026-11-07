@@ -246,8 +246,8 @@ export class AgentContainers {
       size: over.size ?? s?.size ?? DEFAULT_SIZE,
     };
   }
-  private pools(): Record<string, { pool: string }> {
-    return this.d.state.getSetting<Record<string, { pool: string }>>("resourceGroups") ?? {};
+  private pools(): Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }> {
+    return this.d.state.getSetting<Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }>>("resourceGroups") ?? {};
   }
   private poolFor(companyId: string, p: Params) {
     return this.pools()[companyId]?.pool ?? p.pool;
@@ -494,6 +494,9 @@ export class AgentContainers {
       sshUser: AGENT_USER,
       reuseLease: false,
     };
+    // The organization's resource group is an aggregate limit over everything in its pool; the provider enforces it when it allocates.
+    const group = this.pools()[companyId];
+    if (group) { cfg.quotaGuests = group.maxGuests; cfg.quotaCores = group.cores; cfg.quotaMemoryMb = group.memoryMb; }
     if (this.d.caPem) cfg.caCert = this.d.caPem.trim();
     return cfg;
   }
@@ -923,8 +926,11 @@ export class AgentContainers {
     // The organization's agents default to it, unless someone chose a different non-local environment on purpose.
     const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
     const known = new Map(envs.map((e) => [e.id, e]));
+    // Pin's own identity in this organization is only a subject for tool policy (src/pin-apps.ts). It never runs, so it must
+    // not be given the organization's container environment, which would let a wake-up allocate a container for it.
+    const pinIdentity = (this.d.state.getSetting<Record<string, string>>("pin.appIdentities") ?? {})[companyId];
     for (const a of agents) {
-      if (a.status === "terminated") continue;
+      if (a.status === "terminated" || a.id === pinIdentity) continue;
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.

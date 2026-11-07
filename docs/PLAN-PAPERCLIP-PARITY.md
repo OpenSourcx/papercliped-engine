@@ -1,10 +1,10 @@
 # Plan: match Paperclip's experience, then add Proxmox
 
-Status: phase 1 built (see below); the rest is proposed and waits for approval.
+Status: implementation authorized and in progress. Use [STABILITY-GRADEBOOK.md](STABILITY-GRADEBOOK.md) for current evidence and release gates; the original comparison below is historical, not a claim about today's implementation.
 
 ## The rule
 
-ePaperclip is Paperclip plus Proxmox. We keep every Paperclip feature and its way of working (the same screens, the same words, the same flows), and we add what only a Proxmox host can give: agents that run in containers on this device, resource groups, a vault, storage and networking, and Pin working inside machines. Where our console does something differently from Paperclip today, the default is to move to Paperclip's way and keep our additions on top.
+ePaperclip uses native Paperclip as the behavioral reference and keeps ePaperclip's existing UI components and design tokens. We preserve the underlying flows and permission semantics while adding what a Proxmox host provides: container execution, resource groups, a vault, storage and networking, and Pin working inside machines. Visual resemblance alone does not establish parity.
 
 Facts below come from using the pinned engine (`paperclipai 2026.1005.0`) in a browser, see [PAPERCLIP-STUDY.md](PAPERCLIP-STUDY.md). "Ours" columns were read from the code, not compared screen by screen; those cells say so.
 

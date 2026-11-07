@@ -1,0 +1,42 @@
+[Unit]
+Description=ePaperclip agent resource broker
+Documentation=https://github.com/OpenSourcx/papercliped-engine
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+Requires=pve-cluster.service
+ConditionPathExists=/etc/epaperclip/broker.json
+
+[Service]
+Type=simple
+User=epaperclip-broker
+Group=epaperclip-broker
+EnvironmentFile=/etc/epaperclip/broker.env
+ExecStart=/opt/epaperclip/node/bin/node /opt/epaperclip/broker/epaperclip-broker.mjs /etc/epaperclip/broker.json
+StateDirectory=epaperclip-broker
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectProc=invisible
+RemoveIPC=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+UMask=0077
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

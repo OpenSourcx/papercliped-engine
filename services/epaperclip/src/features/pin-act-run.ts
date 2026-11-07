@@ -16,7 +16,7 @@ export const approvalWait = { maxMs: 15 * 60_000, pollMs: 1000, pingMs: 15_000 }
 
 export interface ActEnv {
   rt: PinRuntime;
-  host: { node: string; username: string; pve: () => Promise<ProxmoxClient>; connect?: Connect; enginePost?: (path: string, body: unknown) => Promise<{ id?: string; identifier?: string }> };
+  host: { node: string; username: string; pve: () => Promise<ProxmoxClient>; connect?: Connect; apps?: ActHost["apps"]; enginePost?: (path: string, body: unknown) => Promise<{ id?: string; identifier?: string }> };
   permission: Permission;
   send: (event: string, data: unknown) => void;
   /** Keeps the stream alive while waiting for the person. */
@@ -141,7 +141,7 @@ export async function handleActCall(env: ActEnv, call: { id: string; name: strin
     let upid: string | undefined;
     let vmid: number | undefined;
     if (def) {
-      const host: ActHost = { node: env.host.node, username: who, pve: env.host.pve, connect: env.host.connect, sleep: rt.sleep };
+      const host: ActHost = { node: env.host.node, username: who, pve: env.host.pve, connect: env.host.connect, sleep: rt.sleep, apps: env.host.apps };
       const r = await def.run(host, parsed);
       result = r.result;
       upid = r.upid;

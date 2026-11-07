@@ -116,6 +116,21 @@ const manifest: PaperclipPluginManifestV1 = {
             description: "Root disk in GiB. Clones are grown to this size (never shrunk); new containers are created with it (default 16).",
             ...advanced("Container"),
           },
+          quotaGuests: {
+            type: "number",
+            description: "Most containers this organization may have in the pool at once (all runs together). Empty means no limit here; ePaperclip sets it from the organization's resource group.",
+            ...advanced("Organization limits"),
+          },
+          quotaCores: {
+            type: "number",
+            description: "Most CPU cores all of the pool's containers may add up to, counting the one being created.",
+            ...advanced("Organization limits"),
+          },
+          quotaMemoryMb: {
+            type: "number",
+            description: "Most memory (MiB) all of the pool's containers may add up to, counting the one being created.",
+            ...advanced("Organization limits"),
+          },
           unprivileged: {
             type: "boolean",
             description: "Run containers unprivileged. Keep this on: root in a privileged container is root on the host.",

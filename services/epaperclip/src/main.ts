@@ -68,6 +68,7 @@ const handle = createApp({
   publicUrl: env.EPC_PUBLIC_URL || undefined,
   // The built Proxmox sandbox provider the installer puts beside the engine (agent containers).
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
+  ...(env.EPC_BROKER_MANAGEMENT_TOKEN ? { broker: { url: env.EPC_BROKER_URL || "http://127.0.0.1:8787", managementToken: env.EPC_BROKER_MANAGEMENT_TOKEN } } : {}),
   routerListen,
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });

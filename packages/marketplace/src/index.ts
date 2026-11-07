@@ -69,7 +69,7 @@ function parseEntry(raw: unknown, i: number): Entry {
   const e = raw as Record<string, unknown>;
   const at = `entry ${i}`;
   if (typeof e.id !== "string" || !ID.test(e.id)) bad(`${at} has a bad id`);
-  if (e.kind !== "connector" && e.kind !== "adapter" && e.kind !== "skill") bad(`${at} has a bad kind`);
+  if (e.kind !== "connector" && e.kind !== "adapter" && e.kind !== "skill" && e.kind !== "plugin") bad(`${at} has a bad kind`);
   if (!text(e.name, 60) || !text(e.vendor, 80) || !text(e.summary, 300)) bad(`${at} has a bad name, vendor or summary`);
   if (typeof e.version !== "string" || !VERSION.test(e.version)) bad(`${at} has a bad version`);
   if (e.minEngine !== undefined && (typeof e.minEngine !== "string" || !VERSION.test(e.minEngine))) bad(`${at} has a bad minEngine`);

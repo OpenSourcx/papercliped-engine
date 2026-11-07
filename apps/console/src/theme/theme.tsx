@@ -40,7 +40,25 @@ const lightBase: Tokens = {
   "--good": "#1f8a3e", "--live": "#2563eb", "--warning": "#a86200", "--serious": "#c2521f", "--critical": "#d1242f",
 };
 
+/** The Papercliped "clip" palette (OpenSourcx/papercliped web/scripts/community-cards.mjs, the colours of its launch images). Pin's orb tokens stay Pin's: they come from the warm base. */
+const clipDark: Tokens = {
+  ...warm, "--bg": "#16150f", "--surface": "#201f17", "--surface-2": "#28271d", "--surface-3": "#333126",
+  "--ink": "#f4f1d6", "--ink-2": "#bdb99f", "--ink-3": "#a5a287",
+  "--line": "rgb(244 241 214 / 0.1)", "--line-strong": "rgb(244 241 214 / 0.18)",
+  "--primary": "#e9e4b0", "--primary-ink": "#16150f", "--accent": "#e9e4b0", "--accent-soft": "rgb(233 228 176 / 0.14)",
+  "--code": "#11100b", "--glow-1": "rgb(233 228 176 / 0.16)", "--glow-2": "rgb(233 138 122 / 0.12)", "--glow-3": "rgb(233 228 176 / 0.06)",
+};
+const clipLight: Tokens = {
+  ...warm, ...lightBase, "--bg": "#fffddc", "--surface": "#fffff0", "--surface-2": "#f5f2c9", "--surface-3": "#ebe7b8",
+  "--ink": "#0b0a07", "--ink-2": "#57564a", "--ink-3": "#6a695b",
+  "--line": "rgb(11 10 7 / 0.1)", "--line-strong": "rgb(11 10 7 / 0.18)",
+  "--primary": "#47463c", "--primary-ink": "#fffddc", "--accent": "#47463c", "--accent-soft": "rgb(71 70 60 / 0.1)",
+  "--code": "#f5f2c9", "--glow-1": "rgb(233 228 176 / 0.5)", "--glow-2": "rgb(233 138 122 / 0.14)", "--glow-3": "rgb(71 70 60 / 0.06)",
+};
+
 export const PRESETS: Preset[] = [
+  { id: "clip", name: "Papercliped Clip", scheme: "dark", tokens: clipDark },
+  { id: "clip-light", name: "Papercliped Clip Light", scheme: "light", tokens: clipLight },
   { id: "warm", name: "Paperclip Warm", scheme: "dark", tokens: warm },
   {
     id: "graphite", name: "Graphite", scheme: "dark",
@@ -78,7 +96,7 @@ export interface ThemeSettings {
 /** One slider for the whole effect: more glass blurs more and lets more of the page show through. */
 export const glassFrom = (amount: number) => ({ glassBlur: Math.round((amount / 100) * 40), glassAlpha: Math.round((0.95 - (amount / 100) * 0.65) * 100) / 100 });
 
-export const DEFAULT_THEME: ThemeSettings = { preset: "warm", mode: "fixed", accent: null, recentAccents: [], railAccent: true, radius: 0.625, transparency: true, glass: 55, glassBlur: 22, glassAlpha: 0.6, fontScale: 1 };
+export const DEFAULT_THEME: ThemeSettings = { preset: "clip", mode: "fixed", accent: null, recentAccents: [], railAccent: true, radius: 0.625, transparency: true, glass: 55, glassBlur: 22, glassAlpha: 0.6, fontScale: 1 };
 
 /** Remembers an accent at the front of the recent list (five at most). */
 export const withRecent = (list: string[], accent: string) => [accent, ...list.filter((a) => a.toLowerCase() !== accent.toLowerCase())].slice(0, 5);

@@ -150,7 +150,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
         </div>
       )}
       {editing && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are. {publishing ? "Use a token scoped to Cloudflare Tunnel:Edit, DNS:Edit and Zone:Read." : ""}</p>}
-      {publishing && c.configured && <a href="?settings=advertising" className="inline-flex text-compact text-accent hover:underline mt-2">Manage advertising</a>}
+      {publishing && c.configured && <a href="?settings=access&access=remote" className="inline-flex text-compact text-accent hover:underline mt-2">Manage remote access</a>}
       {!result && c.configured && c.ok === false && c.error && <p className="text-compact text-critical mt-2">{c.error}</p>}
       {result && <p className={`text-compact mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
       {act.isError && act.variables?.kind !== "test" && <p className="text-compact text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}

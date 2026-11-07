@@ -20,6 +20,8 @@ import { connectApi } from "./connect.ts";
 import { connectionRoutes } from "./connect-connections.ts";
 import { loginRoutes } from "./connect-login.ts";
 import { adapterRoutes } from "./connect-adapters.ts";
+import { pluginRoutes } from "./connect-plugins.ts";
+import { pinAppsRoutes } from "./pin-apps.ts";
 import { handleMachineSettings } from "./machineSettings.ts";
 import { handleMachineCloud } from "./machineCloud.ts";
 import { handleMachineRun } from "./machineRun.ts";
@@ -31,6 +33,7 @@ import { handleDiskHealth } from "./diskHealth.ts";
 import { handleGithub } from "./github.ts";
 import { handleMachineFiles } from "./machine-files.ts";
 import { routerRoutes } from "./router.ts";
+import { nativeAppRoutes } from "./native-apps.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -75,6 +78,7 @@ export interface FeatureCtx {
 export type FeatureHandler = (ctx: FeatureCtx) => Promise<boolean>;
 
 export const FEATURES: { name: string; handle: FeatureHandler }[] = [
+  { name: "native-apps", handle: nativeAppRoutes },
   { name: "disks", handle: handleDisks },
   { name: "node", handle: nodeFeature },
   { name: "access-admin", handle: accessAdmin },
@@ -89,6 +93,8 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "connections", handle: connectionRoutes },
   { name: "connect-login", handle: loginRoutes },
   { name: "connect-adapters", handle: adapterRoutes },
+  { name: "connect-plugins", handle: pluginRoutes },
+  { name: "pin-apps", handle: pinAppsRoutes },
   { name: "machine-settings", handle: handleMachineSettings },
   { name: "machine-cloud", handle: handleMachineCloud },
   { name: "machine-run", handle: handleMachineRun },
