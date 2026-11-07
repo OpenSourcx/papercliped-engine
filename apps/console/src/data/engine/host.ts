@@ -123,6 +123,15 @@ async function call<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, 
 
 const enc = encodeURIComponent;
 
+export type RemoteMode = "local" | "cloudflare-self" | "connect";
+export interface ConnectStatusView {
+  mode: RemoteMode;
+  paired: boolean;
+  device?: { deviceId: string; accountId: string; name: string; pairedAt: number };
+  pairing?: { id: string; state: "pending" | "approved" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  tunnel?: { state: string; message: string; hostname?: string };
+}
+
 export const host = {
   engineStatus: () => call<EngineStatus>("GET", "/api/engine/status"),
   connectors: {
@@ -134,6 +143,16 @@ export const host = {
   publishing: {
     cloudflareZones: () => call<{ zones: PublishZone[] }>("GET", "/api/publishing/cloudflare/zones").then((r) => r.zones ?? []),
     cloudflarePlan: (zone: string, subdomain: string) => call<{ plan: PublicationPlan }>("POST", "/api/publishing/cloudflare/plan", { zone, subdomain }).then((r) => r.plan),
+  },
+  /** Papercliped Connect: remote-access mode and ownership pairing. Proxmox administrators only; the host enforces it. */
+  connect: {
+    status: () => call<ConnectStatusView>("GET", "/api/papercliped/connect/status"),
+    mode: (mode: RemoteMode) => call<ConnectStatusView>("POST", "/api/papercliped/connect/mode", { mode }),
+    pairingStart: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/start", {}),
+    pairingPoll: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/poll", {}),
+    pairingConfirm: (accountId: string, deviceName: string) => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/confirm", { accountId, deviceName }),
+    pairingCancel: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/cancel", {}),
+    unpair: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/unpair", {}),
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),

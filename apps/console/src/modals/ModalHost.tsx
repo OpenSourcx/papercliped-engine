@@ -1,6 +1,7 @@
-import { Bot, Cable, Cloud, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
-import { Advertising } from "../pages/Advertising.tsx";
-import { Access } from "../pages/Access.tsx";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Bot, Cable, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
+import { AccessHub } from "../pages/access/AccessHub.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
 import { AgentSignIn } from "../pages/AgentSignIn.tsx";
 import { Apps } from "../pages/Apps.tsx";
@@ -27,11 +28,10 @@ import { useModals } from "./useModals.ts";
 
 const SECTIONS: SettingsSection[] = [
   { id: "general", group: "Device", label: "General", icon: <Gear className="h-4 w-4" />, render: () => <Settings /> },
-  { id: "access", group: "Access", label: "Access control", icon: <ShieldCheck className="h-4 w-4" />, render: () => <Access /> },
+  { id: "access", group: "Access", label: "Access", icon: <ShieldCheck className="h-4 w-4" />, render: () => <AccessHub /> },
   { id: "apps", group: "Access", label: "Connected apps", icon: <Plug className="h-4 w-4" />, render: () => <Apps /> },
   { id: "connectors", group: "Device", label: "Connectors", icon: <Cable className="h-4 w-4" />, render: () => <Connectors /> },
   { id: "plugins", group: "Connectors", label: "Plugins", icon: <Cable className="h-4 w-4" />, hidden: true, render: () => <LiveConnectors /> },
-  { id: "advertising", group: "Access", label: "Advertising", icon: <Cloud className="h-4 w-4" />, render: () => <Advertising /> },
   { id: "agent-models", group: "Connectors", label: "Providers", icon: <Bot className="h-4 w-4" />, hidden: true, render: () => <LiveConnections /> },
   { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },
   { id: "vault", group: "Access", label: "Vault", icon: <KeyRound className="h-4 w-4" />, render: () => <Vault /> },
@@ -45,6 +45,9 @@ export const SETTINGS_IDS = SECTIONS.map((s) => s.id);
 export function ModalHost() {
   const m = useModals();
   const live = useEngine().live;
+  const [, setParams] = useSearchParams();
+  // Old Advertising links land on Access, Remote access.
+  useEffect(() => { if (m.settings === "advertising") setParams((p) => { const n = new URLSearchParams(p); n.set("settings", "access"); n.set("access", "remote"); return n; }, { replace: true }); }, [m.settings, setParams]);
   return (
     <>
       {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}

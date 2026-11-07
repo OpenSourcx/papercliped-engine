@@ -1,0 +1,48 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { RemoteAccess } from "../src/pages/access/RemoteAccess.tsx";
+import { host, type ConnectStatusView } from "../src/data/engine/host.ts";
+
+vi.mock("../src/pages/access/CloudflareAccess.tsx", () => ({ CloudflareAccess: () => <div>cloudflare section</div> }));
+const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
+const status = (s: Partial<ConnectStatusView> = {}): ConnectStatusView => ({ mode: "local", paired: false, ...s });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+describe("Access, Remote access", () => {
+  it("offers local only, self-managed Cloudflare and Papercliped Connect, and describes tunnels accurately", async () => {
+    vi.spyOn(host.connect, "status").mockResolvedValue(status());
+    wrap(<RemoteAccess />);
+    expect(await screen.findByRole("radio", { name: /Local only/ })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Self-managed Cloudflare/ }).textContent).toMatch(/does not deploy a Cloudflare Worker/);
+    expect(screen.getByRole("radio", { name: /Papercliped Connect/ }).textContent).toMatch(/stay on this machine/);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Local only/ }).getAttribute("aria-checked")).toBe("true"));
+  });
+  it("switches between the two remote modes through local only", async () => {
+    vi.spyOn(host.connect, "status").mockResolvedValue(status({ mode: "cloudflare-self" }));
+    const mode = vi.spyOn(host.connect, "mode").mockImplementation(async (m) => status({ mode: m }));
+    wrap(<RemoteAccess />);
+    const connect = await screen.findByRole("radio", { name: /Papercliped Connect/ });
+    await waitFor(() => expect((connect as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(connect);
+    await waitFor(() => expect(mode.mock.calls.map((c) => c[0])).toEqual(["local", "connect"]));
+  });
+  it("shows the approving account and links nothing until the administrator confirms it", async () => {
+    vi.spyOn(host.connect, "status").mockResolvedValue(status({ mode: "connect", pairing: { id: "p1", state: "approved", approvalUrl: "https://console.papercliped.co/devices/pair?id=p1", expiresAt: Date.now() + 60000, selectedOwner: "acc-123" } }));
+    const confirm = vi.spyOn(host.connect, "pairingConfirm").mockResolvedValue(status({ mode: "connect", paired: true, device: { deviceId: "d", accountId: "acc-123", name: "ePaperclip", pairedAt: 1 } }));
+    wrap(<RemoteAccess />);
+    expect(await screen.findByText(/acc-123/)).toBeTruthy();
+    expect(screen.getByText(/does not change any Proxmox permission/)).toBeTruthy();
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm this account" }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("acc-123", "ePaperclip"));
+  });
+  it("refuses to render an unsafe approval address as a link", async () => {
+    vi.spyOn(host.connect, "status").mockResolvedValue(status({ mode: "connect", pairing: { id: "p1", state: "pending", approvalUrl: "javascript:alert(1)", expiresAt: Date.now() + 60000 } }));
+    wrap(<RemoteAccess />);
+    expect(await screen.findByText(/not a safe web address/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Open approval page/ })).toBeNull();
+  });
+});
