@@ -7,6 +7,7 @@ import { RemoteAccess } from "../src/pages/access/RemoteAccess.tsx";
 import { host, type ConnectStatusView } from "../src/data/engine/host.ts";
 
 vi.mock("../src/pages/access/CloudflareAccess.tsx", () => ({ CloudflareAccess: () => <div>cloudflare section</div> }));
+vi.mock("../src/data/engine/queries.ts", async (original) => ({ ...(await original<typeof import("../src/data/engine/queries.ts")>()), useConnectors: () => ({ data: { connectors: [{ id: "cloudflare", configured: true }], canManage: true }, isPending: false }) }));
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
 const status = (s: Partial<ConnectStatusView> = {}): ConnectStatusView => ({ mode: "local", paired: false, ...s });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -52,5 +53,18 @@ describe("Access, Remote access", () => {
     wrap(<RemoteAccess />);
     expect(await screen.findByText(/not a safe web address/)).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Open approval page/ })).toBeNull();
+  });
+});
+
+describe("Self-managed Cloudflare copy", () => {
+  it("says exactly what exists: no tunnel or DNS is created, no Worker is deployed", async () => {
+    const { CloudflareAccess } = await vi.importActual<typeof import("../src/pages/access/CloudflareAccess.tsx")>("../src/pages/access/CloudflareAccess.tsx");
+    vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z", name: "example.com" }]);
+    vi.spyOn(host.publishing, "cloudflarePlan").mockResolvedValue({ provider: "cloudflare", hostname: "app.example.com", origin: "https://127.0.0.1:443", access: "epaperclip-login", mode: "named-tunnel" });
+    wrap(<CloudflareAccess />);
+    fireEvent.click(await screen.findByRole("button", { name: "Prepare" }));
+    expect(await screen.findByText("Nothing has been created.")).toBeTruthy();
+    expect(screen.getByText(/never creates a Cloudflare Worker/)).toBeTruthy();
+    expect(screen.queryByText(/next installation step/)).toBeNull();
   });
 });
