@@ -21,6 +21,7 @@ http.createServer(async (req, res) => {
   if (u === "/admin/hide/0.2.0") { hidden.add("0.2.0"); return res.end("hidden"); }
   if (u === "/admin/show/0.2.0") { hidden.delete("0.2.0"); return res.end("shown"); }
   if (u === "/" + NAME) { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify(meta())); }
+  { const m = u.match(/^\/(@[^/]+\/[^/]+)\/(\d+\.\d+\.\d+)$/); if (m && m[1] === NAME) { const doc = meta().versions[m[2]]; res.writeHead(doc ? 200 : 404, { "Content-Type": "application/json" }); return res.end(JSON.stringify(doc ?? {})); } /* versionDoc */ }
   if (u.startsWith("/tarballs/")) { const f = u.slice(10); if (/^[\w.-]+\.tgz$/.test(f) && fs.existsSync("pkgs/" + f)) { res.writeHead(200, { "Content-Type": "application/octet-stream" }); return res.end(fs.readFileSync("pkgs/" + f)); } res.writeHead(404); return res.end(); }
   const up = await fetch("https://registry.npmjs.org" + req.url, { headers: { accept: req.headers.accept ?? "*/*" } });
   res.writeHead(up.status, { "Content-Type": up.headers.get("content-type") ?? "application/json" }); res.end(Buffer.from(await up.arrayBuffer()));
