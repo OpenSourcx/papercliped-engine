@@ -14,4 +14,14 @@ describe("Pin organization apps", () => {
     await expect(runTool("list_organization_apps", { companyId: "../other" }, { engine } as unknown as PinToolHost)).rejects.toMatchObject({ code: "bad_args" });
     expect(engine).not.toHaveBeenCalled();
   });
+  it("lists held app actions without their inputs, accepts either response shape, and never offers a way to decide them", async () => {
+    const engine = vi.fn(async () => ({ actionRequests: [{ id: "r1", toolName: "issues.create", status: "pending", agentId: "a1", connectionId: "c1", createdAt: "2026-11-07T00:00:00Z", parameters: { body: "private text" }, credentialRef: "hidden" }] }));
+    const result = await runTool("list_app_action_requests", { companyId: "co-a" }, { engine } as unknown as PinToolHost);
+    expect(engine).toHaveBeenCalledWith("/api/companies/co-a/tools/action-requests");
+    expect(JSON.stringify(result)).not.toMatch(/private text|hidden|parameters/);
+    expect(result).toMatchObject({ requests: [{ id: "r1", tool: "issues.create", status: "pending" }] });
+    await expect(runTool("list_app_action_requests", { companyId: "../x" }, { engine } as unknown as PinToolHost)).rejects.toMatchObject({ code: "bad_args" });
+    const { TOOLS: PIN_TOOLS } = await import("../src/pin.ts");
+    expect(PIN_TOOLS.filter((t) => /approve|decline|decide/.test(t.name))).toEqual([]);
+  });
 });

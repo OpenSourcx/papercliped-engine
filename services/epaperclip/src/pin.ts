@@ -133,6 +133,7 @@ export const TOOLS: ToolDef[] = [
   { name: "list_organizations", description: "The organizations (companies of agents in the engine) the person belongs to.", parameters: noArgs },
   { name: "org_summary", description: "One organization's agents, reporting structure, open issues and pending approvals.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "list_organization_apps", description: "An organization's native app connections and agent conversation channels, including their health. Credentials and access tokens are never returned. A connected app does not imply every agent has permission to use it.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
+  { name: "list_app_action_requests", description: "Actions that organization apps are holding for approval (an agent asked to use a connected app and the policy says ask first). Read only: Pin cannot approve or decline them; a person decides in the organization's approvals. Tool inputs and credentials are never returned.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "power_machine", action: true, description: "Propose starting, shutting down, stopping or rebooting a machine. The person must confirm; it is not done until they do.", parameters: { type: "object", properties: { vmid: { type: "integer" }, action: { type: "string", enum: ["start", "shutdown", "stop", "reboot"] } }, required: ["vmid", "action"], additionalProperties: false } },
   { name: "snapshot_machine", action: true, description: "Propose taking a snapshot of a machine. The person must confirm.", parameters: { type: "object", properties: { vmid: { type: "integer" }, name: { type: "string", description: "2 to 40 letters, digits, - or _, starting with a letter" }, description: { type: "string" } }, required: ["vmid", "name"], additionalProperties: false } },
   { name: "create_task", action: true, description: "Propose creating a task (an issue) in an organization. The person must confirm.", parameters: { type: "object", properties: { companyId: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["companyId", "title"], additionalProperties: false } },
@@ -477,6 +478,17 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
         connections: apps.connections.map((app) => ({ id: app.id, name: app.name, enabled: app.enabled, purpose: app.connectionPurpose, health: app.healthStatus })),
         channels: channels.map((channel) => ({ id: channel.id, provider: channel.provider, assignedAgentId: channel.assignedAgentId, status: channel.status })),
         note: "The engine enforces each agent's grants and action policies. Manage them in Organization apps.",
+      };
+    }
+    case "list_app_action_requests": {
+      const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
+      if (!id) throw new PinError("bad_args", "companyId must be an organization id from list_organizations");
+      const raw = await host.engine<unknown>(`/api/companies/${encodeURIComponent(id)}/tools/action-requests`);
+      const list = (Array.isArray(raw) ? raw : (raw as { actionRequests?: unknown[]; requests?: unknown[] } | null)?.actionRequests ?? (raw as { requests?: unknown[] } | null)?.requests ?? []) as Record<string, unknown>[];
+      const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : null);
+      return {
+        requests: list.slice(0, 50).map((r) => ({ id: str(r.id), tool: str(r.toolName) ?? str(r.tool), status: str(r.status), agentId: str(r.agentId), connectionId: str(r.connectionId), createdAt: str(r.createdAt) })),
+        note: "Pin can't approve or decline these. A person decides in the organization's approvals.",
       };
     }
     case "org_summary": {
