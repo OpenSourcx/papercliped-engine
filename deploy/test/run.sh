@@ -390,6 +390,25 @@ s_uninstall() {
   check "--purge removes data, settings and users too" eval '[ "$RC" -eq 0 ] && [ ! -e "$H/prefix" ] && [ ! -e "$H/engine-home" ] && [ ! -e "$H/host-state" ] && [ ! -e "$H/etc" ] && [ ! -e "$H/default/epaperclip" ] && [ ! -s "$H/stub/users" ]'
 }
 
+s_public_url() {
+  new_host public-url; make_release 1.0.0 2026.1005.0; install
+  local before; before="$(grep -c . "$H/etc/engine.env")"
+  install --set-public-url https://Pve.Example.com:8443
+  check "a public https address is accepted (exit 0) and says where providers return" eval '[ "$RC" -eq 0 ] && has "https://pve.example.com:8443/api/tools/oauth/callback"'
+  check "the engine's public URL and allowed hostnames now name it, loopback kept" eval 'grep -qx "PAPERCLIP_PUBLIC_URL=https://pve.example.com:8443" "$H/etc/engine.env" && grep -qx "PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost,pve.example.com" "$H/etc/engine.env"'
+  check "the secrets and other engine settings are untouched, each key still appears once" eval '[ "$(grep -c "^BETTER_AUTH_SECRET=" "$H/etc/engine.env")" = 1 ] && [ "$(grep -c "^PAPERCLIP_PUBLIC_URL=" "$H/etc/engine.env")" = 1 ] && [ "$(grep -c . "$H/etc/engine.env")" = "$before" ]'
+  check "engine.env keeps its mode (not world-readable)" eval '[ "$(stat -c %a "$H/etc/engine.env")" = 600 ]'
+  check "the host service is told the same address" eval 'grep -qx "EPC_ENGINE_PUBLIC_URL=https://pve.example.com:8443" "$H/default/epaperclip" && grep -qx "EPC_PUBLIC_URL=https://pve.example.com:8443" "$H/default/epaperclip"'
+  local bad
+  for bad in http://pve.example.com https://pve.example.com/path "https://user@pve.example.com" "https://pve.example.com?x=1" https://localhost https://127.0.0.1:3100 https://0.0.0.0 "https://pve.example.com:99999" "javascript:alert(1)" ""; do
+    local sum; sum="$(sum_of "$H/etc/engine.env")"
+    install --set-public-url "$bad"
+    check "refuses '$bad' and changes nothing" eval '[ "$RC" -ne 0 ] && [ "$(sum_of "$H/etc/engine.env")" = "$sum" ]'
+  done
+  install --set-public-url --clear
+  check "--clear puts the loopback address back and removes the host settings" eval '[ "$RC" -eq 0 ] && grep -qx "PAPERCLIP_PUBLIC_URL=http://127.0.0.1:3100" "$H/etc/engine.env" && grep -qx "PAPERCLIP_ALLOWED_HOSTNAMES=127.0.0.1,localhost" "$H/etc/engine.env" && ! grep -q "^EPC_ENGINE_PUBLIC_URL=" "$H/default/epaperclip" && ! grep -q "^EPC_PUBLIC_URL=" "$H/default/epaperclip"'
+}
+
 s_deb() {
   # The built Debian package (release/epaperclip_*_all.deb, from scripts/build-deb.sh), unpacked: its maintainer scripts
   # parse, its files match their checksums, and its payload installs with the real host service.
@@ -645,7 +664,7 @@ s_get() {
   install --uninstall >/dev/null 2>&1
 }
 
-ALL=(update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+ALL=(public_url update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"

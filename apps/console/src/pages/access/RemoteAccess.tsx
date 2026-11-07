@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Cloud, ExternalLink, Globe, Home } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { host, type ConnectStatusView, type RemoteMode } from "../../data/engine/host.ts";
+import { nativeAppApi } from "../../data/engine/connectApi.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Button, Card, Input, Notice } from "../../ui/primitives.tsx";
 import { CloudflareAccess } from "./CloudflareAccess.tsx";
@@ -37,6 +38,7 @@ export function RemoteAccess() {
       </div>
       {current === "cloudflare-self" && <CloudflareAccess />}
       {current === "connect" && status.data && <ConnectPanel status={status.data} onChange={set} />}
+      <ProviderAddress />
       {current === "local" && <Card className="p-5"><p className="text-compact text-ink-3">Remote access is off. People on your network sign in at this device’s own address.</p></Card>}
     </div>
   );
@@ -79,5 +81,22 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
       </div> : <p className="text-compact text-ink-3">Waiting for approval…</p>}
       <div className="flex gap-2"><Button size="sm" loading={poll.isPending} onClick={() => poll.mutate()}>Check now</Button><Button size="sm" variant="ghost" loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel</Button></div>
     </>}
+  </Card>;
+}
+
+/** Provider sign-in (OAuth) sends the browser back to one address. It must be the address this console is open at. */
+export function ProviderAddress() {
+  const status = useQuery({ queryKey: ["native-apps", "status"], queryFn: nativeAppApi.status, retry: 1 });
+  const callback = status.data?.callbackUrl;
+  if (!callback) return status.error ? <Notice tone="warning" title="Provider sign-in address unknown">{status.error instanceof Error ? status.error.message : "The device did not answer."}</Notice> : null;
+  const here = window.location.origin;
+  const ok = new URL(callback).origin === here;
+  return <Card className="p-5 space-y-2">
+    <h2 className="font-medium">Provider sign-in address</h2>
+    <p className="text-compact text-ink-3">When you connect GitHub, Notion, Slack and similar apps, the provider sends your browser back to this address. Register it as the redirect address with each provider.</p>
+    <p className="font-mono text-compact break-all">{callback}</p>
+    {ok ? <Notice tone="good" title="Matches this console’s address">Provider sign-in can return here.</Notice>
+      : <Notice tone="warning" title="Does not match this console’s address">Provider sign-in would return to a place this browser cannot reach. A device administrator sets the address once, on the Proxmox host:
+        <span className="mt-2 block font-mono text-xs break-all">sudo /opt/epaperclip/update/install.sh --set-public-url {here}</span></Notice>}
   </Card>;
 }

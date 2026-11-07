@@ -252,9 +252,9 @@ if [ "${1:-}" = "--tarball" ]; then
 fi
 
 ACTION="${1:-}"
-case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge) ;; *) die "unknown option $ACTION (use --status, --rollback, --uninstall or --purge)" ;; esac
+case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge|--set-public-url) ;; *) die "unknown option $ACTION (use --status, --rollback, --uninstall, --purge or --set-public-url)" ;; esac
 case "$ACTION" in ""|--install) banner "installing on this Proxmox host" ;; --rollback) banner "going back to the previous version" ;; esac
-[ "$#" -le 1 ] || die "one option at a time, please (got: $*)"
+if [ "$ACTION" = "--set-public-url" ]; then [ "$#" -eq 2 ] || die "usage: --set-public-url https://name.example[:port]   (or --set-public-url --clear)"; else [ "$#" -le 1 ] || die "one option at a time, please (got: $*)"; fi
 
 # ---- --status ---------------------------------------------------------------------------------------------------
 if [ "$ACTION" = "--status" ]; then
@@ -269,6 +269,37 @@ if [ "$ACTION" = "--status" ]; then
   b="$(latest_backup || true)"
   say "engine data: $ENGINE_HOME (latest hourly backup: ${b:+$BACKUPS/}${b:-none yet})"
   command -v pveversion >/dev/null && say "proxmox: $(pveversion)"
+  exit 0
+fi
+
+# ---- --set-public-url -------------------------------------------------------------------------------------------
+# The address browsers reach this device at, which provider sign-in (OAuth) returns to. The engine's own setting stays on
+# loopback until an administrator sets this: a provider cannot send a browser back to 127.0.0.1 on another computer.
+# Only a plain https origin is accepted (no login, path or query, never a loopback name), so the value can't redirect a
+# provider's sign-in anywhere else. "--clear" puts the loopback default back.
+if [ "$ACTION" = "--set-public-url" ]; then
+  want="$2"; loop="http://127.0.0.1:$ENGINE_PORT"
+  if [ "$want" = "--clear" ]; then url="$loop"; hosts="127.0.0.1,localhost"
+  else
+    printf '%s' "$want" | grep -Eq '^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$' || die "not an accepted address: use https://name.example (or https://name.example:8443), with no path, login or query"
+    h="$(printf '%s' "${want#https://}" | tr 'A-Z' 'a-z')"; name="${h%%:*}"
+    case "$name" in localhost|localhost.*|127.*|0.0.0.0|*.localhost) die "that is a loopback address; provider sign-in could not return to it from another computer" ;; esac
+    port="${h#"$name"}"; [ -z "$port" ] || [ "${port#:}" -le 65535 ] || die "port out of range"
+    url="https://$h"; hosts="127.0.0.1,localhost,$name"
+  fi
+  [ -f "$ENGINE_ENV" ] || die "no engine settings at $ENGINE_ENV: install first"
+  set_kv() { # file key value: replace the key's line, or add it; written aside and moved so a crash leaves the old file
+    local f="$1" k="$2" v="$3" tmp; tmp="$(mktemp "$f.XXXXXX")"
+    { grep -v "^#\?$k=" "$f" || true; echo "$k=$v"; } >"$tmp"; chmod --reference="$f" "$tmp"; chown --reference="$f" "$tmp" 2>/dev/null || true; mv "$tmp" "$f"
+  }
+  set_kv "$ENGINE_ENV" PAPERCLIP_PUBLIC_URL "$url"
+  set_kv "$ENGINE_ENV" PAPERCLIP_ALLOWED_HOSTNAMES "$hosts"
+  [ -f "$DEFAULTS" ] || { install -d "$(dirname "$DEFAULTS")"; install -m 0644 "$ROOT/deploy/epaperclip.default" "$DEFAULTS"; }
+  if [ "$want" = "--clear" ]; then sed -i '/^EPC_ENGINE_PUBLIC_URL=/d;/^EPC_PUBLIC_URL=/d' "$DEFAULTS"
+  else set_kv "$DEFAULTS" EPC_ENGINE_PUBLIC_URL "$url"; set_kv "$DEFAULTS" EPC_PUBLIC_URL "$url"; fi
+  systemctl restart epaperclip-engine epaperclip 2>/dev/null || warn "couldn't restart the services; run: systemctl restart epaperclip-engine epaperclip"
+  say "public address: $url"
+  say "provider sign-in returns to: $url/api/tools/oauth/callback (register exactly this redirect address with each provider)"
   exit 0
 fi
 

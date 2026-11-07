@@ -12,6 +12,14 @@ const status = (s: Partial<ConnectStatusView> = {}): ConnectStatusView => ({ mod
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("Access, Remote access", () => {
+  it("shows the provider callback address and the exact fix when it does not match this console", async () => {
+    vi.spyOn(host.connect, "status").mockResolvedValue(status());
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ callbackUrl: "http://127.0.0.1:3100/api/tools/oauth/callback" })));
+    wrap(<RemoteAccess />);
+    expect(await screen.findByText(/Does not match this console/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`--set-public-url ${window.location.origin}`))).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
   it("offers local only, self-managed Cloudflare and Papercliped Connect, and describes tunnels accurately", async () => {
     vi.spyOn(host.connect, "status").mockResolvedValue(status());
     wrap(<RemoteAccess />);
