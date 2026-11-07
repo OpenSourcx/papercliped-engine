@@ -34,6 +34,11 @@ async function req<T>(method: "GET" | "PUT" | "POST" | "PATCH" | "DELETE", path:
 
 const enc = encodeURIComponent;
 
+export const nativeAppApi = {
+  status: () => req<{ callbackUrl: string }>("GET", "/api/native-apps/status"),
+  complete: (fields: Record<string, string>) => req<{ ok: true }>("POST", "/api/native-apps/complete", fields),
+};
+
 /** The Router (docs/ROUTER.md): its address, the models clients can name, connections resting after failures, and its keys (never the keys themselves). */
 export interface RouterKey { id: string; name: string; last4: string; createdAt: number; createdBy: string; lastUsedAt?: number }
 export interface RouterStatus { listen: string | null; models: { id: string; owner: string; label: string }[]; resting: { pid: string; fails: number; openUntil: number }[]; keys: RouterKey[] }

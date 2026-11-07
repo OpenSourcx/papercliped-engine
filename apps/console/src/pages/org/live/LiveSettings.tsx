@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Archive, Users } from "lucide-react";
 import { useEngine } from "../../../data/store.tsx";
 import { dollars } from "../../../data/engine/map.ts";
-import { useMembers, useOrg, useResourceGroup } from "../../../data/engine/queries.ts";
+import { useMembers, useOrg, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
 import { useOrgSettingsWrites } from "../../../data/engine/more.ts";
 import { formatBytes } from "../../../lib/storage.ts";
 import { Modal } from "../../../ui/Modal.tsx";
@@ -22,6 +22,7 @@ export function LiveOrgSettings() {
   const members = useMembers(companyId);
   const rg = useResourceGroup(companyId);
   const w = useOrgSettingsWrites(companyId);
+  const repair = useSetResourceGroup(companyId, org.name);
   const [name, setName] = useState<string | null>(null);
   const [description, setDescription] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
@@ -70,7 +71,9 @@ export function LiveOrgSettings() {
               <dt className="text-ink-3">Resource group</dt>
               <dd>{rg.isPending ? "…" : rg.error ? <span className="text-ink-3">Unknown</span> : g ? `${g.cores} cores · ${formatBytes(g.memoryMb * 1024 ** 2)} memory · ${g.diskGb} GB disk · up to ${g.maxGuests} containers (${g.pool})` : <span className="text-ink-3">No resource group yet</span>}</dd>
               <dt className="text-ink-3">Status</dt><dd className="capitalize">{c.status}</dd>
+              {g?.provisioning && <><dt className="text-ink-3">Provisioning</dt><dd><span className={g.provisioning.state === "ready" ? "text-good" : g.provisioning.state === "failed" ? "text-critical" : "text-warning"}>{g.provisioning.state === "ready" ? "Ready" : g.provisioning.state === "pending" ? "In progress" : g.provisioning.error ?? "Needs repair"}</span>{g.provisioning.state === "failed" && <Button size="sm" className="ml-3" loading={repair.isPending} onClick={() => repair.mutate({ cores: g.cores, memoryMb: g.memoryMb, diskGb: g.diskGb, maxGuests: g.maxGuests })}>Repair</Button>}</dd></>}
             </dl>
+            <ActionError error={repair.error} />
           </Card>
 
           <SectionTitle action={<Link to={`/${d}/${org.slug}/members`} className="text-compact text-accent hover:underline">All members</Link>}>Members</SectionTitle>

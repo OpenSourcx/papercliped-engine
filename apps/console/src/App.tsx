@@ -17,19 +17,24 @@ import { FirewallPage } from "./pages/firewall/Firewall.tsx";
 import { FEATURES } from "./features/registry.ts";
 import { Store } from "./pages/store/Store.tsx";
 import { ConsentPage } from "./pages/connect/Consent.tsx";
+import { ProviderCallback } from "./pages/connect/ProviderCallback.tsx";
+import { ChannelIdentity } from "./pages/connect/ChannelIdentity.tsx";
 import { TasksPage } from "./pages/Tasks.tsx";
 import { MachinePage } from "./pages/machines/MachinePage.tsx";
 import { ConsoleWindow } from "./pages/ConsoleWindow.tsx";
 import { Machines } from "./pages/machines/Machines.tsx";
 import { NotFound } from "./pages/NotFound.tsx";
 import { Activity, Agents, Artifacts, Chat, ComingFromPaperclip, Costs, Decisions, Goals, Inbox, OrgConnectors, OrgSettings, Projects, Routines, Skills, Tasks, Workspaces } from "./pages/org/OrgPages.tsx";
-import { OrgChart } from "./pages/org/OrgChart.tsx";
 import { OrgRoute } from "./pages/org/live/common.tsx";
 import { LiveAgentDetail } from "./pages/org/live/LiveAgents.tsx";
 import { LiveTaskDetail } from "./pages/org/live/LiveTasks.tsx";
 import { LiveMembers } from "./pages/org/live/LiveWork.tsx";
 import { LiveWorkspaceDetail } from "./pages/org/live/LiveArtifacts.tsx";
 import { LiveRoutineDetail } from "./pages/org/live/LiveRoutines.tsx";
+import { LiveOrgChart } from "./pages/org/live/LiveOrgChart.tsx";
+import { OrgChart } from "./pages/org/OrgChart.tsx";
+
+function OrganizationChart() { return useEngine().live ? <LiveOrgChart /> : <OrgChart />; }
 
 /** Pages only the engine has (a task's thread, an agent's runs, the member list). The demo goes back to the list instead. */
 function LiveOnly({ children, fallback, demoMessage }: { children: React.ReactNode; fallback: string; demoMessage?: { title: string; body: string } }) {
@@ -59,7 +64,9 @@ function SetupGate() {
 
 export function App() {
   return (
-    <Routes>
+      <Routes>
+        <Route path="provider-callback" element={<ProviderCallback />} />
+        <Route path="chat-identity/confirm" element={<ChannelIdentity />} />
       <Route path="/" element={<Root />} />
       <Route path="/setup" element={<SetupGate />} />
       <Route path="/:device" element={<DeviceGate />}>
@@ -108,7 +115,7 @@ export function App() {
             <Route path="agents" element={<Agents />} />
             <Route path="agents/:agentId" element={<LiveOnly fallback="..">{<LiveAgentDetail />}</LiveOnly>} />
             <Route path="members" element={<LiveOnly fallback=".." demoMessage={{ title: "Members are managed on a device", body: "The demo has no accounts to list. On a device, people you add here sign in with their Proxmox account." }}>{<LiveMembers />}</LiveOnly>} />
-            <Route path="org" element={<OrgChart />} />
+            <Route path="org" element={<OrganizationChart />} />
             <Route path="costs" element={<Costs />} />
             <Route path="activity" element={<Activity />} />
             <Route path="connectors" element={<OrgConnectors />} />

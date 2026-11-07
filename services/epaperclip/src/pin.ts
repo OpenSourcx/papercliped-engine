@@ -131,7 +131,8 @@ export const TOOLS: ToolDef[] = [
   { name: "recent_tasks", description: "The host's recent task log (starts, stops, backups, downloads), newest first.", parameters: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false } },
   { name: "vault_list", description: "The names of the variables in the host's system vault, what each is for, and whether it is Pin only or shared with selected CEOs. Values are never shown to you or to any model; say that if asked to read one. Administrators only.", parameters: noArgs },
   { name: "list_organizations", description: "The organizations (companies of agents in the engine) the person belongs to.", parameters: noArgs },
-  { name: "org_summary", description: "One organization's agents, open issues and pending approvals.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
+  { name: "org_summary", description: "One organization's agents, reporting structure, open issues and pending approvals.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
+  { name: "list_organization_apps", description: "An organization's native app connections and agent conversation channels, including their health. Credentials and access tokens are never returned. A connected app does not imply every agent has permission to use it.", parameters: { type: "object", properties: { companyId: { type: "string" } }, required: ["companyId"], additionalProperties: false } },
   { name: "power_machine", action: true, description: "Propose starting, shutting down, stopping or rebooting a machine. The person must confirm; it is not done until they do.", parameters: { type: "object", properties: { vmid: { type: "integer" }, action: { type: "string", enum: ["start", "shutdown", "stop", "reboot"] } }, required: ["vmid", "action"], additionalProperties: false } },
   { name: "snapshot_machine", action: true, description: "Propose taking a snapshot of a machine. The person must confirm.", parameters: { type: "object", properties: { vmid: { type: "integer" }, name: { type: "string", description: "2 to 40 letters, digits, - or _, starting with a letter" }, description: { type: "string" } }, required: ["vmid", "name"], additionalProperties: false } },
   { name: "create_task", action: true, description: "Propose creating a task (an issue) in an organization. The person must confirm.", parameters: { type: "object", properties: { companyId: { type: "string" }, title: { type: "string" }, description: { type: "string" } }, required: ["companyId", "title"], additionalProperties: false } },
@@ -464,13 +465,27 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
       const list = await host.engine<{ id: string; name: string; status?: string; description?: string | null }[]>("/api/companies");
       return { organizations: list.map((c) => ({ id: c.id, name: c.name, status: c.status ?? null, description: c.description ?? null })) };
     }
+    case "list_organization_apps": {
+      const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
+      if (!id) throw new PinError("bad_args", "companyId must be an organization id from list_organizations");
+      const e = encodeURIComponent(id);
+      const [apps, channels] = await Promise.all([
+        host.engine<{ connections: { id: string; name: string; enabled: boolean; connectionPurpose: string; healthStatus: string }[] }>(`/api/companies/${e}/tools/connections`),
+        host.engine<{ id: string; provider: string; assignedAgentId: string; status: string }[]>(`/api/companies/${e}/chat-endpoints`),
+      ]);
+      return {
+        connections: apps.connections.map((app) => ({ id: app.id, name: app.name, enabled: app.enabled, purpose: app.connectionPurpose, health: app.healthStatus })),
+        channels: channels.map((channel) => ({ id: channel.id, provider: channel.provider, assignedAgentId: channel.assignedAgentId, status: channel.status })),
+        note: "The engine enforces each agent's grants and action policies. Manage them in Organization apps.",
+      };
+    }
     case "org_summary": {
       const id = typeof args.companyId === "string" && ORG_ID.test(args.companyId) ? args.companyId : null;
       if (!id) throw new PinError("bad_args", "companyId must be an organization id from list_organizations");
       const e = encodeURIComponent(id);
       const [company, agents, issues, approvals] = await Promise.all([
         host.engine<{ id: string; name: string; status?: string }>(`/api/companies/${e}`),
-        host.engine<{ id: string; name: string; role?: string; status?: string }[]>(`/api/companies/${e}/agents`),
+        host.engine<{ id: string; name: string; role?: string; status?: string; reportsTo?: string | null }[]>(`/api/companies/${e}/agents`),
         host.engine<{ id: string; identifier?: string; title: string; status: string; priority?: string }[]>(`/api/companies/${e}/issues`),
         host.engine<{ id: string; type?: string; status: string; createdAt?: string }[]>(`/api/companies/${e}/approvals?status=pending`),
       ]);
@@ -479,7 +494,7 @@ export async function runTool(name: string, args: Record<string, unknown>, host:
       for (const i of open) byStatus[i.status] = (byStatus[i.status] ?? 0) + 1;
       return {
         organization: { id: company.id, name: company.name, status: company.status ?? null },
-        agents: { count: agents.length, list: agents.slice(0, 30).map((a) => ({ id: a.id, name: a.name, role: a.role ?? null, status: a.status ?? null })) },
+        agents: { count: agents.length, list: agents.slice(0, 30).map((a) => ({ id: a.id, name: a.name, role: a.role ?? null, status: a.status ?? null, reportsTo: a.reportsTo ?? null })) },
         openIssues: { count: open.length, byStatus, recent: open.slice(0, 10).map((i) => ({ id: i.identifier ?? i.id, title: i.title, status: i.status, priority: i.priority ?? null })) },
         pendingApprovals: { count: approvals.length, list: approvals.slice(0, 10).map((a) => ({ id: a.id, type: a.type ?? null, createdAt: a.createdAt ?? null })) },
       };

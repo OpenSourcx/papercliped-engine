@@ -93,8 +93,9 @@ new_host() {
 # A release folder laid out like the downloaded one. make_release <version> <engine version> [variant]
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
-  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/broker" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
+  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip-broker.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  cp "$HERE/fake-epaperclip.mjs" "$R/broker/epaperclip-broker.mjs"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
   cp "$HERE/fake-engine.mjs" "$R/fake-engine.mjs"

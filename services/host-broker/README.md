@@ -51,7 +51,7 @@ Give the token to the caller and put only the hash in the config.
 ## 3. Run
 
 ```sh
-PROXMOX_TOKEN_SECRET=... node --experimental-strip-types src/main.ts /etc/papercliped/broker.json
+PROXMOX_TOKEN_SECRET=... EPC_BROKER_MANAGEMENT_TOKEN=... node --experimental-strip-types src/main.ts /etc/papercliped/broker.json
 ```
 
 It listens on `127.0.0.1:8787` by default. Keep it on loopback or a management network; container guests must not be able to reach it.
@@ -68,3 +68,9 @@ It listens on `127.0.0.1:8787` by default. Keep it on loopback or a management n
 | `POST /v1/groups/:group/leases` `{ "profile", "sshPublicKey", "runId", "requestedExpiresAt" }` | Pin, or that group |
 | `GET /v1/groups/:group/leases/:id` | Pin, or that group |
 | `DELETE /v1/groups/:group/leases/:id` | Pin, or that group |
+
+## ePaperclip-managed group registry
+
+The installed `epaperclip-broker.service` remains inactive until `/etc/epaperclip/broker.json` exists. Its separate `EPC_BROKER_MANAGEMENT_TOKEN` is a loopback-only capability for ePaperclip's resource-group reconciler, never a Proxmox credential. The durable registry at `/var/lib/epaperclip-broker/groups.json` contains policy only, never bearer-token values.
+
+`GET /v1/admin/groups` and `PUT /v1/admin/groups` (with `{ "groups": { ... } }`) require that capability. Every replacement validates unique pools, tags, and VMID ranges, and refuses ranges containing protected guests or templates. Pool, tag, and VMID ownership fields are immutable through this live API; a future explicit drain-and-migrate job is required to change or remove them.

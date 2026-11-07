@@ -10,14 +10,15 @@ import { buildGetSh } from "./release-lib.mjs";
 
 const root = new URL("../", import.meta.url).pathname;
 const bundle = `${root}services/epaperclip/dist/epaperclip.mjs`;
+const brokerBundle = `${root}services/host-broker/dist/epaperclip-broker.mjs`;
 const consoleDir = `${root}apps/console/dist`;
-const deployFiles = ["epaperclip-exec.mjs", "epaperclip-exec.socket", "epaperclip-exec@.service", "epaperclip-publish.mjs", "epaperclip-publish.socket", "epaperclip-publish@.service", "install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh", "epaperclip-cli.sh"];
+const deployFiles = ["epaperclip-exec.mjs", "epaperclip-exec.socket", "epaperclip-exec@.service", "epaperclip-publish.mjs", "epaperclip-publish.socket", "epaperclip-publish@.service", "install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip-broker.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh", "epaperclip-cli.sh"];
 const engineFiles = ["package.json", "package-lock.json"];
 // The Proxmox sandbox provider (agent containers): its built code, template scripts and lockfile. Its production packages
 // are installed at install time with the private Node.js, like the engine's (about 44 MB, so they are not in the download).
 const pluginDir = `${root}plugins/proxmox-sandbox/`;
 const pluginFiles = ["dist", "template", "package.json", "package-lock.json", "README.md"];
-for (const p of [bundle, `${consoleDir}/index.html`]) if (!existsSync(p)) { console.error(`package-release: ${p} is missing; run pnpm build first`); process.exit(1); }
+for (const p of [bundle, brokerBundle, `${consoleDir}/index.html`]) if (!existsSync(p)) { console.error(`package-release: ${p} is missing; run pnpm build first`); process.exit(1); }
 for (const p of [`${pluginDir}dist/manifest.js`, `${pluginDir}dist/worker.js`]) if (!existsSync(p)) { console.error(`package-release: ${p} is missing; build the provider first: npm --prefix plugins/proxmox-sandbox ci && npm --prefix plugins/proxmox-sandbox run build`); process.exit(1); }
 for (const p of [...deployFiles.map((f) => `${root}deploy/${f}`), ...engineFiles.map((f) => `${root}engine/${f}`), ...pluginFiles.map((f) => `${pluginDir}${f}`)]) {
   if (!existsSync(p)) { console.error(`package-release: ${p} is missing`); process.exit(1); }
@@ -37,8 +38,10 @@ const dir = `${out}epaperclip/`;
 rmSync(out, { recursive: true, force: true });
 mkdirSync(`${dir}deploy`, { recursive: true });
 mkdirSync(`${dir}engine`, { recursive: true });
+mkdirSync(`${dir}broker`, { recursive: true });
 mkdirSync(`${dir}plugins/proxmox-sandbox`, { recursive: true });
 cpSync(bundle, `${dir}epaperclip.mjs`);
+cpSync(brokerBundle, `${dir}broker/epaperclip-broker.mjs`);
 cpSync(consoleDir, `${dir}console`, { recursive: true });
 for (const f of deployFiles) cpSync(`${root}deploy/${f}`, `${dir}deploy/${f}`);
 if (havePub) cpSync(pubKey, `${dir}deploy/release-signing.pub`);

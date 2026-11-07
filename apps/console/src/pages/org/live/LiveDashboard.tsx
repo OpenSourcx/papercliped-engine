@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Bot, Box, CircleDollarSign, ListChecks, Vote } from "lucide-react";
+import { Bot, Box, Check, CircleDollarSign, Circle, ListChecks, Vote } from "lucide-react";
 import { useEngine } from "../../../data/store.tsx";
+import { connectApi } from "../../../data/engine/connectApi.ts";
 import { ago, dollars } from "../../../data/engine/map.ts";
 import { ISSUE_ICON, ISSUE_LABEL, agentStatusOf, isOpen } from "../../../data/engine/labels.tsx";
-import { useActivity, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
+import { useActivity, useAgentContainers, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
 import { suggestSize } from "../../../pin/brain.ts";
 import { formatBytes } from "../../../lib/storage.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
@@ -64,6 +66,48 @@ function ResourceGroupCard() {
   );
 }
 
+/** A short, recoverable path from a newly created organization to its first useful agent run. */
+function GettingStartedCard({ base, device }: { base: string; device: string }) {
+  const { companyId, org } = useLiveOrg();
+  const engine = useEngine();
+  const group = useResourceGroup(companyId);
+  const containers = useAgentContainers();
+  const agents = useAgents(companyId);
+  const issues = useIssues(companyId);
+  const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), retry: 1 });
+  const repair = useSetResourceGroup(companyId, org.name);
+  const [suggested] = useState(() => suggestSize(engine.host, engine.data));
+  const g = group.group;
+  const resourceReady = !!g && (!g.provisioning || g.provisioning.state === "ready");
+  const containersReady = containers.data?.state === "ready" && containers.data.environments.some((environment) => environment.companyId === companyId && environment.ok);
+  const modelReady = accounts.data?.connections.some((account) => account.status === "connected" || account.status === "active") === true;
+  const hasAgent = (agents.data ?? []).some((a) => a.status !== "terminated");
+  const hasTask = (issues.data ?? []).length > 0;
+  if (resourceReady && containersReady && hasAgent && modelReady && hasTask) return null;
+  const createOrRepairGroup = () => {
+    const size = g ? { cores: g.cores, memoryMb: g.memoryMb, diskGb: g.diskGb, maxGuests: g.maxGuests } : suggested;
+    repair.mutate(size);
+  };
+  return (
+    <Card className="p-5 mb-4 border-accent/25 bg-accent-soft/25">
+      <SectionTitle>Finish setting up {org.name}</SectionTitle>
+      <p className="text-sm text-ink-2 mb-4">Prepare the resources, agent and model, then give the agent its first task.</p>
+      <div className="space-y-3">
+        <SetupStep done={resourceReady} title="Reserve this organization’s resources" body={g?.provisioning?.state === "failed" ? (g.provisioning.error ?? "The resource group needs repair.") : "A separate Proxmox pool keeps this organization’s agent containers within its limits."} action={!resourceReady ? <Button size="sm" loading={repair.isPending} onClick={createOrRepairGroup}>{g ? "Repair resources" : "Create resources"}</Button> : undefined} />
+        <SetupStep done={containersReady === true} title="Prepare the agent environment" body="Agents run in isolated containers on this device. This is set up once by a device administrator." action={containersReady === true ? undefined : <Link to={`/${device}/home?settings=agent-containers`}><Button size="sm">Set up containers</Button></Link>} />
+        <SetupStep done={hasAgent} title="Create an agent" body="Choose the agent’s role and runtime." action={!hasAgent ? <Link to={`${base}/agents?new=1`}><Button size="sm">Create agent</Button></Link> : undefined} />
+        <SetupStep done={modelReady} title="Connect a model account" body={accounts.error ? "Model account status could not be checked. Open Agent models to retry." : "Sign in with a supported provider or share an API key with this organization."} action={!modelReady ? <Link to={`${base}/connectors?section=models`}><Button size="sm">Connect a model</Button></Link> : undefined} />
+        <SetupStep done={hasTask} title="Give the agent its first task" body="Describe what done looks like. You can then watch its live run and review the result." action={!hasTask ? <Link to={`${base}/tasks?new=1`}><Button size="sm">Create task</Button></Link> : undefined} />
+      </div>
+      <ActionError error={repair.error} />
+    </Card>
+  );
+}
+
+function SetupStep({ done, title, body, action }: { done: boolean; title: string; body: string; action?: React.ReactNode }) {
+  return <div className="flex items-start gap-3"><span className="mt-0.5 text-ink-3">{done ? <Check className="h-4 w-4 text-good" /> : <Circle className="h-4 w-4" />}</span><div className="min-w-0 flex-1"><div className="text-sm font-medium">{title}{done && <span className="ml-2 text-xs font-normal text-good">Done</span>}</div><p className="text-xs text-ink-3 mt-0.5">{body}</p></div>{action && <div className="shrink-0">{action}</div>}</div>;
+}
+
 export function LiveDashboard() {
   const { org, companyId } = useLiveOrg();
   const { setup } = useEngine();
@@ -88,6 +132,7 @@ export function LiveDashboard() {
       />
 
       {dash.error && <Card className="mb-4"><LoadError error={dash.error} retry={() => void dash.refetch()} /></Card>}
+      <GettingStartedCard base={b} device={device} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <Stat icon={<Bot className="h-4 w-4" />} value={d ? String(d.agents.active + d.agents.running + d.agents.paused + d.agents.error) : "–"} label={d ? `${d.agents.running} working · ${d.agents.paused} paused${d.agents.error ? ` · ${d.agents.error} with errors` : ""}` : "Agents"} to={`${b}/agents`} />
         <Stat icon={<ListChecks className="h-4 w-4" />} value={d ? String(d.tasks.open) : "–"} label={d ? `Open tasks · ${d.tasks.inProgress} in progress${d.tasks.blocked ? ` · ${d.tasks.blocked} blocked` : ""}` : "Open tasks"} to={`${b}/tasks`} />

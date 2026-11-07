@@ -56,6 +56,7 @@ export interface ResourceGroupState extends ResourceGroupSize {
   pool: string;
   updatedAt?: string;
   updatedBy?: string;
+  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed"; detail?: string }[] };
 }
 
 /** Agent containers: agents run in unprivileged Proxmox containers, set up once by a Proxmox administrator. */

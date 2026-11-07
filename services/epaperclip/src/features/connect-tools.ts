@@ -111,7 +111,7 @@ const pinRead = (name: string, title: string): McpTool => {
   return {
     name, title, description: def.description, inputSchema: def.parameters as Record<string, unknown>, access: "read", idempotent: true,
     async run(args, env) {
-      if (name === "org_summary") orgOk(env, idArg(args.companyId, "companyId"));
+      if (name === "org_summary" || name === "list_organization_apps") orgOk(env, idArg(args.companyId, "companyId"));
       const out = await runTool(name, args, hostFor(env));
       if (name === "list_organizations" && env.grant.orgs) {
         const o = out as { organizations: { id: string }[] };
@@ -187,6 +187,7 @@ export const MCP_TOOLS: McpTool[] = [
   // ---- Read: organizations
   pinRead("list_organizations", "List organizations"),
   pinRead("org_summary", "Organization summary"),
+  pinRead("list_organization_apps", "Organization apps"),
   {
     name: "list_agents", title: "List agents", access: "read", idempotent: true, description: "The agents of one organization with role and status.",
     inputSchema: schema({ companyId: { type: "string" } }, ["companyId"]),

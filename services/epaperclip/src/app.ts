@@ -11,6 +11,7 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
+import { CHANNEL_INGRESS, channelIngress } from "./channel-ingress.ts";
 import { vaultFor } from "./features/vault-store.ts";
 import { activity } from "./activity.ts";
 import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
@@ -37,6 +38,7 @@ import { routerHandler } from "./router/server.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
 import { clientIp, trustTunnelWhen } from "./clientIp.ts";
+import { BrokerAdmin, type BrokerGroupPolicy } from "./broker-client.ts";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -75,6 +77,8 @@ export interface AppDeps {
   containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
   /** The address people reach this device at (EPC_PUBLIC_URL), used in OAuth metadata. Without it, the request's Host header is used. */
   publicUrl?: string;
+  /** Local broker policy authority. Omit it until the broker has been configured on this device. */
+  broker?: { url: string; managementToken: string; fetch?: typeof fetch };
   /** Where the Router's own listener is (EPC_ROUTER_LISTEN), shown in the console; null when it is switched off. */
   routerListen?: string | null;
   /** Papercliped Connect base URL (tests); defaults to EPC_CONNECT_URL or https://connect.papercliped.co. */
@@ -313,6 +317,8 @@ export interface ResourceGroup {
   maxGuests: number;
   updatedAt: number;
   updatedBy: string;
+  /** Durable provisioning state; a failed stage can be retried without recreating the organization. */
+  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed"; detail?: string }[] };
 }
 
 export function parseResourceGroup(b: Record<string, unknown>): Pick<ResourceGroup, "name" | "cores" | "memoryMb" | "diskGb" | "maxGuests"> {
@@ -476,8 +482,30 @@ export function createApp(d: AppDeps) {
   const router = new Router({ connections, fetch: outbound, now });
   const routerKeys = new RouterKeys(state, now);
   registerRouter(state, { router, keys: routerKeys, listen: () => d.routerListen ?? null });
+  const broker = d.broker ? new BrokerAdmin({ url: d.broker.url, token: d.broker.managementToken, fetch: d.broker.fetch }) : null;
 
   const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
+
+  /** Stable, non-overlapping high VMID ranges for broker-managed organization leases. The broker validates collisions again. */
+  const brokerRange = (companyId: string): [number, number] => {
+    let n = 0; for (const c of companyId) n = ((n * 31) + c.charCodeAt(0)) >>> 0;
+    const start = 900_000 + (n % 8_000) * 100;
+    return [start, start + 99];
+  };
+  const brokerGroupName = (companyId: string) => `org-${companyId.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 55)}`;
+  const brokerPolicy = (companyId: string, g: ResourceGroup, profiles: string[]): BrokerGroupPolicy => ({
+    name: brokerGroupName(companyId), pool: g.pool, tag: `epc-${g.pool}`.toLowerCase().replace(/[^a-z0-9_+.-]/g, "-").slice(0, 63), vmidRange: brokerRange(companyId), profiles,
+    limits: { maxLeases: g.maxGuests, maxCores: g.cores, maxMemoryMb: g.memoryMb, defaultTtlMinutes: 120, maxTtlMinutes: 240 },
+  });
+  const syncBrokerGroup = async (companyId: string, g: ResourceGroup) => {
+    if (!broker) throw new HttpError(409, "broker_not_configured", "The resource broker isn't configured on this device yet.");
+    const current = await broker.overview();
+    if (!current.profiles.length) throw new HttpError(409, "broker_profiles_missing", "The resource broker has no allowed container profile yet.");
+    const id = brokerGroupName(companyId);
+    const policy = current.groups[id] ?? brokerPolicy(companyId, g, current.profiles);
+    const next = { ...current.groups, [id]: { ...policy, pool: g.pool, limits: { ...policy.limits, maxLeases: g.maxGuests, maxCores: g.cores, maxMemoryMb: g.memoryMb } } };
+    await broker.replace(next);
+  };
 
   const needEngine = (): EngineGateway => {
     if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
@@ -746,12 +774,19 @@ export function createApp(d: AppDeps) {
           await pve.call("POST", "/pools", { poolid: free, comment: `ePaperclip organization: ${spec.name}` });
           return free;
         });
-        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username };
+        const pending: NonNullable<ResourceGroup["provisioning"]> = { state: "pending", at: now(), steps: [{ id: "pool", state: "done" }, { id: "acl", state: "pending" }, { id: "broker", state: "pending" }, { id: "environment", state: "pending" }] };
+        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username, provisioning: pending };
         state.setSetting("resourceGroups", { ...all, [companyId]: group });
         // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
-        const warnings = existing ? [] : await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        const warnings = await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
+        try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; }
         // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
-        warnings.push(...(await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message])));
+        const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
+        warnings.push(...environmentWarnings);
+        pending.steps[3] = { id: "environment", state: environmentWarnings.length ? "failed" : "done", ...(environmentWarnings.length ? { detail: environmentWarnings[0] } : {}) };
+        group.provisioning = { ...pending, state: warnings.length ? "failed" : "ready", ...(warnings.length ? { error: warnings[0] } : {}) };
+        state.setSetting("resourceGroups", { ...(state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {}), [companyId]: group });
         return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
@@ -1974,6 +2009,8 @@ export function createApp(d: AppDeps) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
+      // Provider signatures are checked by the engine. This narrowly scoped ingress never authenticates as a user.
+      if (req.method === "POST" && CHANNEL_INGRESS.test(url.pathname)) return await channelIngress(req, res, url.pathname, needEngine());
       if (req.headers["x-epc-node"] !== undefined && url.pathname.startsWith("/api/")) {
         const sess = d.sessions.get(cookieValue(req, COOKIE));
         if (sess) await nodeScope.resolve(req, sess.id, () => clientFor(sess));

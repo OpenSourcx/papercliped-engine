@@ -1,5 +1,5 @@
 import { Ban, Circle, CircleCheck, CircleDashed, CircleDot, Inbox, OctagonAlert } from "lucide-react";
-import type { IssuePriority, IssueStatus } from "@papercliped-engine/engine-client";
+import type { HeartbeatRun, IssuePriority, IssueStatus } from "@papercliped-engine/engine-client";
 import type { StatusKind } from "../../ui/primitives.tsx";
 
 /** Words and icons for the engine's task (issue) and agent states. Icons always come with a label. */
@@ -28,5 +28,22 @@ export const ENGINE_AGENT_STATUS: Record<string, [StatusKind, string]> = {
   terminated: ["off", "Terminated"],
 };
 export const agentStatusOf = (s: string): [StatusKind, string] => ENGINE_AGENT_STATUS[s] ?? ["idle", s];
+
+/**
+ * An agent's status answers whether it is available; a heartbeat run answers
+ * whether its most recent piece of work is still running or how it ended.
+ * Keep the two separate so a healthy agent returning to Idle never looks as
+ * though a successful task vanished.
+ */
+export const ENGINE_RUN_STATUS: Record<string, [StatusKind, string]> = {
+  queued: ["working", "Queued"],
+  running: ["working", "Working"],
+  succeeded: ["good", "Finished"],
+  failed: ["critical", "Failed"],
+  cancelled: ["off", "Cancelled"],
+  timed_out: ["critical", "Timed out"],
+};
+export const runStatusOf = (s: string): [StatusKind, string] => ENGINE_RUN_STATUS[s] ?? ["idle", s.replace(/_/g, " ")];
+export const latestRunStatusOf = (run: Pick<HeartbeatRun, "status"> | null | undefined): [StatusKind, string] | null => run ? runStatusOf(run.status) : null;
 
 export const APPROVAL_TYPE_LABEL: Record<string, string> = { hire_agent: "Hire an agent", approve_ceo_strategy: "Approve the CEO's strategy", budget_override_required: "Budget override", request_board_approval: "Board approval" };

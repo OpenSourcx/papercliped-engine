@@ -31,6 +31,7 @@ import { handleDiskHealth } from "./diskHealth.ts";
 import { handleGithub } from "./github.ts";
 import { handleMachineFiles } from "./machine-files.ts";
 import { routerRoutes } from "./router.ts";
+import { nativeAppRoutes } from "./native-apps.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -75,6 +76,7 @@ export interface FeatureCtx {
 export type FeatureHandler = (ctx: FeatureCtx) => Promise<boolean>;
 
 export const FEATURES: { name: string; handle: FeatureHandler }[] = [
+  { name: "native-apps", handle: nativeAppRoutes },
   { name: "disks", handle: handleDisks },
   { name: "node", handle: nodeFeature },
   { name: "access-admin", handle: accessAdmin },

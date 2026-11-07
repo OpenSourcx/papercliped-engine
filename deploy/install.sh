@@ -36,17 +36,20 @@ ETC_DIR="${EPC_ETC_DIR:-/etc/epaperclip}"
 ENGINE_HOME="${EPC_ENGINE_HOME:-/var/lib/epaperclip-engine}"
 HOST_STATE="${EPC_HOST_STATE_DIR:-/var/lib/epaperclip}"
 ENGINE_ENV="$ETC_DIR/engine.env"
+BROKER_ENV="$ETC_DIR/broker.env"
 SERVICE="$UNIT_DIR/epaperclip.service"
 ENGINE_SERVICE="$UNIT_DIR/epaperclip-engine.service"
+BROKER_SERVICE="$UNIT_DIR/epaperclip-broker.service"
 UPDATE_SERVICE="$UNIT_DIR/epaperclip-update.service"
 UPDATE_PATH="$UNIT_DIR/epaperclip-update.path"
-UNITS=(epaperclip epaperclip-engine epaperclip-exec@ epaperclip-publish@ epaperclip-cloudflared)
+UNITS=(epaperclip epaperclip-engine epaperclip-broker epaperclip-exec@ epaperclip-publish@ epaperclip-cloudflared)
 EXEC_SOCKET="$UNIT_DIR/epaperclip-exec.socket"
 PUBLISH_SOCKET="$UNIT_DIR/epaperclip-publish.socket"
 BIN_DIR="${EPC_BIN_DIR:-/usr/local/bin}"
 STAGE="$PREFIX.new"
 PREV="$PREFIX.prev"
 ENGINE_USER="epaperclip-engine"
+BROKER_USER="epaperclip-broker"
 ENGINE_PORT=3100
 ENGINE_ENTRY="engine/node_modules/@paperclipai/server/dist/index.js"
 DB_DIR="$ENGINE_HOME/instances/default/db"
@@ -86,9 +89,9 @@ summary() { # version proxmox engine-version url [more urls...]
 
 # ---- where things are: a release download (or the Debian package), or a built checkout ----------------------------
 if [ -f "$ROOT/epaperclip.mjs" ]; then
-  SRC_BUNDLE="$ROOT/epaperclip.mjs"; SRC_CONSOLE="$ROOT/console"
+  SRC_BUNDLE="$ROOT/epaperclip.mjs"; SRC_BROKER="$ROOT/broker/epaperclip-broker.mjs"; SRC_CONSOLE="$ROOT/console"
 else
-  SRC_BUNDLE="$ROOT/services/epaperclip/dist/epaperclip.mjs"; SRC_CONSOLE="$ROOT/apps/console/dist"
+  SRC_BUNDLE="$ROOT/services/epaperclip/dist/epaperclip.mjs"; SRC_BROKER="$ROOT/services/host-broker/dist/epaperclip-broker.mjs"; SRC_CONSOLE="$ROOT/apps/console/dist"
 fi
 SRC_ENGINE="$ROOT/engine"
 # The Proxmox sandbox provider (agent containers): built code and lockfile; its production packages are installed below.
@@ -189,6 +192,8 @@ start_all() { # the engine first, if this version has one
   [ ! -f "$EXEC_SOCKET" ] || systemctl enable --now epaperclip-exec.socket || true
   [ ! -f "$PUBLISH_SOCKET" ] || systemctl enable --now epaperclip-publish.socket || true
   [ -f "$ENGINE_SERVICE" ] && { systemctl enable epaperclip-engine >/dev/null 2>&1 || true; systemctl start epaperclip-engine || true; }
+  # The broker becomes active only after its separate, scoped Proxmox configuration exists.
+  [ -f "$ETC_DIR/broker.json" ] && { systemctl enable epaperclip-broker >/dev/null 2>&1 || true; systemctl start epaperclip-broker || true; }
   systemctl enable epaperclip >/dev/null 2>&1 || true
   systemctl start epaperclip || true
 }
@@ -222,7 +227,7 @@ drain_engine() {
 stop_all() {
   systemctl stop epaperclip-exec.socket 'epaperclip-exec@*.service' 2>/dev/null || true
   systemctl stop epaperclip-publish.socket 'epaperclip-publish@*.service' epaperclip-cloudflared 2>/dev/null || true
-  systemctl stop epaperclip epaperclip-engine 2>/dev/null || true
+  systemctl stop epaperclip epaperclip-engine epaperclip-broker 2>/dev/null || true
 }
 
 # ---- --tarball <file>: verify, extract, and run the installer inside -----------------------------------------------------
@@ -269,16 +274,16 @@ fi
 
 # ---- --uninstall / --purge --------------------------------------------------------------------------------------
 if [ "$ACTION" = "--uninstall" ] || [ "$ACTION" = "--purge" ]; then
-  systemctl disable --now epaperclip epaperclip-engine epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared 2>/dev/null || true
+  systemctl disable --now epaperclip epaperclip-engine epaperclip-broker epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared 2>/dev/null || true
   systemctl stop 'epaperclip-exec@*.service' 'epaperclip-publish@*.service' 2>/dev/null || true
-  rm -f "$SERVICE" "$ENGINE_SERVICE" "$SERVICE.prev" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"
+  rm -f "$SERVICE" "$ENGINE_SERVICE" "$BROKER_SERVICE" "$SERVICE.prev" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"
   rm -f "$ETC_DIR/cloudflared.env" "$ETC_DIR/cloudflared.owner" # the tunnel token never outlives an uninstall, even a non-purging one
   systemctl daemon-reload 2>/dev/null || true
   rm -rf "${PREFIX:?}" "${PREV:?}" "${STAGE:?}" "${PREFIX:?}.failed"
   [ ! -L "$BIN_DIR/epaperclip" ] || rm -f "$BIN_DIR/epaperclip"
   if [ "$ACTION" = "--purge" ]; then
     rm -rf "${ENGINE_HOME:?}" "${HOST_STATE:?}" "${ETC_DIR:?}"; rm -f "$DEFAULTS"
-    for u in epaperclip "$ENGINE_USER"; do id "$u" >/dev/null 2>&1 && userdel "$u" 2>/dev/null || true; done
+    for u in epaperclip "$ENGINE_USER" "$BROKER_USER"; do id "$u" >/dev/null 2>&1 && userdel "$u" 2>/dev/null || true; done
     say "removed, including all its data, settings and users."
   else
     say "removed. Kept, in case you install again (--purge removes them):"
@@ -330,8 +335,9 @@ fi
 case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64) ARCH=arm64 ;; *) ARCH=""; need "unsupported processor: $(uname -m) (x86_64 and aarch64 are supported)" ;; esac
 for c in curl tar xz sha256sum useradd setpriv setsid ss systemctl; do command -v "$c" >/dev/null || need "the '$c' command is missing (apt-get install -y curl xz-utils util-linux iproute2)"; done
 [ -f "$SRC_BUNDLE" ] || need "the service isn't built (expected $SRC_BUNDLE). From a checkout: pnpm install && pnpm build"
+[ -f "$SRC_BROKER" ] || need "the resource broker isn't built (expected $SRC_BROKER). From a checkout: pnpm install && pnpm build"
 [ -f "$SRC_CONSOLE/index.html" ] || need "the console isn't built (expected $SRC_CONSOLE/index.html)"
-for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/engine-links.mjs engine/package.json engine/package-lock.json \
+for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/epaperclip-broker.service deploy/engine-links.mjs engine/package.json engine/package-lock.json \
   $PLUGIN_REL/dist/manifest.js $PLUGIN_REL/dist/worker.js $PLUGIN_REL/package.json $PLUGIN_REL/package-lock.json $PLUGIN_REL/template/provision.sh $PLUGIN_REL/template/versions.sh; do
   [ -f "$ROOT/$f" ] || need "$f is missing from this download"
 done
@@ -406,6 +412,7 @@ trap on_exit EXIT
 # The service users, and proof the host service can read the node's certificate the way Proxmox's own web service does.
 id epaperclip >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin epaperclip
 id "$ENGINE_USER" >/dev/null 2>&1 || useradd --system --user-group --no-create-home --home-dir "$ENGINE_HOME" --shell /usr/sbin/nologin "$ENGINE_USER"
+id "$BROKER_USER" >/dev/null 2>&1 || useradd --system --user-group --no-create-home --home-dir /var/lib/epaperclip-broker --shell /usr/sbin/nologin "$BROKER_USER"
 if [ "${EPC_SKIP_CERT_CHECK:-}" != "1" ]; then
   setpriv --reuid=epaperclip --regid=epaperclip --groups=www-data test -r /etc/pve/local/pve-ssl.key \
     || die "the epaperclip service user (in group www-data) can't read /etc/pve/local/pve-ssl.key. Check its permissions: ls -l /etc/pve/local/pve-ssl.key"
@@ -455,7 +462,7 @@ done
 
 # ---- stage the new version beside the old one --------------------------------------------------------------------
 rm -rf "${STAGE:?}"
-install -d -m 0755 "$STAGE" "$STAGE/console" "$STAGE/engine"
+install -d -m 0755 "$STAGE" "$STAGE/console" "$STAGE/engine" "$STAGE/broker"
 NODE="$STAGE/node/bin/node"; NPM_CLI="$STAGE/node/lib/node_modules/npm/bin/npm-cli.js"
 
 if [ -x "$PREFIX/node/bin/node" ] && [ -f "$PREFIX/node/lib/node_modules/npm/bin/npm-cli.js" ] && [ "$("$PREFIX/node/bin/node" -p process.versions.node 2>/dev/null)" = "$NODE_VERSION" ]; then
@@ -476,6 +483,7 @@ else
 fi
 
 install -m 0644 "$SRC_BUNDLE" "$STAGE/epaperclip.mjs"
+install -m 0644 "$SRC_BROKER" "$STAGE/broker/epaperclip-broker.mjs"
 cp -r "$SRC_CONSOLE/." "$STAGE/console/"
 VERSION_OUT="$(cd "$ROOT" && { cat VERSION 2>/dev/null || git describe --tags --always 2>/dev/null || echo dev; })"
 echo "$VERSION_OUT" > "$STAGE/VERSION"
@@ -608,6 +616,7 @@ rm -f "$SERVICE.prev"
 install -d "$UNIT_DIR"
 install -m 0644 "$ROOT/deploy/epaperclip.service" "$SERVICE"
 install -m 0644 "$ROOT/deploy/epaperclip-engine.service" "$ENGINE_SERVICE"
+install -m 0644 "$ROOT/deploy/epaperclip-broker.service" "$BROKER_SERVICE"
 if [ -f "$ROOT/deploy/epaperclip-update.path" ]; then
   install -m 0644 "$ROOT/deploy/epaperclip-update.service" "$UPDATE_SERVICE"
   install -m 0644 "$ROOT/deploy/epaperclip-update.path" "$UPDATE_PATH"
@@ -617,6 +626,13 @@ install -m 0644 "$ROOT/deploy/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-ex
 install -m 0644 "$ROOT/deploy/epaperclip-publish.socket" "$PUBLISH_SOCKET"
 install -m 0644 "$ROOT/deploy/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-publish@.service"
 [ -f "$DEFAULTS" ] || { install -d "$(dirname "$DEFAULTS")"; install -m 0644 "$ROOT/deploy/epaperclip.default" "$DEFAULTS"; created+=("$DEFAULTS"); }
+# The management capability authorizes only loopback resource-group reconciliation. The Proxmox API token is added
+# later by the broker setup flow; until broker.json exists, systemd will not start the broker unit.
+if [ ! -f "$BROKER_ENV" ]; then
+  install -d -m 0700 "$ETC_DIR"
+  (umask 077; { echo "# ePaperclip resource broker settings. Keep this file root-readable only."; echo "EPC_BROKER_MANAGEMENT_TOKEN=$(rand_hex)"; echo "# PROXMOX_TOKEN_SECRET=add-a-scoped-token-here"; } > "$BROKER_ENV")
+  created+=("$BROKER_ENV")
+fi
 systemctl daemon-reload
 # The update helper's trigger is best effort: the console says so when "Update" isn't available, and nothing else depends on it.
 # The `epaperclip` command (status, update, rollback, uninstall). The Debian package ships its own, which is left alone.
@@ -663,8 +679,8 @@ if [ "$first_install" -eq 0 ]; then
   if healthy_all >/dev/null; then die "installation failed; the previous version ($(installed_version)) was restored and is running."; fi
   die "installation failed; the previous version ($(installed_version)) was restored, but it isn't answering yet. See: journalctl -u epaperclip-engine -u epaperclip -n 50"
 fi
-systemctl disable epaperclip epaperclip-engine epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared >/dev/null 2>&1 || true
-rm -f "$SERVICE" "$ENGINE_SERVICE" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"; systemctl daemon-reload
+systemctl disable epaperclip epaperclip-engine epaperclip-broker epaperclip-update.path epaperclip-exec.socket epaperclip-publish.socket epaperclip-cloudflared >/dev/null 2>&1 || true
+rm -f "$SERVICE" "$ENGINE_SERVICE" "$BROKER_SERVICE" "$UPDATE_SERVICE" "$UPDATE_PATH" "$EXEC_SOCKET" "$PUBLISH_SOCKET" "$UNIT_DIR/epaperclip-exec@.service" "$UNIT_DIR/epaperclip-publish@.service" "$UNIT_DIR/epaperclip-cloudflared.service"; systemctl daemon-reload
 rm -rf "${PREFIX:?}"
 undo_created
 die "installation failed and was removed. Proxmox's interface is unchanged at https://$(host_ip):8006/"
