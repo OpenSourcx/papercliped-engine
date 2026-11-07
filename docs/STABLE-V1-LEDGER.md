@@ -117,7 +117,7 @@ Labels: local / simulated / live-service (real engine 2026.1023.0 on disk, local
 ## Outstanding (current)
 1. Real provider round trips (forms, manual OAuth client, callback) against GitHub/Notion/Slack/Discord on a real device; real model execution and native agent create/run-test.
 2. Broker setup and its tie to the allocation path (the provider enforces aggregate limits itself); contention test on a real Proxmox; disk aggregation.
-3. Pin: real-provider check (GitHub/Notion/...); the generic app-access editor's Off is not a deny for default-granted agents (decision needed, see Pin section).
+3. Pin: real-provider check (GitHub/Notion/...); generic app-access Off enforcement is resolved in the resume checkpoint below.
 4. Plugins: a real pinned catalog key and published catalog (none exist), a real third-party plugin.
 5. Identity linking: owned by the Connect-contract subagent's contract (PR #16); not coded here.
 6. Self-managed Cloudflare: no code creates the tunnel or DNS record (only token verify, zone list and a plan); provisioning is unbuilt and needs an owner decision (Cloudflare API scopes, Tunnel+DNS), plus real cloudflared attachment.
@@ -126,9 +126,9 @@ Labels: local / simulated / live-service (real engine 2026.1023.0 on disk, local
 9. Branch protection on `main` (owner action).
 
 ## Pin external-tool execution
-Option A is implemented (see `docs/PIN-APP-EXECUTION.md`). Option B (propose-only) remains an unimplemented fallback and does not count toward the Pin integration. Remaining for Pin: exposure through the remote MCP surface, a person-facing approvals inbox link from Pin's reply, real-provider verification, and a decision on the generic app-access editor's Off (below).
+Option A is implemented (see `docs/PIN-APP-EXECUTION.md`). Option B (propose-only) remains an unimplemented fallback and does not count toward the Pin integration. Remote MCP exposure and the held-actions console are implemented in the second pass. Real-provider verification remains; generic app-access Off enforcement is resolved below.
 
-**Open risk (engine behaviour, live-verified):** in the Organization apps access editor, Off does not stop an ordinary agent that kept the engine's default unscoped `tools:use` grant. Ask-first holds. Options: write a `block` policy for each Off action for that agent (as Pin's identity does), or show a warning. Not changed here; needs an owner decision because it alters the existing editor's semantics.
+**Resolved on the resume branch (engine behaviour, live-verified):** the engine's default unscoped `tools:use` grant bypassed the gallery profile's Off selection. The host now saves explicit, scoped native policies with a default deny. See the resume checkpoint below for implementation, retry behavior and evidence. Existing connections receive enforcement when an administrator saves their access choices; this change does not silently rewrite existing devices' grants.
 
 ## Access / identity plan (Access UI done; identity linking not implemented)
 - Rename user-facing Advertising to Access; audit existing Access Control nav first; keep old routes redirecting. Three modes: Local only, self-managed Cloudflare (device plugin; cloudflared Tunnel vs Worker described accurately; creds stay in device vault), Papercliped Connect (reuse `connectLink.ts`, `tunnelHelper.ts`, `paperclipedAccount.ts` from main).
@@ -150,7 +150,7 @@ Option A is implemented (see `docs/PIN-APP-EXECUTION.md`). Option B (propose-onl
 None. The disposable engine, local registry and fake provider used for the live checks were stopped when the pass ended (`/project/.work/engine-1023`, `/project/.work/plugin-live` remain on disk).
 
 ## Next action
-Independent items done in the last pass are listed under "Second pass" below. Remaining, in order: (1) owner decision on the Organization apps editor's Off semantics (open risk, unchanged); (2) branch protection on `main` (owner); (3) real-device gates (see Outstanding); (4) identity linking implementation after PR #16's contract is accepted by Connect; (5) a first-party catalog signing key and published catalog when the owner wants community plugins enabled.
+Independent items done in the last pass are listed under "Second pass" below. Remaining, in order: (1) integrate the permission-enforcement PR into this reconciliation branch; (2) branch protection on `main` (owner); (3) real-device gates (see Outstanding); (4) identity linking implementation after PR #16's contract is accepted by Connect; (5) a first-party catalog signing key and published catalog when the owner wants community plugins enabled.
 
 ## Mobile, keyboard and live-screen pass (2026-11-07)
 Labels: **live-service** = the real ePaperclip host service in front of a real engine 2026.1023.0 on disk (`scripts/live-engine/host-live.ts`, `live-ui-setup.mjs`, `live-ui.mjs`), driven by Playwright (headless Chromium from `/project/.work/browsers`); **stubbed** = anything listed below.
@@ -165,3 +165,16 @@ Labels: **live-service** = the real ePaperclip host service in front of a real e
 ## Brand kit
 Latest owner decision (2026-11-07): authority is the established OpenSourcx/papercliped branding (README launch images and `web/public/brand/`). The earlier "warm/gold" decision is superseded. Details, palette, console changes and the Connect/Auth follow-ups (palette, diamond mark, fonts) are in `brand/BRAND-KIT.md`. Console: new default presets "Papercliped Clip" / "Clip Light" (`theme.tsx`), DESIGN.md updated, `check:design` 0 violations, console tests 508/508. Pin's orb unchanged and Pin's only.
 Acceptance item: [ ] brand-consistency check (console vs Connect auth site vs website, 390 px and desktop, light and dark). Console side has no visual pass; Auth/Connect side blocked on the follow-ups.
+
+
+## Resume checkpoint: organization app Off enforcement (2026-11-07)
+
+The disconnected-session checkpoint `50716e6` was verified with successful CI run `42350400082` (both jobs). A fresh process and Git check found that Claude had already resumed; its checkout was left untouched. Its later commits through `525650c` were fetched into a separate WSL checkout before this change. No completed reconciliation, Pin MCP or plugin work was repeated.
+
+- **Implementation:** every console `POST /engine/api/companies/{company}/tools/apps/{connection}/finish` passes through `AppAccessManager` as the signed-in person. IDs are canonicalized before locking or constructing selectors. The native engine remains pinned and unmodified. The native profile still records the selected agents/actions; explicit scoped Allow/Ask policies at priority 2000 and a connection default block at 3000 enforce those choices even against the engine's default grant. Empty assignment emits no allow policy; newly added agents/actions are denied unless covered by an explicit all-agents grant for a reviewed action.
+- **Pin isolation:** Pin's existing policies at 100/1000 are evaluated before these ordinary-agent policies. The ordinary agent picker omits Pin, whose separate controls remain authoritative. All-agents access cannot enable a Pin action that Pin has Off. This is verified against the real engine.
+- **Failure behavior:** a persistent priority-0 block covers the connection while multiple native rows are updated. Failure leaves it blocked, including for Pin, and returns `app_access_incomplete`. Native Ask choices remain until all replacement policies exist, so reopening after a partial save cannot turn Ask into Allow. A complete retry removes the block last. Requests for the same connection are serialized within this host process. An already-executing provider call is not cancelled.
+- **Custom rules:** a profile this editor cannot represent or an overlapping custom policy is refused before mutation; unrelated connections' policies are left alone. The UI explains unsupported rules and interrupted saves. Administrators with direct engine access can still deliberately change native policies; that authority is not restricted here.
+- **Local validation:** host typecheck, console typecheck/build and design check pass. Focused tests: 32 host permission/proxy tests and 16 organization-app console tests pass. Full local suites before the final routing/custom-policy test additions: 1019 host tests passed (15 opt-in tests skipped), 521 console tests passed. CI on this PR is the final combined-tree gate; those earlier local counts are not a substitute for it.
+- **Real-engine validation:** `EPC_LIVE_ENGINE=http://127.0.0.1:3299 corepack pnpm --filter @papercliped-engine/epaperclip exec vitest run test/live/app-access.live.test.ts`: **4/4 passed**, engine 2026.1023.0, isolated data under `/project/.work/codex-app-access-live`, a loopback fake MCP provider. Reproduces the original bypass before the fix; verifies Allow/Ask/Off, excluded/future agents, uppercase IDs, Pin independence, empty assignment, and failure/reopen/retry. This is real policy-engine evidence, not a real GitHub/Notion/provider round trip.
+- **Boundary:** existing grants are not migrated silently. Save access to enforce the reviewed selection. Real provider/model/channel traffic, real Proxmox contention and lifecycle gates, self-managed Cloudflare provisioning, identity federation and published catalog qualification remain outstanding. Stable V1 is still not release-qualified.

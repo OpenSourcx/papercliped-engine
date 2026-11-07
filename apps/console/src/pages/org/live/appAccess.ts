@@ -9,11 +9,12 @@ export interface AppAccess {
   askFirst: string[];
   /** Set when the grants use anything the simple editor cannot round-trip (other selectors, conditions, exclusions, other binding targets). Saving would erase them, so the editor must not save. */
   advanced: string | null;
+  saving: boolean;
 }
 
 /** Reads the gallery-managed profile `app:<connectionId>` and its managed ask-first policies. Absent profile means no access yet. */
 export function readAppAccess(connectionId: string, profiles: ToolProfileWithDetails[], policies: ToolPolicy[]): AppAccess {
-  const out: AppAccess = { allAgents: false, agentIds: [], enabled: [], askFirst: [], advanced: null };
+  const out: AppAccess = { allAgents: false, agentIds: [], enabled: [], askFirst: [], advanced: null, saving: false };
   const profile = profiles.find((p) => p.profileKey === `app:${connectionId}`);
   if (profile) {
     for (const b of profile.bindings) {
@@ -28,9 +29,16 @@ export function readAppAccess(connectionId: string, profiles: ToolProfileWithDet
     if (profile.defaultAction !== "deny") out.advanced ??= "a non-default profile action";
   }
   for (const p of policies) {
+    if (p.enabled && p.name === `ePaperclip app:${connectionId}:saving`) out.saving = true;
+    if (p.enabled && p.policyType === "require_approval" && typeof p.selectors?.catalogEntryId === "string" && p.name === `ePaperclip app:${connectionId}:ask:${p.selectors.catalogEntryId}` && p.selectors.connectionId === connectionId && typeof p.selectors.catalogEntryId === "string") out.askFirst.push(p.selectors.catalogEntryId);
+    const selectors = p.selectors ?? {};
+    const otherConnection = typeof selectors.connectionId === "string" && selectors.connectionId !== connectionId || Array.isArray(selectors.connectionIds) && selectors.connectionIds.length > 0 && !selectors.connectionIds.includes(connectionId);
+    const nativeAsk = p.policyType === "require_approval" && (p.config as { source?: string; connectionId?: string } | null)?.source === "app_gallery_finish" && (p.config as { connectionId?: string }).connectionId === connectionId;
+    if (p.enabled && !otherConnection && !nativeAsk && !p.name?.startsWith(`ePaperclip app:${connectionId}:`) && !p.name?.startsWith("Pin (host): ")) out.advanced ??= "a custom tool policy";
     const c = p.config as { source?: string; connectionId?: string; catalogEntryId?: string } | null;
     if (!p.enabled || p.policyType !== "require_approval" || c?.source !== "app_gallery_finish" || c.connectionId !== connectionId) continue;
     if (c.catalogEntryId) out.askFirst.push(c.catalogEntryId);
   }
+  out.askFirst = [...new Set(out.askFirst)].filter((id) => out.enabled.includes(id));
   return out;
 }
