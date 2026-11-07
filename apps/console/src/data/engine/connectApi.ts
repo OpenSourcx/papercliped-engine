@@ -208,6 +208,7 @@ export const connectApi = {
   plugins: () => req<PluginList>("GET", "/api/connect/plugins"),
   installPlugin: (id: string, acceptedPermissions: string[]) => req<{ installed: boolean }>("POST", "/api/connect/plugins/install", { id, acceptedPermissions }),
   upgradePlugin: (id: string, acceptedPermissions: string[]) => req<{ upgraded: boolean }>("POST", `/api/connect/plugins/${enc(id)}/upgrade`, { acceptedPermissions }),
+  reinstallPlugin: (id: string, acceptedPermissions: string[]) => req<{ reinstalled: boolean }>("POST", `/api/connect/plugins/${enc(id)}/reinstall`, { acceptedPermissions, confirm: true }),
   setPlugin: (id: string, enabled: boolean) => req<{ ok: boolean }>("POST", `/api/connect/plugins/${enc(id)}/${enabled ? "enable" : "disable"}`, {}),
   revokePlugin: (id: string) => req<{ ok: boolean }>("DELETE", `/api/connect/plugins/${enc(id)}`),
   adapters: () => req<AdapterList>("GET", "/api/connect/adapters"),

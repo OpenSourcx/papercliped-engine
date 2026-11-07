@@ -22,7 +22,10 @@ Read from `@paperclipai/server` dist (`routes/tool-gateway.js`, `routes/tool-acc
 * **Policy owned by the host** (because of finding 5): a `block` policy for the identity (priority 1000), plus, per action an administrator chooses, an `allow` policy (Allow) or a `require_approval` policy (Ask), selectors `{agentId, connectionId, catalogEntryId}`, priority 100. Off is the absence of a policy. Downgrades remove the old policy before adding the new one, so an action is never briefly allowed. Revoke removes all but the default deny.
 * **Calling:** Pin tool `call_app_tool` (an action tool: risk "disruptive", so plan/ask/accept modes ask the person first; auto and bypass run it, still under the engine policy). Read tools `list_app_tools` (actions and Pin's mode for each) and `app_tool_status`. An approval-required result tells Pin to stop and report; Pin has no approve or decline tool (tested).
 * **Console:** Organization apps, "Pin" card (enable, per-action Off/Ask/Allow, revoke).
-* Not exposed to remote MCP clients yet (only the console's Pin runs `call_app_tool`).
+* **Remote MCP:** `call_app_tool` is a Full-control tool (MCP hint: destructive) with the same backend and the same organization scoping as the console (`orgOk`: an app limited to some organizations cannot name others). Without the person's "act without asking" setting it only writes a plan the person approves in the console; with it, it calls PinApps directly, and the engine still decides allow/ask/deny. Read tools `list_app_tools`, `app_tool_status` and `list_app_action_requests` are read-only. Results that wait for approval carry where a person decides.
+* **Approvals:** the console's Organization apps page has a "Held app actions" card (approve or decline through the engine's own routes, with a confirmation). Pin's replies and MCP results say: open the organization, then Connectors, Organization apps, Held app actions.
+* **Lost state:** if the host forgets its identity record, enabling again adopts the existing "Pin (host)" agent only when it is paused on the sentinel http adapter; anything else with that name is left alone (the engine refuses duplicate names).
+* **Provider errors** under an allowed policy are reported as failed, not done.
 
 ## Verified
 
@@ -34,6 +37,8 @@ Read from `@paperclipai/server` dist (`routes/tool-gateway.js`, `routes/tool-acc
 | revoked action / revoke all | live: next call denied |
 | cross-organization (other org's connection, other org's agent, outsider user, no inherited identity) | live (host check + raw engine 403/404) |
 | identity never runs | live: paused, `http` adapter, wake-up stays queued; simulated: reconciler skips it |
+| the same five cases through the MCP tools (allowed, denied, approval-required then approved natively, revoked, cross-organization and app scope) | live: `test/live/pin-apps.live.test.ts`, MCP describe |
+| held-action listing in the engine's real shape, signed blob never returned | live (list tool) and simulated (console card, host read) |
 | host-layer rules (validation, identity checks, no approve route, Pin action risk and modes) | simulated (stub engine), `test/pin-apps.test.ts` |
 
 ## Running the live check

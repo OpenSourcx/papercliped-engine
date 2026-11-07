@@ -42,3 +42,21 @@ describe("Community plugins", () => {
     expect(await screen.findByRole("button", { name: /Review upgrade to 2.0.0 \(new permissions\)/ })).toBeTruthy();
   });
 });
+
+import { NodeApiError } from "../src/data/engine/nodeApi.ts";
+describe("Community plugins: an upgrade the engine refuses for new capabilities", () => {
+  it("explains it, changes nothing, and offers an explicit revoke-and-install with the permissions shown", async () => {
+    vi.spyOn(connectApi, "plugins").mockResolvedValue(list({ plugins: [{ id: "pl2", key: "acme", status: "ready", packageName: "@acme/x", version: "1.0.0", verified: true, catalogId: "acme", grantedPermissions: ["net.acme.test"] }], updates: [{ id: "acme", from: "1.0.0", to: "2.0.0", permissions: ["net.acme.test", "fs.write"], needsConsent: true }] }));
+    vi.spyOn(connectApi, "upgradePlugin").mockRejectedValue(new NodeApiError(409, "The engine refuses to upgrade acme because 2.0.0 asks for new capabilities (companies.read). Nothing was changed.", "capability_increase"));
+    const reinstall = vi.spyOn(connectApi, "reinstallPlugin").mockResolvedValue({ reinstalled: true });
+    wrap(<CommunityPlugins />);
+    fireEvent.click(await screen.findByRole("button", { name: /Review upgrade to 2.0.0/ }));
+    fireEvent.click(screen.getByRole("switch", { name: /reviewed these permissions/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade" }));
+    expect(await screen.findByText(/won’t upgrade this in place/)).toBeTruthy();
+    expect(screen.getByText(/not an enforced sandbox/)).toBeTruthy();
+    expect(reinstall).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke and install 2.0.0" }));
+    await waitFor(() => expect(reinstall).toHaveBeenCalledWith("acme", ["net.acme.test", "fs.write"]));
+  });
+});

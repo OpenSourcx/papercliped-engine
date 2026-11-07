@@ -30,7 +30,14 @@ Machine-wide plugins run code inside the engine. They are installed only from a 
 
 ## Engine behaviour verified against 2026.1023.0 (live)
 
-`POST /api/plugins/install {packageName, version, isLocalPath:false}` (instance admin) installs and goes `ready` when no new capability approval is needed; `POST /api/plugins/{id}/upgrade {version}` upgrades (body `{version}` optional, default latest; a capability increase goes `upgrade_pending`); `DELETE /api/plugins/{id}` uninstalls. These were run for real with a plugin package at two versions served by a local npm registry; see the test below.
+`POST /api/plugins/install {packageName, version, isLocalPath:false}` (instance admin) installs and goes `ready` when no new capability approval is needed; `POST /api/plugins/{id}/upgrade {version}` upgrades (body `{version}` optional, default latest); `DELETE /api/plugins/{id}` uninstalls. These were run for real with a plugin package at two versions served by a local npm registry; see the test below.
+
+## Capability increases (verified live; differs from the engine's own comments)
+The engine's lifecycle code mentions an `upgrade_pending` state for upgrades that add capabilities, but in 2026.1023.0 the plugin **loader** throws first: `POST /api/plugins/{id}/upgrade` answers 400 "introduces new capabilities that require approval: ..." and there is no approval call. The plugin stays `ready` at its old version (the failed attempt does stop its runtime first; it reports healthy afterwards). The host therefore never reaches `upgrade_pending`:
+* `POST /api/connect/plugins/{id}/upgrade` turns that refusal into 409 `capability_increase` naming the capabilities, and changes nothing.
+* The only way to adopt such a version is `POST /api/connect/plugins/{id}/reinstall {acceptedPermissions, confirm: true}`: it needs the exact new permission list and an explicit confirmation, re-checks the registry hash, removes the plugin from the engine (data is kept by the engine's default) and installs the new version. If the install fails the previous version (same version and hash) is installed again and the response says whether that worked.
+* The console shows this as "The engine won't upgrade this in place" with a "Revoke and install" button, next to the wording that permissions are declarations, not an enforced sandbox.
+Tested live (`test/live/plugins.live.test.ts`, 4 tests) with the plugin repacked at 0.3.0 declaring one more capability.
 
 ## Live check
 

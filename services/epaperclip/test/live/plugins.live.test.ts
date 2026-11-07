@@ -121,4 +121,28 @@ suite("plugin install, upgrade and revoke against a real engine", () => {
     expect((await route("GET", "/api/connect/plugins")).body.available.map((a: any) => a.id)).toEqual(["epc-live-sandbox"]);
     await fetch(`${REGISTRY}/admin/hide/0.2.0`);
   }, 120_000);
+  it("an upgrade that adds engine capabilities is refused by the real engine; only an explicit, consented reinstall adopts it", async () => {
+    await fetch(`${REGISTRY}/admin/show/0.2.0`);
+    entries = [await entry("0.2.0")];
+    expect((await route("POST", "/api/connect/plugins/install", { id: "epc-live-sandbox", acceptedPermissions: ["environment.drivers.register"] })).status).toBe(200);
+    // 0.3.0 declares one more capability (companies.read) in its manifest.
+    const perms = ["companies.read", "environment.drivers.register"];
+    entries = [await entry("0.3.0", { permissions: perms })];
+    const refused = await route("POST", "/api/connect/plugins/epc-live-sandbox/upgrade", { acceptedPermissions: perms });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ code: "capability_increase", error: expect.stringContaining("companies.read") });
+    expect(await enginePlugins()).toMatchObject([{ version: "0.2.0", status: "ready" }]);
+    expect(((await engine("GET", "/api/plugins")).data as any[])[0].manifestJson.capabilities).toEqual(["environment.drivers.register"]);
+    expect((await route("POST", "/api/connect/plugins/epc-live-sandbox/reinstall", { acceptedPermissions: perms })).body).toMatchObject({ code: "confirm_required" });
+    expect((await route("POST", "/api/connect/plugins/epc-live-sandbox/reinstall", { acceptedPermissions: ["environment.drivers.register"], confirm: true })).body).toMatchObject({ code: "consent_required" });
+    expect(await enginePlugins()).toMatchObject([{ version: "0.2.0" }]);
+    expect((await route("POST", "/api/connect/plugins/epc-live-sandbox/reinstall", { acceptedPermissions: perms, confirm: true })).status).toBe(200);
+    const after = (await engine("GET", "/api/plugins")).data as any[];
+    expect(after).toMatchObject([{ version: "0.3.0", status: "ready" }]);
+    expect(after[0].manifestJson.capabilities).toContain("companies.read");
+    expect((await route("GET", "/api/connect/plugins")).body.plugins[0].grantedPermissions).toEqual(perms);
+    expect((await route("DELETE", "/api/connect/plugins/epc-live-sandbox")).status).toBe(200);
+    expect(await enginePlugins()).toEqual([]);
+    await fetch(`${REGISTRY}/admin/hide/0.2.0`);
+  }, 120_000);
 });

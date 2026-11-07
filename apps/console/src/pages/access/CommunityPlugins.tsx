@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { connectApi } from "../../data/engine/connectApi.ts";
+import { NodeApiError } from "../../data/engine/nodeApi.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Notice, PageFrame, PageHeader, Status, Toggle } from "../../ui/primitives.tsx";
 
 const KEY = ["connect", "plugins"];
+const ActionError2 = ({ error }: { error: unknown }) => (error ? <span role="alert" className="mt-2 block text-compact text-critical">{error instanceof Error ? error.message : "That did not work."}</span> : null);
 const errorText = (e: unknown) => (e instanceof Error ? e.message : "The device did not answer.");
 
 /** Settings → Community plugins: machine-wide, device administrators only. Install, upgrade and revoke are checked by the host, not here. */
@@ -18,6 +20,7 @@ export function CommunityPlugins() {
   const [revoking, setRevoking] = useState<{ id: string; label: string } | null>(null);
   const close = () => { setReview(null); setAccepted(false); };
   const apply = useMutation({ mutationFn: (r: NonNullable<typeof review>): Promise<unknown> => (r.upgrade ? connectApi.upgradePlugin(r.id, r.permissions) : connectApi.installPlugin(r.id, r.permissions)), onSuccess: () => { close(); done(); } });
+  const reinstall = useMutation({ mutationFn: (r: NonNullable<typeof review>) => connectApi.reinstallPlugin(r.id, r.permissions), onSuccess: () => { close(); done(); } });
   const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => connectApi.setPlugin(v.id, v.enabled), onSuccess: done });
   const revoke = useMutation({ mutationFn: (id: string) => connectApi.revokePlugin(id), onSuccess: () => { setRevoking(null); done(); } });
   const data = list.data;
@@ -48,7 +51,8 @@ export function CommunityPlugins() {
         <ul className="list-disc pl-5 text-compact font-mono">{review.permissions.length ? review.permissions.map((p) => <li key={p}>{p}</li>) : <li className="font-sans">No permissions declared.</li>}</ul>
         <p className="text-xs text-ink-3">These are the publisher’s declarations, shown from the signed catalog. The device checks that the package is exactly the one the catalog was signed for, and records what you accepted.</p>
         <Toggle label="I have reviewed these permissions and accept them" checked={accepted} onChange={setAccepted} />
-        {apply.error && <p role="alert" className="text-compact text-critical">{errorText(apply.error)}</p>}</div></Modal>}
+        {apply.error && !(apply.error instanceof NodeApiError && apply.error.code === "capability_increase") && <p role="alert" className="text-compact text-critical">{errorText(apply.error)}</p>}
+        {apply.error instanceof NodeApiError && apply.error.code === "capability_increase" && <Notice tone="warning" title="The engine won’t upgrade this in place" action={<Button variant="danger" loading={reinstall.isPending} onClick={() => reinstall.mutate(review)}>Revoke and install {review.version}</Button>}>{apply.error.message} Reinstalling removes the plugin from the engine and installs {review.version}; the permissions listed above are the publisher’s declarations, not an enforced sandbox. If the install fails the previous version is put back.<ActionError2 error={reinstall.error} /></Notice>}</div></Modal>}
     {revoking && <Modal title={`Revoke ${revoking.label}?`} onClose={() => setRevoking(null)} footer={<><Button onClick={() => setRevoking(null)}>Cancel</Button><Button variant="danger" loading={revoke.isPending} onClick={() => revoke.mutate(revoking.id)}>Revoke and remove</Button></>}>
       <p className="text-sm text-ink-2">The plugin is removed from the engine and the permissions you accepted are forgotten. Work that depends on it may fail.</p>{revoke.error && <p role="alert" className="mt-2 text-compact text-critical">{errorText(revoke.error)}</p>}</Modal>}
   </PageFrame>;

@@ -81,6 +81,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
     if (p === "/api/plugins/install" && req.method === "POST") {
       const b = body();
       pluginCalls.push({ method: "POST", url: p, body: b });
+      if (b.version === "9.9.9") return send(400, { error: "Failed to install plugin: package not found" });
       const id = `pl-${String(b.packageName).replace(/\W+/g, "-")}`;
       plugins.set(id, { id, pluginKey: String(b.packageName), status: "ready", packageName: b.packageName, version: b.version });
       return send(201, { id });
@@ -89,6 +90,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       const pl = plugins.get(m[1]);
       if (!pl) return send(404, { error: "Plugin not found" });
       pluginCalls.push({ method: req.method!, url: p, body: body() });
+      if (m[2] === "/upgrade" && body().version === "3.0.0") return send(400, { error: `Upgrade for "${m[1]}" introduces new capabilities that require approval: companies.read. The previous version declared [environment.drivers.register]. Please review and approve the capability escalation before upgrading.` });
       if (m[2] === "/upgrade") pl.version = body().version;
       if (m[2] === "/disable") pl.status = "disabled";
       if (m[2] === "/enable") pl.status = "ready";

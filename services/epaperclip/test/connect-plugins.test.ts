@@ -4,6 +4,7 @@ import { startConnectApp, type ConnectApp } from "./fakes-connect.ts";
 
 const I1 = `sha512-${"A".repeat(86)}==`;
 const I2 = `sha512-${"C".repeat(86)}==`;
+const I3 = `sha512-${"D".repeat(86)}==`;
 const signer = generateSigningKey();
 let h: ConnectApp;
 let registry: Record<string, string>;
@@ -18,7 +19,7 @@ const start = (keys = [trustedKey(signer.publicKeyPem)]) => startConnectApp({
   fetchText: async (u) => (u.endsWith(".sig") ? published.sig : published.body),
   providers: async (u) => { const m = /registry\.npmjs\.org\/.+\/(\d+\.\d+\.\d+)$/.exec(u); return m ? new Response(JSON.stringify({ dist: { integrity: registry[m[1]!] } })) : new Response("{}", { status: 404 }); },
 });
-beforeEach(async () => { registry = { "1.0.0": I1, "1.1.0": I2, "2.0.0": I2 }; publish([plugin()]); h = await start(); });
+beforeEach(async () => { registry = { "1.0.0": I1, "1.1.0": I2, "2.0.0": I2, "9.9.9": I3, "3.0.0": I2 }; publish([plugin()]); h = await start(); });
 afterEach(async () => { await h.closeAll(); });
 const j = async (r: Response) => (await r.json()) as any;
 const post = (path: string, body: unknown, cookie = h.sam) => h.call("POST", path, { cookie }, body);
@@ -86,6 +87,34 @@ describe("plugins from the signed catalog", () => {
     const bad = await post("/api/connect/plugins/acme-tools/upgrade", { acceptedPermissions: ["fs.write", "net.acme.test"] });
     expect((await j(bad)).code).toBe("integrity_mismatch");
     expect([...h.overlay.plugins.values()].find((p: any) => p.packageName === "@acme/epc-tools")).toMatchObject({ version: "2.0.0" });
+  });
+
+  it("an upgrade the engine refuses for new capabilities changes nothing, says why, and can be adopted only by an explicit, consented reinstall", async () => {
+    await post("/api/connect/plugins/install", { id: "acme-tools", acceptedPermissions: PERMS });
+    const v2 = plugin({ version: "3.0.0", source: { type: "npm", name: "@acme/epc-tools", version: "3.0.0", integrity: I2 }, permissions: [...PERMS, "fs.write"] });
+    publish([v2], 2); h.clock.t += 2 * 3600_000;
+    const refused = await post("/api/connect/plugins/acme-tools/upgrade", { acceptedPermissions: [...PERMS, "fs.write"] });
+    expect(refused.status).toBe(409);
+    expect(await j(refused)).toMatchObject({ code: "capability_increase", error: expect.stringContaining("companies.read") });
+    expect([...h.overlay.plugins.values()].find((p: any) => p.packageName === "@acme/epc-tools")).toMatchObject({ version: "1.0.0" });
+    expect((await j(await h.call("GET", "/api/connect/plugins", { cookie: h.sam }))).plugins.find((p: any) => p.catalogId === "acme-tools").grantedPermissions).toEqual(PERMS);
+    // Reinstall needs confirmation and exactly the new permission list.
+    expect((await j(await post("/api/connect/plugins/acme-tools/reinstall", { acceptedPermissions: [...PERMS, "fs.write"] }))).code).toBe("confirm_required");
+    expect((await j(await post("/api/connect/plugins/acme-tools/reinstall", { acceptedPermissions: PERMS, confirm: true }))).code).toBe("consent_required");
+    expect((await post("/api/connect/plugins/acme-tools/reinstall", { acceptedPermissions: [...PERMS, "fs.write"], confirm: true }, h.lee)).status).toBe(403);
+    expect((await post("/api/connect/plugins/acme-tools/reinstall", { acceptedPermissions: [...PERMS, "fs.write"], confirm: true })).status).toBe(200);
+    expect([...h.overlay.plugins.values()].filter((p: any) => p.packageName === "@acme/epc-tools")).toMatchObject([{ version: "3.0.0" }]);
+    expect((await j(await h.call("GET", "/api/connect/plugins", { cookie: h.sam }))).plugins.find((p: any) => p.catalogId === "acme-tools").grantedPermissions).toEqual([...PERMS, "fs.write"].sort());
+  });
+
+  it("a failed reinstall puts the previous version back", async () => {
+    await post("/api/connect/plugins/install", { id: "acme-tools", acceptedPermissions: PERMS });
+    publish([plugin({ version: "9.9.9", source: { type: "npm", name: "@acme/epc-tools", version: "9.9.9", integrity: I3 } })], 2); h.clock.t += 2 * 3600_000;
+    const r = await post("/api/connect/plugins/acme-tools/reinstall", { acceptedPermissions: PERMS, confirm: true });
+    expect(r.status).toBe(502);
+    expect((await j(r)).error).toMatch(/previous version 1.0.0 was put back/);
+    expect([...h.overlay.plugins.values()].filter((p: any) => p.packageName === "@acme/epc-tools")).toMatchObject([{ version: "1.0.0" }]);
+    expect((await j(await h.call("GET", "/api/connect/plugins", { cookie: h.sam }))).plugins.find((p: any) => p.catalogId === "acme-tools")).toMatchObject({ verified: true });
   });
 
   it("revokes through the engine and forgets the grant; unverified plugins can be removed but never switched on", async () => {
