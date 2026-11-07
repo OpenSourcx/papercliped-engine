@@ -320,7 +320,11 @@ export class Broker {
 
     return this.serial(async () => {
       const all = await this.d.pve.clusterResources();
-      const mine = all.filter((r) => this.belongs(g, r));
+      // The limits are the organization's aggregate over its whole pool, not just what the broker made: the agent-container
+      // provider (plugins/proxmox-sandbox) creates guests in the same pool without this group's tag or vmid range, and its own
+      // check counts everything in the pool. Counting the same set here keeps the two from adding up to twice the limit.
+      // Isolation is unchanged: only guests that belong() to the group can be read or destroyed.
+      const mine = all.filter((r) => (r.type === "lxc" || r.type === "qemu") && r.pool === g.pool && Number((r as { template?: number }).template ?? 0) !== 1 && (r.node === undefined || r.node === this.c.proxmox.node));
       const cores = mine.reduce((s, r) => s + (r.maxcpu ?? 0), 0);
       const memMb = mine.reduce((s, r) => s + (r.maxmem ?? 0) / MiB, 0);
       const over = mine.length >= g.limits.maxLeases ? `lease limit (${g.limits.maxLeases})`

@@ -235,3 +235,12 @@ Agent credentials go in as adapter environment variables backed by Paperclip sec
 ## Engine lane
 
 Paperclip runs Claude, Codex, Gemini and Kimi agents over ACP by default, which on a sandbox that streams output only by polling costs about ten ssh calls a second per run. The host service therefore sets `adapterConfig.engine = "cli"` on every such agent that hasn't chosen a lane (on each reconcile, about once a minute, and when containers are set up). A lane someone chose, `"acp"` included, is never changed. The bridges are installed in the template so choosing ACP works.
+
+## Organization limits: provider and broker
+
+An organization's resource group sets three aggregate limits over its Proxmox pool: machines, CPU cores and memory (`maxGuests`, `cores`, `memoryMb`). Two components can create guests in that pool, and both now enforce the same limits against the same set:
+
+* **The agent-container provider** (this plugin) checks before every create or clone, under a per-pool lock inside its process: it reads the pool's real members (containers and VMs, templates excluded) and refuses a container that would pass any limit, creating nothing. The limits reach it as `quotaGuests`, `quotaCores` and `quotaMemoryMb` in the organization's environment config, refreshed whenever the resource group changes.
+* **The host broker** (`createLease`, used for leases and Pin's host-side actions) maps the same group numbers to `maxLeases`, `maxCores` and `maxMemoryMb`. Its usage is now every container or VM in the group's pool (templates excluded), not only guests carrying the broker's own tag and vmid range. Before this change a broker lease check ignored the provider's containers, so the two together could reach twice the limit. Isolation is unchanged: reading or destroying a guest still requires it to be inside the group's pool, vmid range and tag.
+
+What is not covered: the two checks are separate processes with no shared lock, so two simultaneous requests, one through each, can both pass and briefly exceed a limit (the next request of either kind is then refused); disk is not aggregated; the checks count what Proxmox reports, so a stopped guest still counts. Pin runs on the host and creates no guest in an organization's pool, so it is not charged. Tested: `plugins/proxmox-sandbox/test/plugin.test.ts` ("organization limits") and `services/host-broker/test/broker.test.ts` (provider guests in the same pool count; templates and other pools do not). Simulated only: neither check has run against a real Proxmox host.

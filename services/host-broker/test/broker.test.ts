@@ -163,6 +163,15 @@ describe("leases", () => {
     await expectBrokerError(broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY }), "group_limit");
   });
 
+  it("counts guests the agent-container provider made in the same pool (no tag, any vmid, VMs too) but never a template or another pool", async () => {
+    const outside = (vmid: number, over: Record<string, unknown> = {}) => ({ vmid, type: "lxc", node: "pve", pool: "co-acme", tags: "epaperclip;company-x", status: "running", maxcpu: 2, maxmem: 1024 * MiB, ...over }) as ClusterResource;
+    // One provider container (2 cores, 1 GiB) already uses half of the 4-core, 2-lease allowance.
+    const { broker, acme } = setup([outside(300), outside(301, { template: 1 }), outside(302, { pool: "co-beta" }), outside(303, { type: "qemu", pool: "other" })]);
+    await broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY });
+    // 2 leases allowed in total: the provider's container plus this one.
+    await expectBrokerError(broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY }), "group_limit");
+  });
+
   it("refuses bad keys, unknown profiles and past expiry", async () => {
     const { broker, acme } = setup();
     await expectBrokerError(broker.createLease(acme, "acme", { profile: "small", sshPublicKey: "not a key" }), "bad_ssh_key");
