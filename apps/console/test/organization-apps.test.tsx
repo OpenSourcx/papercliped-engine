@@ -48,6 +48,27 @@ describe("native organization apps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     await waitFor(() => expect(finish).toHaveBeenCalledWith("c1", "x1", { preserveExistingAccess: false, access: { agentIds: ["a1"] }, enabledCatalogEntryIds: ["read", "write"], askFirstCatalogEntryIds: ["write"], reviewedCatalogEntryIds: [] }));
   });
+  it("reopens host-enforced approval choices and allows retrying an incomplete save", async () => {
+    grants({}, [
+      { name: "ePaperclip app:x1:ask:write", enabled: true, policyType: "require_approval", selectors: { connectionId: "x1", catalogEntryId: "write", agentIds: ["a1"] } },
+      { name: "ePaperclip app:x1:saving", enabled: true, policyType: "block", selectors: { connectionId: "x1" } },
+    ]);
+    catalog();
+    const finish = vi.spyOn(engine.apps, "finish").mockResolvedValue({} as never);
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    await screen.findByText(/last access save did not finish/);
+    expect((screen.getByLabelText("Edit page") as HTMLSelectElement).value).toBe("ask");
+    expect((screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(finish).toHaveBeenCalledWith("c1", "x1", expect.objectContaining({ askFirstCatalogEntryIds: ["write"] })));
+  });
+  it("does not offer to overwrite a custom policy that may affect this connection", async () => {
+    grants({}, [{ name: "Custom allow", enabled: true, policyType: "allow", selectors: {} }]);
+    catalog();
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    await screen.findByText(/custom tool policy/);
+    expect((screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement).disabled).toBe(true);
+  });
   it("keeps all-agents access when the company binding exists", async () => {
     grants({ bindings: [{ targetType: "company", targetId: "c1" }] });
     catalog();

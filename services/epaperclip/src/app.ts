@@ -24,7 +24,8 @@ import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
 import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
-import { EngineGateway, type EngineStatus } from "./engine.ts";
+import { AppAccessManager } from "./app-access.ts";
+import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
 import { ConnectLink } from "./connectLink.ts";
@@ -1993,10 +1994,22 @@ export function createApp(d: AppDeps) {
     if (!ok) throw new HttpError(403, "agents_on_host_refused", "ePaperclip keeps agents off the host: the engine's managed-sandbox-only setting can't be turned off from here.");
   };
 
+  const appAccess = new AppAccessManager();
+
   /** /engine/api/*: the engine, as the signed-in person. Changes need the same header and Origin as our own API. */
   const engineProxy = async (req: IncomingMessage, res: ServerResponse) => {
     const s = requireSession(req);
     if (req.method !== "GET" && req.method !== "HEAD") requireSameSite(req);
+    // Route every spelling accepted by the engine through the same permission-safe finish, including encoded paths.
+    let target = "";
+    try { target = decodeURIComponent((req.url ?? "").split("?")[0]!).replace(/^\/engine/, ""); } catch { /* forward performs the normal path validation */ }
+    const finish = target.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/tools\/apps\/([A-Za-z0-9_-]{1,64})\/finish\/?$/i);
+    if (req.method === "POST" && finish) {
+      enginePath(req.url ?? "");
+      const result = await appAccess.save((m, p, b) => needEngine().userJson(s, m, p, b), finish[1]!, finish[2]!, await readJson(req, 128 * 1024));
+      audit(req, "app.access.save", finish[2]!);
+      return sendJson(res, 200, result);
+    }
     await needEngine().forward(req, res, s, maxUpload, {
       inspect: engineGuard,
       // New agents default to their organization's container environment right away.

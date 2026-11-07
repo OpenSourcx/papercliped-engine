@@ -95,11 +95,12 @@ export function ToolReview({ companyId, connectionId, onClose }: { companyId: st
   const refresh = useMutation({ mutationFn: () => engine.apps.refresh(connectionId), onSuccess: () => void catalog.refetch() });
   return <Modal title="Set agent access" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={save.isPending} disabled={!catalog.data || !agents.data || !base || !!base.advanced || refresh.isPending} onClick={() => save.mutate()}>Save access</Button></>}>
     <div className="space-y-4">
+      {base?.saving && <Notice tone="warning">The last access save did not finish. This app is blocked, including for Pin. Save access again to finish safely.</Notice>}
       {current.error && <LoadError error={current.error} retry={() => void current.refetch()} />}
       {base?.advanced && <Notice tone="warning">This connection has {base.advanced}, which this editor cannot show. Saving here would remove it, so editing is disabled. Change it in the engine’s tool access settings.</Notice>}
       {agents.error && <LoadError error={agents.error} retry={() => void agents.refetch()} />}
-      <Toggle label="All agents, including agents added later" checked={allAgents} onChange={setAllAgents} />
-      {!allAgents && agents.data?.filter((agent) => agent.status !== "terminated").map((agent) => <Toggle key={agent.id} label={agent.name} checked={agentOn(agent.id)} onChange={(checked) => setAgentEdits({ ...agentEdits, [agent.id]: checked })} />)}
+      <Toggle label="All agents, including agents added later" checked={allAgents} onChange={setAllAgents} /><p className="text-xs text-ink-3">Pin has its own access settings below. Saving blocks Off actions and agents without access.</p>
+      {!allAgents && agents.data?.filter((agent) => agent.status !== "terminated" && agent.name !== "Pin (host)").map((agent) => <Toggle key={agent.id} label={agent.name} checked={agentOn(agent.id)} onChange={(checked) => setAgentEdits({ ...agentEdits, [agent.id]: checked })} />)}
       <Button size="sm" loading={refresh.isPending} onClick={() => refresh.mutate()}>Refresh available actions</Button>
       {catalog.isPending && <Loading />}{catalog.error && <LoadError error={catalog.error} retry={() => void catalog.refetch()} />}
       {catalog.data?.catalog.length === 0 && <p className="text-sm text-ink-3">No actions discovered. Finish provider sign-in, then refresh.</p>}
