@@ -1,5 +1,5 @@
 import type { AppDefinition, ChatEndpoint, ChatEndpointResource, ConfigureChatEndpointInput, CreateChatEndpointInput, ConnectToolApp, ConnectToolAppResult, FinishToolApp, FinishToolAppResult, ToolCatalogEntry, ToolConnection, ToolConnectionCreateCapabilities, ToolConnectionHealthCheckResult, ToolPolicy, ToolProfileWithDetails } from "@paperclipai/shared";
-export type { AppDefinition, ChatEndpoint, ConnectionMethodDef, FieldDef, ConnectToolApp, ConnectToolAppResult, ToolCatalogEntry, ToolConnection } from "@paperclipai/shared";
+export type { AppDefinition, ChatEndpoint, ConnectionMethodDef, FieldDef, ConnectToolApp, ConnectToolAppResult, ToolCatalogEntry, ToolConnection, ToolPolicy, ToolProfileWithDetails } from "@paperclipai/shared";
 import type {
   ActivityEvent,
   Agent,
