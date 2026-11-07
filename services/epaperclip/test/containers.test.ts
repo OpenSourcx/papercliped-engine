@@ -323,7 +323,9 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === first.co).config.pool).toBe(first.pool);
     // Resizing is followed.
     await send("PUT", `/api/resource-groups/${second.co}`, sam, { name: "Lumen", cores: 1, memoryMb: 2048, diskGb: 10, maxGuests: 2 });
-    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 2048, diskGb: 10 });
+    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 2048, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
+    // An organization without a resource group has no aggregate limit.
+    expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
   });
 
   it("an organization without a resource group uses the shared pool, and new agents follow on reconcile", async () => {

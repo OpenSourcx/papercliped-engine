@@ -28,6 +28,8 @@ export interface RecordedRequest {
 }
 
 export interface FakeContainer {
+  /** The Proxmox pool the guest was created in. */
+  pool?: string;
   vmid: number;
   status: "running" | "stopped";
   config: Record<string, unknown>;
@@ -222,7 +224,7 @@ export class FakeProxmox {
     }
     if (method === "GET" && (m = /^\/pools\/([^/]+)$/.exec(apiPath))) {
       const pool = decodeURIComponent(m[1]!);
-      return this.pools.has(pool) ? this.reply(res, { members: [] }) : this.fail(res, 500, `pool '${pool}' does not exist`);
+      return this.pools.has(pool) ? this.reply(res, { members: [...this.containers.values()].filter((c) => c.pool === pool).map((c) => ({ id: `lxc/${c.vmid}`, type: "lxc", vmid: c.vmid, node: this.node, status: c.status, maxcpu: Number(c.config.cores ?? 1), maxmem: Number(c.config.memory ?? 512) * 1024 * 1024, template: Number(c.config.template ?? 0) })) }) : this.fail(res, 500, `pool '${pool}' does not exist`);
     }
     if ((m = /^\/nodes\/([^/]+)(\/.*)?$/.exec(apiPath))) {
       if (decodeURIComponent(m[1]!) !== this.node) return this.fail(res, 595, `no such cluster node '${m[1]}'`);
@@ -254,6 +256,7 @@ export class FakeProxmox {
         this.containers.set(vmid, {
           vmid,
           status: "stopped",
+          pool: form.pool,
           config: {
             hostname: form.hostname,
             unprivileged: Number(form.unprivileged ?? 1),
@@ -283,7 +286,7 @@ export class FakeProxmox {
       return this.reply(res, this.task("vzclone", vmid, () => {
         const config: Record<string, unknown> = { ...ct.config, hostname: form.hostname, description: form.description };
         delete config.template;
-        this.containers.set(newid, { vmid: newid, status: "stopped", config, ip: this.nextIp, ipDelayCalls: 1 });
+        this.containers.set(newid, { vmid: newid, status: "stopped", pool: form.pool, config, ip: this.nextIp, ipDelayCalls: 1 });
       }));
     }
     if (!ct) return this.missing(res, vmid);

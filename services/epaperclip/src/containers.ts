@@ -246,8 +246,8 @@ export class AgentContainers {
       size: over.size ?? s?.size ?? DEFAULT_SIZE,
     };
   }
-  private pools(): Record<string, { pool: string }> {
-    return this.d.state.getSetting<Record<string, { pool: string }>>("resourceGroups") ?? {};
+  private pools(): Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }> {
+    return this.d.state.getSetting<Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }>>("resourceGroups") ?? {};
   }
   private poolFor(companyId: string, p: Params) {
     return this.pools()[companyId]?.pool ?? p.pool;
@@ -494,6 +494,9 @@ export class AgentContainers {
       sshUser: AGENT_USER,
       reuseLease: false,
     };
+    // The organization's resource group is an aggregate limit over everything in its pool; the provider enforces it when it allocates.
+    const group = this.pools()[companyId];
+    if (group) { cfg.quotaGuests = group.maxGuests; cfg.quotaCores = group.cores; cfg.quotaMemoryMb = group.memoryMb; }
     if (this.d.caPem) cfg.caCert = this.d.caPem.trim();
     return cfg;
   }
