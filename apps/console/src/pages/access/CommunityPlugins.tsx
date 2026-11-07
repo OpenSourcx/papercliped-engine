@@ -23,7 +23,7 @@ export function CommunityPlugins() {
   const data = list.data;
   return <PageFrame width="4xl">
     <PageHeader title="Community plugins" subtitle="Machine-wide add-ons that run inside the engine. Only a Proxmox administrator can install, upgrade or revoke them." />
-    {list.error && <Notice tone="warning" title="Could not load plugins" action={<Button size="sm" onClick={() => void list.refetch()}>Retry</Button>}>{errorText(list.error)}</Notice>}
+    {list.error && <Notice tone="warning" title="Could not load plugins" action={<Button onClick={() => void list.refetch()}>Retry</Button>}>{errorText(list.error)}</Notice>}
     {data && !data.catalog.trusted && <Notice tone="info" title="No trusted catalog on this device">Nothing can be installed from a catalog until a catalog signing key is pinned on this device. Plugins the engine already has are listed and can be revoked.</Notice>}
     {data?.catalog.problem && <Notice tone="warning" title="The catalog was not used">{data.catalog.problem.message}</Notice>}
     {data && !data.engine.ok && <Notice tone="warning" title="Engine not reachable">{data.engine.problem}</Notice>}
@@ -37,12 +37,12 @@ export function CommunityPlugins() {
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {data.updates.filter((u) => u.id === p.catalogId).map((u) => <Button key={u.to} size="sm" variant="primary" onClick={() => setReview({ id: u.id, name: p.packageName ?? u.id, version: u.to, permissions: u.permissions, upgrade: true })}>Review upgrade to {u.to}{u.needsConsent ? " (new permissions)" : ""}</Button>)}
-        {(p.verified || p.status === "ready") && <Button size="sm" loading={toggle.isPending} onClick={() => toggle.mutate({ id: p.catalogId ?? p.id, enabled: p.status !== "ready" })} disabled={p.status !== "ready" && !p.verified}>{p.status === "ready" ? "Switch off" : "Switch on"}</Button>}
-        <Button size="sm" variant="ghost" onClick={() => setRevoking({ id: p.catalogId ?? p.id, label: p.packageName ?? p.key ?? p.id })}>Revoke</Button>
+        {(p.verified || p.status === "ready") && <Button loading={toggle.isPending} onClick={() => toggle.mutate({ id: p.catalogId ?? p.id, enabled: p.status !== "ready" })} disabled={p.status !== "ready" && !p.verified}>{p.status === "ready" ? "Switch off" : "Switch on"}</Button>}
+        <Button variant="ghost" onClick={() => setRevoking({ id: p.catalogId ?? p.id, label: p.packageName ?? p.key ?? p.id })}>Revoke</Button>
       </div></Card>)}
       {data?.plugins.length === 0 && <Card className="p-4 text-compact text-ink-3">No plugins are installed in the engine.</Card>}
     </div>
-    {data && data.available.length > 0 && <><h2 className="mt-6 mb-2 font-medium">Available from the signed catalog</h2><div className="space-y-3">{data.available.map((a) => <Card key={a.id} className="p-4"><div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1 basis-48"><div className="font-medium">{a.name} <span className="text-ink-3 font-normal">{a.version} · {a.vendor}</span></div><div className="text-xs text-ink-3">{a.summary}</div></div><Button size="sm" variant="primary" onClick={() => setReview({ id: a.id, name: a.name, version: a.version, permissions: a.permissions, upgrade: false })}>Review and install</Button></div></Card>)}</div></>}
+    {data && data.available.length > 0 && <><h2 className="mt-6 mb-2 font-medium">Available from the signed catalog</h2><div className="space-y-3">{data.available.map((a) => <Card key={a.id} className="p-4"><div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1 basis-48"><div className="font-medium">{a.name} <span className="text-ink-3 font-normal">{a.version} · {a.vendor}</span></div><div className="text-xs text-ink-3">{a.summary}</div></div><Button variant="primary" onClick={() => setReview({ id: a.id, name: a.name, version: a.version, permissions: a.permissions, upgrade: false })}>Review and install</Button></div></Card>)}</div></>}
     {review && <Modal title={`${review.upgrade ? "Upgrade" : "Install"} ${review.name} ${review.version}`} onClose={close} footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" disabled={!accepted} loading={apply.isPending} onClick={() => apply.mutate(review)}>{review.upgrade ? "Upgrade" : "Install"}</Button></>}>
       <div className="space-y-3"><p className="text-sm text-ink-2">This plugin declares that it needs:</p>
         <ul className="list-disc pl-5 text-compact font-mono">{review.permissions.length ? review.permissions.map((p) => <li key={p}>{p}</li>) : <li className="font-sans">No permissions declared.</li>}</ul>

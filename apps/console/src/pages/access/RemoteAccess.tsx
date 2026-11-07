@@ -25,12 +25,12 @@ export function RemoteAccess() {
   return (
     <div className="space-y-4">
       <p className="text-compact text-ink-3">Choose how people reach this device from outside your network. Local access works in every mode, including when Papercliped Connect is offline. A public address never bypasses sign-in: everyone still signs in with their Proxmox account and gets only the permissions it has.</p>
-      {status.error && <Notice tone="critical" title="Could not load remote access" action={<Button size="sm" onClick={() => void status.refetch()}>Retry</Button>}>{status.error instanceof Error ? status.error.message : "The device did not answer."}</Notice>}
+      {status.error && <Notice tone="critical" title="Could not load remote access" action={<Button onClick={() => void status.refetch()}>Retry</Button>}>{status.error instanceof Error ? status.error.message : "The device did not answer."}</Notice>}
       {mode.error && <Notice tone="warning" title="Mode not changed">{mode.error instanceof Error ? mode.error.message : "The change was refused."}</Notice>}
       <div role="radiogroup" aria-label="Remote access mode" className="grid gap-3 md:grid-cols-3">
         {MODES.map((m) => {
           const on = current === m.id;
-          return <button key={m.id} type="button" role="radio" aria-checked={on} disabled={!status.data || mode.isPending} onClick={() => !on && mode.mutate(m.id)} className={`text-left rounded-xl border p-4 transition min-h-11 disabled:opacity-60 ${on ? "border-accent bg-accent-soft" : "border-line hover:border-ink-3"}`}>
+          return <button key={m.id} type="button" role="radio" aria-checked={on} disabled={!status.data || mode.isPending} onClick={() => !on && mode.mutate(m.id)} className={`flex flex-col items-stretch justify-start text-left rounded-xl border p-4 transition min-h-11 disabled:opacity-60 ${on ? "border-accent bg-accent-soft" : "border-line hover:border-ink-3"}`}>
             <span className="flex items-center gap-2 font-medium"><m.icon className="h-4 w-4 text-ink-2" />{m.title}{on && <span className="ml-auto text-xs text-accent">Active</span>}</span>
             <span className="mt-2 block text-compact text-ink-3">{m.text}</span>
           </button>;
@@ -63,7 +63,7 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
       <p className="text-compact text-ink-2">Linked as <strong>{status.device.name}</strong> to Papercliped account <span className="font-mono">{status.device.accountId.slice(0, 8)}</span>.</p>
       {status.tunnel && <Notice tone={status.tunnel.state === "running" ? "good" : status.tunnel.state === "error" || status.tunnel.state === "unavailable" ? "warning" : "info"} title={status.tunnel.hostname ?? "Address"}>{status.tunnel.message}</Notice>}
       <p className="text-xs text-ink-3">Having a Papercliped account or subscription never gives anyone Proxmox administrator rights. Local sign-in keeps working if Connect is offline.</p>
-      {removing ? <Notice tone="warning" title="Unlink this device?" action={<><Button size="sm" onClick={() => setRemoving(false)}>Keep linked</Button><Button size="sm" variant="danger" loading={unpair.isPending} onClick={() => unpair.mutate()}>Unlink</Button></>}>The public address stops working. This device is removed locally now and from Connect as soon as it can be reached.</Notice> : <Button variant="ghost" onClick={() => setRemoving(true)}>Unlink this device</Button>}
+      {removing ? <Notice tone="warning" title="Unlink this device?" action={<><Button onClick={() => setRemoving(false)}>Keep linked</Button><Button variant="danger" loading={unpair.isPending} onClick={() => unpair.mutate()}>Unlink</Button></>}>The public address stops working. This device is removed locally now and from Connect as soon as it can be reached.</Notice> : <Button variant="ghost" onClick={() => setRemoving(true)}>Unlink this device</Button>}
     </> : !pairing || pairing.state === "expired" ? <>
       {pairing?.state === "expired" && <Notice tone="warning" title="That approval expired">Start again to get a new approval page.</Notice>}
       <p className="text-compact text-ink-3">Link this device to your Papercliped account. You will sign in on Papercliped’s site, approve this device, then confirm the account here.</p>
@@ -79,7 +79,7 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
         <label className="block text-compact">Device name<Input className="mt-1" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} placeholder="ePaperclip" aria-label="Device name" /></label>
         <Button variant="primary" loading={confirm.isPending} onClick={() => confirm.mutate()}>Confirm this account</Button>
       </div> : <p className="text-compact text-ink-3">Waiting for approval…</p>}
-      <div className="flex gap-2"><Button size="sm" loading={poll.isPending} onClick={() => poll.mutate()}>Check now</Button><Button size="sm" variant="ghost" loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel</Button></div>
+      <div className="flex gap-2"><Button loading={poll.isPending} onClick={() => poll.mutate()}>Check now</Button><Button variant="ghost" loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel</Button></div>
     </>}
   </Card>;
 }
