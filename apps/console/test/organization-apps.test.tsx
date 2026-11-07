@@ -9,7 +9,7 @@ import type { PickedApp } from "../src/pages/org/live/LiveOrganizationApps.tsx";
 
 vi.mock("../src/data/engine/queries.ts", async (original) => ({
   ...await original<typeof import("../src/data/engine/queries.ts")>(),
-  useAgents: () => ({ data: [{ id: "a1", name: "Ada", status: "idle" }], error: null }),
+  useAgents: () => ({ data: [{ id: "a1", name: "Ada", status: "idle" }, { id: "p1", name: "Pin (host)", status: "paused" }, { id: "a2", name: "Sleepy", status: "paused" }], error: null }),
 }));
 const picked = (provider: string, method: Record<string, unknown> = {}): PickedApp => ({ app: { slug: provider, name: provider, methods: [] }, method: { key: "mcp-oauth", auth: "oauth", whenToUse: "Connect your account", guidanceMd: "Select the resources to share.", ...method } } as unknown as PickedApp);
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
@@ -268,5 +268,17 @@ describe("existing connections that were set up before Off was enforced", () => 
     for (const bad of [{ ...good, enabled: false }, { ...good, policyType: "allow" }, { ...good, selectors: { connectionId: "other" } }, { ...good, name: "ePaperclip app:x1:saving" }]) expect(enforcedConnections([bad] as never).size).toBe(0);
     expect(readAppAccess("x1", [], [good] as never).enforced).toBe(true);
     expect(readAppAccess("x1", [], []).enforced).toBe(false);
+  });
+});
+
+describe("channel setup with an agent that cannot run yet", () => {
+  it("never offers Pin's identity, and warns before connecting a paused agent", async () => {
+    wrap(<ChannelSetup companyId="c1" picked={picked("discord", { key: "chat-agent", provider: "discord", purpose: "channel", auth: "api_key", credentialFields: [] })} onClose={() => {}} />);
+    const options = [...(screen.getByLabelText("Agent") as HTMLSelectElement).options].map((o) => o.text);
+    expect(options).toEqual(["Choose an agent", "Ada", "Sleepy (not ready to run yet)"]);
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "a2" } });
+    expect(await screen.findByText(/cannot run yet, so the engine will refuse/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "a1" } });
+    expect(screen.queryByText(/cannot run yet/)).toBeNull();
   });
 });

@@ -301,6 +301,10 @@ describe("resource groups", () => {
     const { group } = await r.json() as any;
     expect(group).toMatchObject({ companyId: "c1", pool: "epc-northwind-labs", cores: 8, maxGuests: 5, updatedBy: "sam@pve" });
     expect(pve.pools.get("epc-northwind-labs")!.comment).toBe("ePaperclip organization: Northwind Labs");
+    // A device without the host broker is a valid setup: that step is skipped (and says so), and the organization is Ready, not "needs repair".
+    expect(group.provisioning.state).toBe("ready");
+    expect(group.provisioning.steps.find((x: any) => x.id === "broker")).toMatchObject({ state: "skipped", detail: expect.stringContaining("not set up") });
+    expect(group.warnings ?? []).toEqual([]);
     const again = await send("PUT", "/api/resource-groups/c1", { ...limits, cores: 16 }, { Cookie: c });
     expect((await again.json() as any).group).toMatchObject({ pool: "epc-northwind-labs", cores: 16 });
     expect(pve.calls.filter((x) => x.method === "POST" && x.path === "/pools")).toHaveLength(1);

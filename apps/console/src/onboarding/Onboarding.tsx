@@ -180,7 +180,7 @@ export function Onboarding() {
   }
 
   return (
-    <Shell step={4} onBack={back} title="What can Pin do?" subtitle="Pin only gets the access you give it. Change it later in Access control.">
+    <Shell step={4} onBack={back} title="What can Pin do?" subtitle="Pin only gets the access you give it. Change it later in Access.">
       <form onSubmit={finish}>
         <div className="rounded-2xl border border-line bg-surface/60 divide-y divide-line">
           {([

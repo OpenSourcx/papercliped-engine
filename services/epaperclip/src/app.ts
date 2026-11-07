@@ -320,7 +320,7 @@ export interface ResourceGroup {
   updatedAt: number;
   updatedBy: string;
   /** Durable provisioning state; a failed stage can be retried without recreating the organization. */
-  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed"; detail?: string }[] };
+  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed" | "skipped"; detail?: string }[] };
 }
 
 export function parseResourceGroup(b: Record<string, unknown>): Pick<ResourceGroup, "name" | "cores" | "memoryMb" | "diskGb" | "maxGuests"> {
@@ -782,7 +782,9 @@ export function createApp(d: AppDeps) {
         // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
         const warnings = await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
         pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
-        try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; }
+        try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) {
+          // No broker on this device is a valid setup: the organization's agent containers are limited by the provider's own aggregate quota, and nothing needs the broker. A broker that exists but fails is still a failure.
+          if (e instanceof HttpError && e.code === "broker_not_configured") { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
         // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
         const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
         warnings.push(...environmentWarnings);
