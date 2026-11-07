@@ -21,7 +21,7 @@ export function PinAppAccess({ companyId, connections, canManage }: { companyId:
   const [revoking, setRevoking] = useState(false);
   const data = access.data;
   return <Card className="mt-6 p-5">
-    <h3 className="font-medium">Pin</h3>
+    <h2 className="font-medium">Pin</h2>
     <p className="mt-1 text-compact text-ink-3">Let Pin use this organization’s apps. Pin stays on the host and uses none of the organization’s machines. Everything starts Off; the engine’s policy and approvals decide each call, and Pin cannot approve anything.</p>
     {access.isPending && <Loading />}
     {access.error && <LoadError error={access.error} retry={() => void access.refetch()} />}

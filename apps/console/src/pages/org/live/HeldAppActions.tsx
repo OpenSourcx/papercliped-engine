@@ -14,7 +14,7 @@ export function HeldAppActions({ companyId, canDecide }: { companyId: string; ca
   const [deciding, setDeciding] = useState<{ id: string; verb: "approve" | "decline"; label: string } | null>(null);
   const decide = useMutation({ mutationFn: (d: NonNullable<typeof deciding>) => (d.verb === "approve" ? engine.apps.approveAction(d.id, companyId) : engine.apps.declineAction(d.id, companyId)), onSuccess: () => { setDeciding(null); done(); } });
   const items = held.data?.actionRequests ?? [];
-  return <Card className="mt-6 p-5" aria-labelledby="held-actions"><h3 id="held-actions" className="font-medium">Held app actions</h3>
+  return <Card className="mt-6 p-5" aria-labelledby="held-actions"><h2 id="held-actions" className="font-medium">Held app actions</h2>
     <p className="mt-1 text-compact text-ink-3">Actions waiting for a person. Approving lets the engine run the action once with the arguments shown; declining drops it.</p>
     {held.isPending && <Loading />}{held.error && <LoadError error={held.error} retry={() => void held.refetch()} />}
     {held.data && items.length === 0 && <p className="mt-3 text-compact text-ink-3">Nothing is waiting.</p>}

@@ -35,7 +35,7 @@ export function LiveOrganizationApps() {
     {[gallery, connections, channels].some((q) => q.isPending) && <Card><Loading label="Loading apps" /></Card>}
     {[gallery, connections, channels].filter((q) => q.error).map((q, i) => <Card key={i}><LoadError error={q.error} retry={() => void q.refetch()} /></Card>)}
     <div className="grid gap-3 sm:grid-cols-2">{gallery.data?.apps.filter((app) => CORE.has(app.slug)).map((app) => <Card key={app.slug} className="p-5">
-      <div className="flex items-center gap-3"><ProviderMark id={app.slug} name={app.name} /><h3 className="font-medium">{app.name}</h3></div>
+      <div className="flex items-center gap-3"><ProviderMark id={app.slug} name={app.name} /><h2 className="font-medium">{app.name}</h2></div>
       <p className="mt-3 text-compact text-ink-2">{app.description}</p>
       {app.availability?.available === false && <p className="mt-2 text-xs text-warning">{app.availability.reason ?? "Setup is unavailable on this device."}</p>}
       <div className="mt-4 flex flex-wrap gap-2">{app.methods.filter((method) => method.purpose !== "ai" && method.transport !== "runtime_auth").map((method) => <Button key={method.key} size="sm" disabled={!canManage || app.availability?.available === false} onClick={() => setPicked({ app, method })}><Plus className="h-3.5 w-3.5" />{method.label ?? (method.auth === "oauth" ? `Connect ${app.name}` : "Set up")}</Button>)}</div>
