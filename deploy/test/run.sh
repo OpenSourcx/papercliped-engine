@@ -43,9 +43,21 @@ for (const n of ["fx", "other"]) { const k = generateReleaseKey(); writeFileSync
 ok()  { pass=$((pass + 1)); echo "  ok   $1"; }
 bad() { fail=$((fail + 1)); failed+=("$SCEN: $1"); echo "  FAIL $1"; [ -f "$H/out" ] && sed 's/^/       | /' "$H/out" | tail -n 25; }
 check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d"; fi; }
-# Root ownership: checked for real as root (CI). Anyone else cannot chown, so the stand-in only records the installer's
-# `chown -R root:root` of the staged tree: check that call was made and the file exists, instead of failing on the runner's own uid.
-root_owned() { [ -e "$1" ] || return 1; if [ "$(/usr/bin/id -u)" -eq 0 ]; then [ "$(stat -c %u "$1")" = 0 ]; else grep -q '^chown -R root:root ' "$STUB_STATE/calls"; fi; }
+# Root ownership of one installed file. As root (CI) it is the real uid check. Anyone else cannot chown, so the stand-in
+# only records calls; then the recorded operations must show that THIS file's tree was handed to root: a
+# `chown -R root:root <prefix>.new` (the staged tree the installer later moves to <prefix>) naming exactly this host's
+# prefix, with the file inside that prefix, and no later recorded chown giving anything under it to someone else.
+root_owned() {
+  local f="$1" pre="${EPC_PREFIX:?}"
+  [ -e "$f" ] || return 1
+  if [ "$(/usr/bin/id -u)" -eq 0 ]; then [ "$(stat -c %u "$f")" = 0 ]; return; fi
+  case "$f" in "$pre"/*) ;; *) return 1 ;; esac
+  awk -v want="chown -R root:root $pre.new" -v pre="$pre" '
+    $0 == want { seen = 1; next }
+    seen && $1 == "chown" { o = ""; for (i = 2; i <= NF; i++) if ($i !~ /^-/) { o = $i; break }
+      if (o != "root:root" && o != "root" && index($0, pre) > 0) bad = 1 }
+    END { exit !(seen && !bad) }' "$STUB_STATE/calls"
+}
 has() { grep -q -- "$1" "$H/out"; }
 free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 active() { systemctl is-active -q "$1"; }
