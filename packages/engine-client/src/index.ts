@@ -1,4 +1,4 @@
-import type { AppDefinition, ChatEndpoint, ChatEndpointResource, ConfigureChatEndpointInput, CreateChatEndpointInput, ConnectToolApp, ConnectToolAppResult, FinishToolApp, FinishToolAppResult, ToolCatalogEntry, ToolConnection, ToolConnectionCreateCapabilities, ToolConnectionHealthCheckResult } from "@paperclipai/shared";
+import type { AppDefinition, ChatEndpoint, ChatEndpointResource, ConfigureChatEndpointInput, CreateChatEndpointInput, ConnectToolApp, ConnectToolAppResult, FinishToolApp, FinishToolAppResult, ToolCatalogEntry, ToolConnection, ToolConnectionCreateCapabilities, ToolConnectionHealthCheckResult, ToolPolicy, ToolProfileWithDetails } from "@paperclipai/shared";
 export type { AppDefinition, ChatEndpoint, ConnectionMethodDef, FieldDef, ConnectToolApp, ConnectToolAppResult, ToolCatalogEntry, ToolConnection } from "@paperclipai/shared";
 import type {
   ActivityEvent,
@@ -139,6 +139,8 @@ export const ENGINE_PATHS = {
   toolConnections: "/api/companies/{companyId}/tools/connections",
   toolConnect: "/api/companies/{companyId}/tools/apps/connect",
   toolFinish: "/api/companies/{companyId}/tools/apps/{connectionId}/finish",
+  toolProfiles: "/api/companies/{companyId}/tools/profiles",
+  toolPolicies: "/api/companies/{companyId}/tools/policies",
   toolConnection: "/api/tool-connections/{connectionId}",
   toolHealth: "/api/tool-connections/{connectionId}/health-check",
   toolCatalog: "/api/tool-connections/{connectionId}/catalog",
@@ -362,6 +364,9 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       list: (companyId: string) => call<{ connections: ToolConnection[] }>("GET", P.toolConnections, { companyId }),
       connect: (companyId: string, body: ConnectToolApp) => call<ConnectToolAppResult>("POST", P.toolConnect, { companyId }, body),
       finish: (companyId: string, connectionId: string, body: FinishToolApp) => call<FinishToolAppResult>("POST", P.toolFinish, { companyId, connectionId }, body),
+      /** Read-only: the console reads the current grants so reopening Agent access starts from them. */
+      profiles: (companyId: string) => call<{ profiles: ToolProfileWithDetails[] }>("GET", P.toolProfiles, { companyId }),
+      policies: (companyId: string) => call<{ policies: ToolPolicy[] }>("GET", P.toolPolicies, { companyId }),
       get: (connectionId: string) => call<ToolConnection>("GET", P.toolConnection, { connectionId }),
       remove: (connectionId: string) => call<unknown>("DELETE", P.toolConnection, { connectionId }),
       health: (connectionId: string) => call<ToolConnectionHealthCheckResult>("POST", P.toolHealth, { connectionId }, {}),

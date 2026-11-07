@@ -34,14 +34,54 @@ describe("native organization apps", () => {
     expect((screen.getByRole("button", { name: "Sign in with notion" }) as HTMLButtonElement).disabled).toBe(true);
     expect(connect).not.toHaveBeenCalled();
   });
+  const grants = (profile: Record<string, unknown> = {}, policies: unknown[] = []) => { vi.spyOn(engine.apps, "profiles").mockResolvedValue({ profiles: [{ profileKey: "app:x1", defaultAction: "deny", bindings: [{ targetType: "agent", targetId: "a1" }], entries: [{ selectorType: "catalog_entry", effect: "include", catalogEntryId: "read", conditions: null }, { selectorType: "catalog_entry", effect: "include", catalogEntryId: "write", conditions: null }], ...profile }] } as never); vi.spyOn(engine.apps, "policies").mockResolvedValue({ policies } as never); };
+  const catalog = () => vi.spyOn(engine.apps, "catalog").mockResolvedValue({ catalog: [{ id: "read", title: "Read page", isReadOnly: true, status: "active" }, { id: "write", title: "Edit page", isWrite: true, status: "active" }, { id: "other", title: "Other", status: "active" }] } as never);
+  it("reopens with existing grants and saves them unchanged", async () => {
+    grants({}, [{ enabled: true, policyType: "require_approval", config: { source: "app_gallery_finish", connectionId: "x1", catalogEntryId: "write" } }]);
+    catalog();
+    const finish = vi.spyOn(engine.apps, "finish").mockResolvedValue({} as never);
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText("Read page") as HTMLSelectElement).value).toBe("allow"));
+    expect((screen.getByLabelText("Edit page") as HTMLSelectElement).value).toBe("ask");
+    expect((screen.getByLabelText("Other") as HTMLSelectElement).value).toBe("off");
+    expect(screen.getByRole("switch", { name: "Ada" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(finish).toHaveBeenCalledWith("c1", "x1", { preserveExistingAccess: false, access: { agentIds: ["a1"] }, enabledCatalogEntryIds: ["read", "write"], askFirstCatalogEntryIds: ["write"], reviewedCatalogEntryIds: [] }));
+  });
+  it("keeps all-agents access when the company binding exists", async () => {
+    grants({ bindings: [{ targetType: "company", targetId: "c1" }] });
+    catalog();
+    const finish = vi.spyOn(engine.apps, "finish").mockResolvedValue({} as never);
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText("Read page") as HTMLSelectElement).value).toBe("allow"));
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(finish).toHaveBeenCalledWith("c1", "x1", expect.objectContaining({ access: "all_agents" })));
+  });
+  it("refuses to save over grants it cannot represent, and when grants cannot be read", async () => {
+    grants({ entries: [{ selectorType: "risk_level", effect: "exclude", conditions: null }] });
+    catalog();
+    const finish = vi.spyOn(engine.apps, "finish").mockResolvedValue({} as never);
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    expect(await screen.findByText(/cannot show/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    vi.spyOn(engine.apps, "profiles").mockRejectedValue(new Error("down"));
+    wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
+    await screen.findByText(/down/);
+    expect((screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(finish).not.toHaveBeenCalled();
+  });
   it("grants only the selected agents and reviewed actions, with approval separate from allow", async () => {
+    vi.spyOn(engine.apps, "profiles").mockResolvedValue({ profiles: [] } as never);
+    vi.spyOn(engine.apps, "policies").mockResolvedValue({ policies: [] } as never);
     vi.spyOn(engine.apps, "catalog").mockResolvedValue({ catalog: [{ id: "read", title: "Read page", isReadOnly: true, status: "active" }, { id: "write", title: "Edit page", isWrite: true, status: "quarantined" }, { id: "delete", title: "Delete page", isDestructive: true, status: "disabled" }] } as never);
     const finish = vi.spyOn(engine.apps, "finish").mockResolvedValue({} as never);
     wrap(<ToolReview companyId="c1" connectionId="x1" onClose={() => {}} />);
     fireEvent.change(await screen.findByLabelText("Read page"), { target: { value: "allow" } });
     fireEvent.change(screen.getByLabelText("Edit page"), { target: { value: "ask" } });
     fireEvent.click(screen.getByRole("switch", { name: "Ada" }));
-    fireEvent.click(screen.getByRole("button", { name: "Replace access" }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     expect((screen.getByLabelText("Delete page") as HTMLSelectElement).disabled).toBe(true);
     await waitFor(() => expect(finish).toHaveBeenCalledWith("c1", "x1", { preserveExistingAccess: false, access: { agentIds: ["a1"] }, enabledCatalogEntryIds: ["read", "write"], askFirstCatalogEntryIds: ["write"], reviewedCatalogEntryIds: ["write"] }));
   });

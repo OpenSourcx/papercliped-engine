@@ -10,6 +10,7 @@ import { ProviderMark } from "../../../ui/ProviderMark.tsx";
 import { Button, Field, Input, Notice, Select, Toggle } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading } from "./common.tsx";
 import { appKey, type PickedApp } from "./LiveOrganizationApps.tsx";
+import { readAppAccess } from "./appAccess.ts";
 
 function ProviderLink({ url, children }: { url?: string | null; children: ReactNode }) {
   const href = url && httpUrl(url);
@@ -45,19 +46,31 @@ export function AppSetup({ companyId, picked: { app, method }, onClose, onReview
 export function ToolReview({ companyId, connectionId, onClose }: { companyId: string; connectionId: string; onClose: () => void }) {
   const agents = useAgents(companyId);
   const catalog = useQuery({ queryKey: [...appKey(companyId), connectionId, "catalog"], queryFn: () => engine.apps.catalog(connectionId) });
-  const [agentIds, setAgentIds] = useState<string[]>([]);
-  const [policies, setPolicies] = useState<Record<string, "off" | "ask" | "allow">>({});
-  const policy = (entry: ToolCatalogEntry) => entry.status === "disabled" ? "off" : policies[entry.id] ?? "off";
-  const save = useMutation({ mutationFn: () => engine.apps.finish(companyId, connectionId, { preserveExistingAccess: false, access: { agentIds }, enabledCatalogEntryIds: (catalog.data?.catalog ?? []).filter((entry) => policy(entry) !== "off").map((entry) => entry.id), askFirstCatalogEntryIds: (catalog.data?.catalog ?? []).filter((entry) => policy(entry) === "ask").map((entry) => entry.id), reviewedCatalogEntryIds: (catalog.data?.catalog ?? []).filter((entry) => entry.status === "quarantined").map((entry) => entry.id) }), onSuccess: onClose });
+  // Current grants come from the engine; no existing-grant read means no save, so a failed read can never look like "no access".
+  const current = useQuery({ queryKey: [...appKey(companyId), connectionId, "access"], refetchOnWindowFocus: false, queryFn: async () => readAppAccess(connectionId, (await engine.apps.profiles(companyId)).profiles, (await engine.apps.policies(companyId)).policies) });
+  const [allAgentsEdit, setAllAgents] = useState<boolean | null>(null);
+  const [agentEdits, setAgentEdits] = useState<Record<string, boolean>>({});
+  const [policyEdits, setPolicies] = useState<Record<string, "off" | "ask" | "allow">>({});
+  const base = current.data;
+  const allAgents = allAgentsEdit ?? base?.allAgents ?? false;
+  const agentOn = (id: string) => agentEdits[id] ?? base?.agentIds.includes(id) ?? false;
+  const policy = (entry: ToolCatalogEntry): "off" | "ask" | "allow" => entry.status === "disabled" ? "off" : policyEdits[entry.id] ?? (base?.askFirst.includes(entry.id) ? "ask" : base?.enabled.includes(entry.id) ? "allow" : "off");
+  const entries = catalog.data?.catalog ?? [];
+  // Bindings to agents the list no longer shows (for example terminated ones) are kept, not silently dropped.
+  const agentIds = [...new Set([...(base?.agentIds ?? []), ...(agents.data ?? []).map((agent) => agent.id)])].filter(agentOn);
+  const save = useMutation({ mutationFn: () => engine.apps.finish(companyId, connectionId, { preserveExistingAccess: false, access: allAgents ? "all_agents" : { agentIds }, enabledCatalogEntryIds: entries.filter((entry) => policy(entry) !== "off").map((entry) => entry.id), askFirstCatalogEntryIds: entries.filter((entry) => policy(entry) === "ask").map((entry) => entry.id), reviewedCatalogEntryIds: entries.filter((entry) => entry.status === "quarantined").map((entry) => entry.id) }), onSuccess: () => { void current.refetch(); onClose(); } });
   const refresh = useMutation({ mutationFn: () => engine.apps.refresh(connectionId), onSuccess: () => void catalog.refetch() });
-  return <Modal title="Set agent access" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={save.isPending} disabled={!catalog.data || !agents.data || refresh.isPending} onClick={() => save.mutate()}>Replace access</Button></>}>
-    <div className="space-y-4"><Notice tone="warning">Saving replaces this connection’s agent assignments and action policies. Nothing is selected initially. Choose the agents and actions you want to keep.</Notice>
+  return <Modal title="Set agent access" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={save.isPending} disabled={!catalog.data || !agents.data || !base || !!base.advanced || refresh.isPending} onClick={() => save.mutate()}>Save access</Button></>}>
+    <div className="space-y-4">
+      {current.error && <LoadError error={current.error} retry={() => void current.refetch()} />}
+      {base?.advanced && <Notice tone="warning">This connection has {base.advanced}, which this editor cannot show. Saving here would remove it, so editing is disabled. Change it in the engine’s tool access settings.</Notice>}
       {agents.error && <LoadError error={agents.error} retry={() => void agents.refetch()} />}
-      {agents.data?.filter((agent) => agent.status !== "terminated").map((agent) => <Toggle key={agent.id} label={agent.name} checked={agentIds.includes(agent.id)} onChange={(checked) => setAgentIds((ids) => checked ? [...ids, agent.id] : ids.filter((id) => id !== agent.id))} />)}
+      <Toggle label="All agents, including agents added later" checked={allAgents} onChange={setAllAgents} />
+      {!allAgents && agents.data?.filter((agent) => agent.status !== "terminated").map((agent) => <Toggle key={agent.id} label={agent.name} checked={agentOn(agent.id)} onChange={(checked) => setAgentEdits({ ...agentEdits, [agent.id]: checked })} />)}
       <Button size="sm" loading={refresh.isPending} onClick={() => refresh.mutate()}>Refresh available actions</Button>
       {catalog.isPending && <Loading />}{catalog.error && <LoadError error={catalog.error} retry={() => void catalog.refetch()} />}
       {catalog.data?.catalog.length === 0 && <p className="text-sm text-ink-3">No actions discovered. Finish provider sign-in, then refresh.</p>}
-      {catalog.data?.catalog.map((entry) => <Field key={entry.id} label={entry.title ?? entry.toolName} htmlFor={`policy-${entry.id}`} hint={entry.status === "disabled" ? "Unavailable at the provider" : entry.isDestructive ? "Destructive action" : entry.isReadOnly ? "Read only" : "Can change provider data"}><p className="mb-2 text-xs text-ink-3">{entry.description}</p><Select id={`policy-${entry.id}`} value={policy(entry)} disabled={entry.status === "disabled"} onChange={(e) => setPolicies({ ...policies, [entry.id]: e.target.value as "off" | "ask" | "allow" })}><option value="off">Off</option><option value="ask">Ask for approval</option><option value="allow">Allow</option></Select></Field>)}
+      {catalog.data?.catalog.map((entry) => <Field key={entry.id} label={entry.title ?? entry.toolName} htmlFor={`policy-${entry.id}`} hint={entry.status === "disabled" ? "Unavailable at the provider" : entry.isDestructive ? "Destructive action" : entry.isReadOnly ? "Read only" : "Can change provider data"}><p className="mb-2 text-xs text-ink-3">{entry.description}</p><Select id={`policy-${entry.id}`} value={policy(entry)} disabled={entry.status === "disabled" || !base} onChange={(e) => setPolicies({ ...policyEdits, [entry.id]: e.target.value as "off" | "ask" | "allow" })}><option value="off">Off</option><option value="ask">Ask for approval</option><option value="allow">Allow</option></Select></Field>)}
       <ActionError error={save.error ?? refresh.error} />
     </div>
   </Modal>;

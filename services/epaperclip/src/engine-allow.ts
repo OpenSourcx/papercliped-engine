@@ -19,6 +19,8 @@ export const ENGINE_ALLOWED: readonly string[] = [
   "/api/companies/{companyId}/tools/connections",
   "/api/companies/{companyId}/tools/apps/connect",
   "/api/companies/{companyId}/tools/apps/{connectionId}/finish",
+  "/api/companies/{companyId}/tools/profiles",
+  "/api/companies/{companyId}/tools/policies",
   "/api/tool-connections/{connectionId}",
   "/api/tool-connections/{connectionId}/health-check",
   "/api/tool-connections/{connectionId}/catalog",
