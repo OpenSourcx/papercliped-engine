@@ -43,6 +43,9 @@ for (const n of ["fx", "other"]) { const k = generateReleaseKey(); writeFileSync
 ok()  { pass=$((pass + 1)); echo "  ok   $1"; }
 bad() { fail=$((fail + 1)); failed+=("$SCEN: $1"); echo "  FAIL $1"; [ -f "$H/out" ] && sed 's/^/       | /' "$H/out" | tail -n 25; }
 check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d"; fi; }
+# Root ownership: checked for real as root (CI). Anyone else cannot chown, so the stand-in only records the installer's
+# `chown -R root:root` of the staged tree: check that call was made and the file exists, instead of failing on the runner's own uid.
+root_owned() { [ -e "$1" ] || return 1; if [ "$(/usr/bin/id -u)" -eq 0 ]; then [ "$(stat -c %u "$1")" = 0 ]; else grep -q '^chown -R root:root ' "$STUB_STATE/calls"; fi; }
 has() { grep -q -- "$1" "$H/out"; }
 free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 active() { systemctl is-active -q "$1"; }
@@ -208,7 +211,7 @@ s_fresh() {
   check "new engine was test-started as its own user first" grep -q "setpriv --reuid=epaperclip-engine" "$H/stub/calls"
   check "says where the engine data and its backups are" has "backs itself up every hour into $H/engine-home/instances/default/data/backups"
   check "nothing left behind" eval '! leftovers'
-  check "the agent container provider is installed (built code, template scripts, packages dir) and readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" ] && [ -f "$H/prefix/plugins/proxmox-sandbox/template/provision.sh" ] && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ] && [ "$(stat -c %u "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js")" = 0 ] && [ "$(stat -c %A "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" | cut -c8)" = r ] && [ "$(stat -c %A "$H/prefix/plugins" | cut -c10)" = x ]'
+  check "the agent container provider is installed (built code, template scripts, packages dir) and readable by the engine user" eval '[ -f "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" ] && [ -f "$H/prefix/plugins/proxmox-sandbox/template/provision.sh" ] && [ -d "$H/prefix/plugins/proxmox-sandbox/node_modules" ] && root_owned "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" && [ "$(stat -c %A "$H/prefix/plugins/proxmox-sandbox/dist/manifest.js" | cut -c8)" = r ] && [ "$(stat -c %A "$H/prefix/plugins" | cut -c10)" = x ]'
   install --status
   check "--status names the provider" has "agent container provider: 1.0.0"
   check "--status: both services" eval 'has "epaperclip.service: running" && has "epaperclip-engine.service: running"'
@@ -468,7 +471,7 @@ s_real_engine() {
 s_update_helper() {
   new_host update-helper; make_release 1.0.0 2026.1005.0; install
   check "installs with the update helper (run.sh, a copy of the installer, both units)" eval '[ -x "$H/prefix/update/run.sh" ] && [ -f "$H/prefix/update/install.sh" ] && [ -f "$H/units/epaperclip-update.path" ] && [ -f "$H/units/epaperclip-update.service" ]'
-  check "the helper is root's and the path unit watches the request file" eval '[ "$(stat -c %u "$H/prefix/update/run.sh")" = 0 ] && grep -q "^PathExists=/var/lib/epaperclip/update/request$" "$H/units/epaperclip-update.path"'
+  check "the helper is root's and the path unit watches the request file" eval 'root_owned "$H/prefix/update/run.sh" && grep -q "^PathExists=/var/lib/epaperclip/update/request$" "$H/units/epaperclip-update.path"'
   local old="$R" web="$H/web" st="$H/host-state/update"
   # A release server: v1.1.0 as a tarball with its checksum, laid out like GitHub's release downloads.
   make_release 1.1.0 2026.1005.0; local new="$R"
