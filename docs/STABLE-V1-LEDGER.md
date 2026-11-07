@@ -84,6 +84,7 @@ The snapshot has two models: an early host-side "app record" API (`/api/organiza
 - `pnpm install --frozen-lockfile`: OK.
 - `pnpm -r typecheck`: 8 projects OK.
 - `pnpm -r --workspace-concurrency=1 test`: all green. console 501, host service 987, host-broker 20, engine-client 14, proxmox-client 84, automations 16, marketplace 6, os-library 9. (Snapshot's 2 machine.test.tsx failures did not reproduce serially; cause of the earlier parallel flake still unproven.)
+- `bash deploy/test/run.sh` (simulated lifecycle): 162 passed, 2 failed (`update_helper` root-helper/path-unit check; `fresh` container-provider readable-by-engine-user). Identical 162/2 on unmodified main a708864 run as user miah, so not introduced by this branch; cause not investigated (likely needs root/real file ownership). `node --test scripts/*.test.mjs`: 21 pass, 0 fail. Console production build output not captured; rerun pending.
 - Limits: all of the above are unit/fake-backed tests. Nothing here was run against real providers, a real device or real model execution. Nothing is deployed.
 - CI: not yet inspected for this branch (see Next action).
 
