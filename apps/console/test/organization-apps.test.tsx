@@ -99,4 +99,52 @@ describe("native organization apps", () => {
     expect(create).toHaveBeenCalledWith("c1", { provider: "discord", assignedAgentId: "a1" });
     await waitFor(() => expect((screen.getByLabelText("Bot token *") as HTMLInputElement).value).toBe(""));
   });
+  it("renders every provider field type, submits defaults and typed values, and blocks invalid input", async () => {
+    const connect = vi.spyOn(engine.apps, "connect").mockResolvedValue({ connectionId: "x2" } as never);
+    const method = { key: "api", auth: "api_key", tenantFields: [
+      { key: "region", label: "Region", type: "select", required: true, options: [{ value: "eu", label: "EU" }, { value: "us", label: "US" }], defaultValue: "eu" },
+      { key: "notes", label: "Notes", type: "textarea" },
+      { key: "expires", label: "Expires", type: "datetime" },
+      { key: "readonly", label: "Read only", type: "checkbox", defaultValue: true },
+      { key: "mode", label: "Mode", type: "text", hidden: true, defaultValue: "strict" },
+      { key: "proxy", label: "Proxy", type: "text", advanced: true },
+    ], credentialFields: [{ key: "token", label: "Token", type: "password", secret: true, required: true, prefix: "sk-", validation: { pattern: "^[a-z0-9]+$" } }] };
+    wrap(<AppSetup companyId="c1" picked={picked("acme", method)} onClose={() => {}} onReview={() => {}} />);
+    expect(screen.queryByLabelText("Proxy")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(await screen.findByText("Token is required.")).toBeTruthy();
+    expect(connect).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Token *"), { target: { value: "ABC" } });
+    expect(await screen.findByText("Token is not in the expected format.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Token *"), { target: { value: "abc123" } });
+    fireEvent.change(screen.getByLabelText("Expires"), { target: { value: "2026-11-07T15:30" } });
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(connect).toHaveBeenCalled());
+    const body = connect.mock.calls[0]![1] as { credentialValues: Record<string, string>; configValues: Record<string, unknown> };
+    expect(body.credentialValues).toEqual({ token: "sk-abc123" });
+    expect(body.configValues).toMatchObject({ region: "eu", notes: "hello", readonly: true, mode: "strict" });
+    expect(body.configValues.expires).toBe(new Date("2026-11-07T15:30").toISOString());
+    expect(body.configValues).not.toHaveProperty("proxy");
+  });
+  it("collects a preregistered OAuth client when the provider supports no automatic registration, resuming the same draft", async () => {
+    const connect = vi.spyOn(engine.apps, "connect")
+      .mockResolvedValueOnce({ connectionId: "draft1", auth: { kind: "oauth", startUrl: null, manualClientRequired: true } } as never)
+      .mockResolvedValueOnce({ connectionId: "draft1", auth: { kind: "oauth", startUrl: "https://provider.example/authorize" } } as never);
+    wrap(<AppSetup companyId="c1" picked={picked("vercel")} onClose={() => {}} onReview={() => {}} />);
+    const signIn = screen.getByRole("button", { name: "Sign in with vercel" });
+    await waitFor(() => expect((signIn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(signIn);
+    expect(await screen.findByText(/Register an OAuth client first/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save client and continue" }));
+    expect(await screen.findByText("Client ID is required.")).toBeTruthy();
+    expect(connect).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Client ID *"), { target: { value: "client-123" } });
+    fireEvent.change(screen.getByLabelText("Client secret"), { target: { value: "s3cret-test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save client and continue" }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+    expect(connect.mock.calls[1]![1]).toMatchObject({ resumeConnectionId: "draft1", oauthClient: { clientId: "client-123", clientSecret: "s3cret-test" } });
+    expect((await screen.findByRole("link", { name: "Continue to vercel" })).getAttribute("href")).toBe("https://provider.example/authorize");
+    expect(screen.queryByDisplayValue("s3cret-test")).toBeNull();
+  });
 });
