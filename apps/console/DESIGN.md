@@ -68,7 +68,7 @@ Every preset in `theme/theme.tsx` carries the full semantic set, so switching pr
 
 ## Light and dark
 
-Dark (Paperclip Warm) is the default. Graphite and Midnight are dark; Daylight is light. The theme runtime writes a preset's tokens onto `<html>` and sets `color-scheme`. Components never branch on the theme: if something needs a different value in light mode, it is a token with a different value in the light presets. Check every change in at least Warm and Daylight.
+Dark (Papercliped Clip) is the default and Papercliped Clip Light its light pair: both use the Papercliped "clip" palette from the OpenSourcx/papercliped site and launch images (`web/scripts/community-cards.mjs`). Paperclip Warm, Graphite and Midnight are other dark presets; Daylight is another light one. Pin's orb tokens (`--pin-*`) are Pin's and do not change with the preset. `:root` in `index.css` still holds the Warm values for first paint. The theme runtime writes a preset's tokens onto `<html>` and sets `color-scheme`. Components never branch on the theme: if something needs a different value in light mode, it is a token with a different value in the light presets. Check every change in at least Clip and Clip Light.
 
 ## Status vocabulary
 

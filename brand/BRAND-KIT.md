@@ -1,25 +1,44 @@
 # Papercliped brand kit (shared rules)
 
-One kit across ePaperclip (device console), Papercliped Auth, Connect and the website. This file records **which source is authoritative for what**; it does not redefine values. Owner decision 2026-11-07: keep ePaperclip's warm/gold direction for this reconciliation; invent no new mark; Pin's orb belongs to Pin only.
+One kit across ePaperclip (device console), Papercliped Auth, Connect and the website. This file records **which source is authoritative for what**; it does not redefine values.
+
+**Owner decision (latest, 2026-11-07):** the established OpenSourcx/papercliped branding is the authority: the README's launch images (`web/public/brand/community/papercliped-launch-light.png`, `papercliped-launch-dark.png`) and `web/public/brand/` (mascot, wordmark, icon pack). This supersedes the earlier "keep warm/gold" instruction. Invent no new mark. Pin's orb belongs to Pin only.
+
+## The reference (read from the remote `OpenSourcx/papercliped` main, not a local checkout)
+The launch images use the site's "clip" palette (`web/scripts/community-cards.mjs`, `web/src/theme/palettes.ts`):
+
+| Role | Dark | Light |
+|---|---|---|
+| bg | `#16150f` | `#fffddc` |
+| surface | `#201f17` | `#fffff0` |
+| ink | `#f4f1d6` | `#0b0a07` |
+| muted | `#bdb99f` | `#57564a` |
+| line | `#35332a` | `#e7e3bb` |
+| accent (also the pill and code chip) | `#e9e4b0` | `#47463c` |
+| accent ink | `#16150f` | `#fffddc` |
+| mascot cheeks | `#e98a7a` | `#e98a7a` |
+
+Type: Inter (UI), Bricolage Grotesque (display), JetBrains Mono (machine text and the connector address). Mascot: a paperclip with a face; use `web/public/brand/mascot-*.svg`, `wordmark-*.png` and the icon pack as-is (light default, dark on dark; do not recolor, stretch or redraw).
 
 ## Authority by topic
-| Topic | Authoritative source | Rule |
-|---|---|---|
-| Design principles, product vs brand register | `/project/design/CORE.md` | project DESIGN doc > CORE > `frontend-design` plugin |
-| Console colors, type, radius, motion, components, status vocabulary | `apps/console/DESIGN.md` and `src/index.css` token tiers (gate: `pnpm check:design`) | tokens only; no hex, arbitrary sizes or native controls |
-| Console palette | `--bg #171612`, `--ink #f4ecdc`, `--accent #e8b25c` (`brand/tokens.json`, Warm preset default; Daylight light) | warm/gold is the ePaperclip direction |
-| Pin mark (the orb) | `brand/README.md`, `brand/tokens.json`, `node brand/build.mjs --check` | Pin only. Not a logo for ePaperclip, Proxmox, Papercliped or Connect |
-| Papercliped marks (mascot, wordmark, avatars, icons) | `/project/papercliped/web/public/brand/` (icon pack, `papercliped-icons.zip`, `docs/LAUNCH-KIT.md`) | the only official Papercliped assets; reuse as-is, do not redraw or recolor; not copied into this repo |
-| Product and feature names | this file | "ePaperclip" (lower-case e), "Pin", "Papercliped" (the account and ecosystem), "Papercliped Connect", user-facing "Access" (not "Advertising") |
-| Central auth look (`auth.papercliped.co`) | `papercliped-connect/docs/AUTH-SITE.md`, `apps/auth/auth-assets.mjs` | brand register; currently violet/cool-dark, see conflict 1 |
-| Public site structure | `papercliped/docs/SITEMAP.md` | |
+| Topic | Authoritative source |
+|---|---|
+| Brand look, marks, palette | the reference above (OpenSourcx/papercliped README + `web/public/brand/`) |
+| Design principles, product vs brand register | `/project/design/CORE.md` (project DESIGN doc > CORE > `frontend-design`) |
+| Console structure: tokens, components, status vocabulary, gates | `apps/console/DESIGN.md`, `src/index.css`, `src/theme/theme.tsx` (`pnpm check:design`) |
+| Pin's mark (the orb) | `brand/README.md`, `brand/tokens.json`. Pin only; not a logo for ePaperclip, Proxmox, Papercliped or Connect |
+| Names | "ePaperclip" (lower-case e), "Pin", "Papercliped" (account and ecosystem), "Papercliped Connect", user-facing "Access" (not "Advertising"). "Paperclip" alone is the upstream project, used only factually |
+| Auth look (`auth.papercliped.co`) | follows the reference; see follow-ups below |
 
-## Conflicts and how they are resolved
-1. **Palette.** Console is warm dark with gold accent; the Connect auth site is cool dark (`#0b0b10`) with violet accent (`#9f94ff`) and a custom diamond mark. Resolution: ePaperclip surfaces (Access, onboarding, Connect handoff screens inside the console) use console tokens. Aligning the auth site's accent/background and mark to the official Papercliped assets is a **follow-up in papercliped-connect** (not done here; it is another agent's repo). Recorded as acceptance item in the ledger.
-2. **Marks.** The auth site's diamond mark is not an official asset in the icon pack. Use the official wordmark/mascot there; the Pin orb stays out. Follow-up for the Connect agent.
-3. **papercliped has no DESIGN doc** (CORE.md). This file is the interim brand index; a real DESIGN.md for papercliped/Connect is still needed (CORE.md recommended order, step 1).
-4. **Access vs Advertising.** Resolved in code: one Access destination (People and permissions, Remote access). Legacy `?settings=advertising` redirects.
-5. **Casing.** "ePaperclip" per `brand/README.md`; "Paperclip" alone refers to the upstream project and is only used factually.
+## What the console does now
+Default preset "Papercliped Clip" (dark) and "Papercliped Clip Light" use the table above (`src/theme/theme.tsx`). Console structure, spacing, radius and components are unchanged. Other presets (Warm, Graphite, Midnight, Daylight) remain selectable. Not done here: the console does not show the mascot or wordmark anywhere new, and `:root` first-paint values are still Warm (`brand/tokens.json` and the Pin app icon depend on them; a test keeps them in step). Contrast checked for ink-2/ink-3/accent on bg and surfaces (all above 4.5:1, accent above 9:1).
+
+## Follow-ups for the Connect/Auth side (papercliped-connect, not changed here)
+1. `apps/auth/auth-assets.mjs` palette: cool dark (`--bg #0b0b10`, `--surface #15151c`, `--accent #9f94ff`, `--blue #8ac0fa`, radial violet/blue backgrounds, primary button gradient `#a69bff -> #88aafa`). Replace with the clip palette above (dark and light via `prefers-color-scheme`).
+2. The rotated-diamond `.mark` (two squares) is not an official asset. Replace with `mascot-*.svg` / wordmark from the icon pack.
+3. Font stack is plain Inter; add Bricolage Grotesque display and JetBrains Mono for machine text per the site.
+4. The Console and landing Workers (`console.`, `connect.`) should be checked for the same.
+5. `AUTH-SITE.md` should name the reference as its brand source.
 
 ## Consistency check (acceptance)
-Console vs auth site vs website at 390px and desktop, light and dark: same product names, official marks only, AA contrast, status shown with icon or shape, sentence case, verbs on buttons. Status: console side verified by `check:design` and unit tests only; no visual pass yet.
+Console vs auth site vs website at 390 px and desktop, light and dark: same names, official marks only, AA contrast, status with icon or shape, sentence case, verbs on buttons. Console side: `check:design` and unit tests only; no visual pass yet. Auth/Connect side: blocked on the follow-ups.

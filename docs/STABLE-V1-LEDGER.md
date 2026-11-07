@@ -88,7 +88,7 @@ The snapshot has two models: an early host-side "app record" API (`/api/organiza
 - **Gradebook reconciled** with ecosystem gates (section appended to `docs/STABILITY-GRADEBOOK.md`; no file named "ecosystem acceptance matrix" exists, see there).
 - **Access (merged destination).** Settings section "Access" (`pages/access/AccessHub.tsx`) has People and permissions (existing Access control) and Remote access (`RemoteAccess.tsx`): Local only, Self-managed Cloudflare (existing publishing flow in `CloudflareAccess.tsx`, copy says tunnel not Worker), Papercliped Connect (pairing UI over the existing `/api/papercliped/connect/*` API: link, approval page, confirm the shown account, tunnel state, unlink). Switching between remote modes goes through Local only. `?settings=advertising` redirects to `?settings=access&access=remote`; Connectors link updated. Tests: `apps/console/test/remote-access.test.tsx` (4). Console suite 508 passing, `check:design` 0 violations.
 - **Identity linking contract** written: `docs/ACCESS-IDENTITY-LINK-CONTRACT.md` (proposal only; not implemented).
-- **Brand kit index:** `brand/BRAND-KIT.md`.
+- **Brand kit:** `brand/BRAND-KIT.md` (rewritten to the papercliped reference).
 
 ## Validation evidence (latest head)
 - Frozen install OK; `pnpm -r typecheck` OK; console 508/508, engine-client 14, host service 987+ (allowlist sync test passes), host-broker 20, others unchanged; scripts tests 21/0; `check:design` clean; console build OK.
@@ -126,17 +126,6 @@ None.
 ## Next action
 Read PR #15 CI logs; then device-side identity link state (after contract agreement), provider form fields, public-address setup, broker enforcement.
 
-## Brand kit (owner directive 2026-11-07)
-Order of authority followed: `/project/design/CORE.md` (project DESIGN doc > CORE > frontend-design plugin), `apps/console/DESIGN.md`, `brand/README.md`, papercliped `LAUNCH-KIT.md`/`SITEMAP.md`, Connect `docs/AUTH-SITE.md`. Rules adopted for all Access, onboarding and Connect-handoff work: console product register, tokens only (`src/index.css`), no new colors or marks, user-facing names "Access" and "Papercliped Connect", product is "ePaperclip", copilot is "Pin", sentence case, verbs on buttons, no native controls.
-
-### Conflicts found (not resolved; owner decision needed)
-1. **Palette.** Console tokens: warm dark `--bg #171612`, `--accent #e8b25c` (gold), Inter, Pin orb gold/coral/violet. Connect auth site (`apps/auth/auth-assets.mjs`): cool dark `--bg #0b0b10`, `--accent #9f94ff` (violet), `--radius 17px`, Inter, a custom rotated-diamond mark. Different accent and background; the Connect handoff screens will look like a different product.
-2. **Marks.** `brand/README.md` says the Pin orb stands for Pin only and is not a logo for the product. The Connect auth site uses a diamond mark; the papercliped site uses mascot + wordmark (`papercliped/web/public/brand`, `papercliped-icons.zip`). No single ePaperclip/Papercliped logo is defined for the Access/Connect handoff.
-3. **Docs disagree on whether papercliped has a design doc.** CORE.md section 1 says "none found" for papercliped; LAUNCH-KIT.md and the icon pack exist, and AUTH-SITE.md calls its UI "branded" without naming tokens. CORE.md also lists a shared `--bg --surface --ink --muted --line --accent` vocabulary, which the auth site follows but with different values.
-4. **Naming.** Console already has a settings route `access` plus `pages/Advertising.tsx`; renaming Advertising to Access creates a second Access destination unless merged with Access Control. Needs an IA decision (merge as sections of one Access page is the proposal).
-5. **Casing/names.** brand README: "ePaperclip" (lower e); Connect/site copy uses "Paperclip"/"Papercliped". Not yet audited for stray "Paperclip" user-facing strings.
-
-Until answered: Access UI inside the console uses console tokens only; Connect handoff copy uses plain console components and no new mark.
-
-### Acceptance list item added
-- [ ] **Brand consistency check:** console vs Connect auth site vs website at 390px and desktop, light and dark: same accent/background tokens (or an owner-approved mapping), same mark usage, same product names ("ePaperclip", "Pin", "Access", "Papercliped Connect"), AA contrast, status vocabulary with icon/shape. Blocked on conflicts 1-4.
+## Brand kit
+Latest owner decision (2026-11-07): authority is the established OpenSourcx/papercliped branding (README launch images and `web/public/brand/`). The earlier "warm/gold" decision is superseded. Details, palette, console changes and the Connect/Auth follow-ups (palette, diamond mark, fonts) are in `brand/BRAND-KIT.md`. Console: new default presets "Papercliped Clip" / "Clip Light" (`theme.tsx`), DESIGN.md updated, `check:design` 0 violations, console tests 508/508. Pin's orb unchanged and Pin's only.
+Acceptance item: [ ] brand-consistency check (console vs Connect auth site vs website, 390 px and desktop, light and dark). Console side has no visual pass; Auth/Connect side blocked on the follow-ups.

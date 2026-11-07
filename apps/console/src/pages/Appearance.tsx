@@ -74,9 +74,9 @@ export function Appearance() {
   const preset = PRESETS.find((p) => p.id === s.preset) ?? PRESETS[0];
   const mode = s.mode === "system" ? "system" : preset.scheme;
   const setMode = (m: string) => {
-    if (m === "system") update({ mode: "system", ...(preset.scheme === "light" ? { preset: "warm" } : {}) });
+    if (m === "system") update({ mode: "system", ...(preset.scheme === "light" ? { preset: "clip" } : {}) });
     else if (m === "light") update({ mode: "fixed", preset: PRESETS.find((p) => p.scheme === "light")!.id });
-    else update({ mode: "fixed", ...(preset.scheme === "light" ? { preset: "warm" } : {}) });
+    else update({ mode: "fixed", ...(preset.scheme === "light" ? { preset: "clip" } : {}) });
   };
   const custom = s.accent !== null && !OURS.includes(s.accent) && !PALETTE.includes(s.accent);
 
