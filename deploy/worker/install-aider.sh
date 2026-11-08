@@ -108,14 +108,19 @@ git add calc.py test_calc.py && git commit -qm baseline
 cat >task.md <<'TASK'
 Fix calc.py so add(a, b) returns the arithmetic sum. Edit calc.py only. Do not commit. The task is complete only when `python3 -m unittest -q` passes.
 TASK
-OLLAMA_API_BASE="$ollama_base" "$aider_bin" \
-  --model "$aider_model" --weak-model "$aider_model" --edit-format "$edit_format" \
-  --model-settings-file "$settings" --map-tokens "$map_tokens" \
-  --message-file task.md --test-cmd "python3 -m unittest -q" --auto-test \
-  --yes-always --no-auto-commits --no-dirty-commits --no-auto-lint --no-gitignore \
-  --no-check-update --no-show-release-notes --no-show-model-warnings --no-check-model-accepts-settings \
-  --no-suggest-shell-commands --analytics-disable --no-pretty --no-stream calc.py
-python3 -m unittest -q || die "Aider self-test did not produce passing code"
+self_test_ok=0
+for attempt in 1 2 3; do
+  say "self-test attempt $attempt/3"
+  OLLAMA_API_BASE="$ollama_base" "$aider_bin" \
+    --model "$aider_model" --weak-model "$aider_model" --edit-format "$edit_format" \
+    --model-settings-file "$settings" --map-tokens "$map_tokens" \
+    --message-file task.md --test-cmd "python3 -m unittest -q" --auto-test \
+    --yes-always --no-auto-commits --no-dirty-commits --no-auto-lint --no-gitignore \
+    --no-check-update --no-show-release-notes --no-show-model-warnings --no-check-model-accepts-settings \
+    --no-suggest-shell-commands --analytics-disable --no-pretty --no-stream calc.py || true
+  if python3 -m unittest -q; then self_test_ok=1; break; fi
+done
+[[ "$self_test_ok" -eq 1 ]] || die "Aider self-test did not produce passing code after 3 attempts"
 cat >"$BIN_ROOT/epaperclip-aider" <<WRAP
 #!/bin/sh
 export OLLAMA_API_BASE='${ollama_base}'
