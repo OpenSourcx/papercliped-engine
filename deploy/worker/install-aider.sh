@@ -51,9 +51,6 @@ aider_bin="$PIPX_BIN_DIR/aider"
 [[ -x "$aider_bin" ]] || aider_bin=$(command -v aider || true)
 [[ -n "$aider_bin" && -x "$aider_bin" ]] || die "pipx installed aider but no executable was found"
 
-say "ensuring ${model} is present"
-ollama pull "$model"
-
 ollama_base="${EPC_OLLAMA_URL:-${OLLAMA_API_BASE:-}}"
 if [[ -z "$ollama_base" && -n "${OLLAMA_HOST:-}" ]]; then
   ollama_base="$OLLAMA_HOST"
@@ -70,6 +67,9 @@ if [[ -z "$ollama_base" ]]; then
 fi
 ollama_base=${ollama_base%/}
 curl -fsS --max-time 5 "$ollama_base/api/tags" >/dev/null || die "Ollama is not reachable at $ollama_base"
+
+say "ensuring ${model} is present through the existing Ollama listener"
+OLLAMA_HOST="$ollama_base" ollama pull "$model"
 
 mkdir -p "$CONFIG_ROOT" "$STATE_ROOT" "$BIN_ROOT"
 settings="$CONFIG_ROOT/aider-model-settings.yml"
