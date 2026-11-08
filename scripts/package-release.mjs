@@ -18,6 +18,9 @@ const engineFiles = ["package.json", "package-lock.json"];
 // are installed at install time with the private Node.js, like the engine's (about 44 MB, so they are not in the download).
 const pluginDir = `${root}plugins/proxmox-sandbox/`;
 const pluginFiles = ["dist", "template", "package.json", "package-lock.json", "README.md"];
+// The Worker Fabric provider (remote workers) shares the provider's installed SDK, so only its built code ships.
+const remoteDir = `${root}plugins/remote-worker/`;
+const remoteFiles = ["dist", "package.json", "README.md"];
 for (const p of [bundle, brokerBundle, `${consoleDir}/index.html`]) if (!existsSync(p)) { console.error(`package-release: ${p} is missing; run pnpm build first`); process.exit(1); }
 for (const p of [`${pluginDir}dist/manifest.js`, `${pluginDir}dist/worker.js`]) if (!existsSync(p)) { console.error(`package-release: ${p} is missing; build the provider first: npm --prefix plugins/proxmox-sandbox ci && npm --prefix plugins/proxmox-sandbox run build`); process.exit(1); }
 for (const p of [...deployFiles.map((f) => `${root}deploy/${f}`), ...engineFiles.map((f) => `${root}engine/${f}`), ...pluginFiles.map((f) => `${pluginDir}${f}`)]) {
@@ -40,6 +43,7 @@ mkdirSync(`${dir}deploy`, { recursive: true });
 mkdirSync(`${dir}engine`, { recursive: true });
 mkdirSync(`${dir}broker`, { recursive: true });
 mkdirSync(`${dir}plugins/proxmox-sandbox`, { recursive: true });
+mkdirSync(`${dir}plugins/remote-worker`, { recursive: true });
 cpSync(bundle, `${dir}epaperclip.mjs`);
 cpSync(brokerBundle, `${dir}broker/epaperclip-broker.mjs`);
 cpSync(consoleDir, `${dir}console`, { recursive: true });
@@ -47,6 +51,7 @@ for (const f of deployFiles) cpSync(`${root}deploy/${f}`, `${dir}deploy/${f}`);
 if (havePub) cpSync(pubKey, `${dir}deploy/release-signing.pub`);
 for (const f of engineFiles) cpSync(`${root}engine/${f}`, `${dir}engine/${f}`);
 for (const f of pluginFiles) cpSync(`${pluginDir}${f}`, `${dir}plugins/proxmox-sandbox/${f}`, { recursive: true });
+for (const f of remoteFiles) if (existsSync(`${remoteDir}${f}`)) cpSync(`${remoteDir}${f}`, `${dir}plugins/remote-worker/${f}`, { recursive: true });
 cpSync(`${root}LICENSE`, `${dir}LICENSE`);
 for (const f of ["NOTICE", "THIRD_PARTY_LICENSES.md"]) if (existsSync(`${root}${f}`)) cpSync(`${root}${f}`, `${dir}${f}`);
 writeFileSync(`${dir}VERSION`, `${version}\n`);

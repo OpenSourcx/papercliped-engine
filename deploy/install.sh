@@ -97,6 +97,10 @@ SRC_ENGINE="$ROOT/engine"
 # The Proxmox sandbox provider (agent containers): built code and lockfile; its production packages are installed below.
 SRC_PLUGIN="$ROOT/plugins/proxmox-sandbox"
 PLUGIN_REL="plugins/proxmox-sandbox"
+# The Worker Fabric provider (remote workers). It has no packages of its own beyond the SDK the provider above already installs
+# at the same pinned version (checked by scripts/worker-fabric-consistency.test.mjs), so it shares that node_modules.
+SRC_REMOTE="$ROOT/plugins/remote-worker"
+REMOTE_REL="plugins/remote-worker"
 
 listen_port() {
   local l=""
@@ -587,6 +591,13 @@ else
     --cache="$TMPDIR_EPC/npm-cache" --update-notifier=false) >"$TMPDIR_EPC/npm-plugin.log" 2>&1 \
     || { tail -n 30 "$TMPDIR_EPC/npm-plugin.log" >&2; die "couldn't install the agent container provider's packages from registry.npmjs.org. Nothing was changed."; }
   [ -f "$STAGE/$PLUGIN_REL/node_modules/@paperclipai/plugin-sdk/package.json" ] || die "the agent container provider installed, but its SDK isn't in it. Nothing was changed."
+fi
+if [ -f "$SRC_REMOTE/dist/manifest.js" ]; then
+  install -d -m 0755 "$STAGE/$REMOTE_REL"
+  cp -r "$SRC_REMOTE/dist" "$STAGE/$REMOTE_REL/"
+  install -m 0644 "$SRC_REMOTE/package.json" "$STAGE/$REMOTE_REL/"
+  [ ! -f "$SRC_REMOTE/README.md" ] || install -m 0644 "$SRC_REMOTE/README.md" "$STAGE/$REMOTE_REL/"
+  ln -s ../proxmox-sandbox/node_modules "$STAGE/$REMOTE_REL/node_modules"
 fi
 chown -R root:root "$STAGE"
 chmod -R a+rX,go-w "$STAGE"

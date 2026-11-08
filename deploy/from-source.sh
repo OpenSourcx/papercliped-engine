@@ -54,6 +54,8 @@ pnpm build >/dev/null
 # The Proxmox sandbox provider is a standalone package (outside the pnpm workspace) with its own lockfile.
 npm --prefix plugins/proxmox-sandbox ci --no-audit --no-fund --ignore-scripts >/dev/null
 npm --prefix plugins/proxmox-sandbox run build >/dev/null
+npm --prefix plugins/remote-worker ci --no-audit --no-fund --ignore-scripts >/dev/null
+npm --prefix plugins/remote-worker run build >/dev/null
 git describe --tags --always > VERSION 2>/dev/null || echo "$REF" > VERSION
 echo "$REF-$(git rev-parse --short HEAD)" > VERSION
 bash deploy/install.sh "$@"
