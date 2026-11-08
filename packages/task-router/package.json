@@ -1,0 +1,10 @@
+{
+  "name": "@papercliped-engine/task-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Assigns each ePaperclip task to the cheapest capable model: rule classifier, per-organization routing table with fallback chain, optional Jev decision provider.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}
