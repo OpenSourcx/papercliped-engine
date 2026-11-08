@@ -1,0 +1,279 @@
+{
+ "at": "2026-11-08T08:28:43.389Z",
+ "kind": "epc",
+ "pages": [
+  {
+   "page": "dashboard",
+   "url": "/pve/par/",
+   "heading": "PE\nParity epc-mw7k25au",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/ Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects Rout",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-dashboard.png"
+  },
+  {
+   "page": "inbox",
+   "url": "/pve/par/inbox",
+   "heading": "Inbox",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/inbox Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-inbox.png"
+  },
+  {
+   "page": "decisions",
+   "url": "/pve/par/decisions",
+   "heading": "Decisions",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/decisions Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proj",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-decisions.png"
+  },
+  {
+   "page": "tasks",
+   "url": "/pve/par/tasks",
+   "heading": "Tasks",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/tasks Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-tasks.png"
+  },
+  {
+   "page": "tasks/c197341c-9dce-45e4-b66b-4e4d7b500767",
+   "url": "/pve/par/tasks/c197341c-9dce-45e4-b66b-4e4d7b500767",
+   "heading": "First task",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/tasks/c197341c-9dce-45e4-b66b-4e4d7b500767 Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 C",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-tasks_c197341c_9dce_45e4_b66b_4e4d7b500767.png"
+  },
+  {
+   "page": "projects",
+   "url": "/pve/par/projects",
+   "heading": "Projects",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/projects Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proje",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-projects.png"
+  },
+  {
+   "page": "goals",
+   "url": "/pve/par/goals",
+   "heading": "Goals",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/goals Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-goals.png"
+  },
+  {
+   "page": "routines",
+   "url": "/pve/par/routines",
+   "heading": "Routines",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/routines Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proje",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-routines.png"
+  },
+  {
+   "page": "artifacts",
+   "url": "/pve/par/artifacts",
+   "heading": "Artifacts",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/artifacts Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proj",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-artifacts.png"
+  },
+  {
+   "page": "agents",
+   "url": "/pve/par/agents",
+   "heading": "Agents",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/agents Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Project",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-agents.png"
+  },
+  {
+   "page": "agents/61b44eea-f736-4e25-9da0-107deb748722",
+   "url": "/pve/par/agents/61b44eea-f736-4e25-9da0-107deb748722",
+   "heading": "C\nCEO",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/agents/61b44eea-f736-4e25-9da0-107deb748722 Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 ",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-agents_61b44eea_f736_4e25_9da0_107deb748722.png"
+  },
+  {
+   "page": "skills",
+   "url": "/pve/par/skills",
+   "heading": "Skills",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/skills Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Project",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-skills.png"
+  },
+  {
+   "page": "connectors",
+   "url": "/pve/par/connectors",
+   "heading": "Connectors",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/connectors Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Pro",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-connectors.png"
+  },
+  {
+   "page": "activity",
+   "url": "/pve/par/activity",
+   "heading": "Activity",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/activity Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proje",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-activity.png"
+  },
+  {
+   "page": "costs",
+   "url": "/pve/par/costs",
+   "heading": "Costs",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/costs Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-costs.png"
+  },
+  {
+   "page": "org",
+   "url": "/pve/par/org",
+   "heading": "Organization chart",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/org Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects R",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-org.png"
+  },
+  {
+   "page": "members",
+   "url": "/pve/par/members",
+   "heading": "Members",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/members Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projec",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-members.png"
+  },
+  {
+   "page": "settings",
+   "url": "/pve/par/settings",
+   "heading": "Organization settings",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/settings Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proje",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-settings.png"
+  },
+  {
+   "page": "chat",
+   "url": "/pve/par/chat",
+   "heading": "Chat",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/chat Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Projects ",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-chat.png"
+  },
+  {
+   "page": "workspaces",
+   "url": "/pve/par/workspaces",
+   "heading": "Workspaces",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/workspaces Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Pro",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-workspaces.png"
+  },
+  {
+   "page": "machines",
+   "url": "/pve/par/machines",
+   "heading": "Machines",
+   "bodyStart": "PE 2 PE 2 D1 PE 2 RE PE 2 S /pve/par/machines Parity epc-mw7k25au Tasks PAR-… Search / Dashboard Inbox 2 Chat Decisions 5 WORK Tasks 1 Proje",
+   "notFound": false,
+   "badApi": [
+    "502 GET /api/node/nodes",
+    "404 GET /engine/api/companies/{id}/chats"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/epc-machines.png"
+  }
+ ]
+}
