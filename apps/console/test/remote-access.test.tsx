@@ -96,7 +96,7 @@ describe("Self-managed Cloudflare", () => {
     vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "none", steps: steps(0), message: "" });
     const setKey = vi.spyOn(host.connectors, "setKey").mockResolvedValue({ id: "cloudflare", configured: true } as never);
     wrap(<CloudflareAccess />);
-    await screen.findByText("Could not load Cloudflare domains");
+    await screen.findByText("Could not load Cloudflare domains", {}, { timeout: 5000 }); // the domains query retries once first
     fireEvent.click(screen.getAllByRole("button", { name: "Replace token" })[0]!);
     const dialog = await screen.findByRole("dialog", { name: "Replace Cloudflare token" });
     const input = screen.getByLabelText("Cloudflare API token") as HTMLInputElement;
