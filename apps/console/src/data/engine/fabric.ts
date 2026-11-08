@@ -40,13 +40,13 @@ export interface Worker {
   /** null until the worker has made its first report. */
   capabilities: Capabilities | null;
 }
-export interface Lease { id: string; workerId: string; companyId: string; agentId: string; runId: string; environmentId: string; workspace: string; state: "active" | "released" | "stopped" | "destroyed"; createdAt: number; releasedAt?: number }
+export interface Lease { id: string; workerId: string; companyId: string; agentId: string; runId: string; environmentId: string; workspace: string; state: "active" | "released" | "stopped" | "destroyed"; createdAt: number; releasedAt?: number; agentName?: string }
 export interface Pending { id: string; name: string; verification: string; fingerprint: string; requestedAt: number; expiresAt: number; capabilities: Capabilities | null; remote: string }
 export interface Requirements { arch?: string; tools?: string[]; gpu?: boolean; localModel?: string; minFreeMemMb?: number }
 export interface Transport { provider: "tailscale" | "lan" | "custom"; label: string; available: boolean; recommended?: boolean; address?: string; detail: string }
 export interface EnvView { id: string; companyId: string; name: string; workerId: string | null; requirements: Requirements; agents: string[] }
 export interface AuditEvent { n: number; at: number; actor: string; action: string; workerId?: string; detail?: string }
-export interface PairingView { id: string; name: string; createdAt: number; expiresAt: number }
+export interface PairingView { id: string; name: string; createdAt: number; expiresAt: number; state?: "pending" | "used" | "cancelled" | "expired"; workerId?: string }
 export interface FabricOverview { enabled: boolean; hostKey: { fingerprint: string }; listen: { url: string; port: number }; transports: Transport[]; workers: Worker[]; pending: Pending[]; pairings: PairingView[]; environments: EnvView[] }
 export interface NewPairing { id: string; code: string; expiresAt: number; installCommand: string }
 export interface WorkerPatch { name?: string; companies?: string[] | null; shellSlots?: number; inferenceSlots?: number; drain?: boolean; disabled?: boolean }

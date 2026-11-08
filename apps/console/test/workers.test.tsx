@@ -160,7 +160,7 @@ describe("worker detail", () => {
     handlers["GET /api/fabric"] = () => overview({ workers: [w] });
     handlers["GET /api/fabric/workers/w1"] = () => ({
       worker: w,
-      leases: [{ id: "l1", workerId: "w1", companyId: "c1", agentId: "agent-9", runId: "run-7", environmentId: "e1", workspace: "/workspaces/c1/agent-9", state: "active", createdAt: Date.now() - 60_000 }],
+      leases: [{ id: "l1", workerId: "w1", companyId: "c1", agentId: "agent-9", agentName: "Builder bot", runId: "run-7", environmentId: "e1", workspace: "/workspaces/c1/agent-9", state: "active", createdAt: Date.now() - 60_000 }],
       audit: [{ n: 1, at: Date.now(), actor: "admin@pam", action: "worker.adopted", workerId: "w1", detail: "via pairing" }],
     });
     return wrap(<Routes><Route path="/pve/datacenter/workers/:id" element={<WorkerDetailPage />} /></Routes>, "/pve/datacenter/workers/w1");
@@ -174,6 +174,7 @@ describe("worker detail", () => {
     expect(screen.getByText("SHA256:abcd1234")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /Leases/ }));
     expect(await screen.findByText("/workspaces/c1/agent-9")).toBeTruthy();
+    expect(screen.getByText("Builder bot")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /Activity/ }));
     expect(await screen.findByText("worker.adopted")).toBeTruthy();
   });
@@ -286,6 +287,21 @@ describe("adopt a worker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
     expect(await screen.findByText("The host can't be reached from the tailnet")).toBeTruthy();
     expect((screen.getByLabelText(/Name \(optional\)/) as HTMLInputElement).value).toBe("bench");
+  });
+
+  it("uses the host's pairing state: used without a worker, and cancelled", async () => {
+    const exp = Date.now() + 600_000;
+    let st = "used";
+    handlers["GET /api/fabric"] = () => overview({ pairings: [{ id: "pr1", name: "", createdAt: Date.now(), expiresAt: exp, state: st as "used" }] });
+    handlers["POST /api/fabric/pairings"] = () => ({ id: "pr1", code: "epw1.q", expiresAt: exp, installCommand: "q" });
+    wrap(<AdoptWorkerModal onClose={() => {}} />);
+    await createCode();
+    expect(await screen.findByText("This code is no longer valid")).toBeTruthy();
+    cleanup();
+    st = "cancelled";
+    wrap(<AdoptWorkerModal onClose={() => {}} />);
+    await createCode();
+    expect(await screen.findByText("This code was cancelled")).toBeTruthy();
   });
 
   it("cancels an unused code", async () => {

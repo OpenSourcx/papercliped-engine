@@ -143,7 +143,7 @@ function Leases({ leases }: { leases: Lease[] }) {
           <div key={l.id} className="px-4 py-3 grid gap-1">
             <div className="flex flex-wrap items-center gap-2"><Status kind={tone[l.state]} label={LEASE_TEXT[l.state]} /><span className="text-xs text-ink-3">Started {ago(l.createdAt)}{l.releasedAt ? `, ended ${ago(l.releasedAt)}` : ""}</span></div>
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
-              <Fact label="Agent" mono>{l.agentId}</Fact>
+              <Fact label="Agent" mono={!l.agentName}>{l.agentName ?? l.agentId}</Fact>
               <Fact label="Run" mono>{l.runId}</Fact>
               <Fact label="Workspace" mono>{l.workspace}</Fact>
             </dl>

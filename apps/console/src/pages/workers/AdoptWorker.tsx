@@ -97,7 +97,7 @@ function ProviderOption({ t, selected, onSelect }: { t: Transport; selected: boo
   );
 }
 
-type Phase = { kind: "waiting" } | { kind: "expired" } | { kind: "used" } | { kind: "arrived"; worker: Worker };
+type Phase = { kind: "waiting" } | { kind: "expired" } | { kind: "used" } | { kind: "cancelled" } | { kind: "arrived"; worker: Worker };
 
 function PairStep({ pairing, baseline, onClose, onAgain }: { pairing: NewPairing; baseline: Set<string>; onClose: () => void; onAgain: () => void }) {
   const { setup } = useEngine();
@@ -105,10 +105,12 @@ function PairStep({ pairing, baseline, onClose, onAgain }: { pairing: NewPairing
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const cancel = useFabricAction(() => fabricApi.cancelPairing(pairing.id));
-  const arrived = f?.workers.find((w) => !baseline.has(w.id) && w.state === "adopted");
-  const stillThere = f?.pairings.some((p) => p.id === pairing.id) ?? true;
+  const mine = f?.pairings.find((p) => p.id === pairing.id);
+  const arrived = f?.workers.find((w) => w.state === "adopted" && (mine?.workerId ? w.id === mine.workerId : !baseline.has(w.id)));
+  // Older hosts drop a spent code from the list; newer ones keep it with a state.
+  const stillThere = !!mine || !f;
   const left = countdown(pairing.expiresAt, now);
-  const phase: Phase = useMemo(() => arrived ? { kind: "arrived", worker: arrived } : !left ? { kind: "expired" } : !stillThere && f ? { kind: "used" } : { kind: "waiting" }, [arrived, left, stillThere, f]);
+  const phase: Phase = useMemo(() => arrived ? { kind: "arrived", worker: arrived } : mine?.state === "cancelled" ? { kind: "cancelled" } : mine?.state === "used" ? { kind: "used" } : !left || mine?.state === "expired" ? { kind: "expired" } : !stillThere && f ? { kind: "used" } : { kind: "waiting" }, [arrived, left, stillThere, f, mine]);
   const pending = f?.pending ?? [];
 
   if (phase.kind === "arrived") {
@@ -120,7 +122,7 @@ function PairStep({ pairing, baseline, onClose, onAgain }: { pairing: NewPairing
       </Modal>
     );
   }
-  const bad = phase.kind === "expired" || phase.kind === "used";
+  const bad = phase.kind === "expired" || phase.kind === "used" || phase.kind === "cancelled";
   return (
     <Modal
       size="md"
@@ -131,6 +133,7 @@ function PairStep({ pairing, baseline, onClose, onAgain }: { pairing: NewPairing
     >
       <div className="grid gap-4">
         {phase.kind === "expired" && <Notice tone="warning" title="This code expired">Codes last 15 minutes and work once. Create a new one.</Notice>}
+        {phase.kind === "cancelled" && <Notice tone="warning" title="This code was cancelled">It can no longer be used. Create a new one when you are ready.</Notice>}
         {phase.kind === "used" && <Notice tone="warning" title="This code is no longer valid">It was used or cancelled, and no new worker appeared. A used code can't be replayed. If a worker did not join, create a new code and check that it can reach this device.</Notice>}
         {!bad && (
           <>
