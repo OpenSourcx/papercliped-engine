@@ -41,6 +41,11 @@ import type { SshRunner } from "./containers-ssh.ts";
 import { clientIp, trustTunnelWhen } from "./clientIp.ts";
 import { PinApps } from "./pin-apps.ts";
 import { BrokerAdmin, type BrokerGroupPolicy } from "./broker-client.ts";
+import { FabricHub } from "./fabric/hub.ts";
+import { FabricEnvironments } from "./fabric/engine.ts";
+import { realNetInfo } from "./fabric/net.ts";
+import { registerFabric } from "./features/fabric.ts";
+import { detectTransports, type NetInfo } from "@papercliped-engine/worker-fabric";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -87,6 +92,8 @@ export interface AppDeps {
   connectUrl?: string;
   /** The privileged tunnel helper (tests inject a fake; default is the root helper's socket). */
   tunnelHelper?: TunnelHelper;
+  /** The Worker Fabric (docs/WORKER-FABRIC.md). Omit it and /api/fabric answers 503. */
+  fabric?: { port: number; controlUrl: string; pluginDir: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
 }
 
 const COOKIE_BASE = "epc_session";
@@ -484,6 +491,15 @@ export function createApp(d: AppDeps) {
   const router = new Router({ connections, fetch: outbound, now });
   const routerKeys = new RouterKeys(state, now);
   registerRouter(state, { router, keys: routerKeys, listen: () => d.routerListen ?? null });
+  // The Worker Fabric: the registry of workers, their listener and the provider's control API (docs/WORKER-FABRIC.md).
+  let fabricHub: FabricHub | null = null;
+  if (d.fabric) {
+    const fb = d.fabric;
+    const net = fb.netInfo ?? (() => realNetInfo(fb.customUrl ?? null));
+    const transports = () => detectTransports(net(), fb.port);
+    fabricHub = new FabricHub({ state, now, transports, heartbeatMs: fb.heartbeatMs });
+    registerFabric(state, { hub: fabricHub, envs: new FabricEnvironments({ gateway, hub: fabricHub, state, pluginDir: fb.pluginDir, controlUrl: fb.controlUrl }), transports, listen: { url: fb.customUrl ?? null, port: fb.port } });
+  }
   const broker = d.broker ? new BrokerAdmin({ url: d.broker.url, token: d.broker.managementToken, fetch: d.broker.fetch }) : null;
 
   const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
@@ -2065,5 +2081,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }) });
+  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }), fabric: fabricHub });
 }

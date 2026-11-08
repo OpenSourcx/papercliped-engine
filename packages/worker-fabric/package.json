@@ -1,0 +1,10 @@
+{
+  "name": "@papercliped-engine/worker-fabric",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker Fabric shared code: the authenticated, encrypted worker channel, protocol types, the scheduler and transport providers.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}
