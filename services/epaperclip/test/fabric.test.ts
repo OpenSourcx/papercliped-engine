@@ -22,7 +22,8 @@ describe("pairing and identity", () => {
     expect(view).toMatchObject({ name: "alpha", state: "adopted", online: true, capabilities: { arch: "arm64", gpu: { present: true } } });
     expect(view.fingerprint).toHaveLength(32);
     expect(JSON.stringify(h.hub.auditList().events)).toContain("worker.adopt");
-    expect(w.files.config().workerId).toBe(id);
+    // The worker saves its id when it receives `ready`, a moment after the host counts it online.
+    await until(() => w.files.config().workerId === id, 5000, "worker saved its id");
     expect(w.files.config().pairing).toBeNull();
   });
 
@@ -174,7 +175,7 @@ describe("revocation", () => {
     expect(h.hub.workers()[0]).toMatchObject({ state: "revoked" });
     await sleep(1200);
     expect(h.hub.workers()[0]!.online).toBe(false);
-    expect(w.files.config().revoked).toBe(true);
+    await until(() => w.files.config().revoked, 5000, "worker recorded its revocation");
     // A fresh process with the same key files tries anyway.
     const port = Number(new URL(h.url).port);
     await h.close();
@@ -240,9 +241,12 @@ describe("leases, workspaces and execution", () => {
     const dup = await acquire(h, token, "agent-a", { workspaceKey: "main" });
     expect(dup.status).toBe(409);
     expect(dup.json.code).toBe("lease_conflict");
-    // A command may not leave its lease's workspace.
+    // A command is not pointed at another agent's folder; the rest of the machine is the agent's to use (the shell is not sandboxed).
     const out = await exec(h, token, a.json.leaseId, { command: "pwd", cwd: b.json.workspace });
     expect(out.lines.at(-1)).toMatchObject({ ev: "error", code: "outside_workspace" });
+    const tmpRun = await exec(h, token, a.json.leaseId, { command: "pwd", cwd: "/tmp" });
+    expect(tmpRun.lines.map((l) => l.data ?? "").join("")).toContain("/tmp");
+    expect((await exec(h, token, a.json.leaseId, { command: "pwd", cwd: "relative/dir" })).lines.at(-1)).toMatchObject({ ev: "error", code: "bad_request" });
   });
 
   it("enforces shell capacity and frees it on release", async () => {

@@ -222,3 +222,33 @@ The disconnected-session checkpoint `50716e6` was verified with successful CI ru
 - **Local validation:** host typecheck, console typecheck/build and design check pass. Focused tests: 32 host permission/proxy tests and 16 organization-app console tests pass. Full local suites before the final routing/custom-policy test additions: 1019 host tests passed (15 opt-in tests skipped), 521 console tests passed. CI on this PR is the final combined-tree gate; those earlier local counts are not a substitute for it.
 - **Real-engine validation:** `EPC_LIVE_ENGINE=http://127.0.0.1:3299 corepack pnpm --filter @papercliped-engine/epaperclip exec vitest run test/live/app-access.live.test.ts`: **4/4 passed**, engine 2026.1023.0, isolated data under `/project/.work/codex-app-access-live`, a loopback fake MCP provider. Reproduces the original bypass before the fix; verifies Allow/Ask/Off, excluded/future agents, uppercase IDs, Pin independence, empty assignment, and failure/reopen/retry. This is real policy-engine evidence, not a real GitHub/Notion/provider round trip.
 - **Boundary:** existing grants are not migrated silently. Save access to enforce the reviewed selection. Real provider/model/channel traffic, real Proxmox contention and lifecycle gates, self-managed Cloudflare provisioning, identity federation and published catalog qualification remain outstanding. Stable V1 is still not release-qualified.
+
+
+## Worker Fabric
+
+Branch `feat/worker-fabric`, PR #18 (console UI: PR #19). Contract: [WORKER-FABRIC.md](WORKER-FABRIC.md); guide: [WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md); raw evidence: `docs/evidence/`.
+Labels: I implemented, L local tests, CI GitHub run, E live engine 2026.1023.0, R real device (Orion).
+
+| # | Definition of done | Status |
+| --- | --- | --- |
+| 1 | Generic feature | I, L (provider `remote-worker`, hub, daemon, scheduler) |
+| 2 | Orion registered as a real worker | R: adopted over Tailscale with a single-use code, worker `wrk_d142b0970803` |
+| 3 | Orion reconnects after reboot | NOT proven: no reboot (needs your go-ahead; linger is off, so the user service would start at login only). Daemon restart, simulated network loss and host restart reconnect: R (`docs/evidence/evidence-orion-reconnect.txt`) |
+| 4 | Capabilities recognised | R: arm64, Jetson GPU, 6 cores, 7485 MiB, tools, Ollama models qwen2.5-coder 3b/1.5b |
+| 5 | Real agent run assigned through the environment/provider | E+R: Paperclip heartbeat run succeeded on Orion (`evidence-engine-run.txt`). The agent CLI was a stand-in script named `claude`, not a cloud-model agent |
+| 6 | Isolated workspace | E+R |
+| 7 | Unrestricted dev shell | R (git, python3, docker present; the shell is the service user) |
+| 8 | Ollama GPU inference | R: qwen2.5-coder:3b through the worker's gate, 24 tokens/s |
+| 9 | Several agents, own workspaces and leases | L, R (two agents on one repo cache, separate worktrees) |
+| 10 | Inference capacity-limited and queued | R: three simultaneous generations ran 10.5 s, 20.5 s, 30.6 s, running=1 queued 2 to 0 |
+| 11 | Adoption in real UI | PR #19 UI built against the routes, not run against the live host (partial) |
+| 12 | Identity and revocation | L (replay, expiry, wrong host key, unknown identity, revoke survives host restart) |
+| 13 | Tailscale works | R: detection and the Orion session use Tailscale |
+| 14 | Tailscale not mandatory | L (LAN/custom selection tests) |
+| 15 | Second generic Linux worker | L (local daemon processes in tests); no separate live second machine |
+| 16 | Existing Proxmox functionality | L: full suite passes locally; CI per head below |
+| 17 | Suites pass | local typecheck, tests (serial), build, check:design, PVE conformance and scripts passed; installer simulation 61/61 |
+| 18 | Docs | I |
+| 19 | Final report | see the lead's report |
+
+Known limits: no reboot test; the per-agent lifecycle verification on the disposable engine needed the stand-in CLI to be named `claude`; the shell is not sandboxed; no live test on a second physical machine; Execute has no abort signal (cancel works through lease stop); transfers over 40 MB per command are refused.

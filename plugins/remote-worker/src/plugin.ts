@@ -189,7 +189,7 @@ export function createRemoteWorkerPlugin(deps: ProviderDeps = {}) {
       try {
         const r = await control(c).exec(
           id,
-          { command: params.command, args: params.args ?? [], cwd: params.cwd ?? (params.lease.metadata?.remoteCwd as string | undefined), env: params.env, stdin: params.stdin, timeoutMs: limit },
+          { command: params.command, args: params.args ?? [], cwd: params.cwd || (params.lease.metadata?.remoteCwd as string | undefined), env: params.env, stdin: params.stdin, timeoutMs: limit },
           ({ stream, data }) => {
             execution?.log(stream, data);
             if (stream === "stdout") stdout = (stdout + data).slice(-CAP);
@@ -199,6 +199,7 @@ export function createRemoteWorkerPlugin(deps: ProviderDeps = {}) {
         );
         return { exitCode: r.exitCode, signal: r.signal, timedOut: r.timedOut, stdout, stderr, metadata: { provider: PROVIDER_KEY, workerId: params.lease.metadata?.workerId } };
       } catch (e) {
+        ctx?.logger.warn(`remote worker command could not run: ${msg(e)}`.slice(0, 400));
         return { exitCode: 1, signal: null, timedOut: false, stdout, stderr: `${stderr}${stderr && !stderr.endsWith("\n") ? "\n" : ""}[remote-worker] ${msg(e)}\n` };
       }
     },
