@@ -20,7 +20,7 @@ mkdir -p "$WORK/pkg" && tar -xzf "$TAR" -C "$WORK/pkg" && PKG="$(dirname "$(find
 new_host() {
   H="$WORK/$1"; mkdir -p "$H/bin" "$H/log"
   for c in useradd userdel chown; do printf '#!/bin/sh\necho "%s $*" >> "%s/log/calls"\nexit 0\n' "$c" "$H" > "$H/bin/$c"; chmod +x "$H/bin/$c"; done
-  printf '#!/bin/sh\n[ "$1" = "-u" ] && [ -z "$2" ] && { echo 0; exit 0; }\nexit 1\n' > "$H/bin/id"; chmod +x "$H/bin/id"
+  printf '#!/bin/sh\n[ "$1" = "-u" ] && [ -z "$2" ] && { echo 0; exit 0; }\n[ "$1" = "-un" ] && { echo epwtest; exit 0; }\nexit 1\n' > "$H/bin/id"; chmod +x "$H/bin/id"
   printf '#!/bin/sh\nexit 2\n' > "$H/bin/getent"; chmod +x "$H/bin/getent"
   export PATH="$H/bin:$(echo "$PATH" | sed "s|$WORK/[^:]*/bin:||g")"
   export EPW_TEST=1 EPW_PREFIX="$H/opt" EPW_UNIT_DIR="$H/units" EPW_DATA="$H/data" EPW_WORKSPACES="$H/ws" EPW_BIN_DIR="$H/usrbin" EPW_USER=epwtest
@@ -97,6 +97,24 @@ check "purge keeps workspaces" test -d "$H/ws"
 check "purge removes the user" grep -q "userdel epwtest" "$H/log/calls"
 inst && inst --uninstall --purge-workspaces && ok "purge workspaces" || bad "purge workspaces"
 nocheck "workspaces removed" test -e "$H/ws"
+
+echo "scenario: per-user install with no root (--user)"
+new_host userinst
+unset EPW_PREFIX EPW_UNIT_DIR EPW_DATA EPW_WORKSPACES EPW_BIN_DIR EPW_USER
+export HOME="$H/home"; mkdir -p "$HOME"
+inst --user --name Orion --max-context 4096 && ok "user install succeeds" || bad "user install succeeds"
+check "files under ~/.local" test -s "$HOME/.local/epaperclip-worker/epaperclip-worker.mjs"
+check "user unit written" test -f "$HOME/.config/systemd/user/epaperclip-worker.service"
+nocheck "user unit has no User= line" grep -q "^User=" "$HOME/.config/systemd/user/epaperclip-worker.service"
+check "user unit starts with the user manager" grep -q "WantedBy=default.target" "$HOME/.config/systemd/user/epaperclip-worker.service"
+check "workspaces default to ~/epaperclip-workspaces" grep -q "$HOME/epaperclip-workspaces" "$HOME/.config/systemd/user/epaperclip-worker.service"
+check "key and settings in ~/.local/share" test -f "$HOME/.local/share/epaperclip-worker/config.json"
+nocheck "no system user created" test -s "$H/log/calls"
+check "wrapper in ~/.local/bin" test -x "$HOME/.local/bin/epaperclip-worker"
+inst --user --uninstall && ok "user uninstall succeeds" || bad "user uninstall succeeds"
+nocheck "user program gone" test -e "$HOME/.local/epaperclip-worker"
+check "user settings kept" test -f "$HOME/.local/share/epaperclip-worker/config.json"
+nocheck "no Node and no --fetch-node: refused" env PATH="$H/bin:/nonexistent" EPW_NODE=/no/node bash "$PKG/install.sh" --user --check
 
 echo; echo "worker installer: $pass passed, $fail failed"
 [ "$fail" = 0 ]
