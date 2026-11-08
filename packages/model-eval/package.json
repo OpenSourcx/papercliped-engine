@@ -1,0 +1,23 @@
+{
+  "name": "@papercliped-engine/model-eval",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Evaluation harness: small coding tasks with tests, run against any adapter, pass-rate / attempts / cost / time per model.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "eval": "node src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@papercliped-engine/task-router": "workspace:*"
+  }
+}
