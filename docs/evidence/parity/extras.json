@@ -1,0 +1,117 @@
+{
+ "at": "2026-11-08T11:45:34.420Z",
+ "rows": [
+  {
+   "id": "X01 set agent monthly budget",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X02 board posts a cost event (cost ledger write)",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X03 over budget: agent is paused by the engine",
+   "target": "native",
+   "ok": true,
+   "detail": "paused budget",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X04 budget overview readable",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X01 set agent monthly budget",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X02 board posts a cost event (cost ledger write)",
+   "target": "epc",
+   "ok": false,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X04 budget overview readable",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X05 engine accepts managed-sandbox-only",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X06 with managed-sandbox-only a host run fails closed",
+   "target": "native",
+   "ok": true,
+   "detail": "failed This instance runs agents only in its platform-managed sandbox environment (managed sandbox only), b",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X07 native lets an admin turn it off again",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X08 host refuses turning agents-on-host back on (403 agents_on_host_refused)",
+   "target": "epc",
+   "ok": true,
+   "detail": "403 agents_on_host_refused",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X09 organization, goals, agents, run history survive an engine restart",
+   "target": "native",
+   "ok": true,
+   "detail": "{\"agents\":1,\"goals\":1,\"runs\":1} -> {\"agents\":1,\"goals\":1,\"runs\":1}",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X10 agent usable after restart (wake -> run)",
+   "target": "native",
+   "ok": true,
+   "detail": "error",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X09 organization, goals, agents, run history survive an engine restart",
+   "target": "epc",
+   "ok": true,
+   "detail": "{\"agents\":1,\"goals\":1,\"runs\":0} -> {\"agents\":1,\"goals\":1,\"runs\":0}",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X10 agent usable after restart (wake -> run)",
+   "target": "epc",
+   "ok": true,
+   "detail": "idle",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "X11 process adapter reaches Ollama on Orion (real network, no paid model)",
+   "target": "epc",
+   "ok": true,
+   "detail": "succeeded; Orion qwen2.5-coder:1.5b replied \"ok\" (read from run 97ccee4b log; first run failed only on a regex that did not allow for JSON-escaped log text, fixed in the script)",
+   "level": "physical Proxmox+Orion hardware"
+  }
+ ]
+}

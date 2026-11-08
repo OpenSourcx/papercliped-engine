@@ -1,0 +1,159 @@
+{
+ "at": "2026-11-08T11:48:36.834Z",
+ "rows": [
+  {
+   "id": "A01 invite + accept as viewer",
+   "target": "native",
+   "ok": true,
+   "detail": "201/202",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A02 non-member cannot list projects",
+   "target": "native",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A03 viewer member lists projects",
+   "target": "native",
+   "ok": true,
+   "detail": "200 member=active",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A04 viewer does not see the private project",
+   "target": "native",
+   "ok": true,
+   "detail": "Open one",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A05 viewer cannot read the private project by id",
+   "target": "native",
+   "ok": true,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A06 viewer cannot create projects",
+   "target": "native",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A12 task inside a private project is hidden from the viewer (list)",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A13 ... and by id",
+   "target": "native",
+   "ok": true,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A02 non-member cannot list projects",
+   "target": "epc",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A01 grant viewer through the host (engine membership)",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 {\"ok\":true}",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A03 viewer member lists projects",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A04 viewer does not see the private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "Open one",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A05 viewer reads issues through proxy",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A06 viewer cannot create projects",
+   "target": "epc",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A05b private project by id is not reachable by a viewer (route closed at the proxy, so 404 regardless)",
+   "target": "epc",
+   "ok": true,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A12 task inside a private project is hidden from the viewer (list)",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A13 ... and by id",
+   "target": "epc",
+   "ok": true,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A09 viewer cannot grant themselves access to the private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A10 owner grants the viewer access to the private project (route opened by this PR)",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A11 viewer now sees the private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A07 a non-admin Proxmox person is not an engine instance admin",
+   "target": "epc",
+   "ok": true,
+   "detail": "isInstanceAdmin=false",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A08 Proxmox administrator becomes engine instance admin (sees every organization)",
+   "target": "epc",
+   "ok": true,
+   "detail": "isInstanceAdmin=true",
+   "level": "real Paperclip runtime"
+  }
+ ]
+}

@@ -1,0 +1,103 @@
+{
+ "at": "2026-11-08T11:49:00.851Z",
+ "rows": [
+  {
+   "id": "G01 turn on board approval for new hires",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G02 hire request lands as a pending approval; agent not yet active",
+   "target": "native",
+   "ok": true,
+   "detail": "201 approval=pending agent=pending_approval",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G03 approving activates the hire",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G04 non-zero exit: run is failed with exit code",
+   "target": "native",
+   "ok": true,
+   "detail": "failed exit=3 (agent before idle)",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G05 failing agent is flagged (status error) for the board",
+   "target": "native",
+   "ok": true,
+   "detail": "error",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G06 attention/badges endpoints answer",
+   "target": "native",
+   "ok": true,
+   "detail": "200/200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G07 pause and resume an agent",
+   "target": "native",
+   "ok": true,
+   "detail": "200/200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G01 turn on board approval for new hires",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G02 hire request lands as a pending approval; agent not yet active",
+   "target": "epc",
+   "ok": true,
+   "detail": "201 approval=pending agent=pending_approval",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G03 approving activates the hire",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G04 non-zero exit: run is failed with exit code",
+   "target": "epc",
+   "ok": true,
+   "detail": "failed exit=3 (agent before idle)",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G05 failing agent is flagged (status error) for the board",
+   "target": "epc",
+   "ok": true,
+   "detail": "error",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G06 attention/badges endpoints answer",
+   "target": "epc",
+   "ok": true,
+   "detail": "200/200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "G07 pause and resume an agent",
+   "target": "epc",
+   "ok": true,
+   "detail": "200/200",
+   "level": "real Paperclip runtime"
+  }
+ ]
+}

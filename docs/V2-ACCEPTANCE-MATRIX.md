@@ -74,3 +74,5 @@ Columns not repeated per row: requirement id = the ID; "deployment status" = "no
 ## D. Integrated head
 
 See the last section of [RELEASE-PLAN.md](RELEASE-PLAN.md) and the PR #15 description for the integrated head SHA and CI run.
+
+Parity with native Paperclip 2026.1023.0: see [PAPERCLIP-PARITY-MATRIX.md](PAPERCLIP-PARITY-MATRIX.md) and [DIFFERENTIATION-MATRIX.md](DIFFERENTIATION-MATRIX.md) (PR #23).

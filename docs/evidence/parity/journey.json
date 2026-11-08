@@ -1,0 +1,548 @@
+{
+ "at": "2026-11-08T11:41:17.453Z",
+ "pin": "paperclipai 2026.1023.0",
+ "rows": [
+  {
+   "id": "J01 create organization",
+   "target": "native",
+   "ok": true,
+   "detail": "201 64035bfd-8b02-491e-8d07-f1b4ac9a4565",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J02 edit organization",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J03 set company monthly budget",
+   "target": "native",
+   "ok": true,
+   "detail": "200 {\"id\":\"64035bfd-8b02-491e-8d07-f1b4ac9a4565\",\"name\":\"Parity native-mw7rfjkw\",\"de",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J04 create goal",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J05 create CEO agent (process adapter)",
+   "target": "native",
+   "ok": true,
+   "detail": "201 paused preparing",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J06 hire agent reporting to CEO (process adapter)",
+   "target": "native",
+   "ok": true,
+   "detail": "201 {\"agent\":{\"id\":\"545f273c-6370-4c7e-a269-b1ef33158d96\",\"compa",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J06b agents leave `preparing` and become ready",
+   "target": "native",
+   "ok": true,
+   "detail": "lifecycleState ready",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J07 org chart data: reportsTo preserved",
+   "target": "native",
+   "ok": true,
+   "detail": "2 agents",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J08 org chart route (GET /org)",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J09 agent permissions edit",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J10 agent configuration read",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J11 agent instructions bundle",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J12 secret reference create",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J12b secret value never returned",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J13 create project",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J14 edit project",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J15 create private project",
+   "target": "native",
+   "ok": true,
+   "detail": "201 private",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J15b private project access members route",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J16 create issue assigned to CEO",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J17 checkout: second agent refused (execution lock)",
+   "target": "native",
+   "ok": true,
+   "detail": "first 200, second 409",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J18 issue comment",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J19 release checkout",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J20 search finds the issue",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J21 create approval request",
+   "target": "native",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J22 approve",
+   "target": "native",
+   "ok": true,
+   "detail": "200 approved",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J23 reject",
+   "target": "native",
+   "ok": true,
+   "detail": "200 rejected",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J24 wake CEO (process adapter)",
+   "target": "native",
+   "ok": true,
+   "detail": "202 {\"id\":\"81979bd6-1730-4f4e-9284-f536a488f3a9\",\"companyId\":\"701789fb-0479-4ffe-a0e",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J25 process run succeeds (local command)",
+   "target": "native",
+   "ok": true,
+   "detail": "succeeded",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J26 run log readable",
+   "target": "native",
+   "ok": true,
+   "detail": "200 {\"runId\":\"81979bd6-1730-4f4e-9284-f536a488f3a9\",\"store\":\"local_file\",\"logRef\":\"701789fb-0479-4ffe-a0",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J27 run events readable",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J28 assignment wakes the assignee; run succeeds",
+   "target": "native",
+   "ok": true,
+   "detail": "succeeded source=assignment",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J28b http adapter refuses loopback/private endpoint (same guard both targets)",
+   "target": "native",
+   "ok": true,
+   "detail": "200 stubHits=0",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J32 live-runs shows the running run",
+   "target": "native",
+   "ok": true,
+   "detail": "200 running",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J33 cancel a running run",
+   "target": "native",
+   "ok": true,
+   "detail": "cancelled",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J29 activity log records the journey",
+   "target": "native",
+   "ok": true,
+   "detail": "200 n=36",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J30 cost summary",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J31 dashboard",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J01 create organization",
+   "target": "epc",
+   "ok": true,
+   "detail": "201 dcf2e1c4-8f56-4084-ab38-816cf884f2b9",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J02 edit organization",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J03 set company monthly budget",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 {\"id\":\"dcf2e1c4-8f56-4084-ab38-816cf884f2b9\",\"name\":\"Parity epc-mw7rgl0z\",\"descr",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J04 create goal",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J05 create CEO agent (process adapter)",
+   "target": "epc",
+   "ok": true,
+   "detail": "201 paused preparing",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J06 hire agent reporting to CEO (process adapter)",
+   "target": "epc",
+   "ok": true,
+   "detail": "201 {\"agent\":{\"id\":\"0dc87d93-3601-46b4-a02d-15e929477577\",\"compa",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J06b agents leave `preparing` and become ready",
+   "target": "epc",
+   "ok": true,
+   "detail": "lifecycleState ready",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J07 org chart data: reportsTo preserved",
+   "target": "epc",
+   "ok": true,
+   "detail": "2 agents",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J08 org chart route (GET /org)",
+   "target": "epc",
+   "ok": false,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J09 agent permissions edit",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J10 agent configuration read",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J11 agent instructions bundle",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J12 secret reference create",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J12b secret value never returned",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J13 create project",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J14 edit project",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J15 create private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "201 private",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J15b private project access members route",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J16 create issue assigned to CEO",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J17 checkout: second agent refused (execution lock)",
+   "target": "epc",
+   "ok": false,
+   "detail": "first 404, second 404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J18 issue comment",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J19 release checkout",
+   "target": "epc",
+   "ok": false,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J20 search finds the issue",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J21 create approval request",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J22 approve",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 approved",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J23 reject",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 rejected",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J24 wake CEO (process adapter)",
+   "target": "epc",
+   "ok": true,
+   "detail": "202 {\"id\":\"49cef174-e09e-49e0-a685-632602556557\",\"companyId\":\"408942e7-d416-493c-bb9",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J25 process run succeeds (local command)",
+   "target": "epc",
+   "ok": true,
+   "detail": "succeeded",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J26 run log readable",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 {\"runId\":\"49cef174-e09e-49e0-a685-632602556557\",\"store\":\"local_file\",\"logRef\":\"408942e7-d416-493c-bb",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J27 run events readable",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J28 assignment wakes the assignee; run succeeds",
+   "target": "epc",
+   "ok": true,
+   "detail": "succeeded source=assignment",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J28b http adapter refuses loopback/private endpoint (same guard both targets)",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 stubHits=0",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J32 live-runs shows the running run",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 running",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J33 cancel a running run",
+   "target": "epc",
+   "ok": true,
+   "detail": "cancelled",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J29 activity log records the journey",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 n=31",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J30 cost summary",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "J31 dashboard",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  }
+ ],
+ "ctx": [
+  {
+   "cid": "64035bfd-8b02-491e-8d07-f1b4ac9a4565",
+   "kind": "native",
+   "ids": {
+    "ceo": "4f549720-382a-41d9-b50d-9ee9a4373705",
+    "eng": "545f273c-6370-4c7e-a269-b1ef33158d96",
+    "iss": "2d99c08c-62aa-4ae3-9a29-8d9f7d1180c6",
+    "pid": "03319dec-3e72-43d1-9046-a9e6b5136e11",
+    "priv": "eed26f51-261e-473e-9c1a-ee826a6a2348"
+   }
+  },
+  {
+   "cid": "dcf2e1c4-8f56-4084-ab38-816cf884f2b9",
+   "kind": "epc",
+   "ids": {
+    "ceo": "85dd02bd-6290-400b-9c90-518cd3faf7d5",
+    "eng": "0dc87d93-3601-46b4-a02d-15e929477577",
+    "iss": "74176212-78c3-4f0d-9ade-d3ebb502a4db",
+    "pid": "7db2cb2c-4dba-48d7-89c1-530a1583553e",
+    "priv": "ae7dd49a-7154-48b5-b446-ce197ebd9a44"
+   }
+  }
+ ]
+}

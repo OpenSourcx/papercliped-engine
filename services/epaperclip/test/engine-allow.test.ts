@@ -17,6 +17,11 @@ describe("the /engine/api allow-list", () => {
     expect(enginePath("/engine/api/agents/a%2D1/pause")).toBe("/api/agents/a%2D1/pause");
   });
 
+  it("lets project edit and private-project access members through (the engine still decides who may)", () => {
+    for (const p of ["/engine/api/projects/p1", "/engine/api/projects/p1/access-members", "/engine/api/projects/p1/access-members/m1"]) expect(enginePath(p), p).toBe(p.replace("/engine", ""));
+    for (const p of ["/engine/api/projects/p1/workspaces", "/engine/api/projects/p1/access-members/m1/x"]) expect(() => enginePath(p), p).toThrow();
+  });
+
   it("closes everything else, including engine areas that were never listed", () => {
     for (const p of [
       "/engine/api/echo",

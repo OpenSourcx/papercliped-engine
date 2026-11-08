@@ -164,6 +164,9 @@ export const ENGINE_PATHS = {
   issueComments: "/api/issues/{id}/comments",
   goals: "/api/companies/{companyId}/goals",
   projects: "/api/companies/{companyId}/projects",
+  project: "/api/projects/{id}",
+  projectAccessMembers: "/api/projects/{id}/access-members",
+  projectAccessMember: "/api/projects/{id}/access-members/{memberId}",
   approvals: "/api/companies/{companyId}/approvals",
   approve: "/api/approvals/{id}/approve",
   reject: "/api/approvals/{id}/reject",
@@ -447,6 +450,12 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     projects: {
       list: (companyId: string) => call<Project[]>("GET", P.projects, { companyId }),
       create: (companyId: string, body: CreateProjectBody) => call<Project>("POST", P.projects, { companyId }, body),
+      get: (id: string) => call<Project>("GET", P.project, { id }),
+      update: (id: string, body: Partial<CreateProjectBody> & { visibility?: "open" | "private" }) => call<Project>("PATCH", P.project, { id }, body),
+      /** Private projects: who may see one. The engine decides who may change it. */
+      accessMembers: (id: string) => call<unknown[]>("GET", P.projectAccessMembers, { id }),
+      addAccessMember: (id: string, subjectType: "user" | "agent", subjectId: string) => call<unknown>("POST", P.projectAccessMembers, { id }, { subjectType, subjectId }),
+      removeAccessMember: (id: string, memberId: string) => call<unknown>("DELETE", P.projectAccessMember, { id, memberId }),
     },
     approvals: {
       list: (companyId: string, status?: string) => call<Approval[]>("GET", P.approvals, { companyId }, undefined, { status }),

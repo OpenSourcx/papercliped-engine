@@ -1,0 +1,330 @@
+{
+ "at": "2026-11-08T08:26:37.714Z",
+ "kind": "native",
+ "pages": [
+  {
+   "page": "dashboard",
+   "url": "/PARAA/dashboard",
+   "heading": "DASHBOARD",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-dashboard.png"
+  },
+  {
+   "page": "inbox",
+   "url": "/PARAA/inbox",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-inbox.png"
+  },
+  {
+   "page": "issues",
+   "url": "/PARAA/issues",
+   "heading": "TASKS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 3 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-issues.png"
+  },
+  {
+   "page": "issues/PARAA-2",
+   "url": "/PARAA/issues/PARAA-2",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [
+    "404 GET /api/issues/{id}/documents/plan"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-issues_PARAA_2.png"
+  },
+  {
+   "page": "projects",
+   "url": "/PARAA/projects",
+   "heading": "PROJECTS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-projects.png"
+  },
+  {
+   "page": "goals",
+   "url": "/PARAA/goals",
+   "heading": "GOALS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-goals.png"
+  },
+  {
+   "page": "routines",
+   "url": "/PARAA/routines",
+   "heading": "ROUTINES",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-routines.png"
+  },
+  {
+   "page": "artifacts",
+   "url": "/PARAA/artifacts",
+   "heading": "ARTIFACTS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-artifacts.png"
+  },
+  {
+   "page": "agents",
+   "url": "/PARAA/agents",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents.png"
+  },
+  {
+   "page": "agents/all",
+   "url": "/PARAA/agents/all",
+   "heading": "AGENTS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox WORK Tasks Projects Routines Artifacts ORG Agents Skills Conne",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_all.png"
+  },
+  {
+   "page": "agents/ceo",
+   "url": "/PARAA/agents/ceo",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo.png"
+  },
+  {
+   "page": "agents/ceo/instructions",
+   "url": "/PARAA/agents/ceo/instructions",
+   "heading": "CEO",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo_instructions.png"
+  },
+  {
+   "page": "agents/ceo/skills",
+   "url": "/PARAA/agents/ceo/skills",
+   "heading": "CEO",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo_skills.png"
+  },
+  {
+   "page": "agents/ceo/configuration",
+   "url": "/PARAA/agents/ceo/configuration",
+   "heading": "CEO",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [
+    "404 GET /api/adapters/process/config-schema"
+   ],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo_configuration.png"
+  },
+  {
+   "page": "agents/ceo/runs",
+   "url": "/PARAA/agents/ceo/runs",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo_runs.png"
+  },
+  {
+   "page": "agents/ceo/budget",
+   "url": "/PARAA/agents/ceo/budget",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_ceo_budget.png"
+  },
+  {
+   "page": "agents/new",
+   "url": "/PARAA/agents/new",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-agents_new.png"
+  },
+  {
+   "page": "skills",
+   "url": "/PARAA/skills",
+   "heading": "SKILLS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-skills.png"
+  },
+  {
+   "page": "apps",
+   "url": "/PARAA/apps",
+   "heading": "CONNECTORS",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox WORK Tasks Projects Routines Artifacts ORG Agents Skills Conne",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-apps.png"
+  },
+  {
+   "page": "activity",
+   "url": "/PARAA/activity",
+   "heading": "AUDIT",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-activity.png"
+  },
+  {
+   "page": "costs",
+   "url": "/PARAA/costs",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content New Task Search Dashboard Inbox WORK Tasks Projects Routines Artifacts ORG Agents Skills Connectors Audit AGENTS RECENT",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-costs.png"
+  },
+  {
+   "page": "approvals",
+   "url": "/PARAA/approvals",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-approvals.png"
+  },
+  {
+   "page": "org",
+   "url": "/PARAA/org",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-org.png"
+  },
+  {
+   "page": "search",
+   "url": "/PARAA/search",
+   "heading": "SEARCH",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-search.png"
+  },
+  {
+   "page": "members",
+   "url": "/PARAA/members",
+   "heading": "NOT FOUND",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": true,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-members.png"
+  },
+  {
+   "page": "company/settings",
+   "url": "/PARAA/company/settings",
+   "heading": "General",
+   "bodyStart": "Skip to Main Content Back to app General Profile Members Secrets Environments Access Export Import Experimental Plugins Adapters AD Admin PA",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-company_settings.png"
+  },
+  {
+   "page": "company/settings/environments",
+   "url": "/PARAA/company/settings/environments",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content Back to app General Profile Members Secrets Environments Access Export Import Experimental Plugins Adapters AD Admin SE",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-company_settings_environments.png"
+  },
+  {
+   "page": "company/settings/secrets",
+   "url": "/PARAA/company/settings/secrets",
+   "heading": "SECRETS",
+   "bodyStart": "Skip to Main Content Back to app General Profile Members Secrets Environments Access Export Import Experimental Plugins Adapters AD Admin SE",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-company_settings_secrets.png"
+  },
+  {
+   "page": "company/import",
+   "url": "/PARAA/company/import",
+   "heading": "Import source",
+   "bodyStart": "Skip to Main Content Back to app General Profile Members Secrets Environments Access Export Import Experimental Plugins Adapters AD Admin PA",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-company_import.png"
+  },
+  {
+   "page": "company/export",
+   "url": "/PARAA/company/export",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content Back to app General Profile Members Secrets Environments Access Export Import Experimental Plugins Adapters AD Admin Lo",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-company_export.png"
+  },
+  {
+   "page": "workspaces",
+   "url": "/PARAA/workspaces",
+   "heading": "Command Palette",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox 2 WORK Tasks Projects Routines Artifacts ORG Agents Skills Con",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-workspaces.png"
+  },
+  {
+   "page": "dashboard/live",
+   "url": "/PARAA/dashboard/live",
+   "heading": "Live agent runs",
+   "bodyStart": "Skip to Main Content P Parity native-mw7k8800 New Task Search Dashboard Inbox WORK Tasks Projects Routines Artifacts ORG Agents Skills Conne",
+   "notFound": false,
+   "badApi": [],
+   "status": "ok",
+   "shot": "docs/evidence/parity/shots/native-dashboard_live.png"
+  }
+ ]
+}
