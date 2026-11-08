@@ -1,5 +1,5 @@
 import type { ClusterResource, GuestType, PowerAction, ProxmoxClient, RrdCf, RrdPoint, RrdTimeframe } from "@papercliped-engine/proxmox-client";
-import type { BrokerConfig, Principal, Profile, ResourceGroup } from "./config.ts";
+import { parseManagedGroups, type BrokerConfig, type Principal, type Profile, type ResourceGroup } from "./config.ts";
 
 /**
  * The broker is the only component that holds the Proxmox token. Everything else asks it.
@@ -96,6 +96,43 @@ export class Broker {
     this.now = d.now ?? Date.now;
     this.sleep = d.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.protectedVmids = new Set(d.config.protectedVmids);
+  }
+
+  /** Snapshot used by the local ePaperclip reconciler. Group callers never receive other groups through this route. */
+  groups(): Record<string, ResourceGroup> {
+    return structuredClone(this.c.groups);
+  }
+
+  profiles(): string[] {
+    return Object.keys(this.c.profiles).sort();
+  }
+
+  /**
+   * Replaces the durable organization registry after validating every cross-group isolation invariant.
+   * Existing leases are deliberately not moved: an administrator must drain a group before changing its
+   * pool, tag or VMID range.
+   */
+  replaceGroups(raw: unknown, persist?: (groups: Record<string, ResourceGroup>) => void) {
+    const next = parseManagedGroups(raw, this.c.profiles);
+    // Ownership fields are immutable through the live control API. A later drain-and-migrate operation can
+    // deliberately replace a group, but an ordinary policy reconciliation must never orphan running leases.
+    for (const [name, current] of Object.entries(this.c.groups)) {
+      const candidate = next[name];
+      if (!candidate) throw new BrokerError(`resource group ${name} cannot be removed while the broker is live`, 409, "group_migration_required");
+      if (candidate.pool !== current.pool || candidate.tag !== current.tag || candidate.vmidRange[0] !== current.vmidRange[0] || candidate.vmidRange[1] !== current.vmidRange[1]) {
+        throw new BrokerError(`resource group ${name} ownership fields cannot change while the broker is live`, 409, "group_migration_required");
+      }
+    }
+    for (const v of this.protectedVmids) {
+      if (Object.values(next).some((g) => this.inRange(g, v))) throw new BrokerError(`protected guest ${v} lies inside a group's vmid range`, 400, "protected_range");
+    }
+    for (const [name, p] of Object.entries(this.c.profiles)) {
+      if (p.kind === "template" && Object.values(next).some((g) => this.inRange(g, p.template))) throw new BrokerError(`profile template ${name} lies inside a group's vmid range`, 400, "template_range");
+    }
+    // Persist synchronously after validation and before the new authority becomes visible to callers.
+    persist?.(structuredClone(next));
+    this.c.groups = next;
+    return this.groups();
   }
 
   // ---- access ----
@@ -283,7 +320,11 @@ export class Broker {
 
     return this.serial(async () => {
       const all = await this.d.pve.clusterResources();
-      const mine = all.filter((r) => this.belongs(g, r));
+      // The limits are the organization's aggregate over its whole pool, not just what the broker made: the agent-container
+      // provider (plugins/proxmox-sandbox) creates guests in the same pool without this group's tag or vmid range, and its own
+      // check counts everything in the pool. Counting the same set here keeps the two from adding up to twice the limit.
+      // Isolation is unchanged: only guests that belong() to the group can be read or destroyed.
+      const mine = all.filter((r) => (r.type === "lxc" || r.type === "qemu") && r.pool === g.pool && Number((r as { template?: number }).template ?? 0) !== 1 && (r.node === undefined || r.node === this.c.proxmox.node));
       const cores = mine.reduce((s, r) => s + (r.maxcpu ?? 0), 0);
       const memMb = mine.reduce((s, r) => s + (r.maxmem ?? 0) / MiB, 0);
       const over = mine.length >= g.limits.maxLeases ? `lease limit (${g.limits.maxLeases})`

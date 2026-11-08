@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run", "start": "node --experimental-strip-types src/main.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run", "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/epaperclip-broker.mjs", "start": "node --experimental-strip-types src/main.ts" },
   "dependencies": { "@papercliped-engine/proxmox-client": "workspace:*" },
-  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+  "devDependencies": { "@types/node": "^22.10.0", "esbuild": "^0.28.2", "typescript": "^5.9.3", "vitest": "^3.2.4" }
 }

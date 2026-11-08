@@ -345,7 +345,7 @@ export function LiveAccess() {
   return (
     <PageFrame width="6xl">
       <PageHeader
-        title="Access control"
+        title="People and permissions"
         subtitle="Integrated Access Control: people here are real Proxmox users, and what they can do is Proxmox permissions. A change made here is made in Proxmox first, as you, and Proxmox decides whether it's allowed."
       />
       <Tabs<TabId> value={tab} tabs={TABS} onChange={setTab} className="mb-6" wrap />

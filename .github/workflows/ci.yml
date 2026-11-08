@@ -1,0 +1,55 @@
+name: CI
+# Every pull request and every push to main: the same checks the release workflow runs before it packages anything.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/check-pve-api.mjs
+      - run: pnpm test:scripts
+      - name: Providers (Proxmox sandbox, remote worker)
+        run: |
+          npm --prefix plugins/proxmox-sandbox ci
+          npm --prefix plugins/proxmox-sandbox run typecheck
+          npm --prefix plugins/proxmox-sandbox test
+          npm --prefix plugins/proxmox-sandbox run build
+          npm --prefix plugins/remote-worker ci
+          npm --prefix plugins/remote-worker run typecheck
+          npm --prefix plugins/remote-worker test
+          npm --prefix plugins/remote-worker run build
+      - name: Worker installer simulation
+        run: bash deploy/worker/test/run.sh
+  deploy-simulation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build the provider the installer ships
+        run: |
+          npm --prefix plugins/proxmox-sandbox ci
+          npm --prefix plugins/proxmox-sandbox run build
+          npm --prefix plugins/remote-worker ci
+          npm --prefix plugins/remote-worker run build
+      # As root, like the release workflow, so the ownership checks are real rather than recorded.
+      - run: sudo env "PATH=$PATH" bash deploy/test/run.sh

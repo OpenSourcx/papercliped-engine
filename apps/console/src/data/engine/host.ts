@@ -34,7 +34,25 @@ export interface ConnectorList {
 }
 
 /** A domain the connected Cloudflare account can publish from. */
-export interface PublishZone { id: string; name: string }
+export interface PublishZone { id: string; name: string; accountId?: string; accountName?: string }
+
+export type CloudflareStepId = "token" | "zone" | "tunnel" | "dns" | "connector" | "reachable";
+/** Where this device's self-managed Cloudflare address stands. The tunnel run token is never part of it. */
+export interface CloudflareDeployment {
+  state: "none" | "failed" | "needs_confirmation" | "connecting" | "running" | "stopped";
+  hostname?: string; zone?: string; tunnelId?: string;
+  steps: { id: CloudflareStepId; label: string; state: "done" | "todo" | "failed" }[];
+  message: string;
+  failure?: { step: CloudflareStepId; code: string; message: string };
+  conflict?: { type: string; content: string; proxied?: boolean };
+  helper?: { owner: string | null; installed: boolean; active: boolean } | { error: string };
+}
+export interface CloudflarePermissions {
+  tokenOk: boolean; ready: boolean;
+  checks: { id: string; label: string; required: boolean; state: "ok" | "missing" | "unknown"; detail: string }[];
+  accounts: { id: string; name?: string }[];
+  guide: { id: string; label: string; required: boolean; why: string }[];
+}
 export interface PublicationPlan {
   provider: "cloudflare";
   hostname: string;
@@ -56,12 +74,15 @@ export interface ResourceGroupState extends ResourceGroupSize {
   pool: string;
   updatedAt?: string;
   updatedBy?: string;
+  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed" | "skipped"; detail?: string }[] };
 }
 
 /** Agent containers: agents run in unprivileged Proxmox containers, set up once by a Proxmox administrator. */
 export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
 export interface ContainersStep { id: string; label: string; done: boolean; detail?: string }
 export interface ContainersParams { storage: string; templateStorage: string; bridge: string; pool: string; size: { cores: number; memoryMb: number; diskGb: number } }
+/** Why a failed Proxmox task failed, in plain words, with the exact fix and the redacted log lines it rests on. */
+export interface ContainersDiagnosis { id: string; step: string; title: string; plain: string; fix: string[]; evidence: string[]; confidence: "matched" | "generic" }
 export interface ContainersStatus {
   state: ContainersState;
   steps: ContainersStep[];
@@ -75,6 +96,9 @@ export interface ContainersStatus {
   /** What the node offers for the three host choices, and a valid starting pick for each (null when it couldn't be read). */
   options?: { storages: string[]; templateStorages: string[]; bridges: string[]; suggested: { storage: string | null; templateStorage: string | null; bridge: string | null } } | null;
   error?: string;
+  /** Exactly which rights the sandbox user or its token lacks. */
+  grantMissing?: { path: string; role: string; who: "user" | "token"; why: string; lacking?: string[] }[];
+  diagnosis?: ContainersDiagnosis;
 }
 export interface ContainersJob {
   id: string;
@@ -86,6 +110,7 @@ export interface ContainersJob {
   steps: { id: string; label: string; state: "pending" | "running" | "done" | "failed" | "skipped"; detail?: string }[];
   log: { t: number; level: "info" | "warn" | "error"; text: string }[];
   error?: string;
+  diagnosis?: ContainersDiagnosis;
 }
 
 export class HostError extends Error {
@@ -122,6 +147,15 @@ async function call<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, 
 
 const enc = encodeURIComponent;
 
+export type RemoteMode = "local" | "cloudflare-self" | "connect";
+export interface ConnectStatusView {
+  mode: RemoteMode;
+  paired: boolean;
+  device?: { deviceId: string; accountId: string; name: string; pairedAt: number };
+  pairing?: { id: string; state: "pending" | "approved" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  tunnel?: { state: string; message: string; hostname?: string };
+}
+
 export const host = {
   engineStatus: () => call<EngineStatus>("GET", "/api/engine/status"),
   connectors: {
@@ -132,12 +166,28 @@ export const host = {
   },
   publishing: {
     cloudflareZones: () => call<{ zones: PublishZone[] }>("GET", "/api/publishing/cloudflare/zones").then((r) => r.zones ?? []),
+    cloudflarePermissions: (zone?: string) => call<{ permissions: CloudflarePermissions }>("GET", `/api/publishing/cloudflare/permissions${zone ? `?zone=${enc(zone)}` : ""}`).then((r) => r.permissions),
+    cloudflareDeployment: () => call<{ deployment: CloudflareDeployment }>("GET", "/api/publishing/cloudflare/deployment").then((r) => r.deployment),
+    cloudflareCreate: (zone: string, subdomain: string, confirmReplace = false) => call<{ deployment: CloudflareDeployment }>("POST", "/api/publishing/cloudflare/deployment", { zone, subdomain, confirmReplace }).then((r) => r.deployment),
+    cloudflareRemove: () => call<{ deployment: CloudflareDeployment }>("DELETE", "/api/publishing/cloudflare/deployment").then((r) => r.deployment),
     cloudflarePlan: (zone: string, subdomain: string) => call<{ plan: PublicationPlan }>("POST", "/api/publishing/cloudflare/plan", { zone, subdomain }).then((r) => r.plan),
+  },
+  /** Papercliped Connect: remote-access mode and ownership pairing. Proxmox administrators only; the host enforces it. */
+  connect: {
+    status: () => call<ConnectStatusView>("GET", "/api/papercliped/connect/status"),
+    mode: (mode: RemoteMode) => call<ConnectStatusView>("POST", "/api/papercliped/connect/mode", { mode }),
+    pairingStart: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/start", {}),
+    pairingPoll: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/poll", {}),
+    pairingConfirm: (accountId: string, deviceName: string) => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/confirm", { accountId, deviceName }),
+    pairingCancel: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/cancel", {}),
+    unpair: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/unpair", {}),
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
     setup: (choices: Partial<ContainersParams>) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/setup", choices),
     job: (id: string) => call<ContainersJob>("GET", `/api/agent-containers/jobs/${enc(id)}`),
+    /** Runs one step again on its own: "grant", "plugin" or "environments". */
+    step: (id: "grant" | "plugin" | "environments") => call<{ jobId: string; alreadyRunning: boolean }>("POST", `/api/agent-containers/steps/${enc(id)}`, {}),
     teardown: (confirm: string) => call<{ jobId: string }>("DELETE", "/api/agent-containers", { confirm }),
   },
   resourceGroups: {

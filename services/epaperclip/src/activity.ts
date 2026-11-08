@@ -10,7 +10,7 @@ import { redact } from "./connectors.ts";
  */
 
 export type Level = "info" | "warn" | "error";
-export type Source = "host" | "pin" | "engine" | "router";
+export type Source = "host" | "pin" | "engine" | "router" | "fabric";
 
 export interface ActivityEvent {
   /** Counts up from 1 for the life of the process, so a reader can ask for "everything after n". */

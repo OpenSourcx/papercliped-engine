@@ -25,7 +25,7 @@ export function keysForEvent(companyId: string, e: LiveEvent): readonly (readonl
   if (e.type.startsWith("heartbeat.run.")) {
     if (e.type === "heartbeat.run.log" || e.type === "heartbeat.run.event") return [];
     const agentId = str(p.agentId);
-    return [qk.agents(companyId), qk.dashboard(companyId), qk.costs(companyId), qk.runs(companyId), qk.attention(companyId), qk.badges(companyId), qk.workspaces(companyId), ...(agentId ? [qk.agent(companyId, agentId)] : [])];
+    return [qk.agents(companyId), qk.dashboard(companyId), qk.costs(companyId), qk.runs(companyId), ["engine", "co", companyId, "latest-run"], qk.attention(companyId), qk.badges(companyId), qk.workspaces(companyId), ...(agentId ? [qk.agent(companyId, agentId)] : [])];
   }
   if (e.type === "agent.status") {
     const agentId = str(p.agentId);

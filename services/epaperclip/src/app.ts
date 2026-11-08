@@ -11,6 +11,7 @@ import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOpti
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
 import { randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
+import { CHANNEL_INGRESS, channelIngress } from "./channel-ingress.ts";
 import { vaultFor } from "./features/vault-store.ts";
 import { activity } from "./activity.ts";
 import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
@@ -23,9 +24,12 @@ import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
 import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
-import { EngineGateway, type EngineStatus } from "./engine.ts";
+import { AppAccessManager } from "./app-access.ts";
+import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
+import { CloudflareProvision } from "./cloudflareProvision.ts";
+import { socketTunnelHelper } from "./tunnelHelper.ts";
 import { ConnectLink } from "./connectLink.ts";
 import { type TunnelHelper } from "./tunnelHelper.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
@@ -37,6 +41,13 @@ import { routerHandler } from "./router/server.ts";
 import { AgentContainers, parseSetup } from "./containers.ts";
 import type { SshRunner } from "./containers-ssh.ts";
 import { clientIp, trustTunnelWhen } from "./clientIp.ts";
+import { PinApps } from "./pin-apps.ts";
+import { BrokerAdmin, type BrokerGroupPolicy } from "./broker-client.ts";
+import { FabricHub } from "./fabric/hub.ts";
+import { FabricEnvironments } from "./fabric/engine.ts";
+import { realNetInfo } from "./fabric/net.ts";
+import { registerFabric } from "./features/fabric.ts";
+import { detectTransports, type NetInfo } from "@papercliped-engine/worker-fabric";
 
 /**
  * The ePaperclip host service's HTTP handler.
@@ -75,12 +86,16 @@ export interface AppDeps {
   containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
   /** The address people reach this device at (EPC_PUBLIC_URL), used in OAuth metadata. Without it, the request's Host header is used. */
   publicUrl?: string;
+  /** Local broker policy authority. Omit it until the broker has been configured on this device. */
+  broker?: { url: string; managementToken: string; fetch?: typeof fetch };
   /** Where the Router's own listener is (EPC_ROUTER_LISTEN), shown in the console; null when it is switched off. */
   routerListen?: string | null;
   /** Papercliped Connect base URL (tests); defaults to EPC_CONNECT_URL or https://connect.papercliped.co. */
   connectUrl?: string;
   /** The privileged tunnel helper (tests inject a fake; default is the root helper's socket). */
   tunnelHelper?: TunnelHelper;
+  /** The Worker Fabric (docs/WORKER-FABRIC.md). Omit it and /api/fabric answers 503. */
+  fabric?: { port: number; controlUrl: string; pluginDir: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
 }
 
 const COOKIE_BASE = "epc_session";
@@ -313,6 +328,8 @@ export interface ResourceGroup {
   maxGuests: number;
   updatedAt: number;
   updatedBy: string;
+  /** Durable provisioning state; a failed stage can be retried without recreating the organization. */
+  provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed" | "skipped"; detail?: string }[] };
 }
 
 export function parseResourceGroup(b: Record<string, unknown>): Pick<ResourceGroup, "name" | "cores" | "memoryMb" | "diskGb" | "maxGuests"> {
@@ -468,7 +485,8 @@ export function createApp(d: AppDeps) {
   const connectors = new Connectors(state, outbound, now);
   const publishing = new Publishing(state, outbound, now);
   const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now, { helper: d.tunnelHelper });
-  trustTunnelWhen(() => link.tunnelTrusted());
+  const cloudflare = new CloudflareProvision(publishing, state, d.tunnelHelper ?? socketTunnelHelper(), outbound, now);
+  trustTunnelWhen(() => link.tunnelTrusted() || (link.mode() === "cloudflare-self" && cloudflare.tunnelTrusted()));
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
@@ -476,8 +494,39 @@ export function createApp(d: AppDeps) {
   const router = new Router({ connections, fetch: outbound, now });
   const routerKeys = new RouterKeys(state, now);
   registerRouter(state, { router, keys: routerKeys, listen: () => d.routerListen ?? null });
+  // The Worker Fabric: the registry of workers, their listener and the provider's control API (docs/WORKER-FABRIC.md).
+  let fabricHub: FabricHub | null = null;
+  if (d.fabric) {
+    const fb = d.fabric;
+    const net = fb.netInfo ?? (() => realNetInfo(fb.customUrl ?? null));
+    const transports = () => detectTransports(net(), fb.port);
+    fabricHub = new FabricHub({ state, now, transports, heartbeatMs: fb.heartbeatMs });
+    registerFabric(state, { hub: fabricHub, envs: new FabricEnvironments({ gateway, hub: fabricHub, state, pluginDir: fb.pluginDir, controlUrl: fb.controlUrl }), transports, listen: { url: fb.customUrl ?? null, port: fb.port } });
+  }
+  const broker = d.broker ? new BrokerAdmin({ url: d.broker.url, token: d.broker.managementToken, fetch: d.broker.fetch }) : null;
 
   const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
+
+  /** Stable, non-overlapping high VMID ranges for broker-managed organization leases. The broker validates collisions again. */
+  const brokerRange = (companyId: string): [number, number] => {
+    let n = 0; for (const c of companyId) n = ((n * 31) + c.charCodeAt(0)) >>> 0;
+    const start = 900_000 + (n % 8_000) * 100;
+    return [start, start + 99];
+  };
+  const brokerGroupName = (companyId: string) => `org-${companyId.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 55)}`;
+  const brokerPolicy = (companyId: string, g: ResourceGroup, profiles: string[]): BrokerGroupPolicy => ({
+    name: brokerGroupName(companyId), pool: g.pool, tag: `epc-${g.pool}`.toLowerCase().replace(/[^a-z0-9_+.-]/g, "-").slice(0, 63), vmidRange: brokerRange(companyId), profiles,
+    limits: { maxLeases: g.maxGuests, maxCores: g.cores, maxMemoryMb: g.memoryMb, defaultTtlMinutes: 120, maxTtlMinutes: 240 },
+  });
+  const syncBrokerGroup = async (companyId: string, g: ResourceGroup) => {
+    if (!broker) throw new HttpError(409, "broker_not_configured", "The resource broker isn't configured on this device yet.");
+    const current = await broker.overview();
+    if (!current.profiles.length) throw new HttpError(409, "broker_profiles_missing", "The resource broker has no allowed container profile yet.");
+    const id = brokerGroupName(companyId);
+    const policy = current.groups[id] ?? brokerPolicy(companyId, g, current.profiles);
+    const next = { ...current.groups, [id]: { ...policy, pool: g.pool, limits: { ...policy.limits, maxLeases: g.maxGuests, maxCores: g.cores, maxMemoryMb: g.memoryMb } } };
+    await broker.replace(next);
+  };
 
   const needEngine = (): EngineGateway => {
     if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
@@ -746,12 +795,21 @@ export function createApp(d: AppDeps) {
           await pve.call("POST", "/pools", { poolid: free, comment: `ePaperclip organization: ${spec.name}` });
           return free;
         });
-        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username };
+        const pending: NonNullable<ResourceGroup["provisioning"]> = { state: "pending", at: now(), steps: [{ id: "pool", state: "done" }, { id: "acl", state: "pending" }, { id: "broker", state: "pending" }, { id: "environment", state: "pending" }] };
+        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username, provisioning: pending };
         state.setSetting("resourceGroups", { ...all, [companyId]: group });
         // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
-        const warnings = existing ? [] : await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        const warnings = await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+        pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
+        try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) {
+          // No broker on this device is a valid setup: the organization's agent containers are limited by the provider's own aggregate quota, and nothing needs the broker. A broker that exists but fails is still a failure.
+          if (e instanceof HttpError && e.code === "broker_not_configured") { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
         // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
-        warnings.push(...(await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message])));
+        const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
+        warnings.push(...environmentWarnings);
+        pending.steps[3] = { id: "environment", state: environmentWarnings.length ? "failed" : "done", ...(environmentWarnings.length ? { detail: environmentWarnings[0] } : {}) };
+        group.provisioning = { ...pending, state: warnings.length ? "failed" : "ready", ...(warnings.length ? { error: warnings[0] } : {}) };
+        state.setSetting("resourceGroups", { ...(state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {}), [companyId]: group });
         return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
@@ -783,6 +841,16 @@ export function createApp(d: AppDeps) {
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can set up agent containers");
         return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
+      });
+      return sendJson(res, r.alreadyRunning ? 200 : 202, r);
+    }
+    const acStep = path.match(/^\/api\/agent-containers\/steps\/([a-z]+)$/);
+    if (method === "POST" && acStep) {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
+        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b));
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
@@ -889,6 +957,7 @@ export function createApp(d: AppDeps) {
       if (id === "cloudflare") link.assertSelfManagedAllowed();
       if (method === "PUT") return sendJson(res, 200, { connector: id === "cloudflare" ? publishing.setToken(body!.apiKey, s.username) : connectors.setKey(id, body!.apiKey, s.username) });
       if (method === "DELETE") {
+        if (id === "cloudflare" && cloudflare.has()) throw new HttpError(409, "deployment_exists", "Remove this device's published address first. Without the token, its Cloudflare tunnel and DNS record would be left behind.");
         if (id === "cloudflare") publishing.remove(); else connectors.remove(id);
         return sendJson(res, 200, { ok: true });
       }
@@ -908,6 +977,30 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, { plan: publishing.plan(body.zone, body.subdomain) });
     }
 
+    // Self-managed Cloudflare: the customer's own token, used only here. Administrators only; every change is audited.
+    const cfRoute = path.match(/^\/api\/publishing\/cloudflare\/(permissions|deployment)$/);
+    if (cfRoute) {
+      const what = cfRoute[1]!;
+      const allowed = what === "permissions" ? ["GET"] : ["GET", "POST", "DELETE"];
+      if (!allowed.includes(method)) throw new HttpError(405, "method", "Method not allowed");
+      if (method !== "GET") requireSameSite(req);
+      const s = requireSession(req);
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      link.assertSelfManagedAllowed();
+      if (what === "permissions") return sendJson(res, 200, { permissions: await cloudflare.permissions(url.searchParams.get("zone")) });
+      if (method === "GET") return sendJson(res, 200, { deployment: await cloudflare.status() });
+      if (method === "DELETE") {
+        const view = await cloudflare.remove();
+        audit(req, "publishing.cloudflare.remove", s.username, view.state === "none" ? "removed" : "incomplete");
+        return sendJson(res, 200, { deployment: view });
+      }
+      if (link.mode() !== "cloudflare-self") throw new HttpError(409, "mode_not_self", "Choose Self-managed Cloudflare first.");
+      const body = await readJson(req);
+      const view = await cloudflare.provision(body.zone, body.subdomain, { confirmReplace: body.confirmReplace === true });
+      audit(req, "publishing.cloudflare.provision", s.username, `${view.hostname ?? ""} ${view.state}`);
+      return sendJson(res, 200, { deployment: view });
+    }
+
     // Papercliped Connect: remote-access mode and ownership pairing. Machine-wide, so Proxmox administrators only.
     if (path.startsWith("/api/papercliped/connect/")) {
       const action = path.slice("/api/papercliped/connect/".length);
@@ -919,7 +1012,13 @@ export function createApp(d: AppDeps) {
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage Papercliped Connect");
       const body = method === "POST" ? await readJson(req) : {};
       if (action === "status") return sendJson(res, 200, await link.statusLive());
-      if (action === "mode") return sendJson(res, 200, await link.setMode(body.mode));
+      if (action === "mode") {
+        const was = link.mode();
+        const out = await link.setMode(body.mode);
+        // Leaving self-managed Cloudflare stops its connector now; the Cloudflare objects stay until Remove.
+        if (was === "cloudflare-self" && out.mode !== "cloudflare-self") await cloudflare.stop();
+        return sendJson(res, 200, out);
+      }
       if (action === "pairing/start") return sendJson(res, 200, await link.start());
       if (action === "pairing/poll") return sendJson(res, 200, await link.poll());
       if (action === "pairing/confirm") return sendJson(res, 200, await link.confirm(body.accountId, body.deviceName));
@@ -965,7 +1064,7 @@ export function createApp(d: AppDeps) {
       const release = pin.admit(s.username);
       const gone = new AbortController();
       res.on("close", () => !res.writableFinished && gone.abort());
-      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), connect: connectWs, engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
+      const host: PinToolHost = { node: d.pve.node, username: s.username, pve: () => clientFor(s), connect: connectWs, engine: <T,>(p: string) => needEngine().userJson<T>(s, "GET", p), enginePost: (p: string, body: unknown) => needEngine().userJson<{ id?: string; identifier?: string }>(s, "POST", p, body), apps: gateway ? { pin: new PinApps(state), call: (m, p, b) => gateway.userJson(s, m, p, b) } : undefined, vault: async () => ((await isNodeAdmin(await clientFor(s))) ? vaultFor(state).list() : null) };
       try {
         return await pin.chat(res, prepared, host, gone.signal);
       } finally {
@@ -1957,10 +2056,22 @@ export function createApp(d: AppDeps) {
     if (!ok) throw new HttpError(403, "agents_on_host_refused", "ePaperclip keeps agents off the host: the engine's managed-sandbox-only setting can't be turned off from here.");
   };
 
+  const appAccess = new AppAccessManager();
+
   /** /engine/api/*: the engine, as the signed-in person. Changes need the same header and Origin as our own API. */
   const engineProxy = async (req: IncomingMessage, res: ServerResponse) => {
     const s = requireSession(req);
     if (req.method !== "GET" && req.method !== "HEAD") requireSameSite(req);
+    // Route every spelling accepted by the engine through the same permission-safe finish, including encoded paths.
+    let target = "";
+    try { target = decodeURIComponent((req.url ?? "").split("?")[0]!).replace(/^\/engine/, ""); } catch { /* forward performs the normal path validation */ }
+    const finish = target.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/tools\/apps\/([A-Za-z0-9_-]{1,64})\/finish\/?$/i);
+    if (req.method === "POST" && finish) {
+      enginePath(req.url ?? "");
+      const result = await appAccess.save((m, p, b) => needEngine().userJson(s, m, p, b), finish[1]!, finish[2]!, await readJson(req, 128 * 1024));
+      audit(req, "app.access.save", finish[2]!);
+      return sendJson(res, 200, result);
+    }
     await needEngine().forward(req, res, s, maxUpload, {
       inspect: engineGuard,
       // New agents default to their organization's container environment right away.
@@ -1974,6 +2085,8 @@ export function createApp(d: AppDeps) {
     baseHeaders(res, d.secureCookies);
     const url = new URL(req.url ?? "/", "http://epaperclip");
     try {
+      // Provider signatures are checked by the engine. This narrowly scoped ingress never authenticates as a user.
+      if (req.method === "POST" && CHANNEL_INGRESS.test(url.pathname)) return await channelIngress(req, res, url.pathname, needEngine());
       if (req.headers["x-epc-node"] !== undefined && url.pathname.startsWith("/api/")) {
         const sess = d.sessions.get(cookieValue(req, COOKIE));
         if (sess) await nodeScope.resolve(req, sess.id, () => clientFor(sess));
@@ -2012,5 +2125,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }) });
+  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }), fabric: fabricHub });
 }

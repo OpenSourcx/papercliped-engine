@@ -39,7 +39,7 @@ All tokens live in one file, `src/index.css`. Runtime-tunable values (anything A
 
 Radius assignments: chips and tags `sm`; buttons, inputs and menu rows `md`/`lg`; cards and popovers `xl`; modals and the island `2xl`; avatars and pills `full`. A nested element steps down one tier from its container.
 
-Control heights: 32px (`sm`), 40px (`md`, the default for buttons, inputs and selects), 44px (`lg`). Touch targets are at least 40px; icon-only buttons are 32px only inside dense chrome that also has a larger target nearby.
+Control heights: 32px (`sm`), 40px (`md`, the default for buttons, inputs and selects), 44px (`lg`). With a mouse, buttons, inputs and selects are 40px by default. With a touch screen (`pointer: coarse`) every button, switch, radio, tab, select and input is at least 44px (`--touch-target`, set once in `src/index.css`; `/project/design/CORE.md` asks for 44px), icon-only buttons included.
 
 ### 2. Semantic (roles, set per theme)
 
@@ -68,7 +68,7 @@ Every preset in `theme/theme.tsx` carries the full semantic set, so switching pr
 
 ## Light and dark
 
-Dark (Paperclip Warm) is the default. Graphite and Midnight are dark; Daylight is light. The theme runtime writes a preset's tokens onto `<html>` and sets `color-scheme`. Components never branch on the theme: if something needs a different value in light mode, it is a token with a different value in the light presets. Check every change in at least Warm and Daylight.
+Dark (Papercliped Clip) is the default and Papercliped Clip Light its light pair: both use the Papercliped "clip" palette from the OpenSourcx/papercliped site and launch images (`web/scripts/community-cards.mjs`). Paperclip Warm, Graphite and Midnight are other dark presets; Daylight is another light one. Pin's orb tokens (`--pin-*`) are Pin's and do not change with the preset. `:root` in `index.css` still holds the Warm values for first paint. The theme runtime writes a preset's tokens onto `<html>` and sets `color-scheme`. Components never branch on the theme: if something needs a different value in light mode, it is a token with a different value in the light presets. Check every change in at least Clip and Clip Light.
 
 ## Status vocabulary
 

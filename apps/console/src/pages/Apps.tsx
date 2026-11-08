@@ -41,7 +41,7 @@ function SessionPanel({ session, onClose }: { session: AppSession; onClose: () =
           <div>
             <div className="text-compact font-medium mb-2">Access level</div>
             <Segmented value={session.level} onChange={(level) => updateSession(session.id, { level })} options={[{ value: "read", label: "Read only" }, { value: "control", label: "Full control" }]} />
-            <p className="text-xs text-ink-3 mt-2">Never more than {owner?.name ?? "its owner"} can do in Access control, whatever is set here.</p>
+            <p className="text-xs text-ink-3 mt-2">Never more than {owner?.name ?? "its owner"} can do in Access, whatever is set here.</p>
           </div>
           <div>
             <div className="text-compact font-medium mb-2">Organizations</div>
@@ -129,7 +129,7 @@ export function Apps() {
           <p className="text-sm text-ink-2 mt-3">{MODE_TEXT[data.apps.mode]}</p>
           <div className="mt-4 pt-4 border-t border-line text-compact text-ink-3 space-y-1.5">
             <p><span className="text-ink-2">Read only</span> sessions can only look. <span className="text-ink-2">Full control</span> sessions can act, within this setting.</p>
-            <p className="flex gap-1.5"><ShieldAlert className="h-4 w-4 shrink-0 mt-px" />Every session belongs to a user in Access control and can never do more than that user.</p>
+            <p className="flex gap-1.5"><ShieldAlert className="h-4 w-4 shrink-0 mt-px" />Every session belongs to a user in Access and can never do more than that user.</p>
           </div>
         </Card>
       </div>

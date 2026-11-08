@@ -3,7 +3,8 @@ import { request, createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppAccessManager } from "../src/app-access.ts";
 import { createApp } from "../src/app.ts";
 import { EngineGateway, enginePath, managedEmail, mergeCookies, SERVICE_EMAIL } from "../src/engine.ts";
 import { SessionStore } from "../src/sessions.ts";
@@ -300,6 +301,10 @@ describe("resource groups", () => {
     const { group } = await r.json() as any;
     expect(group).toMatchObject({ companyId: "c1", pool: "epc-northwind-labs", cores: 8, maxGuests: 5, updatedBy: "sam@pve" });
     expect(pve.pools.get("epc-northwind-labs")!.comment).toBe("ePaperclip organization: Northwind Labs");
+    // A device without the host broker is a valid setup: that step is skipped (and says so), and the organization is Ready, not "needs repair".
+    expect(group.provisioning.state).toBe("ready");
+    expect(group.provisioning.steps.find((x: any) => x.id === "broker")).toMatchObject({ state: "skipped", detail: expect.stringContaining("not set up") });
+    expect(group.warnings ?? []).toEqual([]);
     const again = await send("PUT", "/api/resource-groups/c1", { ...limits, cores: 16 }, { Cookie: c });
     expect((await again.json() as any).group).toMatchObject({ pool: "epc-northwind-labs", cores: 16 });
     expect(pve.calls.filter((x) => x.method === "POST" && x.path === "/pools")).toHaveLength(1);
@@ -353,5 +358,29 @@ describe("engine paths", () => {
     expect(enginePath("/engine/api/companies/c1/issues?status=todo&q=a%20b")).toBe("/api/companies/c1/issues?status=todo&q=a%20b");
     expect(enginePath("/engine/api/cli-auth/me")).toBe("/api/cli-auth/me");
     expect(() => enginePath("/engine/api/x?a=\u0001")).toThrow();
+  });
+});
+
+describe("permission-safe app finish routing", () => {
+  it("routes normal, encoded and case-insensitive finish paths through the same manager as the caller", async () => {
+    const cookie = await signIn();
+    const seen: unknown[] = [];
+    const save = vi.spyOn(AppAccessManager.prototype, "save").mockImplementation(async (call, companyId, connectionId, body) => {
+      seen.push(await call("GET", "/api/cli-auth/me"));
+      return { companyId, connectionId, body };
+    });
+    try {
+      for (const path of ["/engine/api/companies/c1/tools/apps/x1/finish", "/engine/api/COMPANIES/c1/tools/apps/x1/FINISH/", "/engine/api/companies/c1/tools/apps/%78%31/%66inish?unused=1"]) {
+        const r = await send("POST", path, { preserveExistingAccess: false }, { Cookie: cookie });
+        expect(r.status).toBe(200);
+      }
+      expect(save).toHaveBeenCalledTimes(3);
+      expect(seen).toEqual(Array.from({ length: 3 }, () => expect.objectContaining({ userId: eng.userId(managedEmail("sam@pve")) })));
+      const unauthenticated = await send("POST", "/engine/api/companies/c1/tools/apps/x1/finish", {});
+      expect(unauthenticated.status).toBe(401);
+      const crossSite = await send("POST", "/engine/api/companies/c1/tools/apps/x1/finish", {}, { Cookie: cookie, Origin: "https://elsewhere.invalid" });
+      expect(crossSite.status).toBe(403);
+      expect(save).toHaveBeenCalledTimes(3);
+    } finally { save.mockRestore(); }
   });
 });

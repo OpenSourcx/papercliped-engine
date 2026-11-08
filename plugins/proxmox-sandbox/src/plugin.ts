@@ -373,6 +373,29 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     };
   }
 
+  // shortcut: one lock per pool inside this process, which is enough while a single engine process allocates; a second
+  // engine process sharing a pool would need Proxmox-side reservation (upgrade then).
+  const poolLocks = new Map<string, Promise<unknown>>();
+  function withPoolLock<T>(pool: string, fn: () => Promise<T>): Promise<T> {
+    const run = (poolLocks.get(pool) ?? Promise.resolve()).catch(() => undefined).then(fn);
+    poolLocks.set(pool, run.catch(() => undefined));
+    return run;
+  }
+
+  /** Refuses a new container that would take the organization past its aggregate limits. Counts what is really in the pool now (templates excluded). */
+  async function assertWithinQuota(api: ProxmoxClient, config: ProxmoxDriverConfig): Promise<void> {
+    if (config.quotaGuests == null && config.quotaCores == null && config.quotaMemoryMb == null) return;
+    const members = ((await api.pool(config.pool!)).members ?? []) as { type?: string; template?: number; maxcpu?: number; maxmem?: number }[];
+    const guests = members.filter((m) => (m.type === "lxc" || m.type === "qemu") && Number(m.template ?? 0) !== 1);
+    const cores = guests.reduce((n, m) => n + (Number(m.maxcpu) || 0), 0);
+    const memoryMb = guests.reduce((n, m) => n + Math.ceil((Number(m.maxmem) || 0) / (1024 * 1024)), 0);
+    const over: string[] = [];
+    if (config.quotaGuests != null && guests.length + 1 > config.quotaGuests) over.push(`machines (${guests.length} of ${config.quotaGuests} in use)`);
+    if (config.quotaCores != null && cores + config.cores > config.quotaCores) over.push(`CPU cores (${cores} of ${config.quotaCores} in use, this one needs ${config.cores})`);
+    if (config.quotaMemoryMb != null && memoryMb + config.memoryMb > config.quotaMemoryMb) over.push(`memory (${memoryMb} of ${config.quotaMemoryMb} MiB in use, this one needs ${config.memoryMb})`);
+    if (over.length) throw new Error(`The organization's resource limit is reached: ${over.join("; ")}. Nothing was created. Stop other containers or raise the organization's limits.`);
+  }
+
   /** Creates the container (clone or create) and returns its vmid. Retries if another caller took the same vmid. */
   async function createContainer(
     api: ProxmoxClient,
@@ -678,7 +701,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         if (assessment.errors.length > 0) throw new Error(`Template ${template.vmid} is not safe to clone: ${assessment.errors.join(" ")}`);
       }
 
-      const vmid = await createContainer(api, config, template, params, deadline);
+      const vmid = await withPoolLock(config.pool!, async () => { await assertWithinQuota(api, config); return createContainer(api, config, template, params, deadline); });
       const ref: LeaseRef = { node: config.node!, vmid };
       try {
         if (template.kind === "vmid") {

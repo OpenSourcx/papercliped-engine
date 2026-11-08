@@ -3,7 +3,7 @@
 export const SCHEMA = 1;
 export const CONNECTOR_KINDS = ["model", "code", "chat", "mail", "storage", "network"] as const;
 
-export type EntryKind = "connector" | "adapter" | "skill";
+export type EntryKind = "connector" | "adapter" | "skill" | "plugin";
 
 export type Source =
   /** Ships with ePaperclip or Paperclip; nothing to download. */

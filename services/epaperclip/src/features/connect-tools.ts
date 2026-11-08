@@ -1,7 +1,9 @@
 import { ProxmoxError, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { EngineGateway } from "../engine.ts";
 import { HttpError } from "../http.ts";
-import { PinError, runTool, TOOLS, type PinToolHost } from "../pin.ts";
+import { APPROVALS_WHERE, PinError, runTool, TOOLS, type PinToolHost } from "../pin.ts";
+import { PinApps } from "../pin-apps.ts";
+import { ACTS } from "./pin-act.ts";
 import type { Session } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { fetchVendorText } from "../vendorFetch.ts";
@@ -104,6 +106,7 @@ const hostFor = (env: ToolEnv): PinToolHost => ({
   username: env.username,
   pve: async () => env.pve,
   engine: <T,>(p: string) => engine(env)<T>("GET", p),
+  apps: env.gateway ? { pin: new PinApps(env.state), call: (m, p, b) => engine(env)(m, p, b) } : undefined,
 });
 
 const pinRead = (name: string, title: string): McpTool => {
@@ -111,7 +114,7 @@ const pinRead = (name: string, title: string): McpTool => {
   return {
     name, title, description: def.description, inputSchema: def.parameters as Record<string, unknown>, access: "read", idempotent: true,
     async run(args, env) {
-      if (name === "org_summary") orgOk(env, idArg(args.companyId, "companyId"));
+      if (["org_summary", "list_organization_apps", "list_app_action_requests", "list_app_tools", "app_tool_status"].includes(name)) orgOk(env, idArg(args.companyId, "companyId"));
       const out = await runTool(name, args, hostFor(env));
       if (name === "list_organizations" && env.grant.orgs) {
         const o = out as { organizations: { id: string }[] };
@@ -187,6 +190,10 @@ export const MCP_TOOLS: McpTool[] = [
   // ---- Read: organizations
   pinRead("list_organizations", "List organizations"),
   pinRead("org_summary", "Organization summary"),
+  pinRead("list_organization_apps", "Organization apps"),
+  pinRead("list_app_action_requests", "Held app actions"),
+  pinRead("list_app_tools", "App actions and Pin's access"),
+  pinRead("app_tool_status", "Status of a held app action"),
   {
     name: "list_agents", title: "List agents", access: "read", idempotent: true, description: "The agents of one organization with role and status.",
     inputSchema: schema({ companyId: { type: "string" } }, ["companyId"]),
@@ -289,6 +296,27 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   // ---- Control: engine
+  {
+    name: "call_app_tool", title: "Use an organization app", access: "control", destructive: true,
+    description: "Use one action of an organization's connected app under Pin's own identity in that organization. The organization's policy decides: it may run, wait for a person's approval (it then returns approval_required and a request id; you cannot approve it), or be refused. Without the person's permission to act without asking, this only proposes the call in the console. Only actions an administrator allowed Pin can run.",
+    inputSchema: schema({ companyId: { type: "string" }, connectionId: { type: "string" }, tool: { type: "string", maxLength: 200 }, parameters: { type: "object" } }, ["companyId", "connectionId", "tool"]),
+    async run(a, env) {
+      strictArgs(a, ["companyId", "connectionId", "tool", "parameters"]);
+      let parsed: Record<string, unknown>;
+      try { parsed = ACTS.call_app_tool!.parse(a); } catch (e) { throw bad(e instanceof Error ? e.message : "That can't be used."); }
+      orgOk(env, parsed.companyId as string);
+      engine(env); // 503 when the engine isn't set up
+      if (!env.grant.direct) {
+        const plan = createPlan(runtimeFor(env.state), { owner: env.username, title: `${env.grant.clientName}: use ${parsed.tool}`, summary: `Proposed by the connected app ${env.grant.clientName}.`, steps: [{ kind: "act", tool: "call_app_tool", params: parsed }], createdBy: "app", names: new Map() });
+        return { status: "proposed", planId: plan.id, note: "NOTHING has run. The person reviews this in the console (Pin, Plans) and approves it there. When it runs, the organization's own policy still decides, and an action set to ask first waits for an organization approver." };
+      }
+      const out = await new PinApps(env.state).callTool(engine(env), parsed.companyId as string, parsed.connectionId as string, parsed.tool as string, parsed.parameters as Record<string, unknown>);
+      if (out.outcome === "done") return { status: "done", result: out.result };
+      if (out.outcome === "approval_required") return { status: "approval_required", actionRequestId: out.actionRequestId, note: out.message, approveIn: APPROVALS_WHERE };
+      if (out.outcome === "failed") return { status: "failed", note: `The organization allowed it, but the app reported an error: ${out.message}` };
+      return { status: "denied", note: out.message };
+    },
+  },
   {
     name: "create_issue", title: "Create a task", access: "control", description: "Create a task in an organization.",
     inputSchema: schema({ companyId: { type: "string" }, title: { type: "string", maxLength: 200 }, description: { type: "string", maxLength: 8000 }, priority: { type: "string", enum: ["critical", "high", "medium", "low"] } }, ["companyId", "title"]),

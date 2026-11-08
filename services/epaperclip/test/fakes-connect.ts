@@ -31,6 +31,8 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   const logins = new Map<string, Json>();
   const adapters = new Map<string, Json>(["claude_local", "codex_local", "http", "process", "cursor", "opencode_local"].map((t) => [t, { type: t, disabled: false, builtin: true }]));
   const adapterCalls: { method: string; url: string; body: Json }[] = [];
+  const plugins = new Map<string, Json>([["pl-preexisting", { id: "pl-preexisting", pluginKey: "legacy.thing", status: "ready", packageName: "legacy-thing", version: "0.1.0" }]]);
+  const pluginCalls: { method: string; url: string; body: Json }[] = [];
   const aiConnections: Json[] = [];
   const loginMode = { raw: null as null | ((id: string, polls: number) => Json) };
   const server: Server = createServer(async (req, res) => {
@@ -43,7 +45,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(body));
     };
-    const overlay = p.startsWith("/api/adapters") || /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
+    const overlay = p.startsWith("/api/adapters") || p.startsWith("/api/plugins") || /\/(adapters\/[\w-]+\/login-sessions|setup-token-login-sessions|ai-connections)/.test(p) || /^\/api\/(issues|agents|approvals)\/[\w-]+/.test(p) || /^\/api\/companies\/[\w-]+\/(goals|projects|costs\/summary)/.test(p) || (/^\/api\/companies\/[\w-]+\/issues$/.test(p) && req.method === "POST");
     if (!overlay) {
       // Everything else is the stock fake engine.
       const hop = new Set(["connection", "keep-alive", "upgrade", "host", "content-length", "transfer-encoding", "te", "trailer", "proxy-connection"]);
@@ -75,6 +77,26 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       return send(200, [{ id: "g0", title: "Grow", name: "Site", level: "company", status: "active" }]);
     }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/costs\/summary$/))) return inCompany(m[1]) ? send(200, { spendCents: 1234, budgetCents: 50000 }) : send(403, { error: "Not a member" });
+    if (p === "/api/plugins" && req.method === "GET") return send(200, [...plugins.values()]);
+    if (p === "/api/plugins/install" && req.method === "POST") {
+      const b = body();
+      pluginCalls.push({ method: "POST", url: p, body: b });
+      if (b.version === "9.9.9") return send(400, { error: "Failed to install plugin: package not found" });
+      const id = `pl-${String(b.packageName).replace(/\W+/g, "-")}`;
+      plugins.set(id, { id, pluginKey: String(b.packageName), status: "ready", packageName: b.packageName, version: b.version });
+      return send(201, { id });
+    }
+    if ((m = p.match(/^\/api\/plugins\/([\w-]+)(\/upgrade|\/enable|\/disable)?$/))) {
+      const pl = plugins.get(m[1]);
+      if (!pl) return send(404, { error: "Plugin not found" });
+      pluginCalls.push({ method: req.method!, url: p, body: body() });
+      if (m[2] === "/upgrade" && body().version === "3.0.0") return send(400, { error: `Upgrade for "${m[1]}" introduces new capabilities that require approval: companies.read. The previous version declared [environment.drivers.register]. Please review and approve the capability escalation before upgrading.` });
+      if (m[2] === "/upgrade") pl.version = body().version;
+      if (m[2] === "/disable") pl.status = "disabled";
+      if (m[2] === "/enable") pl.status = "ready";
+      if (!m[2] && req.method === "DELETE") plugins.delete(m[1]);
+      return send(200, pl);
+    }
     if (p === "/api/adapters" && req.method === "GET") return send(200, [...adapters.values()]);
     if (p === "/api/adapters/install" && req.method === "POST") {
       const b = body();
@@ -151,7 +173,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, issues, agents, approvals, seen, logins, adapters, adapterCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+  return { url, issues, agents, approvals, seen, logins, adapters, adapterCalls, plugins, pluginCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 export const pkce = () => {

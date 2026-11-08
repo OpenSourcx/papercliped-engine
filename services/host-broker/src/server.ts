@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { ProxmoxError } from "@papercliped-engine/proxmox-client";
 import { Broker, BrokerError, type GuestActionName } from "./broker.ts";
 import type { Principal } from "./config.ts";
+import { GroupRegistry } from "./registry.ts";
 
 /**
  * The broker's HTTP API. Callers send `Authorization: Bearer <token>`; the broker compares the token's SHA-256 with the
@@ -32,6 +33,14 @@ export function authenticate(header: string | undefined, principals: Principal[]
     if (timingSafeEqual(got, Buffer.from(p.tokenSha256, "hex"))) found = p;
   }
   return found;
+}
+
+/** The admin capability is separate from agent/Pin principals and is accepted only on loopback. */
+export function authenticateManagement(header: string | undefined, expectedSha256: string): boolean {
+  const m = header?.match(/^Bearer ([A-Za-z0-9._~+/=-]{24,512})$/);
+  if (!m) return false;
+  const got = createHash("sha256").update(m[1]).digest();
+  return timingSafeEqual(got, Buffer.from(expectedSha256, "hex"));
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -64,13 +73,24 @@ const optStr = (v: unknown, what: string) => {
   return v;
 };
 
-export async function handle(broker: Broker, principals: Principal[], req: IncomingMessage, res: ServerResponse) {
+export async function handle(broker: Broker, principals: Principal[], registry: GroupRegistry, managementTokenSha256: string, req: IncomingMessage, res: ServerResponse) {
   try {
     const url = new URL(req.url ?? "/", "http://broker");
     const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
     const method = req.method ?? "GET";
 
     if (method === "GET" && url.pathname === "/v1/health") return send(res, 200, { ok: true });
+
+    if (parts[0] === "v1" && parts[1] === "admin" && parts[2] === "groups") {
+      if (!authenticateManagement(req.headers.authorization, managementTokenSha256)) return send(res, 401, { error: "Missing or invalid management token", code: "unauthorized" });
+      if (method === "GET" && parts.length === 3) return send(res, 200, { groups: registry.groups(), profiles: broker.profiles() });
+      if (method === "PUT" && parts.length === 3) {
+        const body = await readJson(req);
+        if (!Object.hasOwn(body, "groups")) throw new BrokerError("groups is required", 400, "bad_request");
+        return send(res, 200, { groups: registry.replace(body.groups) });
+      }
+      throw new BrokerError("Not found", 404, "not_found");
+    }
 
     const who = authenticate(req.headers.authorization, principals);
     if (!who) return send(res, 401, { error: "Missing or invalid token", code: "unauthorized" });
@@ -120,8 +140,8 @@ export async function handle(broker: Broker, principals: Principal[], req: Incom
   }
 }
 
-export function startServer(broker: Broker, principals: Principal[], listen: { host: string; port: number }): Server {
-  const server = createServer((req, res) => void handle(broker, principals, req, res));
+export function startServer(broker: Broker, principals: Principal[], registry: GroupRegistry, managementTokenSha256: string, listen: { host: string; port: number }): Server {
+  const server = createServer((req, res) => void handle(broker, principals, registry, managementTokenSha256, req, res));
   server.listen(listen.port, listen.host);
   return server;
 }

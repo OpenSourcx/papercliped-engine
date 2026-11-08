@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 /**
@@ -49,6 +50,10 @@ export interface BrokerConfig {
   groups: Record<string, ResourceGroup>;
   principals: Principal[];
   auditLog: string;
+  /** Local-only ePaperclip capability. Its plaintext value is supplied only through the service environment. */
+  managementTokenSha256: string;
+  /** Durable group-registry overlay; it contains policy, never bearer-token values. */
+  stateFile: string;
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
@@ -92,30 +97,18 @@ function parseProfile(name: string, p: any): Profile {
   throw new Error(`profiles.${name} needs either "ostemplate" or "template"`);
 }
 
-export function parseBrokerConfig(raw: unknown, env: Record<string, string | undefined>, readFile: (p: string) => string = (p) => readFileSync(p, "utf8")): BrokerConfig {
-  if (!raw || typeof raw !== "object") throw new Error("config must be a JSON object");
-  const c = raw as Record<string, any>;
-
-  const tokenSecret = env.PROXMOX_TOKEN_SECRET?.trim();
-  if (!tokenSecret) throw new Error("PROXMOX_TOKEN_SECRET is not set");
-
-  const pm = c.proxmox ?? {};
-  const url = str(pm.url, "proxmox.url");
-  if (new URL(url).protocol !== "https:") throw new Error("proxmox.url must use https");
-
-  const profiles: Record<string, Profile> = {};
-  for (const [name, p] of Object.entries(c.profiles ?? {})) profiles[name] = parseProfile(name, p);
-  if (Object.keys(profiles).length === 0) throw new Error("define at least one profile");
-
+/** Validates a persisted organization-group registry against the broker's fixed profiles. */
+export function parseManagedGroups(raw: unknown, profiles: Record<string, Profile>): Record<string, ResourceGroup> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("groups must be an object");
   const groups: Record<string, ResourceGroup> = {};
-  for (const [name, g] of Object.entries((c.groups ?? {}) as Record<string, any>)) {
+  for (const [name, g] of Object.entries(raw as Record<string, any>)) {
     if (!NAME.test(name)) throw new Error(`group name "${name}" is invalid`);
     const [lo, hi] = Array.isArray(g?.vmidRange) ? g.vmidRange : [];
     int(lo, `groups.${name}.vmidRange[0]`, 100, 999_999_999);
     int(hi, `groups.${name}.vmidRange[1]`, lo, 999_999_999);
     if (hi - lo > 10_000) throw new Error(`groups.${name}.vmidRange is wider than 10000 IDs`);
     const allowed = Array.isArray(g?.profiles) ? g.profiles : [];
-    for (const p of allowed) if (!Object.hasOwn(profiles, p)) throw new Error(`groups.${name} uses unknown profile "${p}"`);
+    for (const p of allowed) if (typeof p !== "string" || !Object.hasOwn(profiles, p)) throw new Error(`groups.${name} uses unknown profile "${String(p)}"`);
     if (allowed.length === 0) throw new Error(`groups.${name} must allow at least one profile`);
     const l = g?.limits ?? {};
     const limits = {
@@ -126,19 +119,39 @@ export function parseBrokerConfig(raw: unknown, env: Record<string, string | und
       defaultTtlMinutes: int(l.defaultTtlMinutes ?? 120, `groups.${name}.limits.defaultTtlMinutes`, 5, 7 * 24 * 60),
     };
     if (limits.defaultTtlMinutes > limits.maxTtlMinutes) throw new Error(`groups.${name}: defaultTtlMinutes cannot exceed maxTtlMinutes`);
-    groups[name] = { name, pool: str(g.pool, `groups.${name}.pool`, NAME), tag: str(g.tag ?? `lh-${name.toLowerCase()}`, `groups.${name}.tag`, TAG), vmidRange: [lo, hi], profiles: [...allowed], limits };
+    groups[name] = { name, pool: str(g.pool, `groups.${name}.pool`, NAME), tag: str(g.tag ?? `epc-${name.toLowerCase()}`, `groups.${name}.tag`, TAG), vmidRange: [lo, hi], profiles: [...allowed], limits };
   }
+  const list = Object.values(groups);
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    if (a.vmidRange[0] <= b.vmidRange[1] && b.vmidRange[0] <= a.vmidRange[1]) throw new Error(`groups ${a.name} and ${b.name} have overlapping vmid ranges`);
+    if (a.pool === b.pool) throw new Error(`groups ${a.name} and ${b.name} share pool ${a.pool}`);
+    if (a.tag === b.tag) throw new Error(`groups ${a.name} and ${b.name} share tag ${a.tag}`);
+  }
+  return groups;
+}
+
+export function parseBrokerConfig(raw: unknown, env: Record<string, string | undefined>, readFile: (p: string) => string = (p) => readFileSync(p, "utf8")): BrokerConfig {
+  if (!raw || typeof raw !== "object") throw new Error("config must be a JSON object");
+  const c = raw as Record<string, any>;
+
+  const tokenSecret = env.PROXMOX_TOKEN_SECRET?.trim();
+  if (!tokenSecret) throw new Error("PROXMOX_TOKEN_SECRET is not set");
+  const managementToken = env.EPC_BROKER_MANAGEMENT_TOKEN?.trim();
+  if (!managementToken || !/^[A-Za-z0-9._~+/=-]{24,512}$/.test(managementToken)) throw new Error("EPC_BROKER_MANAGEMENT_TOKEN is not set or invalid");
+
+  const pm = c.proxmox ?? {};
+  const url = str(pm.url, "proxmox.url");
+  if (new URL(url).protocol !== "https:") throw new Error("proxmox.url must use https");
+
+  const profiles: Record<string, Profile> = {};
+  for (const [name, p] of Object.entries(c.profiles ?? {})) profiles[name] = parseProfile(name, p);
+  if (Object.keys(profiles).length === 0) throw new Error("define at least one profile");
+
+  const groups = parseManagedGroups(c.groups ?? {}, profiles);
 
   // Ranges, pools and tags must not overlap, or one company could reach another's guests.
   const list = Object.values(groups);
-  for (let i = 0; i < list.length; i++) {
-    for (let j = i + 1; j < list.length; j++) {
-      const a = list[i], b = list[j];
-      if (a.vmidRange[0] <= b.vmidRange[1] && b.vmidRange[0] <= a.vmidRange[1]) throw new Error(`groups ${a.name} and ${b.name} have overlapping vmid ranges`);
-      if (a.pool === b.pool) throw new Error(`groups ${a.name} and ${b.name} share pool ${a.pool}`);
-      if (a.tag === b.tag) throw new Error(`groups ${a.name} and ${b.name} share tag ${a.tag}`);
-    }
-  }
 
   const protectedVmids: number[] = (Array.isArray(c.protectedVmids) ? c.protectedVmids : []).map((v: unknown, i: number) => int(v, `protectedVmids[${i}]`, 100, 999_999_999));
   const inAnyRange = (v: number) => list.some((g) => v >= g.vmidRange[0] && v <= g.vmidRange[1]);
@@ -172,5 +185,7 @@ export function parseBrokerConfig(raw: unknown, env: Record<string, string | und
     groups,
     principals,
     auditLog: typeof c.auditLog === "string" ? c.auditLog : "audit.jsonl",
+    managementTokenSha256: createHash("sha256").update(managementToken).digest("hex"),
+    stateFile: typeof c.stateFile === "string" ? c.stateFile : "/var/lib/epaperclip-broker/groups.json",
   };
 }

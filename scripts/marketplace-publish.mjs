@@ -11,7 +11,8 @@ const pem = process.env.MARKETPLACE_SIGNING_KEY;
 if (!pem) { console.error("Set MARKETPLACE_SIGNING_KEY to the catalog's private key (PEM)."); process.exit(1); }
 const publicKeyPem = createPublicKey(createPrivateKey(pem)).export({ type: "spki", format: "pem" }).toString();
 
-const { entries } = JSON.parse(readFileSync(new URL("../marketplace/catalog.json", import.meta.url), "utf8"));
+// MARKETPLACE_CATALOG / MARKETPLACE_OUT let a test or a fork publish somewhere else without touching marketplace/.
+const { entries } = JSON.parse(readFileSync(process.env.MARKETPLACE_CATALOG ?? new URL("../marketplace/catalog.json", import.meta.url), "utf8"));
 const now = new Date();
 const index = { schema: SCHEMA, sequence: Number(arg("sequence", Math.floor(now.getTime() / 1000))), generatedAt: now.toISOString(), expires: new Date(now.getTime() + Number(arg("days", 60)) * 86_400_000).toISOString(), entries };
 const bytes = Buffer.from(`${JSON.stringify(index, null, 2)}\n`);
@@ -20,7 +21,7 @@ const sig = signIndex(bytes, pem, publicKeyPem);
 // Check it the way a device will before writing anything.
 verifyIndex(bytes, sig, { keys: [trustedKey(publicKeyPem)] });
 
-const out = new URL("../marketplace/dist/", import.meta.url);
+const out = process.env.MARKETPLACE_OUT ? new URL(`file://${process.env.MARKETPLACE_OUT.replace(/\/?$/, "/")}`) : new URL("../marketplace/dist/", import.meta.url);
 mkdirSync(out, { recursive: true });
 writeFileSync(new URL("index.json", out), bytes);
 writeFileSync(new URL("index.json.sig", out), sig);

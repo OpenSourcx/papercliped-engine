@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { ArrowRight, Bot, Cable, Code2, Mail, MessageSquare, Network } from "lucide-react";
-import { BRAND_ICONS } from "../data/brandIcons.ts";
+import { hasOfficialMark } from "../data/brandMarks.ts";
+import { BrandMark } from "../ui/BrandMark.tsx";
 import { useEngine } from "../data/store.tsx";
 import type { Connector } from "../data/types.ts";
 import { Avatar, Button, Card, EmptyState, Input, PageHeader, Status, Toggle, PageFrame } from "../ui/primitives.tsx";
@@ -17,7 +18,7 @@ function DemoConnectors() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Plugins" subtitle="Machine-wide integrations, set up once. Cloudflare and other hosting or service plugins stay on this device and are separate from AI models." />
-      <Card className="overflow-x-auto edge-fade-x">
+      <Card className="hidden sm:block overflow-x-auto edge-fade-x">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="text-xs text-ink-3 border-b border-line">
@@ -33,7 +34,7 @@ function DemoConnectors() {
               <tr key={c.id} className="border-b border-line last:border-0">
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{BRAND_ICONS[c.id] ? <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" role="img" aria-label={BRAND_ICONS[c.id].title}><path d={BRAND_ICONS[c.id].path} /></svg> : ICON[c.kind]}</span>
+                    <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{hasOfficialMark(c.id) ? <BrandMark id={c.id} name={c.name} size={18} /> : ICON[c.kind]}</span>
                     <div>
                       <div className="font-medium">{c.name}</div>
                       {c.status === "connected" ? <Status kind="good" label="Connected" /> : <Status kind="warning" label="Needs setup" />}
@@ -49,6 +50,25 @@ function DemoConnectors() {
           </tbody>
         </table>
       </Card>
+      <div className="sm:hidden space-y-3">
+        {data.connectors.map((c) => (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center gap-3">
+              <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0">{hasOfficialMark(c.id) ? <BrandMark id={c.id} name={c.name} size={18} /> : ICON[c.kind]}</span>
+              <div className="min-w-0">
+                <div className="font-medium">{c.name}</div>
+                {c.status === "connected" ? <Status kind="good" label="Connected" /> : <Status kind="warning" label="Needs setup" />}
+              </div>
+            </div>
+            <ul className="mt-2 divide-y divide-line">
+              {[{ key: "pin", label: "Pin", on: c.access.pin, set: (v: boolean) => setConnectorAccess(c.id, "pin", v), toggleLabel: `Pin can use ${c.name}` },
+                ...data.orgs.map((o) => ({ key: o.slug, label: o.name, on: c.access.orgs.includes(o.slug), set: (v: boolean) => setConnectorAccess(c.id, o.slug, v), toggleLabel: `${o.name} can use ${c.name}` }))].map((r) => (
+                <li key={r.key} className="flex items-center justify-between gap-3 min-h-11"><span className="text-compact">{r.label}</span><Toggle label={r.toggleLabel} checked={r.on} disabled={c.status !== "connected"} onChange={r.set} /></li>
+              ))}
+            </ul>
+          </Card>
+        ))}
+      </div>
       <p className="text-xs text-ink-3 mt-3">Plugin credentials stay in the device vault. They are never made available to Pin, agents, or organizations unless a plugin explicitly supports a safe, scoped integration.</p>
     </PageFrame>
   );
@@ -88,9 +108,8 @@ function ConnectorHub() {
 function BrandStack({ ids }: { ids: string[] }) {
   return <div className="flex items-center -space-x-2" aria-hidden="true">
     {ids.map((id) => {
-      const brand = BRAND_ICONS[id];
       return <span key={id} className="h-9 w-9 rounded-lg border-2 border-surface bg-surface-2 flex items-center justify-center text-ink-2">
-        {brand ? <svg viewBox="0 0 24 24" width={19} height={19} fill="currentColor"><path d={brand.path} /></svg> : <Cable className="h-4 w-4" />}
+        {hasOfficialMark(id) ? <BrandMark id={id} size={19} decorative /> : <Cable className="h-4 w-4" />}
       </span>;
     })}
   </div>;
@@ -129,7 +148,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
   return (
     <div className="px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{BRAND_ICONS[c.id] ? <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" role="img" aria-label={BRAND_ICONS[c.id].title}><path d={BRAND_ICONS[c.id].path} /></svg> : KIND_ICON(c.kind)}</span>
+        <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{hasOfficialMark(c.id) ? <BrandMark id={c.id} name={name} size={18} /> : KIND_ICON(c.kind)}</span>
         <div className="flex-1 min-w-[160px]">
           <div className="font-medium">{name}</div>
           <div className="text-xs text-ink-3">
@@ -150,7 +169,7 @@ function ConnectorRow({ c, canManage }: { c: ConnectorState; canManage: boolean 
         </div>
       )}
       {editing && <p className="text-xs text-ink-3 mt-1.5">Stored in the device's vault. It is never shown again; only its last four characters are. {publishing ? "Use a token scoped to Cloudflare Tunnel:Edit, DNS:Edit and Zone:Read." : ""}</p>}
-      {publishing && c.configured && <a href="?settings=advertising" className="inline-flex text-compact text-accent hover:underline mt-2">Manage advertising</a>}
+      {publishing && c.configured && <a href="?settings=access&access=remote" className="inline-flex text-compact text-accent hover:underline mt-2">Manage remote access</a>}
       {!result && c.configured && c.ok === false && c.error && <p className="text-compact text-critical mt-2">{c.error}</p>}
       {result && <p className={`text-compact mt-2 ${result.ok ? "text-good" : "text-critical"}`} role="status">{result.text}</p>}
       {act.isError && act.variables?.kind !== "test" && <p className="text-compact text-critical mt-2" role="alert">{actionErrorText(act.error)}</p>}

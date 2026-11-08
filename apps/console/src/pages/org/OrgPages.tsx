@@ -19,6 +19,7 @@ import { LiveChat } from "./live/LiveChat.tsx";
 import { LiveSkills } from "./live/LiveSkills.tsx";
 import { LiveCosts } from "./live/LiveCosts.tsx";
 import { LiveActivity, LiveGoals, LiveProjects } from "./live/LiveWork.tsx";
+import { LiveOrganizationApps } from "./live/LiveOrganizationApps.tsx";
 
 const ago = (iso: string | null) => {
   if (!iso) return "never";
@@ -311,13 +312,19 @@ function DemoActivity() {
 
 export function OrgConnectors() {
   const { data, setConnectorAccess } = useEngine();
+  const [params, setParams] = useSearchParams();
+  const section = params.get("section") === "apps" ? "apps" : "models";
   return (
     <OrgGate>
       {(org) => org.engine ? (
-        <PageFrame width="4xl">
-          <PageHeader title="Connectors" subtitle={`The AI accounts ${org.name}'s agents use. Providers and keys are set up once in Settings, Connectors.`} />
-          <AgentAccounts companyId={org.engine.companyId} orgName={org.name} />
-        </PageFrame>
+        <>
+          <PageFrame width="4xl">
+            <PageHeader title="Connectors" subtitle={`Accounts and apps for ${org.name}. Model accounts power agents; organization apps give them access to external services.`} />
+            <Segmented value={section} onChange={(value) => setParams({ section: value })} options={[{ value: "models", label: "Agent models" }, { value: "apps", label: "Organization apps" }]} />
+            {section === "models" && <div className="mt-6"><AgentAccounts companyId={org.engine.companyId} orgName={org.name} /></div>}
+          </PageFrame>
+          {section === "apps" && <LiveOrganizationApps />}
+        </>
       ) : (
         <PageFrame width="4xl">
           <PageHeader title="Connectors" subtitle={`System-wide connectors ${org.name}'s agents may use. Set up new ones in Settings → Connectors.`} />

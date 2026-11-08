@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
+import { rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClusterResource, RrdCf, RrdTimeframe } from "@papercliped-engine/proxmox-client";
 import { Broker, BrokerError, decodeMarker } from "../src/broker.ts";
 import { parseBrokerConfig, type Principal } from "../src/config.ts";
+import { GroupRegistry } from "../src/registry.ts";
 import { authenticate, startServer } from "../src/server.ts";
 
 const sha = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -29,7 +31,7 @@ const rawConfig = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const config = (over: Record<string, unknown> = {}) => parseBrokerConfig(rawConfig(over), { PROXMOX_TOKEN_SECRET: "s3cret" });
+const config = (over: Record<string, unknown> = {}) => parseBrokerConfig(rawConfig(over), { PROXMOX_TOKEN_SECRET: "s3cret", EPC_BROKER_MANAGEMENT_TOKEN: "management-token-0123456789abcdef" });
 
 /** An in-memory Proxmox: enough of the API for the broker, recording every write. */
 function fakePve(initial: (ClusterResource & { description?: string })[] = []) {
@@ -106,6 +108,16 @@ const expectBrokerError = async (p: Promise<unknown>, code: string) => {
 };
 
 describe("config", () => {
+  it("does not activate a policy when durable persistence fails", () => {
+    const { broker } = setup();
+    const before = broker.groups();
+    const next = broker.groups();
+    next.acme.limits.maxLeases = 7;
+    expect(() => broker.replaceGroups(next, () => { throw new Error("disk full"); })).toThrow("disk full");
+    expect(broker.groups()).toEqual(before);
+    broker.replaceGroups(next, (saved) => expect(saved.acme.limits.maxLeases).toBe(7));
+    expect(broker.groups().acme.limits.maxLeases).toBe(7);
+  });
   it("rejects overlapping resource groups, so one company cannot reach another's guests", () => {
     expect(() => config({ groups: { a: { pool: "a", vmidRange: [9000, 9010], profiles: ["small"] }, b: { pool: "b", vmidRange: [9005, 9020], profiles: ["small"] } } })).toThrow(/overlapping/);
   });
@@ -148,6 +160,15 @@ describe("leases", () => {
     const { broker, acme } = setup();
     await broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY });
     await broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY });
+    await expectBrokerError(broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY }), "group_limit");
+  });
+
+  it("counts guests the agent-container provider made in the same pool (no tag, any vmid, VMs too) but never a template or another pool", async () => {
+    const outside = (vmid: number, over: Record<string, unknown> = {}) => ({ vmid, type: "lxc", node: "pve", pool: "co-acme", tags: "epaperclip;company-x", status: "running", maxcpu: 2, maxmem: 1024 * MiB, ...over }) as ClusterResource;
+    // One provider container (2 cores, 1 GiB) already uses half of the 4-core, 2-lease allowance.
+    const { broker, acme } = setup([outside(300), outside(301, { template: 1 }), outside(302, { pool: "co-beta" }), outside(303, { type: "qemu", pool: "other" })]);
+    await broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY });
+    // 2 leases allowed in total: the provider's container plus this one.
     await expectBrokerError(broker.createLease(acme, "acme", { profile: "small", sshPublicKey: KEY }), "group_limit");
   });
 
@@ -246,7 +267,12 @@ describe("stats", () => {
 
 describe("HTTP", () => {
   let close: (() => void) | undefined;
-  afterEach(() => close?.());
+  let registryPath: string | undefined;
+  afterEach(() => {
+    close?.();
+    if (registryPath) rmSync(registryPath, { force: true });
+    registryPath = undefined;
+  });
 
   it("authenticates by token hash", () => {
     const principals: Principal[] = config().principals;
@@ -258,7 +284,10 @@ describe("HTTP", () => {
 
   it("serves the API end to end", async () => {
     const { broker, cfg } = setup([{ vmid: 109, type: "qemu", node: "pve", status: "running" }]);
-    const server = startServer(broker, cfg.principals, { host: "127.0.0.1", port: 0 });
+    registryPath = `/tmp/epaperclip-broker-groups-${process.pid}-${Date.now()}.json`;
+    const registry = new GroupRegistry(broker, { ...cfg, stateFile: registryPath });
+    registry.load();
+    const server = startServer(broker, cfg.principals, registry, cfg.managementTokenSha256, { host: "127.0.0.1", port: 0 });
     close = () => server.close();
     await new Promise((r) => server.once("listening", r));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

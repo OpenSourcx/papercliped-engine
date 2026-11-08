@@ -1,0 +1,7 @@
+16 succeeded  
+{"type":"result","usage":{"input_tokens":1,"output_tokens":1},"result":"local model answered in 1.0s (17 tokens); test passed; committed 1966525 on fabric-agent-1794119704 in /home/miah/epaperclip-workspaces/016fac0c-b988-40ee-873f-0b070c1a1b86/41c268e6-a0ff-49b3-9a71-61689326c37a/default/repo","subtype":"success","summary":"local model answered in 1.0s (17 tokens); test passed; committed 1966525 on fabric-agent-1794119704 in /home/miah/epaperclip-workspaces/016fac0c-b988-40ee-873f-0b070c1a1b86/41c268e6-a0ff-49b3-9a71-61689326c37a/default/repo","is_error":false,"num_turns":1,"session_id":"stub-1794119699","stopReason":"completed","duration_ms":1,"timeoutFired":false,"timeoutSource":"default"
+1966525 Add adder (written by the local model on the worker)
+a46fe3c seed
+def add(a, b):
+    return a + b
+{"models":[{"name":"qwen2.5-coder:3b","model":"qwen2.5-coder:3b","size":2163568803,"digest":"f72c60cabf6237b07f6e632b2c4

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wouldLoop } from "../src/data/orgTree.ts";
+import { forestRoots, wouldLoop } from "../src/data/orgTree.ts";
 import { demoRrd } from "../src/data/rrd.ts";
 
 const agents = [
@@ -19,6 +19,12 @@ describe("org chart moves", () => {
     expect(wouldLoop(agents, "ceo", "qa")).toBe(true);
     expect(wouldLoop(agents, "eng", "qa")).toBe(true);
     expect(wouldLoop(agents, "eng", "eng")).toBe(true);
+  });
+  it("keeps disconnected cycles visible and rejects joining an existing loop", () => {
+    const broken = [...agents, { id: "a", reportsTo: "b" }, { id: "b", reportsTo: "a" }, { id: "orphan", reportsTo: "missing" }];
+    expect(forestRoots(broken).map((agent) => agent.id)).toEqual(["ceo", "orphan", "a"]);
+    expect(wouldLoop(broken, "design", "a")).toBe(true);
+    expect(forestRoots([{ id: "self", reportsTo: "self" }])).toHaveLength(1);
   });
 });
 

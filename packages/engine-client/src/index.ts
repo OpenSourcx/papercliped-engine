@@ -1,3 +1,5 @@
+import type { AppDefinition, ChatEndpoint, ChatEndpointResource, ConfigureChatEndpointInput, CreateChatEndpointInput, ConnectToolApp, ConnectToolAppResult, FinishToolApp, FinishToolAppResult, ToolCatalogEntry, ToolConnection, ToolConnectionCreateCapabilities, ToolConnectionHealthCheckResult, ToolPolicy, ToolProfileWithDetails } from "@paperclipai/shared";
+export type { AppDefinition, ChatEndpoint, ConnectionMethodDef, FieldDef, ConnectToolApp, ConnectToolAppResult, ToolCatalogEntry, ToolConnection, ToolPolicy, ToolProfileWithDetails } from "@paperclipai/shared";
 import type {
   ActivityEvent,
   Agent,
@@ -126,6 +128,26 @@ export class EngineError extends Error {
 
 /** Every engine path this client calls, as templates. A test checks each one exists in the pinned engine's OpenAPI spec. */
 export const ENGINE_PATHS = {
+  chatIdentityPreview: "/api/chat-identity-links/preview",
+  chatIdentityConfirm: "/api/chat-identity-links/confirm",
+  chatEndpoints: "/api/companies/{companyId}/chat-endpoints",
+  chatEndpoint: "/api/chat-endpoints/{endpointId}",
+  chatEndpointSetup: "/api/chat-endpoints/{endpointId}/setup",
+  chatEndpointTest: "/api/chat-endpoints/{endpointId}/test",
+  chatEndpointResources: "/api/chat-endpoints/{endpointId}/resources",
+  toolGallery: "/api/companies/{companyId}/tools/gallery",
+  toolConnections: "/api/companies/{companyId}/tools/connections",
+  toolConnect: "/api/companies/{companyId}/tools/apps/connect",
+  toolFinish: "/api/companies/{companyId}/tools/apps/{connectionId}/finish",
+  toolActionRequests: "/api/companies/{companyId}/tools/action-requests",
+  toolActionApprove: "/api/tool-gateway/action-requests/{id}/approve",
+  toolActionDecline: "/api/tool-gateway/action-requests/{id}/decline",
+  toolProfiles: "/api/companies/{companyId}/tools/profiles",
+  toolPolicies: "/api/companies/{companyId}/tools/policies",
+  toolConnection: "/api/tool-connections/{connectionId}",
+  toolHealth: "/api/tool-connections/{connectionId}/health-check",
+  toolCatalog: "/api/tool-connections/{connectionId}/catalog",
+  toolRefresh: "/api/tool-connections/{connectionId}/catalog/refresh",
   health: "/api/health",
   me: "/api/cli-auth/me",
   companies: "/api/companies",
@@ -255,6 +277,17 @@ export const ENGINE_PATHS_UNDOCUMENTED = {
   chatWith: "/api/companies/{companyId}/chats/{agentRef}",
 } as const;
 
+/** What the console reads of a held app action (engine 2026.1023.0). */
+export interface HeldActionRequest {
+  request: { id: string; status: string; previewMarkdown?: string | null; canonicalArgumentsSummary?: { summary?: string } | null; createdAt?: string; expiresAt?: string | null; requestedByUserId?: string | null; requestedByAgentId?: string | null };
+  toolName: string;
+  toolTitle?: string | null;
+  connectionId: string;
+  connectionName?: string | null;
+  applicationName?: string | null;
+  riskLevel?: string | null;
+}
+
 export interface OnboardingSeed {
   revision: string;
   mission?: string;
@@ -329,6 +362,35 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
   return {
     raw,
     href,
+    channels: {
+      previewIdentity: (token: string) => call<{ companyId: string; companyName: string; provider: string; externalLabel: string; externalDetail?: string; canConfirm?: boolean }>("GET", P.chatIdentityPreview, {}, undefined, { token }),
+      confirmIdentity: (token: string) => call<{ ok: true; endpointId: string }>("POST", P.chatIdentityConfirm, {}, { token }),
+      list: (companyId: string) => call<ChatEndpoint[]>("GET", P.chatEndpoints, { companyId }),
+      create: (companyId: string, body: CreateChatEndpointInput) => call<ChatEndpoint>("POST", P.chatEndpoints, { companyId }, body),
+      get: (endpointId: string) => call<ChatEndpoint>("GET", P.chatEndpoint, { endpointId }),
+      configure: (endpointId: string, body: ConfigureChatEndpointInput) => call<ChatEndpoint>("POST", P.chatEndpointSetup, { endpointId }, body),
+      test: (endpointId: string) => call<unknown>("POST", P.chatEndpointTest, { endpointId }, {}),
+      resources: (endpointId: string) => call<ChatEndpointResource[]>("GET", P.chatEndpointResources, { endpointId }),
+      setResources: (endpointId: string, resources: { id: string; enabled: boolean }[]) => call<ChatEndpointResource[]>("PUT", P.chatEndpointResources, { endpointId }, { resources }),
+    },
+    apps: {
+      gallery: (companyId: string) => call<{ apps: AppDefinition[]; capabilities: ToolConnectionCreateCapabilities }>("GET", P.toolGallery, { companyId }),
+      list: (companyId: string) => call<{ connections: ToolConnection[] }>("GET", P.toolConnections, { companyId }),
+      connect: (companyId: string, body: ConnectToolApp) => call<ConnectToolAppResult>("POST", P.toolConnect, { companyId }, body),
+      finish: (companyId: string, connectionId: string, body: FinishToolApp) => call<FinishToolAppResult>("POST", P.toolFinish, { companyId, connectionId }, body),
+      /** Read-only: the console reads the current grants so reopening Agent access starts from them. */
+      /** Held (ask-first) actions. The listing carries a signed-arguments blob the console never uses or shows. */
+      actionRequests: (companyId: string) => call<{ actionRequests: HeldActionRequest[] }>("GET", P.toolActionRequests, { companyId }, undefined, { status: "pending" }),
+      approveAction: (id: string, companyId: string) => call<unknown>("POST", P.toolActionApprove, { id }, { companyId }),
+      declineAction: (id: string, companyId: string, reason?: string) => call<unknown>("POST", P.toolActionDecline, { id }, { companyId, ...(reason ? { reason } : {}) }),
+      profiles: (companyId: string) => call<{ profiles: ToolProfileWithDetails[] }>("GET", P.toolProfiles, { companyId }),
+      policies: (companyId: string) => call<{ policies: ToolPolicy[] }>("GET", P.toolPolicies, { companyId }),
+      get: (connectionId: string) => call<ToolConnection>("GET", P.toolConnection, { connectionId }),
+      remove: (connectionId: string) => call<unknown>("DELETE", P.toolConnection, { connectionId }),
+      health: (connectionId: string) => call<ToolConnectionHealthCheckResult>("POST", P.toolHealth, { connectionId }, {}),
+      catalog: (connectionId: string) => call<{ catalog: ToolCatalogEntry[] }>("GET", P.toolCatalog, { connectionId }),
+      refresh: (connectionId: string) => call<unknown>("POST", P.toolRefresh, { connectionId }, {}),
+    },
     health: () => call<{ status: string; bootstrapStatus?: string; deploymentMode?: string }>("GET", P.health),
     me: () => call<BoardAccess>("GET", P.me),
     companies: {

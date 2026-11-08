@@ -18,7 +18,7 @@ It can live anywhere that serves two static files over https: a public GitHub re
 ```
 
 - npm sources must be an exact version with the registry's `sha512-` integrity hash. Ranges are refused.
-- `kind` is `connector`, `adapter` or `skill`. Connectors need a `connectorKind`.
+- `kind` is `connector`, `adapter`, `skill` or `plugin`. Connectors need a `connectorKind`. A `plugin` is a machine-wide engine add-on: it installs only through Settings, Community plugins, which shows its `permissions`, requires them to be accepted, checks the npm integrity hash again and records the grant.
 - An entry whose `id` matches something that ships with ePaperclip is ignored; the catalog adds, it never replaces.
 - Publishers can supply their own `icon` (an SVG in `icons/`, pinned by SHA-256).
 

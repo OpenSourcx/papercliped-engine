@@ -60,7 +60,7 @@ interface InstalledRec {
 
 export type MarketLoader = () => Promise<{ enabled: boolean; index: Index | null; problem: { code: string; message: string } | null }>;
 type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
-const markets = new WeakMap<StateStore, { load: MarketLoader; fetch: Fetcher }>();
+export const markets = new WeakMap<StateStore, { load: MarketLoader; fetch: Fetcher }>();
 export const registerMarket = (state: StateStore, load: MarketLoader, fetch: Fetcher) => void markets.set(state, { load, fetch });
 
 /** What the engine reports about its adapters, reduced to what the console needs. */

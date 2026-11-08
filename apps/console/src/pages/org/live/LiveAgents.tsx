@@ -4,8 +4,8 @@ import { ArrowLeft, Bot, Pause, Play, Plus, Zap } from "lucide-react";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
-import { agentStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
@@ -24,6 +24,8 @@ export function LiveAgents() {
   const creating = params.get("new") === "1";
   const setCreating = (v: boolean) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set("new", "1"); else n.delete("new"); return n; }, { replace: !v });
   const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
+  const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
+  const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
   const working = list.filter((a) => a.status === "running").length;
   return (
     <PageFrame width="6xl">
@@ -34,11 +36,13 @@ export function LiveAgents() {
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {list.map((a) => {
           const [kind, label] = agentStatusOf(a.status);
+          const latest = latestRunStatusOf(latestByAgent.get(a.id));
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
                 <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
                 <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
+                {latest && <div className="mt-2"><Status kind={latest[0]} label={`Latest run: ${latest[1]}`} /></div>}
                 {a.budgetMonthlyCents ? <BarMeter className="mt-3" label="Budget this month" pct={(a.spentMonthlyCents / a.budgetMonthlyCents) * 100} value={`${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}`} /> : null}
               </Card>
             </Link>
@@ -153,6 +157,8 @@ export function LiveAgentDetail() {
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
   const setTab = (t: AgentTab) => setParams((p) => { const n = new URLSearchParams(p); if (t === "overview") n.delete("tab"); else n.set("tab", t); return n; }, { replace: true });
   const [kind, label] = a ? agentStatusOf(a.status) : ["idle" as const, ""];
+  const latestRun = runs.data?.[0] ?? null;
+  const latestRunStatus = latestRunStatusOf(latestRun);
   return (
     <PageFrame width="4xl">
       <Link to={`${b}/agents`} className="inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Agents</Link>
@@ -182,7 +188,13 @@ export function LiveAgentDetail() {
           {tab === "instructions" && <AgentInstructionsTab agent={a} />}
           {tab === "skills" && <AgentSkillsTab agent={a} />}
           {tab === "budget" && <AgentBudgetTab key={a.budgetMonthlyCents} agent={a} />}
-          {tab === "overview" && <div className="grid md:grid-cols-2 gap-4">
+          {tab === "overview" && <>
+            {latestRun && latestRunStatus && <Card className="p-5 mb-4 flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-48"><div className="text-compact font-semibold uppercase tracking-label text-ink-3">{latestRun.status === "queued" || latestRun.status === "running" ? "Live run" : "Latest run"}</div><div className="mt-1 text-sm text-ink-2">{String(latestRun.invocationSource).replace(/_/g, " ")} · started {ago(latestRun.startedAt ?? latestRun.createdAt)}</div></div>
+              <Status kind={latestRunStatus[0]} label={latestRunStatus[1]} />
+              <Button size="sm" variant="ghost" onClick={() => setTab("runs")}>{latestRun.status === "queued" || latestRun.status === "running" ? "Watch live" : "View run"}</Button>
+            </Card>}
+            <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-5">
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
                 <dt className="text-ink-3">Runs with</dt><dd>{a.adapterType}{typeof a.adapterConfig?.model === "string" ? ` · ${a.adapterConfig.model}` : ""}</dd>
@@ -207,7 +219,8 @@ export function LiveAgentDetail() {
                 ))}
               </div>
             </Card>
-          </div>}
+            </div>
+          </>}
         </>
       )}
     </PageFrame>

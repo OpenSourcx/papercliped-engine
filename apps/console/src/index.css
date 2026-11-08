@@ -172,6 +172,8 @@
   --accent-soft: rgb(232 178 92 / 0.14);
   --ring: var(--accent);
   --scrim: rgb(8 7 5 / 0.6);
+  /* Smallest touch target (coarse pointers only): CORE.md says 44px. */
+  --touch-target: 2.75rem;
   /* Log and code blocks sit a step below the surface; machine screens are always black. */
   --code: #12110e;
   --screen: #000000;
@@ -282,8 +284,20 @@ body {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
-  /* Touch screens zoom into fields under 16px; keep editable text at 16px there. */
+  /* Touch screens zoom into fields under 16px; keep editable text at 16px there. Targets are at least 44px (/project/design/CORE.md). */
   @media (pointer: coarse) {
+    button,
+    [role="button"],
+    [role="switch"],
+    [role="radio"],
+    [role="checkbox"],
+    [role="tab"],
+    select,
+    input:not([type="hidden"]):not([type="range"]),
+    summary {
+      min-height: var(--touch-target);
+      min-width: var(--touch-target);
+    }
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
     select,
     textarea {
@@ -744,5 +758,5 @@ body {
  * allow src/pages/Appearance.tsx | colour | the accent swatches and colour picker are literal colours the user chooses
  * allow src/ui/Select.tsx | control | the dropdown is a real <select> underneath, by design
  * allow src/ui/Slider.tsx | control | the slider is a real range input underneath, by design
- * allow src/data/brandIcons.ts | colour | third-party brand marks keep their own colours
+ * allow src/data/brandIcons.ts | colour, motion | third-party brand marks keep their own colours, and SVG path data can look like a "1s" timing
  */
