@@ -39,7 +39,24 @@ export interface Worker {
   usage: { shellLeases: number; inferenceRunning: number; inferenceQueued: number; loadAvg: number | null; freeMemMb: number | null };
   /** null until the worker has made its first report. */
   capabilities: Capabilities | null;
+  health: Health;
 }
+export type SvcState = "active" | "inactive" | "failed" | "unknown";
+export interface Health { state: "online" | "stale" | "offline"; at: number | null; cpuPct: number | null; load1: number | null; memPct: number | null; tempC: number | null; gpuPct: number | null; diskFreeGb: number | null; services: Record<"worker" | "ollama" | "tailscale", SvcState> | null; modelsLoaded: number | null; modelsAvailable: number | null }
+export interface Stats {
+  at: number; uptimeS: number | null; load: [number, number, number] | null;
+  cpu: { pct: number | null; cores: number; tempC: number | null };
+  mem: { totalMb: number; usedMb: number; availMb: number; swapTotalMb: number; swapUsedMb: number };
+  disk: { path: string; totalGb: number; freeGb: number }[];
+  gpu: { kind: "jetson" | "nvidia"; name: string; utilPct: number | null; tempC: number | null; memUsedMb: number | null; memTotalMb: number | null; source: string } | null;
+  temps: Record<string, number>;
+  services: Record<"worker" | "ollama" | "tailscale", SvcState>;
+  ollama: { up: boolean; version: string | null; loaded: { name: string; sizeMb: number; expiresAt: string | null }[]; available: { name: string; sizeMb: number }[]; running: number; queued: number } | null;
+  pulls: { name: string; pct: number | null; status: string; done: boolean; error?: string }[];
+}
+export interface HistoryPoint { at: number; cpu: number | null; memPct: number | null; gpu: number | null; temp: number | null; load: number | null; diskFree: number | null; loaded: number }
+export interface WorkerStats { online: boolean; latest: Stats | null; recent: HistoryPoint[]; history: HistoryPoint[] }
+export type ManageAction = "restart-worker" | "restart-ollama" | "model-pull" | "model-remove" | "update" | "logs";
 export interface Lease { id: string; workerId: string; companyId: string; agentId: string; runId: string; environmentId: string; workspace: string; state: "active" | "released" | "stopped" | "destroyed"; createdAt: number; releasedAt?: number; agentName?: string }
 export interface Pending { id: string; name: string; verification: string; fingerprint: string; requestedAt: number; expiresAt: number; capabilities: Capabilities | null; remote: string }
 export interface Requirements { arch?: string; tools?: string[]; gpu?: boolean; localModel?: string; minFreeMemMb?: number }
@@ -90,6 +107,8 @@ const ok = () => ({ ok: true as const });
 export const fabricApi = {
   overview: () => req<FabricOverview>("GET", "/api/fabric"),
   worker: (id: string) => req<{ worker: Worker; leases: Lease[]; audit: AuditEvent[] }>("GET", `/api/fabric/workers/${enc(id)}`),
+  stats: (id: string) => req<WorkerStats>("GET", `/api/fabric/workers/${enc(id)}/stats`),
+  manage: (id: string, action: ManageAction, params: Record<string, unknown> = {}) => req<{ result: Record<string, unknown> }>("POST", `/api/fabric/workers/${enc(id)}/manage`, { action, params }),
   patch: (id: string, patch: WorkerPatch) => req<{ worker?: Worker }>("PATCH", `/api/fabric/workers/${enc(id)}`, patch),
   revoke: (id: string) => req<ReturnType<typeof ok>>("POST", `/api/fabric/workers/${enc(id)}/revoke`, {}),
   remove: (id: string) => req<ReturnType<typeof ok>>("DELETE", `/api/fabric/workers/${enc(id)}`),
@@ -103,7 +122,7 @@ export const fabricApi = {
 };
 
 const KEY = ["host", "fabric"] as const;
-const keys = { overview: KEY, worker: (id: string) => [...KEY, "worker", id] as const };
+const keys = { overview: KEY, worker: (id: string) => [...KEY, "worker", id] as const, stats: (id: string) => [...KEY, "stats", id] as const };
 
 /** A plain sentence for the person, with the cases the Fabric can be in. */
 export function fabricErrorText(e: unknown): string {
@@ -133,6 +152,11 @@ export function useFabric() {
 export function useWorker(id: string) {
   const live = useSession().session.mode === "live";
   return useQuery({ queryKey: keys.worker(id), queryFn: () => fabricApi.worker(id), enabled: live, retry: false, refetchInterval: 5_000 });
+}
+
+export function useWorkerStats(id: string) {
+  const live = useSession().session.mode === "live";
+  return useQuery({ queryKey: keys.stats(id), queryFn: () => fabricApi.stats(id), enabled: live, retry: false, refetchInterval: 10_000 });
 }
 
 /** Any change refreshes the overview and the worker pages. */

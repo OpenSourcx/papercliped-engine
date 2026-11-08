@@ -32,6 +32,7 @@ export const worker = (over: Partial<Worker> = {}): Worker => ({
   inferenceSlots: 1,
   usage: { shellLeases: 2, inferenceRunning: 1, inferenceQueued: 0, loadAvg: 1.5, freeMemMb: 3000 },
   capabilities: caps(),
+  health: { state: over.online === false ? "offline" : "online", at: Date.now(), cpuPct: over.online === false ? null : 12, load1: 0.4, memPct: 31, tempC: 52, gpuPct: 3, diskFreeGb: 150, services: { worker: "active", ollama: "active", tailscale: "active" }, modelsLoaded: 0, modelsAvailable: 2 },
   ...over,
 });
 

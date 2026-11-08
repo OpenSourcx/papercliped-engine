@@ -2,15 +2,17 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Ban, KeyRound, Pause, Play, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
-import { fabricApi, fabricErrorText, FabricError, type Lease, type Worker, useFabricAction, useWorker } from "../../data/engine/fabric.ts";
+import { fabricApi, fabricErrorText, FabricError, type Lease, type Worker, useFabricAction, useWorker, useWorkerStats } from "../../data/engine/fabric.ts";
 import { useModals } from "../../modals/useModals.ts";
 import { ConfirmModal } from "../../ui/Confirm.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Status, Tabs } from "../../ui/primitives.tsx";
 import { CapabilityFacts, Fact } from "./Hardware.tsx";
 import { FabricGate } from "./Gate.tsx";
 import { ago, clock, healthOf, providerLabel } from "./util.ts";
+import { HealthPanel } from "./Health.tsx";
+import { ManagePanel } from "./Manage.tsx";
 
-type Tab = "overview" | "leases" | "activity";
+type Tab = "overview" | "health" | "manage" | "leases" | "activity";
 
 export function WorkerDetailPage() {
   const { id = "" } = useParams();
@@ -22,6 +24,7 @@ function Detail({ id }: { id: string }) {
   const back = `/${setup?.deviceName ?? "pve"}/datacenter/workers`;
   const q = useWorker(id);
   const [tab, setTab] = useState<Tab>("overview");
+  const st = useWorkerStats(id);
   const backLink = <Link to={back} className="inline-flex items-center gap-1.5 min-h-11 -my-2 text-compact text-ink-2 hover:text-ink rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)"><ArrowLeft className="h-4 w-4" aria-hidden />All workers</Link>;
   if (q.isPending) return <PageFrame><PageHeader title="Worker" eyebrow={backLink} /><p className="text-ink-3" role="status" aria-busy="true">Loading worker</p></PageFrame>;
   if (q.error) {
@@ -33,8 +36,10 @@ function Detail({ id }: { id: string }) {
   return (
     <PageFrame>
       <PageHeader title={w.name} eyebrow={backLink} subtitle={<span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1"><Status kind={h.kind} label={h.label} /><span className="text-compact text-ink-3">{h.detail}</span></span>} actions={<Actions w={w} backTo={back} />} />
-      <Tabs value={tab} onChange={setTab} className="mb-5" tabs={[{ id: "overview", label: "Overview" }, { id: "leases", label: "Leases", count: leases.filter((l) => l.state === "active").length }, { id: "activity", label: "Activity", count: audit.length }]} />
+      <Tabs value={tab} onChange={setTab} className="mb-5" tabs={[{ id: "overview", label: "Overview" }, { id: "health", label: "Health" }, { id: "manage", label: "Manage" }, { id: "leases", label: "Leases", count: leases.filter((l) => l.state === "active").length }, { id: "activity", label: "Activity", count: audit.length }]} />
       {tab === "overview" && <Overview w={w} />}
+      {tab === "health" && <HealthPanel data={st.data} cores={w.capabilities?.cpu.cores} />}
+      {tab === "manage" && w.state === "adopted" && <ManagePanel w={w} stats={st.data} />}
       {tab === "leases" && <Leases leases={leases} />}
       {tab === "activity" && <Activity audit={audit} />}
     </PageFrame>

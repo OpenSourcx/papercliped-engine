@@ -199,8 +199,23 @@ export class FabricHub {
       lastSeen: c ? this.now() : w.lastSeen, connectedSince: c ? c.connectedAt : null, transport: w.transport, companies: w.companies, shellSlots: w.shellSlots, inferenceSlots: w.inferenceSlots,
       usage: { shellLeases: leases.length, inferenceRunning: c?.hb?.inferenceRunning ?? 0, inferenceQueued: c?.hb?.inferenceQueued ?? 0, loadAvg: c?.hb?.loadAvg ?? null, freeMemMb: c?.hb?.freeMemMb ?? null },
       capabilities: w.capabilities,
+      health: this.health(w.id),
     };
   }
+  /** One glance per worker: online (a fresh sample), stale (connected but no recent sample) or offline, plus the headline numbers. */
+  health(id: string) {
+    const s = this.statsStore.latest(id);
+    const online = this.online(id);
+    const age = s ? this.now() - s.at : null;
+    const state: "online" | "stale" | "offline" = !online ? "offline" : s && age !== null && age < this.statsMs() * 3 ? "online" : "stale";
+    return {
+      state, at: s?.at ?? null,
+      cpuPct: s?.cpu.pct ?? null, load1: s?.load?.[0] ?? null, memPct: s && s.mem.totalMb ? Math.round((s.mem.usedMb / s.mem.totalMb) * 100) : null,
+      tempC: s?.gpu?.tempC ?? s?.cpu.tempC ?? null, gpuPct: s?.gpu?.utilPct ?? null, diskFreeGb: s?.disk[0]?.freeGb ?? null, services: s?.services ?? null,
+      modelsLoaded: s?.ollama?.loaded.length ?? null, modelsAvailable: s?.ollama?.available.length ?? null,
+    };
+  }
+  private statsMs() { return LIMITS.statsMs; }
   workers() {
     return Object.values(this.read().workers).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).map((w) => this.workerView(w));
   }
