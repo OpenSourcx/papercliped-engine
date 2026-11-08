@@ -14,7 +14,8 @@ export async function detectTools(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   await Promise.all(TOOLS.map(async ([t, a]) => {
     const v = await sh(t, a);
-    if (v) out[t === "python3" ? "python" : t] = (/\d+\.\d+(\.\d+)?/.exec(v.split("\n")[0]!) ?? [v.split("\n")[0]!.slice(0, 30)])[0]!;
+    const m = v ? /\d+\.\d+(\.\d+)?/.exec(v) : null;
+    if (m) out[t === "python3" ? "python" : t] = m[0];
   }));
   return out;
 }

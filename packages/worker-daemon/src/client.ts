@@ -1,5 +1,7 @@
 import { ClientHandshake, decodePairing, orderEndpoints, type Capabilities, type Identity } from "@papercliped-engine/worker-fabric";
 import type { Server } from "node:http";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
 import { Gate } from "./gate.ts";
@@ -98,6 +100,10 @@ export class WorkerClient {
     this.gateServer = null;
   }
 
+  private offlineHook(): boolean {
+    return existsSync(join(this.o.files.dir, "simulate-offline"));
+  }
+
   private async startGate() {
     const c = this.o.files.config();
     const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext })))(c);
@@ -118,6 +124,9 @@ export class WorkerClient {
       const c = this.o.files.config();
       if (c.revoked) { this.set({ state: "revoked", detail: "This worker was removed by the host. Run `epaperclip-worker adopt <code>` to join again." }); await sleep(30_000, () => this.stopped); continue; }
       if (!c.hostKey || !c.endpoints.length) { this.set({ state: "idle", detail: "Not adopted yet. Run `epaperclip-worker adopt <code>`." }); await sleep(2000, () => this.stopped); continue; }
+      // Diagnostic hook: while `simulate-offline` exists in the worker's folder the worker behaves as if the network were gone
+      // (it drops the connection and does not dial). Used to prove reconnection without touching the machine's real network.
+      if (this.offlineHook()) { this.set({ state: "connecting", detail: "simulating network loss (simulate-offline exists)" }); await sleep(500, () => this.stopped); continue; }
       const started = Date.now();
       const outcome = await this.connectOnce(c).catch((e) => ({ kind: "error" as const, msg: (e as Error).message }));
       if (this.stopped) break;
@@ -166,6 +175,8 @@ export class WorkerClient {
         this.runner.cancel();
         resolve(r);
       };
+      const hookTimer = setInterval(() => { if (this.offlineHook()) { this.log("simulate-offline: dropping the connection"); ws.close(4000, "simulated network loss"); } }, 500);
+      this.timers.push(hookTimer);
       ws.onopen = () => { opened = true; ws.send(hs.hello(adopting ? "adopt" : "auth", c.workerId ?? undefined)); };
       ws.onerror = () => { if (!opened) fin({ kind: "error", msg: "unreachable" }); };
       ws.onclose = (ev) => fin(ev.code === 4403 && !ready ? { kind: "refused" } : { kind: "closed", msg: ev.reason || undefined });

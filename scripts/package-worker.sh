@@ -10,7 +10,7 @@ STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 D="$STAGE/epaperclip-worker-$VER"
 mkdir -p "$D" "$OUT"
 ( cd packages/worker-daemon && ./node_modules/.bin/esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --minify-syntax --outfile="$D/epaperclip-worker.mjs" --banner:js="#!/usr/bin/env node" >/dev/null )
-cp deploy/worker/install.sh deploy/worker/epaperclip-worker.service "$D/"
+cp deploy/worker/install.sh deploy/worker/epaperclip-worker.service deploy/worker/epaperclip-worker.user.service "$D/"
 echo "$VER" > "$D/VERSION"
 cp docs/WORKER-FABRIC-GUIDE.md "$D/README.md" 2>/dev/null || true
 chmod 0755 "$D/install.sh"
