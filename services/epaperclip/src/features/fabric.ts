@@ -103,7 +103,7 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
     const w = hub.workers().find((x) => x.online && x.fingerprint === hub.pendingFingerprint(pend[1]!));
     return ctx.json(200, { ok: true, worker: w ?? null }), true;
   }
-  const one = path.match(/^\/api\/fabric\/workers\/(wrk_[0-9a-f]{12})(?:\/(revoke|refresh))?$/);
+  const one = path.match(/^\/api\/fabric\/workers\/(wrk_[0-9a-f]{12})(?:\/(revoke|refresh|stats|manage))?$/);
   if (one) {
     const id = one[1]!;
     const rec = hub.worker(id);
@@ -118,6 +118,13 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
       change();
       hub.forget(by, id);
       return ctx.json(200, { ok: true }), true;
+    }
+    if (action === "stats" && method === "GET") return ctx.json(200, hub.stats(id)), true;
+    if (action === "manage" && method === "POST") {
+      change();
+      const b = await ctx.readJson();
+      if (typeof b.action !== "string") throw new E(400, "bad_request", "action is required.");
+      return ctx.json(200, { result: await hub.manage(by, id, b.action, b.params && typeof b.params === "object" ? (b.params as Record<string, unknown>) : {}) }), true;
     }
     if (action === "revoke" && method === "POST") {
       change();

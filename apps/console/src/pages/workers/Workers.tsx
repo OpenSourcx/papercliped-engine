@@ -9,7 +9,8 @@ import { Button, Card, Chip, EmptyState, Notice, SectionTitle, Status } from "..
 import { PageFrame, PageHeader } from "../../ui/primitives.tsx";
 import { CapabilityFacts, Fact } from "./Hardware.tsx";
 import { FabricGate } from "./Gate.tsx";
-import { ago, countdown, gb, gpuText, hardwareSummary, healthOf, leaseCount, modelNames, providerLabel } from "./util.ts";
+import { ServiceDots } from "./Health.tsx";
+import { ago, countdown, degrees, gb, pct, gpuText, hardwareSummary, healthOf, leaseCount, modelNames, providerLabel } from "./util.ts";
 
 const SUBTITLE = "Computers you own that run agents for your organizations. A worker keeps its own connection to this device, so it keeps working if the internet goes down.";
 
@@ -67,8 +68,10 @@ export function WorkerCard({ w }: { w: Worker }) {
   const h = healthOf(w);
   const c = w.capabilities;
   const models = c ? modelNames(c) : [];
-  const memPct = c && w.usage.freeMemMb !== null && c.memMb ? 100 - (w.usage.freeMemMb / c.memMb) * 100 : null;
-  const cpuPct = c && w.usage.loadAvg !== null && c.cpu.cores ? (w.usage.loadAvg / c.cpu.cores) * 100 : null;
+  const hl = w.health;
+  const fresh = hl?.state === "online";
+  const memPct = fresh && hl.memPct !== null ? hl.memPct : c && w.usage.freeMemMb !== null && c.memMb ? 100 - (w.usage.freeMemMb / c.memMb) * 100 : null;
+  const cpuPct = fresh && hl.cpuPct !== null ? hl.cpuPct : c && w.usage.loadAvg !== null && c.cpu.cores ? (w.usage.loadAvg / c.cpu.cores) * 100 : null;
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -85,7 +88,13 @@ export function WorkerCard({ w }: { w: Worker }) {
         <Fact label="Local models">{models.length ? models.join(", ") : c.inference ? "None pulled" : "No runtime"}</Fact>
         <Fact label="Active leases"><span className="tabular-nums">{leaseCount(w)} of {w.shellSlots}</span><span className="text-ink-3"> shell, </span><span className="tabular-nums">{w.usage.inferenceRunning + w.usage.inferenceQueued}</span><span className="text-ink-3"> inference</span></Fact>
         <Fact label="Last seen">{w.online ? "Connected now" : ago(w.lastSeen)}</Fact>
-        <div className="col-span-2">{cpuPct !== null ? <BarMeter label="CPU load" pct={cpuPct} value={`${w.usage.loadAvg!.toFixed(2)} on ${c.cpu.cores} cores`} /> : <Fact label="CPU load">Not reported</Fact>}</div>
+        <div className="col-span-2">{cpuPct !== null ? <BarMeter label="CPU load" pct={cpuPct} value={fresh && hl.cpuPct !== null ? `${hl.cpuPct.toFixed(0)}% of ${c.cpu.cores} cores, load ${hl.load1?.toFixed(2) ?? "n/a"}` : `${w.usage.loadAvg!.toFixed(2)} on ${c.cpu.cores} cores`} /> : <Fact label="CPU">Not reported</Fact>}</div>
+        {hl && hl.state !== "offline" && <>
+          <Fact label="Temperature">{degrees(hl.tempC)}</Fact>
+          <Fact label="GPU load">{hl.gpuPct === null ? "n/a" : pct(hl.gpuPct)}</Fact>
+          <Fact label="Disk free">{hl.diskFreeGb === null ? "n/a" : `${hl.diskFreeGb.toFixed(0)} GB`}</Fact>
+          <Fact label="Services">{hl.services ? <ServiceDots s={hl.services} /> : "n/a"}</Fact>
+        </>}
         <div className="col-span-2">{memPct !== null ? <BarMeter label="Memory in use" pct={memPct} value={`${gb(c.memMb - w.usage.freeMemMb!)} of ${gb(c.memMb)}`} /> : <Fact label="Memory">{gb(c.memMb)}, use not reported</Fact>}</div>
       </dl>}
     </Card>

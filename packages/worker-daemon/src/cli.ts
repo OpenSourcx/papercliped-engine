@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { WorkerClient, VERSION, type Status } from "./client.ts";
 import { detectCapabilities } from "./caps.ts";
 import { WorkerFiles } from "./config.ts";
+import { StatsCollector } from "./stats.ts";
+import { createHash } from "node:crypto";
+import { LIMITS, manageMessage, verifyRaw, type ManageEnvelope } from "@papercliped-engine/worker-fabric";
 
 const files = new WorkerFiles();
 const [, , cmd = "help", ...rest] = process.argv;
@@ -20,7 +23,7 @@ async function main() {
       return;
     }
     case "adopt": {
-      const code = rest.find((a) => !a.startsWith("--"));
+      const code = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
       const c = new WorkerClient({ files, log });
       if (code) c.adopt(code);
       else if (flag("url") && flag("host-key")) c.requestAdoption(flag("host-key")!, [{ provider: flag("provider") ?? "custom", url: flag("url")! }]);
@@ -89,11 +92,34 @@ async function main() {
       console.log(JSON.stringify({ name: c.name, ollamaUrl: c.ollamaUrl, prefer: c.prefer, workspaceRoot: c.workspaceRoot, inference: c.inference }, null, 2));
       return;
     }
+    case "stats": {
+      const c = files.config();
+      const col = new StatsCollector({}, () => ({ workspaceRoot: c.workspaceRoot, ollamaUrls: [c.ollamaUrl, "http://127.0.0.1:11434"].filter(Boolean), gate: () => null, pulls: () => [] }));
+      await col.collect();
+      await new Promise((r) => setTimeout(r, 500));
+      console.log(JSON.stringify(await col.collect(), null, 2));
+      return;
+    }
+    case "verify-update": {
+      // Used by the root helper (epw-admin) before it installs anything: --pub FILE (host key, root-owned) --request FILE --tarball FILE --worker-id ID
+      const rd = (n: string) => { const v = flag(n); if (!v) throw new Error(`--${n} is required`); return v; };
+      const pub = readFileSync(rd("pub"), "utf8").trim();
+      const env = JSON.parse(readFileSync(rd("request"), "utf8")) as ManageEnvelope;
+      const sha = createHash("sha256").update(readFileSync(rd("tarball"))).digest("hex");
+      const fail = (m: string) => { console.error(`refused: ${m}`); process.exit(2); };
+      if (env.action !== "update") fail("not an update request");
+      if (env.workerId !== rd("worker-id")) fail("request is for another worker");
+      if (!verifyRaw(pub, Buffer.from(manageMessage(env)), env.sig)) fail("signature is not from the pinned host key");
+      if (Math.abs(Date.now() - env.ts) > 10 * 60_000 + LIMITS.manageSkewMs) fail("request is too old");
+      if (env.params.sha256 !== sha) fail("tarball does not match the signed checksum");
+      console.log("ok");
+      return;
+    }
     case "version":
       console.log(VERSION);
       return;
     default:
-      console.log("epaperclip-worker <run|adopt|status|config|diagnose|caps|version>");
+      console.log("epaperclip-worker <run|adopt|status|config|diagnose|caps|stats|verify-update|version>");
   }
 }
 void chmodSync;

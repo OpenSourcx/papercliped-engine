@@ -8,6 +8,7 @@ export function healthOf(w: Worker): Health {
   if (w.state === "revoked") return { kind: "critical", label: "Revoked", detail: "This identity can never connect again." };
   if (w.state === "pending") return { kind: "paused", label: "Waiting for approval", detail: "Not adopted yet." };
   if (w.disabled) return { kind: "off", label: "Disabled", detail: "No new work is scheduled here." };
+  if (w.online && w.health?.state === "stale") return { kind: "warning", label: "Stale", detail: "Connected, but no recent health sample (older than a minute)." };
   if (!w.online) return { kind: "warning", label: "Offline", detail: "It reconnects by itself when it can reach this host." };
   if (w.draining) return { kind: "paused", label: "Draining", detail: "Finishing current work; nothing new is scheduled." };
   const low = w.usage.freeMemMb !== null && w.usage.freeMemMb < 256;
@@ -50,3 +51,13 @@ export const providerLabel = (p: string) => ({ tailscale: "Tailscale", lan: "Loc
 
 /** Active leases first; the worker's own count is authoritative, the list is what the detail page shows. */
 export const leaseCount = (w: Worker) => w.usage.shellLeases;
+
+export const pct = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : `${Math.round(v)}%`);
+export const degrees = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : `${Math.round(v)} C`);
+/** Duration like "3 d 4 h" or "12 min". */
+export function span(s: number | null): string {
+  if (s === null) return "n/a";
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))} min`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+  return `${Math.floor(s / 86400)} d ${Math.floor((s % 86400) / 3600)} h`;
+}
