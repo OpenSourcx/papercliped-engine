@@ -8,6 +8,7 @@ import { createApp } from "./app.ts";
 import { TlsReloader } from "./features/nodeTls.ts";
 import { startPinRuntime } from "./features/pin-automations.ts";
 import { SessionStore } from "./sessions.ts";
+import { controlListener, workerListener } from "./fabric/listener.ts";
 import { StateStore } from "./state.ts";
 
 /**
@@ -56,6 +57,16 @@ const sessions = new SessionStore();
 const state = new StateStore(env.EPC_STATE_DIR || "/var/lib/epaperclip");
 const engineUrl = env.EPC_ENGINE_URL || "http://127.0.0.1:3100";
 const routerListen = env.EPC_ROUTER_LISTEN === "off" ? null : env.EPC_ROUTER_LISTEN || "127.0.0.1:3120";
+const fabricListen = env.EPC_FABRIC_LISTEN === "off" ? null : env.EPC_FABRIC_LISTEN || "0.0.0.0:7843";
+const fabricControl = env.EPC_FABRIC_CONTROL || "127.0.0.1:3130";
+const hostPort = (v: string, what: string) => {
+  const i = v.lastIndexOf(":");
+  const p = Number(v.slice(i + 1));
+  if (i <= 0 || !Number.isInteger(p) || p <= 0 || p > 65535) throw new Error(`${what} must be host:port, got ${v}`);
+  return { host: v.slice(0, i).replace(/^\[|\]$/g, ""), port: p };
+};
+const fabricAddr = fabricListen ? hostPort(fabricListen, "EPC_FABRIC_LISTEN") : null;
+const controlAddr = hostPort(fabricControl, "EPC_FABRIC_CONTROL");
 const handle = createApp({
   state,
   engine: { url: engineUrl, publicUrl: env.EPC_ENGINE_PUBLIC_URL || engineUrl, installDir: env.EPC_ENGINE_DIR || undefined },
@@ -70,6 +81,7 @@ const handle = createApp({
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   ...(env.EPC_BROKER_MANAGEMENT_TOKEN ? { broker: { url: env.EPC_BROKER_URL || "http://127.0.0.1:8787", managementToken: env.EPC_BROKER_MANAGEMENT_TOKEN } } : {}),
   routerListen,
+  ...(fabricAddr ? { fabric: { port: fabricAddr.port, controlUrl: `http://${controlAddr.host}:${controlAddr.port}`, pluginDir: env.EPC_FABRIC_PLUGIN_DIR || "/opt/epaperclip/plugins/remote-worker", customUrl: env.EPC_FABRIC_PUBLIC_URL || null } } : {}),
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
@@ -107,6 +119,18 @@ if (routerListen) {
   routerServer.on("error", (e) => activity.error("router", "router.listen", `The Router couldn't listen on ${routerListen}: ${e.message}`));
   routerServer.listen(rport, rhost, () => activity.info("router", "router.start", `Router listening on http://${routerListen}`));
 }
+// The Worker Fabric: workers connect out to this listener; the provider plugin talks to the loopback control listener.
+const fabricServers: ReturnType<typeof createHttp>[] = [];
+if (handle.fabric && fabricAddr) {
+  handle.fabric.start();
+  const wl = workerListener(handle.fabric);
+  wl.on("error", (e) => activity.error("fabric", "fabric.listen", `The worker listener couldn't start on ${fabricListen}: ${e.message}`));
+  wl.listen(fabricAddr.port, fabricAddr.host, () => activity.info("fabric", "fabric.start", `Workers connect to ${fabricListen}`));
+  const cl = controlListener(handle.fabric);
+  cl.on("error", (e) => activity.error("fabric", "fabric.control", `The control listener couldn't start on ${fabricControl}: ${e.message}`));
+  cl.listen(controlAddr.port, controlAddr.host);
+  fabricServers.push(wl, cl);
+}
 // Papercliped Connect: in Connect mode fetch the tunnel credentials now and keep them fresh; otherwise remove any leftover Connect tunnel.
 handle.link.watch();
 // Settle the engine's service account in the background, retrying while the engine starts.
@@ -128,5 +152,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     handle.link.unwatch();
     handle.engine?.stop();
     routerServer?.close();
+    handle.fabric?.close();
+    for (const f of fabricServers) f.close();
     server.close(() => process.exit(0));
   });

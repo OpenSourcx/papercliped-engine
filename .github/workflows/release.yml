@@ -43,6 +43,10 @@ jobs:
           npm --prefix plugins/proxmox-sandbox run typecheck
           npm --prefix plugins/proxmox-sandbox test
           npm --prefix plugins/proxmox-sandbox run build
+          npm --prefix plugins/remote-worker ci
+          npm --prefix plugins/remote-worker run typecheck
+          npm --prefix plugins/remote-worker test
+          npm --prefix plugins/remote-worker run build
       - name: Require the signing key for a tag
         if: startsWith(github.ref, 'refs/tags/')
         env:

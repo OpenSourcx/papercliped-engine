@@ -233,3 +233,33 @@ Owner report: Store cards showed letter tiles (OpenAI "O", Slack "S", VirtIO "V"
 - Evidence: locally tested and headless screenshots (demo data); not real-provider qualified.
 - CI for the Store marks commit: run 42438785826, head 5d05ebc, `checks` and `deploy-simulation` success (read from GitHub).
 - Follow-up: the Connectors page (Plugins in Settings) no longer overflows at 390px; under 640px each connector is a card with labelled 44px toggle rows, the table stays at 640px and up. The 3 unlabelled role-img SVGs in the audit were the host gauges behind the modal; they already carry `aria-labelledby` titles (CPU, memory, root disk), so no change was needed. Audit at 390 and 1280, light and dark: no page horizontal overflow, 0 toggles under 44px on mobile.
+
+
+## Worker Fabric
+
+Branch `feat/worker-fabric`, PR #18 (console UI: PR #19). Contract: [WORKER-FABRIC.md](WORKER-FABRIC.md); guide: [WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md); raw evidence: `docs/evidence/`.
+Labels: I implemented, L local tests, CI GitHub run, E live engine 2026.1023.0, R real device (Orion).
+
+| # | Definition of done | Status |
+| --- | --- | --- |
+| 1 | Generic feature | I, L (provider `remote-worker`, hub, daemon, scheduler) |
+| 2 | Orion registered as a real worker | R: adopted over Tailscale with a single-use code, worker `wrk_d142b0970803` |
+| 3 | Orion reconnects after reboot | NOT proven: no reboot (needs your go-ahead; linger is off, so the user service would start at login only). Daemon restart, simulated network loss and host restart reconnect: R (`docs/evidence/evidence-orion-reconnect.txt`) |
+| 4 | Capabilities recognised | R: arm64, Jetson GPU, 6 cores, 7485 MiB, tools, Ollama models qwen2.5-coder 3b/1.5b |
+| 5 | Real agent run assigned through the environment/provider | E+R: Paperclip heartbeat run succeeded on Orion (`evidence-engine-run.txt`). The agent CLI was a stand-in script named `claude`, not a cloud-model agent |
+| 6 | Isolated workspace | E+R |
+| 7 | Unrestricted dev shell | R (git, python3, docker present; the shell is the service user) |
+| 8 | Ollama GPU inference | R: qwen2.5-coder:3b through the worker's gate, 24 tokens/s |
+| 9 | Several agents, own workspaces and leases | L, R (two agents on one repo cache, separate worktrees) |
+| 10 | Inference capacity-limited and queued | R: three simultaneous generations ran 10.5 s, 20.5 s, 30.6 s, running=1 queued 2 to 0 |
+| 11 | Adoption in real UI | PR #19 UI built against the routes, not run against the live host (partial) |
+| 12 | Identity and revocation | L (replay, expiry, wrong host key, unknown identity, revoke survives host restart) |
+| 13 | Tailscale works | R: detection and the Orion session use Tailscale |
+| 14 | Tailscale not mandatory | L (LAN/custom selection tests) |
+| 15 | Second generic Linux worker | L (local daemon processes in tests); no separate live second machine |
+| 16 | Existing Proxmox functionality | L: full suite passes locally; CI per head below |
+| 17 | Suites pass | local typecheck, tests (serial), build, check:design, PVE conformance and scripts passed; installer simulation 61/61 |
+| 18 | Docs | I |
+| 19 | Final report | see the lead's report |
+
+Known limits: no reboot test; the per-agent lifecycle verification on the disposable engine needed the stand-in CLI to be named `claude`; the shell is not sandboxed; no live test on a second physical machine; Execute has no abort signal (cancel works through lease stop); transfers over 40 MB per command are refused.

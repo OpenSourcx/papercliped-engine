@@ -1,0 +1,15 @@
+{
+  "name": "@papercliped-engine/worker-daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The ePaperclip worker daemon: runs on a node you own, keeps an outbound authenticated connection to the host, and executes authorized jobs.",
+  "bin": { "epaperclip-worker": "./src/cli.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/epaperclip-worker.mjs --banner:js=\"#!/usr/bin/env node\nimport { createRequire as __epcRequire } from 'node:module'; const require = __epcRequire(import.meta.url);\""
+  },
+  "dependencies": { "@papercliped-engine/worker-fabric": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.10.0", "esbuild": "^0.28.2", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}

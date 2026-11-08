@@ -1,0 +1,48 @@
+{
+  "name": "@epaperclip/plugin-remote-worker",
+  "version": "0.1.0",
+  "description": "Remote worker sandbox provider for Paperclip: runs agents on persistent machines adopted into the ePaperclip Worker Fabric",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  },
+  "keywords": [
+    "paperclip",
+    "plugin",
+    "sandbox",
+    "worker"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "2026.1023.0"
+  },
+  "devDependencies": {
+    "@paperclipai/shared": "2026.1023.0",
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  }
+}
