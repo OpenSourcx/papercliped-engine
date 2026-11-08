@@ -1,5 +1,5 @@
 {
- "at": "2026-11-08T11:33:42.723Z",
+ "at": "2026-11-08T11:46:04.572Z",
  "rows": [
   {
    "cap": "org/list companies",
@@ -334,8 +334,8 @@
    "cap": "projects/get",
    "path": "/api/projects/{p}",
    "native": 200,
-   "epc": 404,
-   "state": "closed at proxy"
+   "epc": 200,
+   "state": "same"
   },
   {
    "cap": "projects/workspaces",
@@ -348,8 +348,8 @@
    "cap": "projects/access members",
    "path": "/api/projects/{p}/access-members",
    "native": 200,
-   "epc": 404,
-   "state": "closed at proxy"
+   "epc": 200,
+   "state": "same"
   },
   {
    "cap": "routines/list",

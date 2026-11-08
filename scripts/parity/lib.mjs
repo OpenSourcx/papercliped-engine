@@ -29,6 +29,8 @@ export async function driver(kind, opts = {}) {
   const c = new Client(base);
   const r = await c.req("POST", "/api/login", { username: opts.user ?? "sam", password: "right", realm: "pve" }, { "X-EPC-Request": "1" });
   if (r.status !== 200) throw new Error("host login " + r.status);
+  // The host opens the person's engine account in the background (sign-in never waits on the engine): wait for it.
+  for (let i = 0; i < 40; i++) { const me = await c.req("GET", "/engine/api/cli-auth/me"); if (me.status === 200 && (opts.user ?? "sam") !== "sam" ? me.status === 200 : me.body?.isInstanceAdmin) break; await sleep(500); }
   return { kind, base, req: (m, p, b) => c.req(m, "/engine" + p, b, { "X-EPC-Request": "1" }), host: (m, p, b) => c.req(m, p, b, { "X-EPC-Request": "1" }), raw: c };
 }
 

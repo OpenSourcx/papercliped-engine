@@ -1,12 +1,12 @@
 {
- "at": "2026-11-08T08:24:16.854Z",
+ "at": "2026-11-08T11:41:17.453Z",
  "pin": "paperclipai 2026.1023.0",
  "rows": [
   {
    "id": "J01 create organization",
    "target": "native",
    "ok": true,
-   "detail": "201 2973f96f-1884-491e-92df-4d4bb4d59fb5",
+   "detail": "201 64035bfd-8b02-491e-8d07-f1b4ac9a4565",
    "level": "real Paperclip runtime"
   },
   {
@@ -20,7 +20,7 @@
    "id": "J03 set company monthly budget",
    "target": "native",
    "ok": true,
-   "detail": "200 {\"id\":\"2973f96f-1884-491e-92df-4d4bb4d59fb5\",\"name\":\"Parity native-mw7kemu8\",\"de",
+   "detail": "200 {\"id\":\"64035bfd-8b02-491e-8d07-f1b4ac9a4565\",\"name\":\"Parity native-mw7rfjkw\",\"de",
    "level": "real Paperclip runtime"
   },
   {
@@ -41,7 +41,7 @@
    "id": "J06 hire agent reporting to CEO (process adapter)",
    "target": "native",
    "ok": true,
-   "detail": "201 {\"agent\":{\"id\":\"11dd114b-4db4-4384-a422-314b515112ef\",\"compa",
+   "detail": "201 {\"agent\":{\"id\":\"545f273c-6370-4c7e-a269-b1ef33158d96\",\"compa",
    "level": "real Paperclip runtime"
   },
   {
@@ -188,7 +188,7 @@
    "id": "J24 wake CEO (process adapter)",
    "target": "native",
    "ok": true,
-   "detail": "202 {\"id\":\"2c3afcf3-e95b-4cc9-995b-bb76ff96d1ba\",\"companyId\":\"da69f371-1083-4bfa-9b6",
+   "detail": "202 {\"id\":\"81979bd6-1730-4f4e-9284-f536a488f3a9\",\"companyId\":\"701789fb-0479-4ffe-a0e",
    "level": "real Paperclip runtime"
   },
   {
@@ -202,7 +202,7 @@
    "id": "J26 run log readable",
    "target": "native",
    "ok": true,
-   "detail": "200 {\"runId\":\"2c3afcf3-e95b-4cc9-995b-bb76ff96d1ba\",\"store\":\"local_file\",\"logRef\":\"da69f371-1083-4bfa-9b",
+   "detail": "200 {\"runId\":\"81979bd6-1730-4f4e-9284-f536a488f3a9\",\"store\":\"local_file\",\"logRef\":\"701789fb-0479-4ffe-a0",
    "level": "real Paperclip runtime"
   },
   {
@@ -265,7 +265,7 @@
    "id": "J01 create organization",
    "target": "epc",
    "ok": true,
-   "detail": "201 cd0a8d1d-cc1f-49ce-a503-0e8888cb4086",
+   "detail": "201 dcf2e1c4-8f56-4084-ab38-816cf884f2b9",
    "level": "real Paperclip runtime"
   },
   {
@@ -279,7 +279,7 @@
    "id": "J03 set company monthly budget",
    "target": "epc",
    "ok": true,
-   "detail": "200 {\"id\":\"cd0a8d1d-cc1f-49ce-a503-0e8888cb4086\",\"name\":\"Parity epc-mw7kfjkg\",\"descr",
+   "detail": "200 {\"id\":\"dcf2e1c4-8f56-4084-ab38-816cf884f2b9\",\"name\":\"Parity epc-mw7rgl0z\",\"descr",
    "level": "real Paperclip runtime"
   },
   {
@@ -300,7 +300,7 @@
    "id": "J06 hire agent reporting to CEO (process adapter)",
    "target": "epc",
    "ok": true,
-   "detail": "201 {\"agent\":{\"id\":\"ae394ca7-969d-4201-90b2-f4975839cf21\",\"compa",
+   "detail": "201 {\"agent\":{\"id\":\"0dc87d93-3601-46b4-a02d-15e929477577\",\"compa",
    "level": "real Paperclip runtime"
   },
   {
@@ -369,8 +369,8 @@
   {
    "id": "J14 edit project",
    "target": "epc",
-   "ok": false,
-   "detail": "404",
+   "ok": true,
+   "detail": "200",
    "level": "real Paperclip runtime"
   },
   {
@@ -383,8 +383,8 @@
   {
    "id": "J15b private project access members route",
    "target": "epc",
-   "ok": false,
-   "detail": "404",
+   "ok": true,
+   "detail": "200",
    "level": "real Paperclip runtime"
   },
   {
@@ -447,7 +447,7 @@
    "id": "J24 wake CEO (process adapter)",
    "target": "epc",
    "ok": true,
-   "detail": "202 {\"id\":\"7d20ad38-8897-44f4-adde-cef03e6befc6\",\"companyId\":\"9df6de87-84bb-4823-bb9",
+   "detail": "202 {\"id\":\"49cef174-e09e-49e0-a685-632602556557\",\"companyId\":\"408942e7-d416-493c-bb9",
    "level": "real Paperclip runtime"
   },
   {
@@ -461,7 +461,7 @@
    "id": "J26 run log readable",
    "target": "epc",
    "ok": true,
-   "detail": "200 {\"runId\":\"7d20ad38-8897-44f4-adde-cef03e6befc6\",\"store\":\"local_file\",\"logRef\":\"9df6de87-84bb-4823-bb",
+   "detail": "200 {\"runId\":\"49cef174-e09e-49e0-a685-632602556557\",\"store\":\"local_file\",\"logRef\":\"408942e7-d416-493c-bb",
    "level": "real Paperclip runtime"
   },
   {
@@ -503,7 +503,7 @@
    "id": "J29 activity log records the journey",
    "target": "epc",
    "ok": true,
-   "detail": "200 n=30",
+   "detail": "200 n=31",
    "level": "real Paperclip runtime"
   },
   {
@@ -523,25 +523,25 @@
  ],
  "ctx": [
   {
-   "cid": "2973f96f-1884-491e-92df-4d4bb4d59fb5",
+   "cid": "64035bfd-8b02-491e-8d07-f1b4ac9a4565",
    "kind": "native",
    "ids": {
-    "ceo": "87d87d6d-5d2b-468f-b387-5103898c2c33",
-    "eng": "11dd114b-4db4-4384-a422-314b515112ef",
-    "iss": "19bcc6f2-389f-4198-99f3-556dd06b4233",
-    "pid": "c879ee12-3dd3-4395-a7d1-9a08840dc268",
-    "priv": "5391bb05-c359-4d28-9ae8-97d1514e3e6b"
+    "ceo": "4f549720-382a-41d9-b50d-9ee9a4373705",
+    "eng": "545f273c-6370-4c7e-a269-b1ef33158d96",
+    "iss": "2d99c08c-62aa-4ae3-9a29-8d9f7d1180c6",
+    "pid": "03319dec-3e72-43d1-9046-a9e6b5136e11",
+    "priv": "eed26f51-261e-473e-9c1a-ee826a6a2348"
    }
   },
   {
-   "cid": "cd0a8d1d-cc1f-49ce-a503-0e8888cb4086",
+   "cid": "dcf2e1c4-8f56-4084-ab38-816cf884f2b9",
    "kind": "epc",
    "ids": {
-    "ceo": "fe445c86-cc5d-4437-924e-7a6b9beeff17",
-    "eng": "ae394ca7-969d-4201-90b2-f4975839cf21",
-    "iss": "49cf033b-a302-4f26-9b54-8f900a4eba85",
-    "pid": "5c12290e-03dc-42ef-a13b-341b859c8aca",
-    "priv": "6f595855-7638-4cc4-994c-35d3833409c7"
+    "ceo": "85dd02bd-6290-400b-9c90-518cd3faf7d5",
+    "eng": "0dc87d93-3601-46b4-a02d-15e929477577",
+    "iss": "74176212-78c3-4f0d-9ade-d3ebb502a4db",
+    "pid": "7db2cb2c-4dba-48d7-89c1-530a1583553e",
+    "priv": "ae7dd49a-7154-48b5-b446-ce197ebd9a44"
    }
   }
  ]
