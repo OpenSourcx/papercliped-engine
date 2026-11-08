@@ -20,5 +20,8 @@ test("run context overrides dedicated-agent config", () => {
 
 test("task and escalation files carry the correctness oracle and handoff evidence", () => {
   const c = taskContract({ taskContract: valid }, {});
-  assert.chakTrue=true;
+  assert.match(taskMarkdown(c, "FAIL expected device"), /FAIL expected device/);
+  const handoff = escalationMarkdown(c, { model: "qwen2.5-coder:7b", attemptsUsed: 3, diff: "+bad", testLog: "FAIL" });
+  assert.match(handoff, /Small-model diff/);
+  assert.match(handoff, /npm test -- label/);
 });
