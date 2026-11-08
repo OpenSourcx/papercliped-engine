@@ -1,0 +1,25 @@
+[Unit]
+Description=ePaperclip Worker
+Documentation=https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/WORKER-FABRIC-GUIDE.md
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+Environment=EPW_DIR=@DATA@
+Environment=EPW_WORKSPACES=@WORKSPACES@
+WorkingDirectory=@DATA@
+ExecStart=@NODE@ @PREFIX@/epaperclip-worker.mjs run
+Restart=always
+RestartSec=3
+# Commands the host runs are children of this service; stopping or restarting it ends them.
+KillMode=control-group
+TimeoutStopSec=15
+LimitNOFILE=65536
+# The worker is an unprivileged user with a shell on its own machine. It holds only its own key, never host credentials.
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

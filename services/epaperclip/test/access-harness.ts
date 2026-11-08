@@ -9,7 +9,7 @@ import { StateStore } from "../src/state.ts";
 import { fakeAccessPve } from "./fakes-access.ts";
 
 /** A running host service wired to the fake Proxmox access API, with a clock the test controls. */
-export async function startAccessApp(extra: { engine?: Parameters<typeof createApp>[0]["engine"] } = {}) {
+export async function startAccessApp(extra: { engine?: Parameters<typeof createApp>[0]["engine"]; fabric?: Parameters<typeof createApp>[0]["fabric"] } = {}) {
   const pve = fakeAccessPve();
   const clock = { t: 1_800_000_000_000 };
   const now = () => clock.t;

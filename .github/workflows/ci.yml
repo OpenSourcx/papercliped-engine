@@ -24,12 +24,18 @@ jobs:
       - run: pnpm build
       - run: node scripts/check-pve-api.mjs
       - run: pnpm test:scripts
-      - name: Proxmox sandbox provider
+      - name: Providers (Proxmox sandbox, remote worker)
         run: |
           npm --prefix plugins/proxmox-sandbox ci
           npm --prefix plugins/proxmox-sandbox run typecheck
           npm --prefix plugins/proxmox-sandbox test
           npm --prefix plugins/proxmox-sandbox run build
+          npm --prefix plugins/remote-worker ci
+          npm --prefix plugins/remote-worker run typecheck
+          npm --prefix plugins/remote-worker test
+          npm --prefix plugins/remote-worker run build
+      - name: Worker installer simulation
+        run: bash deploy/worker/test/run.sh
   deploy-simulation:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -43,5 +49,7 @@ jobs:
         run: |
           npm --prefix plugins/proxmox-sandbox ci
           npm --prefix plugins/proxmox-sandbox run build
+          npm --prefix plugins/remote-worker ci
+          npm --prefix plugins/remote-worker run build
       # As root, like the release workflow, so the ownership checks are real rather than recorded.
       - run: sudo env "PATH=$PATH" bash deploy/test/run.sh
