@@ -120,11 +120,16 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
 
 const SPIN_MS = 2000;
 
-/** One sign-in, start to finish. Closing it before the end cancels the session so the next try isn't blocked by a stale one. */
-export function SignInModal({ companyId, org, adapter, environmentId, onClose, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onClose: () => void; onDone?: () => void }) {
+type SignInState = ReturnType<typeof useSignInSession>;
+
+/**
+ * One sign-in session, start to finish: starts it in the container, polls until it ends, and cancels a stale one on
+ * the way out so the next try isn't blocked. `restart()` abandons the current session and begins a new one.
+ */
+function useSignInSession({ companyId, adapter, environmentId, onDone }: { companyId: string; adapter: LoginAdapter; environmentId: string; onDone?: () => void }) {
   const qc = useQueryClient();
-  const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
   const claude = adapter === "claude_local";
+  const [attempt, setAttempt] = useState(0);
   const [session, setSession] = useState<LoginSession | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -133,30 +138,38 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose, o
   const [done, setDone] = useState(false);
   const live = useRef<{ id: string | null; over: boolean }>({ id: null, over: false });
 
-  // Start once, then poll the session until it ends.
+  // Start once per attempt, then poll the session until it ends.
   useEffect(() => {
+    setSession(null);
+    setAddress(null);
+    setCode("");
+    setError(null);
+    setSubmitted(false);
+    setDone(false);
+    live.current = { id: null, over: false };
     let stopped = false;
+    const run = live.current;
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     (async () => {
       try {
         const s = await engine.agentAuth.start(companyId, adapter, environmentId);
-        live.current.id = s.sessionId;
+        run.id = s.sessionId;
         setSession(s);
         while (!stopped) {
           await sleep(SPIN_MS);
           const cur = await engine.agentAuth.read(companyId, adapter, s.sessionId);
           if (stopped) return;
           setSession((prev) => ({ ...prev, ...cur }));
-          if (claude && !address) engine.agentAuth.claudeAddress(companyId, s.sessionId).then((a) => setAddress(a.authorizationUrl)).catch(() => undefined);
+          if (claude) engine.agentAuth.claudeAddress(companyId, s.sessionId).then((a) => !stopped && setAddress(a.authorizationUrl)).catch(() => undefined);
           if (cur.status === "authenticated") {
             if (claude) await engine.agentAuth.claudeComplete(companyId, s.sessionId);
-            live.current.over = true;
+            run.over = true;
             setDone(true);
             onDone?.();
             void qc.invalidateQueries({ queryKey: ["agent-auth", companyId] });
             return;
           }
-          if (cur.status === "failed" || cur.status === "timed_out" || cur.status === "cancelled") { live.current.over = true; return; }
+          if (cur.status === "failed" || cur.status === "timed_out" || cur.status === "cancelled") { run.over = true; return; }
         }
       } catch (e) {
         if (!stopped) setError(errorText(e));
@@ -164,10 +177,9 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose, o
     })();
     return () => {
       stopped = true;
-      const { id, over } = live.current;
-      if (id && !over) void engine.agentAuth.cancel(companyId, adapter, id).catch(() => undefined);
+      if (run.id && !run.over) void engine.agentAuth.cancel(companyId, adapter, run.id).catch(() => undefined);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prompt = claude ? (address ? { url: address, code: "" } : null) : session?.prompt ?? null;
   const ended = session?.status === "failed" || session?.status === "timed_out" || session?.status === "cancelled";
@@ -181,35 +193,62 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose, o
       setError(errorText(e));
     }
   };
+  return { claude, session, code, setCode, error, submitted, done, ended, prompt, submit, restart: () => setAttempt((n) => n + 1) };
+}
+
+/** What a sign-in shows: the steps while it runs, then "Signed in" or why it didn't finish. Shared by the dialog and the wizard. */
+function SignInBody({ s, name, org }: { s: SignInState; name: string; org: string }) {
+  const { claude, session, error, done, ended, prompt, code, setCode, submitted, submit } = s;
   const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
   return (
-    <Modal title={`Sign in to ${name}`} subtitle={`For the agents in ${org}.`} icon={<LogIn className="h-5 w-5" />} onClose={onClose} size="sm"
-      footer={<Button variant={done ? "primary" : "ghost"} onClick={onClose}>{done ? "Done" : "Cancel"}</Button>}>
-      <div className="space-y-4" aria-live="polite">
-        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
-        {done && <Notice tone="good" title="Signed in">{org}'s agents can use this {name} account. It's kept as a secret; nobody can read it back.</Notice>}
-        {ended && <Notice tone="critical" title={session?.status === "timed_out" ? "That took too long" : "The sign-in didn't finish"}>{session?.failure?.message ?? "Close this and try again."}</Notice>}
-        {!done && !ended && !error && !prompt && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Starting a sign-in in the container…</p>}
-        {!done && !ended && prompt && (
-          <>
-            <ol className="list-decimal pl-5 space-y-3 text-compact text-ink-2">
+    <div className="space-y-4" aria-live="polite">
+      {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+      {done && <Notice tone="good" title="Signed in">{org}'s agents can use this {name} account. It's kept as a secret; nobody can read it back.</Notice>}
+      {ended && <Notice tone="critical" title={session?.status === "timed_out" ? "That took too long" : "The sign-in didn't finish"}>{session?.failure?.message ?? "Close this and try again."}</Notice>}
+      {!done && !ended && !error && !prompt && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Starting a sign-in in the container…</p>}
+      {!done && !ended && prompt && (
+        <>
+          <ol className="list-decimal pl-5 space-y-3 text-compact text-ink-2">
+            <li>
+              <Button size="sm" onClick={() => open(prompt.url)}><ExternalLink className="h-4 w-4" />Open the {name} sign-in page</Button>
+              <p className="text-xs text-ink-3 mt-1.5">It opens in a new tab. Sign in with the account you want agents to use.</p>
+            </li>
+            {!claude && prompt.code && <li>Enter this code there: <code className="font-mono text-body font-semibold text-ink select-all">{prompt.code}</code></li>}
+            {claude && (
               <li>
-                <Button size="sm" onClick={() => open(prompt.url)}><ExternalLink className="h-4 w-4" />Open the {name} sign-in page</Button>
-                <p className="text-xs text-ink-3 mt-1.5">It opens in a new tab. Sign in with the account you want agents to use.</p>
+                <Field label="Paste the code Claude shows you" htmlFor="claude-code"><Input id="claude-code" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /></Field>
+                <Button size="sm" className="mt-2" disabled={!code.trim() || submitted} loading={submitted && !done} onClick={submit}>Submit code</Button>
               </li>
-              {!claude && prompt.code && <li>Enter this code there: <code className="font-mono text-body font-semibold text-ink select-all">{prompt.code}</code></li>}
-              {claude && (
-                <li>
-                  <Field label="Paste the code Claude shows you" htmlFor="claude-code"><Input id="claude-code" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /></Field>
-                  <Button size="sm" className="mt-2" disabled={!code.trim() || submitted} loading={submitted && !done} onClick={submit}>Submit code</Button>
-                </li>
-              )}
-            </ol>
-            <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />{submitted || !claude ? "Waiting for you to finish signing in…" : "Waiting for the code…"}</p>
-          </>
-        )}
-      </div>
+            )}
+          </ol>
+          <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />{submitted || !claude ? "Waiting for you to finish signing in…" : "Waiting for the code…"}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One sign-in, in a dialog. Closing it before the end cancels the session so the next try isn't blocked by a stale one. */
+export function SignInModal({ companyId, org, adapter, environmentId, onClose, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onClose: () => void; onDone?: () => void }) {
+  const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
+  const s = useSignInSession({ companyId, adapter, environmentId, onDone });
+  return (
+    <Modal title={`Sign in to ${name}`} subtitle={`For the agents in ${org}.`} icon={<LogIn className="h-5 w-5" />} onClose={onClose} size="sm"
+      footer={<Button variant={s.done ? "primary" : "ghost"} onClick={onClose}>{s.done ? "Done" : "Cancel"}</Button>}>
+      <SignInBody s={s} name={name} org={org} />
     </Modal>
+  );
+}
+
+/** The same sign-in on the page, under the provider cards, the way Paperclip's start flow shows it: no dialog, and a way to start over. */
+export function InlineSignIn({ companyId, org, adapter, environmentId, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onDone?: () => void }) {
+  const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
+  const s = useSignInSession({ companyId, adapter, environmentId, onDone });
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 p-4 space-y-3" data-testid="inline-sign-in">
+      <SignInBody s={s} name={name} org={org} />
+      {!s.done && <button type="button" onClick={s.restart} className="text-compact text-ink-3 underline underline-offset-2 hover:text-ink transition-control">Start sign-in again</button>}
+    </div>
   );
 }
 
