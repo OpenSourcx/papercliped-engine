@@ -7,7 +7,8 @@ import { RemoteAccess } from "../src/pages/access/RemoteAccess.tsx";
 import { host, type ConnectStatusView } from "../src/data/engine/host.ts";
 
 vi.mock("../src/pages/access/CloudflareAccess.tsx", () => ({ CloudflareAccess: () => <div>cloudflare section</div> }));
-vi.mock("../src/data/engine/queries.ts", async (original) => ({ ...(await original<typeof import("../src/data/engine/queries.ts")>()), useConnectors: () => ({ data: { connectors: [{ id: "cloudflare", configured: true }], canManage: true }, isPending: false }) }));
+const cf = vi.hoisted(() => ({ configured: true }));
+vi.mock("../src/data/engine/queries.ts", async (original) => ({ ...(await original<typeof import("../src/data/engine/queries.ts")>()), useConnectors: () => ({ data: { connectors: [{ id: "cloudflare", configured: cf.configured }], canManage: true }, isPending: false }) }));
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
 const status = (s: Partial<ConnectStatusView> = {}): ConnectStatusView => ({ mode: "local", paired: false, ...s });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -88,5 +89,33 @@ describe("Self-managed Cloudflare", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Check permissions" }));
     expect(await screen.findByText("A required permission is missing")).toBeTruthy();
     expect(screen.getByText("Zone: DNS: Edit")).toBeTruthy();
+  });
+  it("replaces a refused token in a popup on this page, without going to Settings", async () => {
+    const CloudflareAccess = await load();
+    vi.spyOn(host.publishing, "cloudflareZones").mockRejectedValue(new Error("This token is missing a permission: Zone: Zone: Read."));
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "none", steps: steps(0), message: "" });
+    const setKey = vi.spyOn(host.connectors, "setKey").mockResolvedValue({ id: "cloudflare", configured: true } as never);
+    wrap(<CloudflareAccess />);
+    await screen.findByText("Could not load Cloudflare domains");
+    fireEvent.click(screen.getAllByRole("button", { name: "Replace token" })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Replace Cloudflare token" });
+    const input = screen.getByLabelText("Cloudflare API token") as HTMLInputElement;
+    expect(input.type).toBe("password");
+    fireEvent.change(input, { target: { value: "cf_test_token_0123456789abcdef" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save token" }));
+    await waitFor(() => expect(setKey).toHaveBeenCalledWith("cloudflare", "cf_test_token_0123456789abcdef"));
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+  });
+});
+
+describe("Self-managed Cloudflare without a token", () => {
+  afterEach(() => { cf.configured = true; });
+  it("offers Add token in a popup instead of a link to Settings", async () => {
+    cf.configured = false;
+    const { CloudflareAccess } = await vi.importActual<typeof import("../src/pages/access/CloudflareAccess.tsx")>("../src/pages/access/CloudflareAccess.tsx");
+    wrap(<CloudflareAccess />);
+    expect(screen.queryByRole("link", { name: /Open Plugins/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add token" }));
+    expect(await screen.findByRole("dialog", { name: "Add Cloudflare token" })).toBeTruthy();
   });
 });
