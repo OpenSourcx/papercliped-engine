@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, KeyRound, LogIn, Sparkles, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Sparkles, UserPlus, X } from "lucide-react";
 import { type LoginAdapter } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../data/store.tsx";
 import { orgSlug } from "../../data/engine/map.ts";
@@ -15,7 +15,8 @@ import { useModals } from "../../modals/useModals.ts";
 import { cn } from "../../lib/storage.ts";
 import { Avatar, Button, Chip, Field, IconButton, Input, Notice, Spinner } from "../../ui/primitives.tsx";
 import { textareaClass } from "../org/live/common.tsx";
-import { ApiKeyModal, HARNESSES, SignInModal, type Harness } from "../AgentSignIn.tsx";
+import { ApiKeyModal, HARNESSES, InlineSignIn, type Harness } from "../AgentSignIn.tsx";
+import { BrandMark } from "../../ui/BrandMark.tsx";
 import { SizeChoice } from "./SizeChoice.tsx";
 
 /**
@@ -274,17 +275,21 @@ function CeoStep({ c }: { c: Ctx }) {
 
 
 
+/** What a card calls each harness: the provider the person knows, not the command-line tool that runs it. */
+const PROVIDER: Record<Harness, string> = { claude_local: "Claude", codex_local: "OpenAI", grok_local: "Grok", gemini_local: "Gemini" };
+
 function ModelStep({ c }: { c: Ctx }) {
-  const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
+  const { draft, patch, setError, error, warning } = c;
   const [picked, setPicked] = useState<Harness | null>(null);
   const [connected, setConnected] = useState<Partial<Record<Harness, boolean>>>({});
   const [flow, setFlow] = useState<{ kind: "login" | "key"; adapter: Harness } | null>(null);
-  const [prepping, setPrepping] = useState(false);
+  // Paperclip's order: a subscription first, an API key as the quieter second choice.
+  const [mode, setMode] = useState<"account" | "key">("account");
   // The container environment is made within a minute of the organization; wait for it before offering a sign-in.
   const env = useQuery({ queryKey: ["start", "env", draft.company!.id], queryFn: host.agentContainers.get, retry: false, refetchInterval: (q) => (q.state.data?.environments.some((e) => e.companyId === draft.company!.id && e.ok) ? false : 3000) });
   const environmentId = env.data?.environments.find((e) => e.companyId === draft.company!.id && e.ok)?.environmentId ?? null;
+  const logsIn = (a: Harness) => HARNESSES.find((h) => h.adapter === a)?.login === true;
   const start = async (kind: "login" | "key", adapter: Harness) => {
-    setPrepping(true);
     setError(null);
     try {
       // The CEO runs on whichever harness the person connects.
@@ -292,35 +297,43 @@ function ModelStep({ c }: { c: Ctx }) {
       setFlow({ kind, adapter });
     } catch (e) {
       setError(errorText(e));
-    } finally {
-      setPrepping(false);
     }
   };
-  const chosen = HARNESSES.find((h) => h.adapter === picked);
+  const choose = (adapter: Harness) => {
+    setFlow(null);
+    setPicked(adapter);
+    if (mode === "key" || !logsIn(adapter)) void start("key", adapter);
+  };
+  // Choosing a provider starts its sign-in at once, as soon as the container is there to run it.
+  useEffect(() => {
+    if (picked && mode === "account" && logsIn(picked) && environmentId && !flow && !connected[picked]) void start("login", picked);
+  }, [picked, mode, environmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const switchMode = () => {
+    setFlow(null);
+    setPicked(null);
+    setError(null);
+    setMode((m) => (m === "account" ? "key" : "account"));
+  };
+  const shown = HARNESSES.filter((h) => mode === "key" || h.login);
+  const any = Object.values(connected).some(Boolean);
   return (
-    <Screen title="Connect a model" subtitle="Your agents work with your account or an API key." onBack={() => patch({ step: "ceo" })} next={{ label: Object.values(connected).some(Boolean) ? "Next" : "Skip for now", onClick: () => patch({ step: "task" }), variant: Object.values(connected).some(Boolean) ? "primary" : "secondary" }} avatar={draft.ceoName}>
-      <div role="radiogroup" aria-label="Model" className="grid grid-cols-2 gap-3">
-        {HARNESSES.map((h) => (
-          <button key={h.adapter} type="button" role="radio" aria-checked={picked === h.adapter} onClick={() => setPicked(h.adapter)} className={cn("transition-control rounded-xl border p-3.5 text-left", picked === h.adapter ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong")}>
-            <div className="flex items-center justify-between gap-2 font-medium text-sm">{h.name}{connected[h.adapter] && <Chip tone="good"><Check className="h-3 w-3" />Connected</Chip>}</div>
-            <p className="text-xs text-ink-3 mt-1">{h.login ? "Account or API key" : "API key"}</p>
+    <Screen title="Connect a model" subtitle="Your agents work with your subscription or an API key." onBack={() => patch({ step: "ceo" })} next={{ label: any ? "Next" : "Skip for now", onClick: () => patch({ step: "task" }), variant: any ? "primary" : "secondary" }} avatar={draft.ceoName}>
+      <div role="radiogroup" aria-label="Model" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {shown.map((h) => (
+          <button key={h.adapter} type="button" role="radio" aria-checked={picked === h.adapter} onClick={() => choose(h.adapter)} className={cn("transition-control flex flex-col items-center gap-1.5 rounded-xl border p-4 text-center", picked === h.adapter ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong")}>
+            <BrandMark id={h.adapter} name={PROVIDER[h.adapter]} size={22} />
+            <span className="font-medium text-sm">{PROVIDER[h.adapter]}</span>
+            <span className="text-xs text-ink-3">{mode === "account" ? "Subscription" : "API key"}</span>
+            {connected[h.adapter] && <Chip tone="good"><Check className="h-3 w-3" />Connected</Chip>}
           </button>
         ))}
       </div>
-      {chosen && (
-        <div className="space-y-3">
-          <p className="text-compact text-ink-2">{chosen.how}</p>
-          <div className="flex flex-wrap gap-2">
-            {chosen.login && <Button variant="primary" disabled={!environmentId} loading={prepping} onClick={() => void start("login", chosen.adapter)}><LogIn className="h-4 w-4" />Sign in with your account</Button>}
-            <Button loading={prepping && !chosen.login} onClick={() => void start("key", chosen.adapter)}><KeyRound className="h-4 w-4" />Use an API key</Button>
-          </div>
-          {chosen.login && !environmentId && <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />Setting up this organization's container so the sign-in has somewhere to run…</p>}
-        </div>
-      )}
+      <button type="button" onClick={switchMode} className="self-start text-compact text-ink-3 underline underline-offset-2 hover:text-ink transition-control">{mode === "account" ? "Use API key instead" : "Use your subscription instead"}</button>
+      {mode === "account" && picked && logsIn(picked) && !environmentId && <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />Setting up this organization's container so the sign-in has somewhere to run…</p>}
+      {flow?.kind === "login" && environmentId && <InlineSignIn key={flow.adapter} companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter as LoginAdapter} environmentId={environmentId} onDone={() => setConnected((m) => ({ ...m, [flow.adapter]: true }))} />}
+      {flow?.kind === "key" && <ApiKeyModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter} onClose={() => setFlow(null)} onDone={() => setConnected((m) => ({ ...m, [flow.adapter]: true }))} />}
       {warning && <Notice tone="warning">{warning}</Notice>}
       {error && <p role="alert" className="text-compact text-critical">{error}</p>}
-      {flow?.kind === "login" && environmentId && <SignInModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter as LoginAdapter} environmentId={environmentId} onClose={() => setFlow(null)} onDone={() => setConnected((c) => ({ ...c, [flow.adapter]: true }))} />}
-      {flow?.kind === "key" && <ApiKeyModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter} onClose={() => setFlow(null)} onDone={() => setConnected((c) => ({ ...c, [flow.adapter]: true }))} />}
     </Screen>
   );
 }
