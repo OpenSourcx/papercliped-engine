@@ -22,3 +22,20 @@ Labels: [RT] real Paperclip runtime 2026.1023.0, [HW] physical Orion, [EXT] real
 6. Worker clones have no credential channel for private repos (daemon `git clone` is unauthenticated); the agent cloned itself with the per-run secret.
 
 Scripts used are in `scripts/` (no secrets). ids: `ids.json`.
+
+## Milestone 2: concurrency, cancel, restart, revoke, measurements (2026-11-08 11:30-11:45 UTC)
+All [RT][HW] unless noted; model calls [EXT].
+- **Concurrency PASS**: agents B (`875fe262`) and C (`3c814470`) ran at once on Orion (runs `704e05e4`, `3f4686c9`, 11:35:58-11:37:19), each in its own lease workspace (`~/epaperclip-workspaces/<company>/<agent>/<workspace>`), pushing separate branches (`feat/wordcount-*`, `feat/titlecase-*`); `main` stayed at `edb31812`; PRs #3, #4 (and #1, #2) open, none merged. Model quality was uneven (qwen3-coder confused slugify tests in C); coordination, isolation and lifecycle are what is proven. Company spend after everything: US$0.25 of US$1.
+- **Queued local inference PASS [HW]**: two simultaneous generations through the worker gate (127.0.0.1:11435) on qwen2.5-coder:3b: first done +7.0 s (3.4 s cold load), second +10.4 s (serialised, one model loaded, `/api/ps` shows one 2063 MB model). 80 tokens at ~23-24 tok/s. RAM used 1.2 GB idle, 4.0 GB with the model (3.5 GB available); load average 0.2; gpu/cpu thermal 53-55 C. Never near OOM.
+- **Cancel: PARTIAL, real defect (pinned engine + provider)**: board cancel marks the Paperclip run `cancelled` at once, but the engine does not abort the in-flight `Execute` or release the lease, so `opencode run` kept running on Orion (3+ min) and lease `wl_03753ba1afad171c` stayed `active`. `POST /control/v1/leases/<id>/stop` killed the process and set `stopped` (PASS). Root cause: the plugin `Execute` params carry no abort signal (WORKER-FABRIC.md limitation 1). Remaining gap: the provider cannot learn about the cancel until the command returns or times out (adapter timeout 1500 s). Fix needs an engine abort signal or a run-status poll in the plugin; not done here.
+- Budget hard-stop after cancel (engine accounting, finding 4 above) recurred; cleared the same way.
+- **Daemon restart PASS**: offline 0.2-0.4 s, online again 1.1 s. **Host (fabric host) restart PASS**: worker reconnected 3.2 s. **Offline display PASS**: with the daemon's simulate-offline hook, worker shows `online:false` and a probe returns `orion-kpnai: offline` (clear error). Orion not rebooted.
+- **Revoke PASS**: revoke closed the session at once (`closed: revoked`), probe says `no workers are adopted`, worker status `revoked`. Revoke while a run is active was NOT tested (no stable active run at that time). Re-adopted with a fresh identity as `wrk_1c9aae0fd8af` (old id `wrk_654e443f5d0a` stays revoked).
+- **Account**: shell runs as `miah` (uid 1000, non-root, no sudo); that user can reach its home, the Ollama API on the tailnet and any file miah owns on Orion. Untrusted workloads were not run.
+- Code fix in this PR: `packages/worker-daemon/src/runner.ts` sweeps leaked detached processes (adapter bridge server) on cancel-by-owner, with a regression test. Not yet deployed to Orion (needs `scripts/package-worker.sh` and `install.sh --user`); the leaked `paperclip-bridge-server` from run `4024dc9d` was still on Orion when last checked.
+
+## Blockers / prerequisites
+1. `sudo loginctl enable-linger miah` on Orion (one root command); without it the worker stops when no SSH session is open (a holder session `ssh ... sleep` is keeping it up now, PID in `/project/.work/orion-e2e/holder.pid`).
+2. Cancel does not stop remote work promptly (above).
+3. Worker `git clone` of a private repo has no credential channel; the demo used a per-run secret env in the agent's own commands.
+4. The full console/host service needs Proxmox login; the harness (`fabric-host-live.ts`) was used, so the console UI path was not exercised.
