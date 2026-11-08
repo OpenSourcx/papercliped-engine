@@ -35,6 +35,7 @@ import { handleMachineFiles } from "./machine-files.ts";
 import { routerRoutes } from "./router.ts";
 import { nativeAppRoutes } from "./native-apps.ts";
 import { fabricRoutes } from "./fabric.ts";
+import { taskRouterRoutes } from "./task-router.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -108,4 +109,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "machine-files", handle: handleMachineFiles },
   { name: "router", handle: routerRoutes },
   { name: "fabric", handle: fabricRoutes },
+  { name: "task-router", handle: taskRouterRoutes },
 ];

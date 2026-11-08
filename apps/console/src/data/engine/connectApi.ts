@@ -40,6 +40,9 @@ export const nativeAppApi = {
 };
 
 /** The Router (docs/ROUTER.md): its address, the models clients can name, connections resting after failures, and its keys (never the keys themselves). */
+/** An organization's Jev task-routing switch (services/epaperclip/src/features/task-router.ts). The key is never returned. */
+export interface JevSettingsView { enabled: boolean; hasKey: boolean; consentSendTaskText: boolean; active: boolean; disclosure: string; card?: { title: string; summary: string; keyLabel: string; consentLabel: string; switchLabel: string } }
+
 export interface RouterKey { id: string; name: string; last4: string; createdAt: number; createdBy: string; lastUsedAt?: number }
 export interface RouterStatus { listen: string | null; models: { id: string; owner: string; label: string }[]; resting: { pid: string; fails: number; openUntil: number }[]; keys: RouterKey[] }
 
@@ -191,6 +194,12 @@ export const connectApi = {
   router: () => req<RouterStatus>("GET", "/api/router"),
   makeRouterKey: (name: string) => req<{ key: string; view: RouterKey }>("POST", "/api/router/keys", { name }),
   revokeRouterKey: (id: string) => req<{ ok: true }>("DELETE", `/api/router/keys/${enc(id)}`),
+
+  jev: (company: string) => req<JevSettingsView>("GET", `/api/task-router/orgs/${enc(company)}/jev`),
+  setJev: (company: string, b: { enabled?: boolean; consentSendTaskText?: boolean }) => req<JevSettingsView>("PUT", `/api/task-router/orgs/${enc(company)}/jev`, b),
+  setJevKey: (company: string, apiKey: string) => req<JevSettingsView>("PUT", `/api/task-router/orgs/${enc(company)}/jev/key`, { apiKey }),
+  removeJevKey: (company: string) => req<JevSettingsView>("DELETE", `/api/task-router/orgs/${enc(company)}/jev/key`),
+  testJev: (company: string) => req<{ ok: true }>("POST", `/api/task-router/orgs/${enc(company)}/jev/test`, {}),
 
   orgAi: (company: string) => req<{ connections: { id: string | null; provider: string | null; method: string | null; name: string | null; ownership: string | null; status: string | null }[] }>("GET", `/api/connect/orgs/${enc(company)}/ai`),
   applyToOrg: (company: string, id: string) => req<{ applied: boolean }>("POST", `/api/connect/orgs/${enc(company)}/apply/${enc(id)}`, {}),

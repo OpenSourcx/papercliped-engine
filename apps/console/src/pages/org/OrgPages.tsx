@@ -1,4 +1,5 @@
 import { AgentAccounts } from "../connect/AgentAccounts.tsx";
+import { JevRouting } from "../connect/JevRouting.tsx";
 import { useState, type ReactNode } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, CircleDollarSign, FolderOpen, Inbox as InboxIcon, Plus, Repeat, Target, X } from "lucide-react";
@@ -321,7 +322,7 @@ export function OrgConnectors() {
           <PageFrame width="4xl">
             <PageHeader title="Connectors" subtitle={`Accounts and apps for ${org.name}. Model accounts power agents; organization apps give them access to external services.`} />
             <Segmented value={section} onChange={(value) => setParams({ section: value })} options={[{ value: "models", label: "Agent models" }, { value: "apps", label: "Organization apps" }]} />
-            {section === "models" && <div className="mt-6"><AgentAccounts companyId={org.engine.companyId} orgName={org.name} /></div>}
+            {section === "models" && <div className="mt-6"><AgentAccounts companyId={org.engine.companyId} orgName={org.name} /><JevRouting companyId={org.engine.companyId} orgName={org.name} /></div>}
           </PageFrame>
           {section === "apps" && <LiveOrganizationApps />}
         </>

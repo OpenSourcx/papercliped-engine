@@ -227,6 +227,9 @@ importers:
       '@papercliped-engine/proxmox-client':
         specifier: workspace:*
         version: link:../../packages/proxmox-client
+      '@papercliped-engine/task-router':
+        specifier: workspace:*
+        version: link:../../packages/task-router
       '@papercliped-engine/worker-fabric':
         specifier: workspace:*
         version: link:../../packages/worker-fabric
