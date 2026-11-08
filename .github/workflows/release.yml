@@ -47,6 +47,13 @@ jobs:
           npm --prefix plugins/remote-worker run typecheck
           npm --prefix plugins/remote-worker test
           npm --prefix plugins/remote-worker run build
+      - name: Aider small-device adapter
+        run: |
+          node --test engine/adapters/aider-local/test/*.test.mjs
+          node --check engine/adapters/aider-local/src/server/execute.js
+          node --check engine/adapters/aider-local/src/server/test.js
+          node --check engine/adapters/aider-local/bench/run-orion.mjs
+          bash -n deploy/worker/install-aider.sh
       - name: Require the signing key for a tag
         if: startsWith(github.ref, 'refs/tags/')
         env:

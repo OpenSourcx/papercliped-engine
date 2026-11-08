@@ -143,6 +143,12 @@ make_release() {
   }
 }
 EOF
+  # The small-device Aider adapter is part of the engine tree. Most installer
+  # scenarios use a tiny stand-in; the real-engine scenario swaps in the real adapter.
+  mkdir -p "$R/engine/adapters/aider-local/src/server"
+  printf '%s\n' '{"name":"@papercliped-engine/adapter-aider-local","version":"0.0.0-test","private":true,"type":"module","exports":{".":"./src/index.js","./server":"./src/server/index.js"}}' >"$R/engine/adapters/aider-local/package.json"
+  printf '%s\n' 'export const type = "aider_local";' >"$R/engine/adapters/aider-local/src/index.js"
+  printf '%s\n' 'export function createServerAdapter(){ return { type: "aider_local", execute: async () => ({ exitCode: 0 }) }; }' >"$R/engine/adapters/aider-local/src/server/index.js"
   case "${3:-}" in
     broken-host) echo 'process.exit(1);' >"$R/epaperclip.mjs" ;;
     host-fails-as-service) sed -i 's/^const failUnderSystemd = false;/const failUnderSystemd = true;/' "$R/epaperclip.mjs" ;;
@@ -487,6 +493,9 @@ s_real_engine() {
   unset EPC_SKIP_ENGINE_NPM EPC_SKIP_NODE; export STUB_RUN_AS_NOBODY=1 EPC_ENGINE_WAIT=300; touch "$H/stub/run-as-nobody"
   make_release 1.0.0 x
   cp "$REPO/engine/package.json" "$REPO/engine/package-lock.json" "$R/engine/"
+  rm -rf "$R/engine/adapters/aider-local"
+  mkdir -p "$R/engine/adapters"
+  cp -r "$REPO/engine/adapters/aider-local" "$R/engine/adapters/aider-local"
   # The real provider (built, with its real lockfile) when it has been built here; its packages are installed for real.
   if [ -f "$REPO/plugins/proxmox-sandbox/dist/manifest.js" ]; then
     rm -rf "$R/plugins/proxmox-sandbox"; mkdir -p "$R/plugins/proxmox-sandbox"

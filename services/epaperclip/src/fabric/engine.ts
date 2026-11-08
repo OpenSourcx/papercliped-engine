@@ -8,6 +8,7 @@ import type { FabricHub } from "./hub.ts";
 /** Creates the Paperclip side of a remote-worker environment: the provider plugin, a secret holding the control token, and the environment. */
 
 export const REMOTE_PLUGIN_KEY = "epaperclip.remote-worker-provider";
+export const AIDER_ADAPTER_TYPE = "aider_local";
 const ENVS = "fabric.envs";
 interface EnvRec { companyId: string; secretId: string }
 interface EngineEnv { id: string; name: string; status: string; config?: Record<string, unknown> | null; metadata?: { epaperclip?: string; companyId?: string } | null }
@@ -25,12 +26,14 @@ export class FabricEnvironments {
   private readonly state: StateStore;
   private readonly pluginDir: string;
   private readonly controlUrl: string;
-  constructor(o: { gateway: EngineGateway | null; hub: FabricHub; state: StateStore; pluginDir: string; controlUrl: string }) {
+  private readonly aiderAdapterDir: string;
+  constructor(o: { gateway: EngineGateway | null; hub: FabricHub; state: StateStore; pluginDir: string; controlUrl: string; aiderAdapterDir?: string }) {
     this.gw = o.gateway;
     this.hub = o.hub;
     this.state = o.state;
     this.pluginDir = o.pluginDir;
     this.controlUrl = o.controlUrl;
+    this.aiderAdapterDir = o.aiderAdapterDir ?? "/opt/epaperclip/engine/adapters/aider-local";
   }
   private async eng<T>(method: string, path: string, body?: unknown): Promise<T> {
     if (!this.gw) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
@@ -49,6 +52,16 @@ export class FabricEnvironments {
     if (!pl || pl.status !== "ready") pl = await this.eng("POST", "/api/plugins/install", { packageName: this.pluginDir, isLocalPath: true });
     if (!pl || pl.status !== "ready") throw new HttpError(502, "plugin_not_ready", "The engine installed the remote worker provider but it is not ready.");
     return pl.id;
+  }
+
+  async ensureAiderAdapter(): Promise<void> {
+    const list = await this.eng<{ type: string }[]>("GET", "/api/adapters");
+    if (list.some((x) => x.type === AIDER_ADAPTER_TYPE)) return;
+    await this.eng("POST", "/api/adapters/install", { packageName: this.aiderAdapterDir, isLocalPath: true });
+    const after = await this.eng<{ type: string }[]>("GET", "/api/adapters");
+    if (!after.some((x) => x.type === AIDER_ADAPTER_TYPE)) {
+      throw new HttpError(502, "adapter_not_ready", "The engine installed the Aider small-device adapter but it is not ready.");
+    }
   }
 
   async list(): Promise<EnvView[]> {
@@ -70,6 +83,7 @@ export class FabricEnvironments {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(o.companyId)) throw new HttpError(400, "bad_request", "Bad organization id.");
     if (o.workerId && !this.hub.worker(o.workerId)) throw new HttpError(404, "not_found", "No such worker.");
     await this.ensurePlugin();
+    await this.ensureAiderAdapter();
     const cid = encodeURIComponent(o.companyId);
     const token = this.hub.issueControlToken(o.companyId);
     const secret = await this.eng<{ id: string }>("POST", `/api/companies/${cid}/secrets`, { name: `epaperclip-fabric-token-${randomBytes(3).toString("hex")}`, value: token, description: "Created by ePaperclip's Worker Fabric" });

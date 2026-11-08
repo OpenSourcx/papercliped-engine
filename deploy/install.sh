@@ -94,6 +94,7 @@ else
   SRC_BUNDLE="$ROOT/services/epaperclip/dist/epaperclip.mjs"; SRC_BROKER="$ROOT/services/host-broker/dist/epaperclip-broker.mjs"; SRC_CONSOLE="$ROOT/apps/console/dist"
 fi
 SRC_ENGINE="$ROOT/engine"
+SRC_AIDER="$ROOT/engine/adapters/aider-local"
 # The Proxmox sandbox provider (agent containers): built code and lockfile; its production packages are installed below.
 SRC_PLUGIN="$ROOT/plugins/proxmox-sandbox"
 PLUGIN_REL="plugins/proxmox-sandbox"
@@ -372,7 +373,7 @@ for c in curl tar xz sha256sum useradd setpriv setsid ss systemctl; do command -
 [ -f "$SRC_BUNDLE" ] || need "the service isn't built (expected $SRC_BUNDLE). From a checkout: pnpm install && pnpm build"
 [ -f "$SRC_BROKER" ] || need "the resource broker isn't built (expected $SRC_BROKER). From a checkout: pnpm install && pnpm build"
 [ -f "$SRC_CONSOLE/index.html" ] || need "the console isn't built (expected $SRC_CONSOLE/index.html)"
-for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/epaperclip-broker.service deploy/engine-links.mjs engine/package.json engine/package-lock.json \
+for f in deploy/epaperclip.service deploy/epaperclip-engine.service deploy/epaperclip-broker.service deploy/engine-links.mjs engine/package.json engine/package-lock.json engine/adapters/aider-local/package.json engine/adapters/aider-local/src/index.js engine/adapters/aider-local/src/server/index.js \
   $PLUGIN_REL/dist/manifest.js $PLUGIN_REL/dist/worker.js $PLUGIN_REL/package.json $PLUGIN_REL/package-lock.json $PLUGIN_REL/template/provision.sh $PLUGIN_REL/template/versions.sh; do
   [ -f "$ROOT/$f" ] || need "$f is missing from this download"
 done
@@ -548,6 +549,9 @@ if [ -f "$ROOT/deploy/epaperclip-update.sh" ]; then
 fi
 
 install -m 0644 "$SRC_ENGINE/package.json" "$SRC_ENGINE/package-lock.json" "$STAGE/engine/"
+install -d -m 0755 "$STAGE/engine/adapters/aider-local"
+cp -r "$SRC_AIDER/src" "$STAGE/engine/adapters/aider-local/"
+install -m 0644 "$SRC_AIDER/package.json" "$STAGE/engine/adapters/aider-local/"
 engine_fresh=0
 if [ "$engine_reuse" -eq 1 ]; then
   # Same lockfile: the installed engine is reused. Hard links make that instant and take no space; nothing writes to

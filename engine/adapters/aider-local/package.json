@@ -1,0 +1,13 @@
+{
+  "name": "@papercliped-engine/adapter-aider-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "External Paperclip adapter for test-driven Aider loops on small ePaperclip Worker Fabric nodes.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js",
+    "./server": "./src/server/index.js"
+  },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
