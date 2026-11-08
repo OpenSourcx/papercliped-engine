@@ -1,0 +1,14 @@
+import { req, COMPANY as C } from "./eng.mjs";
+const ENV = "916e455c-07f5-4418-86f9-5a6c35c5c66c";
+const out = (l, r) => console.log(l, r.status, JSON.stringify(r.body).slice(0, 220));
+const sec = async (name, value) => { const r = await req("POST", `/api/companies/${C}/secrets`, { name, key: name, value }); out("secret " + name, { status: r.status, body: { id: r.body.id } }); return r.body.id; };
+const orId = await sec("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+const ghId = await sec("GITHUB_TOKEN", process.env.GITHUB_PAT);
+let r = await req("PATCH", `/api/companies/${C}`, { budgetMonthlyCents: 100, description: "Qualification organization: Orion Worker Fabric end-to-end test." }); out("company budget", r);
+r = await req("POST", `/api/companies/${C}/goals`, { title: "Prove a model-backed coding agent can ship a pull request from the Orion worker", level: "company", status: "active" }); out("goal", r); const goal = r.body.id;
+const cfg = { command: "/home/miah/.local/bin/opencode", model: "openrouter/qwen/qwen3-coder", timeoutSec: 1500, env: { OPENROUTER_API_KEY: { type: "secret_ref", secretId: orId, version: "latest" }, GITHUB_TOKEN: { type: "secret_ref", secretId: ghId, version: "latest" } } };
+r = await req("POST", `/api/companies/${C}/agents`, { name: "Orion CEO", role: "ceo", title: "Chief of the qualification", adapterType: "opencode_local", adapterConfig: { ...cfg, env: {} }, runtimeConfig: { heartbeat: { enabled: false } }, budgetMonthlyCents: 10 }); out("ceo", r); const ceo = r.body.id ?? r.body.agent?.id;
+r = await req("POST", `/api/companies/${C}/agents`, { name: "Orion Coder", role: "engineer", title: "Software engineer on the Orion worker", reportsTo: ceo, adapterType: "opencode_local", adapterConfig: cfg, runtimeConfig: { heartbeat: { enabled: false } }, defaultEnvironmentId: ENV, budgetMonthlyCents: 90 }); out("coder", r); const coder = r.body.id ?? r.body.agent?.id;
+r = await req("PATCH", `/api/agents/${coder}`, { defaultEnvironmentId: ENV }); out("coder env", { status: r.status, body: r.body.defaultEnvironmentId });
+r = await req("POST", `/api/companies/${C}/projects`, { name: "Sandbox slugify", description: "Work on KpnWorld/epaperclip-qualification-sandbox", goalIds: [goal], status: "in_progress" }); out("project", r); const project = r.body.id;
+console.log(JSON.stringify({ goal, ceo, coder, project, orId, ghId }));

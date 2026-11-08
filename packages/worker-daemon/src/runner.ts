@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { LIMITS } from "@papercliped-engine/worker-fabric";
 
 /** Runs commands for the host: streamed output, a timeout, and cancellation of the whole process group. */
@@ -19,7 +20,7 @@ export class Runner {
   }
   start(s: RunSpec) {
     if (this.procs.has(s.id)) throw new Error("duplicate run id");
-    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...(process.env as Record<string, string>), ...this.baseEnv(), ...s.env }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...(process.env as Record<string, string>), ...this.baseEnv(), ...s.env, EPAPERCLIP_LEASE_OWNER: s.owner }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     const rec = { child, owner: s.owner, killed: false };
     this.procs.set(s.id, rec);
     let timedOut = false;
@@ -57,8 +58,27 @@ export class Runner {
     sig("SIGTERM");
     setTimeout(() => sig("SIGKILL"), 2000).unref();
   }
+  /** Kills processes an adapter detached from the run's group (e.g. a bridge server) by the owner tag in their environment. Linux only. */
+  sweep(owner: string): number {
+    const tag = `EPAPERCLIP_LEASE_OWNER=${owner}`;
+    let n = 0;
+    let pids: string[] = [];
+    try { pids = readdirSync("/proc").filter((d) => /^\d+$/.test(d)); } catch { return 0; }
+    for (const d of pids) {
+      const pid = Number(d);
+      if (pid === process.pid) continue;
+      try {
+        if (!readFileSync(`/proc/${d}/environ`, "utf8").split("\0").includes(tag)) continue;
+        process.kill(pid, "SIGTERM");
+        setTimeout(() => { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }, 2000).unref();
+        n++;
+      } catch { /* not ours or already gone */ }
+    }
+    return n;
+  }
   cancel(owner?: string, id?: string): number {
     let n = 0;
+    if (owner && (!id || id === "*")) n += this.sweep(owner);
     for (const [rid, r] of this.procs) if ((!owner || r.owner === owner) && (!id || id === "*" || id === rid)) { this.kill(rid); n++; }
     return n;
   }
