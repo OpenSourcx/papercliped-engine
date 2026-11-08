@@ -13,7 +13,7 @@ export async function testEnvironment(ctx) {
   const cwd = adapterExecutionTargetRemoteCwd(target, asString(ctx.config.cwd, process.cwd()));
   const run = async (cmd, args) => target
     ? runAdapterExecutionTargetProcess(`aider-test-${Date.now()}`, target, cmd, args, { cwd, env: process.env, timeoutSec: 10, graceSec: 2, onLog: async () => {} })
-    : runChildProcess(cmd, { args, cwd, env: process.env, timeout: 10000, graceMs: 2000 });
+    : runChildProcess(`aider-test-${Date.now()}`, cmd, args, { cwd, env: Object.fromEntries(Object.entries(process.env).filter((e) => typeof e[1] === "string")), timeoutSec: 10, graceSec: 2, onLog: async () => {} });
   try {
     const ver = await run(command, ["--version"]);
     if (ver.exitCode !== 0) checks.push({ level: "error", code: "aider_missing", message: "epaperclip-aider is not ready on this execution target.", hint: "Run deploy/worker/install-aider.sh on the worker." });
