@@ -195,12 +195,12 @@ const RULES: Rule[] = [
 const GENERIC = /(?:sync_wait[^\n]*(?:expected sequence number|an error occurred in another process)|failed to spawn container|__lxc_start|startup for container [^\n]*failed|lxc_spawn|lxc_init)/i;
 
 /** Lines worth keeping as evidence: the whole log when short, else the tail plus every line that looks like an error. */
-function pickEvidence(lines: string[]): string[] {
+function pickEvidence(lines: string[], rule?: RegExp): string[] {
   const clean = lines.map((l) => l.trimEnd()).filter(Boolean);
   if (clean.length <= 25) return clean;
   const keep = new Set<number>();
   clean.forEach((l, i) => {
-    if (GENERIC.test(l) || /error|fail|denied|refus|cannot|can't|unable/i.test(l) || i >= clean.length - 8) keep.add(i);
+    if (rule?.test(l) || GENERIC.test(l) || /error|fail|denied|refus|cannot|can't|unable/i.test(l) || i >= clean.length - 8) keep.add(i);
   });
   return [...keep].sort((a, b) => a - b).slice(-25).map((i) => clean[i]);
 }
@@ -240,7 +240,7 @@ export function diagnoseLxc(input: LxcDiagnoseInput): LxcDiagnosis {
   const text = all.join("\n");
   for (const r of RULES) {
     const m = r.re.exec(text);
-    if (m) return { id: r.id, title: r.title, plain: r.plain(m, input), fix: r.fix(m, input), evidence: pickEvidence(all), confidence: "matched" };
+    if (m) return { id: r.id, title: r.title, plain: r.plain(m, input), fix: r.fix(m, input), evidence: pickEvidence(all, r.re), confidence: "matched" };
   }
   // A probe result beats the generic text.
   if (input.startsWithoutFeatures === true && /nesting|keyctl/.test(String(input.config?.features ?? ""))) {

@@ -126,8 +126,14 @@ interface EngineEnv {
 class StepError extends Error {}
 /** A failed Proxmox task with the diagnosis made from its log; `input` lets a later probe refine it. */
 class DiagError extends StepError {
-  constructor(message: string, readonly diagnosis: LxcDiagnosis, readonly input: LxcDiagnoseInput, readonly what: string) {
+  readonly diagnosis: LxcDiagnosis;
+  readonly input: LxcDiagnoseInput;
+  readonly what: string;
+  constructor(message: string, diagnosis: LxcDiagnosis, input: LxcDiagnoseInput, what: string) {
     super(message);
+    this.diagnosis = diagnosis;
+    this.input = input;
+    this.what = what;
   }
 }
 
@@ -999,7 +1005,7 @@ export class AgentContainers {
       await this.task(pve, await pve.startLxc(node, vmid), "Starting the container", 120_000, { vmid });
     } catch (e) {
       if (!(e instanceof DiagError) || !(e.diagnosis.confidence === "generic" || e.diagnosis.id === "features")) throw e;
-      const features = String((await pve.lxcConfig(node, vmid).catch(() => ({}))).features ?? "");
+      const features = String((await pve.lxcConfig(node, vmid).catch(() => ({}) as Record<string, string | number | undefined>)).features ?? "");
       if (!features) throw e;
       this.log(job, "info", `Trying once without the container features (${features}) to find out whether the host refuses them`);
       let starts = false;

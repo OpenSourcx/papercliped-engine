@@ -380,7 +380,7 @@ export function fakePve() {
         return out;
       };
       const t = target.includes("!") ? privsFor(target, "token") : privsFor(target, "user");
-      const eff = target.includes("!") ? Object.fromEntries(Object.keys(t).filter((k) => privsFor(target.split("!")[0], "user")[k])) : t;
+      const eff = target.includes("!") ? Object.fromEntries(Object.keys(t).filter((k) => privsFor(target.split("!")[0], "user")[k]).map((k) => [k, 1])) : t;
       return ok({ [at]: Object.fromEntries(Object.keys(eff).map((k) => [k, 1])) });
     }
     if (path === "/access/permissions") return ok(admin ? { [u.searchParams.get("path") ?? "/"]: { "Sys.Modify": 1, "Sys.Audit": 1, "User.Modify": 1, "Permissions.Modify": 1 } } : { "/vms": { "VM.Audit": 1 } });
