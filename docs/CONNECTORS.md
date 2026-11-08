@@ -78,6 +78,18 @@ An organization's owners and admins (the engine enforces it) manage these on the
 
 Not checked against a real engine (this build has none): the exact fields of the engine's login-session answers (parsed defensively, with the address and code also read out of its terminal text), and whether it accepts `allAgents` for a shared subscription. Both fail visibly, not silently.
 
+## Task routing with Jev (optional, per organization)
+
+An organization can let TypeSafe's Jev model help decide which AI model does each task (a cheap one for routine work, a stronger one for hard or risky work). It is **off by default** and costs the organization its own TypeSafe usage; nothing about it is shared between organizations. Owners and admins manage it on the organization's Connectors page, under Agent models.
+
+- **Key.** The organization pastes its own TypeSafe API key. It is sealed in the vault under that organization's name, is write-only (never shown or returned), and is used only on this device, at the moment a task is routed. Removing the key deletes it and switches Jev off.
+- **Consent.** Switching Jev on needs the key and a separate confirmation that task text is sent to TypeSafe. Withdrawing the confirmation switches it off.
+- **What is sent** per task: the goal text, the names of the files it may change and its expected size. No file contents, comments or secrets. Tasks tagged auth, billing, tenancy or security (or touching such paths, or with no file limit) are decided by built-in rules and never sent.
+- **Without Jev** (off, no key, or TypeSafe unreachable) tasks are routed by built-in rules; a failure is reported in the decision, never treated as an answer.
+- **Who decides.** Jev answers three small questions; a plain table in code (`packages/task-router/src/questions.ts`) turns the answers into a tier. The organization's routing table maps each tier to an adapter, model and environment, with a fallback chain used when a run asks to escalate.
+
+Routes (members read, owners and admins change): `GET/PUT /api/task-router/orgs/:id/jev`, `PUT/DELETE .../jev/key`, `POST .../jev/test`, `GET/PUT .../table`, `POST .../route`. Not yet called automatically when a task is assigned; see `docs/synth/task-router.md`.
+
 ## Adapters in the Store
 
 `GET /api/connect/adapters` merges the engine's `/api/adapters` with Paperclip's 15 built-in types (`BUILTIN_ADAPTERS`, kept equal to the engine's API description by a test). Built-in adapters are **verified**; "Enable" switches them on in the engine (`PATCH /api/adapters/:type`), "Disable" off. They can't be removed. Adapters from the **signed marketplace index** (npm, exact version, sha512 integrity) are installed by `POST /api/connect/adapters/install`: the host re-reads the package's integrity from the npm registry and refuses with `integrity_mismatch` unless it is exactly what the catalog was signed for, then asks the engine to install it. Anything else the engine happens to have registered is shown as unverified and can only be removed, never enabled from here. The signed index flow itself is unchanged (`marketplace/README.md`).
