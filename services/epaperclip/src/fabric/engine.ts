@@ -7,7 +7,7 @@ import type { FabricHub } from "./hub.ts";
 
 /** Creates the Paperclip side of a remote-worker environment: the provider plugin, a secret holding the control token, and the environment. */
 
-export const REMOTE_PLUGIN_KEY = "epaperclip.remote-worker-provider";
+export const REMOTE_PLUGIN_KEY = "epaperclip.remote-worker-provider";\nexport const AIDER_ADAPTER_TYPE = "aider_local";
 const ENVS = "fabric.envs";
 interface EnvRec { companyId: string; secretId: string }
 interface EngineEnv { id: string; name: string; status: string; config?: Record<string, unknown> | null; metadata?: { epaperclip?: string; companyId?: string } | null }
@@ -49,6 +49,16 @@ export class FabricEnvironments {
     if (!pl || pl.status !== "ready") pl = await this.eng("POST", "/api/plugins/install", { packageName: this.pluginDir, isLocalPath: true });
     if (!pl || pl.status !== "ready") throw new HttpError(502, "plugin_not_ready", "The engine installed the remote worker provider but it is not ready.");
     return pl.id;
+  }
+
+  async ensureAiderAdapter(): Promise<void> {
+    const list = await this.eng<{ type: string }[]>("GET", "/api/adapters");
+    if (list.some((x) => x.type === AIDER_ADAPTER_TYPE)) return;
+    await this.eng("POST", "/api/adapters/install", { packageName: this.aiderAdapterDir, isLocalPath: true });
+    const after = await this.eng<{ type: string }[]>("GET", "/api/adapters");
+    if (!after.some((x) => x.type === AIDER_ADAPTER_TYPE)) {
+      throw new HttpError(502, "adapter_not_ready", "The engine installed the Aider small-device adapter but it is not ready.");
+    }
   }
 
   async list(): Promise<EnvView[]> {
