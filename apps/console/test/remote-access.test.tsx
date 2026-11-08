@@ -56,15 +56,37 @@ describe("Access, Remote access", () => {
   });
 });
 
-describe("Self-managed Cloudflare copy", () => {
-  it("says exactly what exists: no tunnel or DNS is created, no Worker is deployed", async () => {
-    const { CloudflareAccess } = await vi.importActual<typeof import("../src/pages/access/CloudflareAccess.tsx")>("../src/pages/access/CloudflareAccess.tsx");
+describe("Self-managed Cloudflare", () => {
+  const load = async () => (await vi.importActual<typeof import("../src/pages/access/CloudflareAccess.tsx")>("../src/pages/access/CloudflareAccess.tsx")).CloudflareAccess;
+  const steps = (n: number) => (["token", "zone", "tunnel", "dns", "connector", "reachable"] as const).map((id, i) => ({ id, label: id, state: i < n ? "done" as const : "todo" as const }));
+  it("creates the address from the chosen domain and says a Worker is not deployed", async () => {
+    const CloudflareAccess = await load();
     vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z", name: "example.com" }]);
-    vi.spyOn(host.publishing, "cloudflarePlan").mockResolvedValue({ provider: "cloudflare", hostname: "app.example.com", origin: "https://127.0.0.1:443", access: "epaperclip-login", mode: "named-tunnel" });
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "none", steps: steps(0), message: "" });
+    const create = vi.spyOn(host.publishing, "cloudflareCreate").mockResolvedValue({ state: "connecting", hostname: "app.example.com", steps: steps(4), message: "Connecting" });
     wrap(<CloudflareAccess />);
-    fireEvent.click(await screen.findByRole("button", { name: "Prepare" }));
-    expect(await screen.findByText("Nothing has been created.")).toBeTruthy();
-    expect(screen.getByText(/never creates a Cloudflare Worker/)).toBeTruthy();
-    expect(screen.queryByText(/next installation step/)).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Create address" }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith("example.com", "app", false));
+    expect(await screen.findByText("app.example.com")).toBeTruthy();
+    expect(screen.getByText(/does not deploy one/)).toBeTruthy();
+  });
+  it("asks before replacing a foreign DNS record", async () => {
+    const CloudflareAccess = await load();
+    vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z", name: "example.com" }]);
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "needs_confirmation", hostname: "app.example.com", steps: steps(3), message: "exists", conflict: { type: "A", content: "203.0.113.9" } });
+    const create = vi.spyOn(host.publishing, "cloudflareCreate").mockResolvedValue({ state: "connecting", hostname: "app.example.com", steps: steps(5), message: "ok" });
+    wrap(<CloudflareAccess />);
+    fireEvent.click(await screen.findByRole("button", { name: "Replace the record" }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith("example.com", "app", true));
+  });
+  it("names missing permissions in the self-check", async () => {
+    const CloudflareAccess = await load();
+    vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z", name: "example.com" }]);
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "none", steps: steps(0), message: "" });
+    vi.spyOn(host.publishing, "cloudflarePermissions").mockResolvedValue({ tokenOk: true, ready: false, accounts: [], guide: [], checks: [{ id: "dns-edit", label: "Zone: DNS: Edit", required: true, state: "missing", detail: "refused" }] });
+    wrap(<CloudflareAccess />);
+    fireEvent.click(await screen.findByRole("button", { name: "Check permissions" }));
+    expect(await screen.findByText("A required permission is missing")).toBeTruthy();
+    expect(screen.getByText("Zone: DNS: Edit")).toBeTruthy();
   });
 });

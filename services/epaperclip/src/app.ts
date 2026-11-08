@@ -28,6 +28,8 @@ import { AppAccessManager } from "./app-access.ts";
 import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
+import { CloudflareProvision } from "./cloudflareProvision.ts";
+import { socketTunnelHelper } from "./tunnelHelper.ts";
 import { ConnectLink } from "./connectLink.ts";
 import { type TunnelHelper } from "./tunnelHelper.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
@@ -483,7 +485,8 @@ export function createApp(d: AppDeps) {
   const connectors = new Connectors(state, outbound, now);
   const publishing = new Publishing(state, outbound, now);
   const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now, { helper: d.tunnelHelper });
-  trustTunnelWhen(() => link.tunnelTrusted());
+  const cloudflare = new CloudflareProvision(publishing, state, d.tunnelHelper ?? socketTunnelHelper(), outbound, now);
+  trustTunnelWhen(() => link.tunnelTrusted() || (link.mode() === "cloudflare-self" && cloudflare.tunnelTrusted()));
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
   registerConnections(state, connections);
   const pin = new Pin({ state, connectors, fetch: outbound, now, extra: connections.forPin() });
@@ -944,6 +947,7 @@ export function createApp(d: AppDeps) {
       if (id === "cloudflare") link.assertSelfManagedAllowed();
       if (method === "PUT") return sendJson(res, 200, { connector: id === "cloudflare" ? publishing.setToken(body!.apiKey, s.username) : connectors.setKey(id, body!.apiKey, s.username) });
       if (method === "DELETE") {
+        if (id === "cloudflare" && cloudflare.has()) throw new HttpError(409, "deployment_exists", "Remove this device's published address first. Without the token, its Cloudflare tunnel and DNS record would be left behind.");
         if (id === "cloudflare") publishing.remove(); else connectors.remove(id);
         return sendJson(res, 200, { ok: true });
       }
@@ -963,6 +967,30 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, { plan: publishing.plan(body.zone, body.subdomain) });
     }
 
+    // Self-managed Cloudflare: the customer's own token, used only here. Administrators only; every change is audited.
+    const cfRoute = path.match(/^\/api\/publishing\/cloudflare\/(permissions|deployment)$/);
+    if (cfRoute) {
+      const what = cfRoute[1]!;
+      const allowed = what === "permissions" ? ["GET"] : ["GET", "POST", "DELETE"];
+      if (!allowed.includes(method)) throw new HttpError(405, "method", "Method not allowed");
+      if (method !== "GET") requireSameSite(req);
+      const s = requireSession(req);
+      if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage machine-wide publishing");
+      link.assertSelfManagedAllowed();
+      if (what === "permissions") return sendJson(res, 200, { permissions: await cloudflare.permissions(url.searchParams.get("zone")) });
+      if (method === "GET") return sendJson(res, 200, { deployment: await cloudflare.status() });
+      if (method === "DELETE") {
+        const view = await cloudflare.remove();
+        audit(req, "publishing.cloudflare.remove", s.username, view.state === "none" ? "removed" : "incomplete");
+        return sendJson(res, 200, { deployment: view });
+      }
+      if (link.mode() !== "cloudflare-self") throw new HttpError(409, "mode_not_self", "Choose Self-managed Cloudflare first.");
+      const body = await readJson(req);
+      const view = await cloudflare.provision(body.zone, body.subdomain, { confirmReplace: body.confirmReplace === true });
+      audit(req, "publishing.cloudflare.provision", s.username, `${view.hostname ?? ""} ${view.state}`);
+      return sendJson(res, 200, { deployment: view });
+    }
+
     // Papercliped Connect: remote-access mode and ownership pairing. Machine-wide, so Proxmox administrators only.
     if (path.startsWith("/api/papercliped/connect/")) {
       const action = path.slice("/api/papercliped/connect/".length);
@@ -974,7 +1002,13 @@ export function createApp(d: AppDeps) {
       if (!(await asUser(req, res, (pve) => isNodeAdmin(pve)))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can manage Papercliped Connect");
       const body = method === "POST" ? await readJson(req) : {};
       if (action === "status") return sendJson(res, 200, await link.statusLive());
-      if (action === "mode") return sendJson(res, 200, await link.setMode(body.mode));
+      if (action === "mode") {
+        const was = link.mode();
+        const out = await link.setMode(body.mode);
+        // Leaving self-managed Cloudflare stops its connector now; the Cloudflare objects stay until Remove.
+        if (was === "cloudflare-self" && out.mode !== "cloudflare-self") await cloudflare.stop();
+        return sendJson(res, 200, out);
+      }
       if (action === "pairing/start") return sendJson(res, 200, await link.start());
       if (action === "pairing/poll") return sendJson(res, 200, await link.poll());
       if (action === "pairing/confirm") return sendJson(res, 200, await link.confirm(body.accountId, body.deviceName));

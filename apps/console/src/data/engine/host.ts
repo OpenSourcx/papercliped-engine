@@ -34,7 +34,25 @@ export interface ConnectorList {
 }
 
 /** A domain the connected Cloudflare account can publish from. */
-export interface PublishZone { id: string; name: string }
+export interface PublishZone { id: string; name: string; accountId?: string; accountName?: string }
+
+export type CloudflareStepId = "token" | "zone" | "tunnel" | "dns" | "connector" | "reachable";
+/** Where this device's self-managed Cloudflare address stands. The tunnel run token is never part of it. */
+export interface CloudflareDeployment {
+  state: "none" | "failed" | "needs_confirmation" | "connecting" | "running" | "stopped";
+  hostname?: string; zone?: string; tunnelId?: string;
+  steps: { id: CloudflareStepId; label: string; state: "done" | "todo" | "failed" }[];
+  message: string;
+  failure?: { step: CloudflareStepId; code: string; message: string };
+  conflict?: { type: string; content: string; proxied?: boolean };
+  helper?: { owner: string | null; installed: boolean; active: boolean } | { error: string };
+}
+export interface CloudflarePermissions {
+  tokenOk: boolean; ready: boolean;
+  checks: { id: string; label: string; required: boolean; state: "ok" | "missing" | "unknown"; detail: string }[];
+  accounts: { id: string; name?: string }[];
+  guide: { id: string; label: string; required: boolean; why: string }[];
+}
 export interface PublicationPlan {
   provider: "cloudflare";
   hostname: string;
@@ -142,6 +160,10 @@ export const host = {
   },
   publishing: {
     cloudflareZones: () => call<{ zones: PublishZone[] }>("GET", "/api/publishing/cloudflare/zones").then((r) => r.zones ?? []),
+    cloudflarePermissions: (zone?: string) => call<{ permissions: CloudflarePermissions }>("GET", `/api/publishing/cloudflare/permissions${zone ? `?zone=${enc(zone)}` : ""}`).then((r) => r.permissions),
+    cloudflareDeployment: () => call<{ deployment: CloudflareDeployment }>("GET", "/api/publishing/cloudflare/deployment").then((r) => r.deployment),
+    cloudflareCreate: (zone: string, subdomain: string, confirmReplace = false) => call<{ deployment: CloudflareDeployment }>("POST", "/api/publishing/cloudflare/deployment", { zone, subdomain, confirmReplace }).then((r) => r.deployment),
+    cloudflareRemove: () => call<{ deployment: CloudflareDeployment }>("DELETE", "/api/publishing/cloudflare/deployment").then((r) => r.deployment),
     cloudflarePlan: (zone: string, subdomain: string) => call<{ plan: PublicationPlan }>("POST", "/api/publishing/cloudflare/plan", { zone, subdomain }).then((r) => r.plan),
   },
   /** Papercliped Connect: remote-access mode and ownership pairing. Proxmox administrators only; the host enforces it. */
