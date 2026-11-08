@@ -17,4 +17,4 @@ The benchmark runs the exact `makeLabel` acceptance task five times from a clean
 
 For the full Paperclip escalation proof, configure the Aider agent's `escalationAdapter` as `claude_local` or `codex_local`, assign the Worker Fabric environment, then use the same forced-failure contract. The server adapter hands the current diff and test log to that stronger adapter. Record the Paperclip run id and log in the SYNTH. Do not treat this direct runner control as proof that a cloud adapter ran.
 
-Peak memory comes from the matching `tegrastats` log. Record the maximum `RAM X/YMB` value. The benchmark JSON records pass rate, attempts, parsed Aider tokens, calculated generation-rate estimate when available, and wall time.
+Peak memory comes from the matching `tegrastats` log. Record the maximum `RAM X/YMB` value. The benchmark JSON records pass rate, attempts, parsed Aider tokens, per-task effective throughput, wall time, plus `ollamaProbe.tokensPerSecond` computed from Ollama's native `eval_count / eval_duration` and its reported model load time.
