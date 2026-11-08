@@ -52,7 +52,7 @@ describe("inference gate", () => {
     await fetch(`${base}/api/generate`, { method: "POST", body: JSON.stringify({ model: "m" }) });
     expect((up.seen.bodies[0] as { options: { num_ctx: number } }).options.num_ctx).toBe(4096);
     expect((up.seen.bodies[1] as { options: { num_ctx: number } }).options.num_ctx).toBe(4096);
-    const tags = await (await fetch(`${base}/api/tags`)).json();
+    const tags = (await (await fetch(`${base}/api/tags`)).json()) as { models: { name: string }[] };
     expect(tags.models[0].name).toBe("qwen2.5-coder:3b");
   });
 

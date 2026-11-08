@@ -1,3 +1,8 @@
+declare global {
+  interface Response {
+    json(): Promise<any>;
+  }
+}
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startAccessApp } from "./access-harness.ts";
 import { fakeCaps, newWorker, until } from "./fabric-harness.ts";
@@ -47,7 +52,7 @@ describe("/api/fabric", () => {
     expect(list).not.toContain(p.secret);
     expect(list).toContain(j.id);
     expect((await h.call("DELETE", `/api/fabric/pairings/${j.id}`, { cookie: admin })).status).toBe(200);
-    expect((await (await h.call("GET", "/api/fabric", { cookie: admin })).json()).pairings).toEqual([]);
+    expect((await (await h.call("GET", "/api/fabric", { cookie: admin })).json()).pairings).toMatchObject([{ id: j.id, state: "cancelled" }]);
   });
 
   it("walks a worker through approval, scope, drain, disable and revocation", async () => {

@@ -89,4 +89,56 @@ export class FabricEnvironments {
     this.hub.audit("host", "environment.create", o.workerId ?? undefined, `${env.id} ${o.companyId}`);
     return view(env, o.companyId, agents);
   }
+
+  private rec(id: string): EnvRec {
+    const r = this.recs()[id];
+    if (!r) throw new HttpError(404, "not_found", "No such Worker Fabric environment.");
+    return r;
+  }
+
+  /** Changes what an environment asks for: its name, a pinned worker, requirements, whether workspaces are kept, and which agents default to it. */
+  async update(id: string, o: { name?: string; workerId?: string | null; requirements?: Requirements; reuseLease?: boolean; assignAgents?: string[] }): Promise<EnvView> {
+    const rec = this.rec(id);
+    if (o.workerId && !this.hub.worker(o.workerId)) throw new HttpError(404, "not_found", "No such worker.");
+    const envs = await this.eng<EngineEnv[]>("GET", `/api/companies/${encodeURIComponent(rec.companyId)}/environments`);
+    const cur = envs.find((e) => e.id === id);
+    if (!cur) throw new HttpError(404, "not_found", "The engine no longer has that environment.");
+    const config = { ...(cur.config ?? {}) } as Record<string, unknown>;
+    if (o.workerId !== undefined) config.workerId = o.workerId ?? "";
+    if (o.requirements) config.requirements = o.requirements;
+    if (o.reuseLease !== undefined) config.reuseLease = o.reuseLease;
+    const env = await this.eng<EngineEnv>("PATCH", `/api/environments/${encodeURIComponent(id)}`, { ...(o.name?.trim() ? { name: o.name.trim().slice(0, 80) } : {}), config });
+    const agents: string[] = [];
+    for (const a of o.assignAgents ?? []) {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(a)) continue;
+      await this.eng("PATCH", `/api/agents/${encodeURIComponent(a)}`, { defaultEnvironmentId: id });
+      agents.push(a);
+    }
+    this.hub.audit("host", "environment.update", o.workerId ?? undefined, id);
+    return view(env, rec.companyId, agents);
+  }
+
+  /** Removes the environment (and its control token). Workers and their workspaces are not touched. */
+  async remove(id: string): Promise<void> {
+    const rec = this.rec(id);
+    await this.eng("DELETE", `/api/environments/${encodeURIComponent(id)}`);
+    await this.eng("DELETE", `/api/secrets/${encodeURIComponent(rec.secretId)}`).catch(() => {});
+    const all = { ...this.recs() };
+    delete all[id];
+    this.state.setSetting(ENVS, all);
+    this.hub.audit("host", "environment.remove", undefined, id);
+  }
+
+  private readonly names = new Map<string, string>();
+  /** An agent's display name for the console (cached; empty when the engine cannot say). */
+  async agentName(agentId: string): Promise<string | null> {
+    if (this.names.has(agentId)) return this.names.get(agentId)!;
+    try {
+      const a = await this.eng<{ name?: string }>("GET", `/api/agents/${encodeURIComponent(agentId)}`);
+      if (a.name) this.names.set(agentId, a.name);
+      return a.name ?? null;
+    } catch {
+      return null;
+    }
+  }
 }

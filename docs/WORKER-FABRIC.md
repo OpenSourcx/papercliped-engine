@@ -118,9 +118,9 @@ Adopting the same machine again needs a new key and a new approval.
 All JSON. Errors: `{error, code}`.
 
 ```
-GET    /api/fabric
+GET    /api/fabric          (503 {code:"fabric_unavailable"} when the Fabric is switched off on this host, EPC_FABRIC_LISTEN=off)
   -> { enabled, hostKey:{fingerprint}, listen:{url, port}, transports:[Transport], workers:[Worker], pending:[Pending],
-       pairings:[{id, name, createdAt, expiresAt}], environments:[EnvView] }
+       pairings:[Pairing], environments:[EnvView] }
 GET    /api/fabric/workers                       -> { workers: Worker[] }
 GET    /api/fabric/workers/:id                   -> { worker: Worker, leases: Lease[], audit: Audit[] }
 PATCH  /api/fabric/workers/:id   { name?, companies?: string[]|null, shellSlots?, inferenceSlots?, drain?: boolean, disabled?: boolean }
@@ -129,11 +129,13 @@ DELETE /api/fabric/workers/:id                   -> { ok:true }   (only a revoke
 POST   /api/fabric/workers/:id/refresh           -> { ok }        (asks the worker for fresh capabilities)
 POST   /api/fabric/pairings      { name?, companies?: string[]|null, transport?: string }
   -> 201 { id, code, expiresAt, installCommand }                 (the code is shown once)
-DELETE /api/fabric/pairings/:id
+DELETE /api/fabric/pairings/:id                    (a pending code becomes state "cancelled")
 GET    /api/fabric/pending                       -> { pending: Pending[] }
-POST   /api/fabric/pending/:id/approve  { name?, companies?: string[]|null }  -> { worker: Worker }
+POST   /api/fabric/pending/:id/approve  { name?, companies?: string[]|null }  -> { ok:true, worker: Worker|null }  (null while the worker is still finishing its handshake)
 POST   /api/fabric/pending/:id/deny
 GET    /api/fabric/transports                    -> { transports: Transport[] }   (detection: tailscale, lan, custom)
+PATCH  /api/fabric/environments/:id  { name?, workerId?: string|null, requirements?, reuseLease?, assignAgents?: string[] } -> { environment: EnvView }
+DELETE /api/fabric/environments/:id                -> { ok:true }   (removes the environment and its control token; workers are untouched)
 POST   /api/fabric/environments  { companyId, name?, workerId?, requirements?: Requirements, assignAgents?: string[] }
   -> 201 { environment: EnvView }        (creates the Paperclip environment {driver:"sandbox", provider:"remote-worker"}
                                           with a per-organization control token as a Paperclip secret)
@@ -144,18 +146,21 @@ GET    /api/fabric/stream                         -> text/event-stream; events: 
 Types (stable):
 
 ```ts
+Pairing  = { id, name, createdAt, expiresAt, state: "pending"|"used"|"cancelled"|"expired", workerId?: string }
+           // spent, cancelled and expired codes stay listed for 15 minutes; a replayed code adds an audit event "pairing.rejected"
+           // errors while creating: 409 no_transport ("No network address is available ..."), 429 too_many_pairings, 400 bad_request
 Worker   = { id, name, state: "pending"|"adopted"|"revoked", online: boolean, draining: boolean, disabled: boolean,
-             fingerprint, version, lastSeen: number|null, connectedSince: number|null, transport: {provider, address},
+             fingerprint, version, lastSeen: number|null, connectedSince: number|null /* when the current connection was made */, transport: {provider, address},
              companies: string[]|null, shellSlots: number, inferenceSlots: number,
              usage: { shellLeases: number, inferenceRunning: number, inferenceQueued: number, loadAvg: number|null, freeMemMb: number|null },
-             capabilities: Capabilities }
+             capabilities: Capabilities|null /* null until the first report */ }
 Capabilities = { os:{name,version}, arch, hostname, cpu:{model,cores}, memMb, gpu:{present, name?, kind?: "jetson"|"nvidia"|"other"},
                  storage:{path,totalGb,freeGb}[], tools:{git?,gh?,node?,pnpm?,npm?,python?,uv?,docker?,make?,gcc?: string},
                  inference:{ runtime:"ollama", url, models:{name,sizeMb?}[], maxContext?: number }|null,
                  networks:[{provider:"tailscale"|"lan"|"other", address}], workspaceRoot }
 Lease    = { id, workerId, companyId, agentId, runId, environmentId, workspace: string, state: "active"|"released"|"stopped"|"destroyed",
-             createdAt, releasedAt?: number }
-Pending  = { id, name, verification: "ABCD-EFGH", fingerprint, requestedAt, expiresAt, capabilities: Capabilities, remote: string }
+             createdAt, releasedAt?: number, agentName?: string }
+Pending  = { id, name, verification: "ABCD-EFGH", fingerprint, requestedAt, expiresAt, capabilities: Capabilities|null, remote: string }
 Requirements = { arch?: string, tools?: string[], gpu?: boolean, localModel?: string, minFreeMemMb?: number }
 Transport = { provider: "tailscale"|"lan"|"custom", label, available: boolean, recommended?: boolean, address?: string, detail: string }
 EnvView  = { id, companyId, name, workerId: string|null, requirements, agents: string[] }

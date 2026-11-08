@@ -50,6 +50,18 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
       return ctx.json(201, { environment: env }), true;
     }
   }
+  const envOne = path.match(/^\/api\/fabric\/environments\/([A-Za-z0-9_-]{1,64})$/);
+  if (envOne && method === "PATCH") {
+    change();
+    const b = await ctx.readJson();
+    const env = await h.envs.update(envOne[1]!, { name: typeof b.name === "string" ? b.name : undefined, workerId: b.workerId === null ? null : typeof b.workerId === "string" ? b.workerId || null : undefined, requirements: b.requirements && typeof b.requirements === "object" ? (b.requirements as never) : undefined, reuseLease: typeof b.reuseLease === "boolean" ? b.reuseLease : undefined, assignAgents: Array.isArray(b.assignAgents) ? b.assignAgents.filter((x): x is string => typeof x === "string") : [] });
+    return ctx.json(200, { environment: env }), true;
+  }
+  if (envOne && method === "DELETE") {
+    change();
+    await h.envs.remove(envOne[1]!);
+    return ctx.json(200, { ok: true }), true;
+  }
   if (path === "/api/fabric/audit" && method === "GET") {
     const q = ctx.url.searchParams;
     return ctx.json(200, hub.auditList({ after: Number(q.get("after") ?? 0) || 0, limit: Number(q.get("limit") ?? 200) || 200 })), true;
@@ -97,7 +109,7 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
     const rec = hub.worker(id);
     if (!rec) throw new E(404, "not_found", "No such worker.");
     const action = one[2];
-    if (!action && method === "GET") return ctx.json(200, { worker: hub.workers().find((w) => w.id === id), leases: hub.leases(id), audit: hub.auditList({ workerId: id, limit: 100 }).events }), true;
+    if (!action && method === "GET") return ctx.json(200, { worker: hub.workers().find((w) => w.id === id), leases: await Promise.all(hub.leases(id).map(async (l) => ({ ...l, agentName: (await h.envs.agentName(l.agentId)) ?? undefined }))), audit: hub.auditList({ workerId: id, limit: 100 }).events }), true;
     if (!action && method === "PATCH") {
       change();
       return ctx.json(200, { worker: hub.updateWorker(by, id, await ctx.readJson()) }), true;

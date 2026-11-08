@@ -32,7 +32,7 @@ export interface WorkerRec {
   /** Workspace paths whose removal is still owed to this worker (it was offline when a lease was destroyed). */
   cleanup: string[];
 }
-interface PairingRec { id: string; name: string; hash: string; createdAt: number; expiresAt: number; companies: string[] | null; by: string }
+interface PairingRec { id: string; name: string; hash: string; createdAt: number; expiresAt: number; companies: string[] | null; by: string; state?: "used" | "cancelled"; endedAt?: number; workerId?: string }
 export interface LeaseRec {
   id: string;
   workerId: string;
@@ -69,7 +69,7 @@ export interface Sock {
   on(event: "error", cb: (e: Error) => void): unknown;
 }
 type Session = { seal(v: unknown): string; open<T = unknown>(f: string): T };
-interface Conn { sock: Sock; session: Session; workerId: string; lastFrame: number; hb: Heartbeat | null; calls: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>; execs: Map<string, Exec> }
+interface Conn { connectedAt: number; sock: Sock; session: Session; workerId: string; lastFrame: number; hb: Heartbeat | null; calls: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>; execs: Map<string, Exec> }
 interface Exec { onOut: (stream: "stdout" | "stderr", data: string) => void; resolve: (r: ExecResult) => void; leaseId: string; secrets: string[] }
 export interface ExecResult { exitCode: number | null; signal: string | null; timedOut: boolean }
 interface PendingConn { rec: PendingRec; conn: { sock: Sock; session: Session }; settle: (r: { approved: true; name: string; companies: string[] | null; by: string } | { approved: false }) => void }
@@ -191,7 +191,7 @@ export class FabricHub {
     const leases = Object.values(this.read().leases).filter((l) => l.workerId === w.id && l.state === "active");
     return {
       id: w.id, name: w.name, state: w.state, online: this.online(w.id), draining: w.draining, disabled: w.disabled, fingerprint: w.fingerprint, version: w.version,
-      lastSeen: c ? this.now() : w.lastSeen, connectedSince: c ? c.lastFrame : null, transport: w.transport, companies: w.companies, shellSlots: w.shellSlots, inferenceSlots: w.inferenceSlots,
+      lastSeen: c ? this.now() : w.lastSeen, connectedSince: c ? c.connectedAt : null, transport: w.transport, companies: w.companies, shellSlots: w.shellSlots, inferenceSlots: w.inferenceSlots,
       usage: { shellLeases: leases.length, inferenceRunning: c?.hb?.inferenceRunning ?? 0, inferenceQueued: c?.hb?.inferenceQueued ?? 0, loadAvg: c?.hb?.loadAvg ?? null, freeMemMb: c?.hb?.freeMemMb ?? null },
       capabilities: w.capabilities,
     };
@@ -225,8 +225,9 @@ export class FabricHub {
     const urls = endpointsFor(this.transports(), o.transport);
     if (!urls.length) throw new HttpError(409, "no_transport", "No network address is available for workers to reach this host. Join a tailnet, or set EPC_FABRIC_PUBLIC_URL.");
     this.mutate((s) => {
-      for (const [k, p] of Object.entries(s.pairings)) if (p.expiresAt < this.now()) delete s.pairings[k];
-      if (Object.keys(s.pairings).length >= 50) throw new HttpError(429, "too_many_pairings", "Too many unused pairing codes. Cancel some first.");
+      // Spent and expired codes stay visible for 15 minutes so the console can say what happened to them.
+      for (const [k, p] of Object.entries(s.pairings)) if ((p.endedAt ?? p.expiresAt) + LIMITS.pairingTtlMs < this.now()) delete s.pairings[k];
+      if (Object.values(s.pairings).filter((p) => !p.state && p.expiresAt > this.now()).length >= 50) throw new HttpError(429, "too_many_pairings", "Too many unused pairing codes. Cancel some first.");
       s.pairings[id] = rec;
     });
     this.audit(by, "pairing.create", undefined, rec.name || id);
@@ -234,10 +235,18 @@ export class FabricHub {
   }
   pairings() {
     const t = this.now();
-    return Object.values(this.read().pairings).filter((p) => p.expiresAt > t).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, expiresAt: p.expiresAt }));
+    return Object.values(this.read().pairings)
+      .filter((p) => (p.endedAt ?? p.expiresAt) + LIMITS.pairingTtlMs > t)
+      .map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, expiresAt: p.expiresAt, state: p.state ?? (p.expiresAt > t ? "pending" : "expired"), ...(p.workerId ? { workerId: p.workerId } : {}) }));
   }
   cancelPairing(by: string, id: string) {
-    const had = this.mutate((s) => delete s.pairings[id]);
+    const had = this.mutate((s) => {
+      const p = s.pairings[id];
+      if (!p || p.state) return false;
+      p.state = "cancelled";
+      p.endedAt = this.now();
+      return true;
+    });
     if (had) this.audit(by, "pairing.cancel", undefined, id);
     return had;
   }
@@ -246,10 +255,15 @@ export class FabricHub {
     if (typeof p.id !== "string" || typeof p.secret !== "string") return null;
     return this.mutate((s) => {
       const rec = s.pairings[p.id];
-      if (!rec) return null;
-      // Gone for good whether or not this attempt is right: guessing burns the code.
-      delete s.pairings[p.id];
-      if (rec.expiresAt < this.now() || !eq(rec.hash, sha256hex(p.secret))) return null;
+      if (!rec || rec.state) return null;
+      // Spent whether or not this attempt is right: guessing burns the code.
+      rec.state = "used";
+      rec.endedAt = this.now();
+      if (rec.expiresAt < this.now() || !eq(rec.hash, sha256hex(p.secret))) {
+        rec.state = undefined;
+        delete s.pairings[p.id];
+        return null;
+      }
       return rec;
     });
   }
@@ -369,8 +383,9 @@ export class FabricHub {
       const caps = auth.caps ?? null;
       if (auth.pairing) {
         const p = this.consumePairing(auth.pairing);
-        if (!p) return void this.audit("worker", "pairing.rejected", undefined, `${remote} ${fp}`), null;
+        if (!p) return void this.audit("worker", "pairing.rejected", undefined, `${remote} ${fp} (code unknown, used, cancelled, expired or wrong)`), null;
         rec = this.adopt(auth.pub, (auth.name || p.name), p.companies, p.by, caps, remote);
+        this.mutate((s) => { const pr = s.pairings[p.id]; if (pr) pr.workerId = rec!.id; });
         this.audit(p.by, "worker.adopt", rec.id, `pairing ${p.id}`);
       } else {
         const decision = await this.waitForApproval(sock, session, auth, caps, remote);
@@ -411,7 +426,7 @@ export class FabricHub {
       old.sock.close(4409, "replaced");
       this.dropConn(old);
     }
-    const conn: Conn = { sock, session, workerId: rec.id, lastFrame: this.now(), hb: null, calls: new Map(), execs: new Map() };
+    const conn: Conn = { connectedAt: this.now(), sock, session, workerId: rec.id, lastFrame: this.now(), hb: null, calls: new Map(), execs: new Map() };
     this.conns.set(rec.id, conn);
     this.mutate((s) => {
       const w = s.workers[rec.id]!;

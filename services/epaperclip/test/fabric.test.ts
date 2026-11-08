@@ -38,6 +38,7 @@ describe("pairing and identity", () => {
     await b.client.start();
     await until(() => h.hub.auditList().events.some((e) => e.action === "pairing.rejected"), 8000, "rejection");
     expect(h.hub.workers()).toHaveLength(1);
+    expect(h.hub.pairings()).toMatchObject([{ state: "used", workerId: h.hub.workers()[0]!.id }]);
     expect(b.client.status.state).not.toBe("online");
   });
 
