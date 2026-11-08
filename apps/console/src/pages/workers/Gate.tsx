@@ -14,6 +14,7 @@ export function FabricGate({ title, subtitle, children }: { title: string; subti
   const q = useFabric();
   if (!live) return <Frame title={title} subtitle={subtitle}><Card><EmptyState icon={<ServerOff className="h-5 w-5" />} title="Workers need a connected device" body="The demo has no host to adopt computers into. On a real device, a Proxmox administrator adopts workers here." /></Card></Frame>;
   if (q.isPending) return <Frame title={title} subtitle={subtitle}><div className="py-12 grid place-items-center text-ink-3" aria-busy="true" role="status"><Loader2 className="h-5 w-5 animate-spin" aria-hidden /><span className="sr-only">Loading workers</span></div></Frame>;
+  if (q.error && q.error instanceof FabricError && q.error.status === 503 && q.error.code === "fabric_unavailable") return <Frame title={title} subtitle={subtitle}><Card><EmptyState icon={<Cable className="h-5 w-5" />} title="The Worker Fabric is turned off" body="This device supports workers, but the Fabric is not switched on yet. Turn it on in the host service's configuration (see the Worker Fabric guide), then reload this page." /></Card></Frame>;
   if (q.error) {
     const e = q.error;
     const status = e instanceof FabricError ? e.status : -1;

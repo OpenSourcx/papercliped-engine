@@ -17,7 +17,8 @@ export function healthOf(w: Worker): Health {
 
 export const gb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GB` : `${mb} MB`);
 
-export function hardwareSummary(c: Capabilities): string {
+export function hardwareSummary(c: Capabilities | null): string {
+  if (!c) return "Hardware not reported yet";
   return `${c.cpu.cores} cores, ${gb(c.memMb)}${c.gpu.present ? `, ${c.gpu.name ?? "GPU"}` : ""}`;
 }
 

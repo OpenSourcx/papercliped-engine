@@ -5,7 +5,7 @@ import { useEngine } from "../../data/store.tsx";
 import { errorText, useOrgs } from "../../data/engine/queries.ts";
 import { fabricApi, fabricErrorText, type NewPairing, type Transport, type Worker, useFabric, useFabricAction } from "../../data/engine/fabric.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Chip, Field, Input, Notice, Select } from "../../ui/primitives.tsx";
+import { Button, Chip, Field, Input, Notice, Select, Status } from "../../ui/primitives.tsx";
 import { cn } from "../../lib/storage.ts";
 import { CapabilityFacts } from "./Hardware.tsx";
 import { countdown } from "./util.ts";
@@ -89,8 +89,8 @@ function ProviderOption({ t, selected, onSelect }: { t: Transport; selected: boo
     >
       <Icon className="h-4 w-4 mt-0.5 shrink-0 text-ink-2" aria-hidden />
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium">{t.label}{t.recommended && <Chip tone="accent">Recommended</Chip>}{t.available ? <Chip tone="good"><Check className="h-3 w-3" aria-hidden />Detected</Chip> : <Chip tone="warning">Not detected</Chip>}</span>
-        <span className="block text-xs text-ink-3 mt-0.5">{t.detail}</span>
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium">{t.label}{t.recommended && <Chip tone="accent">Recommended</Chip>}<Status kind={t.available ? "good" : "warning"} label={t.available ? "Detected" : "Not detected"} className="text-xs" /></span>
+        <span className={cn("block text-xs mt-0.5", selected ? "text-ink-2" : "text-ink-3")}>{t.detail}</span>
         {t.address && <span className="block text-xs font-mono text-ink-2 mt-0.5 break-all">{t.address}</span>}
       </span>
     </button>

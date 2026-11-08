@@ -28,7 +28,7 @@ export function UseWorkerModal({ onClose }: { onClose: () => void }) {
   const company = companyId || orgs.data?.[0]?.id || "";
   const agents = useAgents(company || null);
   const models = useMemo(() => [...new Set(adopted.flatMap((w) => (w.capabilities ? modelNames(w.capabilities) : [])))].sort(), [adopted]);
-  const arches = useMemo(() => [...new Set(adopted.map((w) => w.capabilities.arch))].sort(), [adopted]);
+  const arches = useMemo(() => [...new Set(adopted.flatMap((w) => (w.capabilities ? [w.capabilities.arch] : [])))].sort(), [adopted]);
   const create = useFabricAction(fabricApi.createEnvironment);
 
   const requirements: Requirements = {

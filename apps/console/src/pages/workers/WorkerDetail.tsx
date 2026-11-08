@@ -130,16 +130,18 @@ function Overview({ w }: { w: Worker }) {
   );
 }
 
+const LEASE_TEXT = { active: "Active", released: "Released", stopped: "Stopped", destroyed: "Destroyed" } as const;
+
 function Leases({ leases }: { leases: Lease[] }) {
   if (leases.length === 0) return <Card><EmptyState icon={<KeyRound className="h-5 w-5" />} title="No leases yet" body="A lease is one agent run's claim on this worker and its private workspace. They appear here when an agent runs." /></Card>;
-  const tone = { active: "good", released: "neutral", stopped: "warning", destroyed: "neutral" } as const;
+  const tone = { active: "good", released: "idle", stopped: "paused", destroyed: "off" } as const;
   return (
     <>
       <Notice tone="info" className="mb-3">Releasing or destroying a lease frees capacity and clears that run's workspace. It never turns the computer off.</Notice>
       <Card className="divide-y divide-line">
         {leases.map((l) => (
           <div key={l.id} className="px-4 py-3 grid gap-1">
-            <div className="flex flex-wrap items-center gap-2"><Chip tone={tone[l.state]}>{l.state}</Chip><span className="text-xs text-ink-3">Started {ago(l.createdAt)}{l.releasedAt ? `, ended ${ago(l.releasedAt)}` : ""}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><Status kind={tone[l.state]} label={LEASE_TEXT[l.state]} /><span className="text-xs text-ink-3">Started {ago(l.createdAt)}{l.releasedAt ? `, ended ${ago(l.releasedAt)}` : ""}</span></div>
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
               <Fact label="Agent" mono>{l.agentId}</Fact>
               <Fact label="Run" mono>{l.runId}</Fact>

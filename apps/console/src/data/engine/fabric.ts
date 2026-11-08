@@ -37,10 +37,11 @@ export interface Worker {
   shellSlots: number;
   inferenceSlots: number;
   usage: { shellLeases: number; inferenceRunning: number; inferenceQueued: number; loadAvg: number | null; freeMemMb: number | null };
-  capabilities: Capabilities;
+  /** null until the worker has made its first report. */
+  capabilities: Capabilities | null;
 }
 export interface Lease { id: string; workerId: string; companyId: string; agentId: string; runId: string; environmentId: string; workspace: string; state: "active" | "released" | "stopped" | "destroyed"; createdAt: number; releasedAt?: number }
-export interface Pending { id: string; name: string; verification: string; fingerprint: string; requestedAt: number; expiresAt: number; capabilities: Capabilities; remote: string }
+export interface Pending { id: string; name: string; verification: string; fingerprint: string; requestedAt: number; expiresAt: number; capabilities: Capabilities | null; remote: string }
 export interface Requirements { arch?: string; tools?: string[]; gpu?: boolean; localModel?: string; minFreeMemMb?: number }
 export interface Transport { provider: "tailscale" | "lan" | "custom"; label: string; available: boolean; recommended?: boolean; address?: string; detail: string }
 export interface EnvView { id: string; companyId: string; name: string; workerId: string | null; requirements: Requirements; agents: string[] }

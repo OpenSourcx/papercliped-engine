@@ -68,6 +68,11 @@ describe("honest states", () => {
     wrap(<WorkersPage />);
     expect(await screen.findByText("The Worker Fabric is turned off")).toBeTruthy();
   });
+  it("treats the host's 503 fabric_unavailable as turned off", async () => {
+    handlers["GET /api/fabric"] = () => json({ error: "The Worker Fabric isn't enabled on this host.", code: "fabric_unavailable" }, 503);
+    wrap(<WorkersPage />);
+    expect(await screen.findByText("The Worker Fabric is turned off")).toBeTruthy();
+  });
   it("explains a 403 and an unreachable device", async () => {
     handlers["GET /api/fabric"] = () => json({ error: "Forbidden", code: "forbidden" }, 403);
     wrap(<WorkersPage />);
@@ -113,6 +118,13 @@ describe("workers list", () => {
     expect(spare.getByText("Not reported", { selector: "dd" })).toBeTruthy();
     expect(spare.queryByRole("meter")).toBeNull();
     expect(screen.getByText("Revoked", { selector: "h2 span" })).toBeTruthy();
+  });
+
+  it("shows a worker that has not reported hardware yet without inventing any", async () => {
+    handlers["GET /api/fabric"] = () => overview({ workers: [worker({ capabilities: null, online: false, lastSeen: null })] });
+    wrap(<WorkersPage />);
+    expect(await screen.findByText("Hardware not reported yet")).toBeTruthy();
+    expect(screen.getByText(/Waiting for the worker's first hardware report/)).toBeTruthy();
   });
 
   it("approves a pending worker after showing its hardware and check string", async () => {

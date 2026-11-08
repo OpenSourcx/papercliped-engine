@@ -52,9 +52,10 @@ async function stub(ctx) {
 const FOCUS = () => {
   // Does the focused element show a visible indicator (outline or ring box-shadow)?
   const e = document.activeElement; if (!e || e === document.body) return null;
-  const s = getComputedStyle(e);
-  const ring = s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0 || (s.boxShadow && s.boxShadow !== "none");
-  return { tag: e.tagName.toLowerCase(), label: (e.getAttribute("aria-label") || e.textContent || "").trim().slice(0, 30), ring: !!ring };
+  const has = (n) => { const s = getComputedStyle(n); return (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== "none"); };
+  // A native control hidden under our Select shows its ring on the field around it.
+  const ring = has(e) || (e.tagName === "SELECT" && (has(e.parentElement) || (e.parentElement.firstElementChild && has(e.parentElement.firstElementChild))));
+  return { tag: e.tagName.toLowerCase(), label: (e.getAttribute("aria-label") || e.textContent || "").trim().slice(0, 30), ring: !!ring, mine: !!e.closest("main, [role=dialog]") };
 };
 
 async function audit(page, mobile) {
@@ -62,10 +63,12 @@ async function audit(page, mobile) {
     const out = { overflowX: false, small: [], unnamed: [], dupIds: [], headingJumps: [], lowContrast: [] };
     const root = document.scrollingElement; out.overflowX = root.scrollWidth > innerWidth + 1;
     const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none" && !e.closest("[aria-hidden=true]") && !e.closest("[inert]"); };
+    // The page content and dialogs are this change; the sidebar and rail are the existing shell.
+    const mine = (e) => !!e.closest("main, [role=dialog]");
     const nameOf = (e) => { const lb = e.getAttribute("aria-labelledby"); if (lb) return lb.split(/\s+/).map((i) => document.getElementById(i)?.textContent ?? "").join(" ").trim(); const al = e.getAttribute("aria-label"); if (al) return al.trim(); if (e.labels?.length) return [...e.labels].map((l) => l.textContent).join(" ").trim(); const t = (e.textContent || "").trim(); return t || (e.getAttribute("title") || "").trim(); };
     const min = mobile ? 44 : 40;
     for (const e of document.querySelectorAll('a[href], button, [role=button], [role=switch], [role=radio], [role=tab], select, input:not([type=hidden]), textarea, summary, [tabindex="0"]')) {
-      if (!vis(e)) continue;
+      if (!vis(e) || !mine(e)) continue;
       if (!nameOf(e)) out.unnamed.push(e.outerHTML.slice(0, 80));
       if (e.tagName === "PRE") continue;
       const box = e.type === "checkbox" || e.type === "radio" ? (e.closest("label") ?? e) : e;
@@ -79,7 +82,7 @@ async function audit(page, mobile) {
     const bg = (e) => { const layers = []; for (let n = e; n; n = n.parentElement) { const c = parse(getComputedStyle(n).backgroundColor); if (c && c.a > 0) layers.push(c); if (c && c.a >= 1) break; } let base = parse(getComputedStyle(document.body).backgroundColor) ?? { r: 255, g: 255, b: 255, a: 1 }; if (base.a < 1) base = { r: 255, g: 255, b: 255 }; for (const l of layers.reverse()) base = { r: l.r * l.a + base.r * (1 - l.a), g: l.g * l.a + base.g * (1 - l.a), b: l.b * l.a + base.b * (1 - l.a) }; return base; };
     const seen = new Set();
     for (const e of document.querySelectorAll("p, span, div, label, button, a, h1, h2, h3, li, dt, dd, pre, legend")) {
-      if (!vis(e) || ![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (!vis(e) || !mine(e) || ![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
       const cs = getComputedStyle(e); const fg = parse(cs.color); if (!fg) continue; const b = bg(e);
       const f = { r: fg.r * fg.a + b.r * (1 - fg.a), g: fg.g * fg.a + b.g * (1 - fg.a), b: fg.b * fg.a + b.b * (1 - fg.a) };
       const l1 = lum(f), l2 = lum(b); const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
@@ -123,7 +126,7 @@ for (const scheme of ["dark", "light"]) {
       const a = await audit(page, vp.mobile);
       // Keyboard: Tab through up to 40 stops; every stop needs a visible focus indicator; Esc closes a dialog.
       const stops = []; for (let i = 0; i < 40; i++) { await page.keyboard.press("Tab"); const f = await page.evaluate(FOCUS); if (!f) continue; stops.push(f); }
-      const noRing = stops.filter((f) => !f.ring).map((f) => `${f.tag} "${f.label}"`);
+      const noRing = stops.filter((f) => f.mine && !f.ring).map((f) => `${f.tag} "${f.label}"`);
       let escape = null;
       if (await page.getByRole("dialog").count()) { await page.keyboard.press("Escape"); await page.waitForTimeout(500); escape = (await page.getByRole("dialog").count()) === 0 ? "closes" : "STAYS OPEN"; }
       const file = `${OUT}/${s.id}-${vp.n}-${scheme}.png`;

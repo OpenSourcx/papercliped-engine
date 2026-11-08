@@ -66,9 +66,9 @@ export function WorkerCard({ w }: { w: Worker }) {
   const { setup } = useEngine();
   const h = healthOf(w);
   const c = w.capabilities;
-  const models = modelNames(c);
-  const memPct = w.usage.freeMemMb !== null && c.memMb ? 100 - (w.usage.freeMemMb / c.memMb) * 100 : null;
-  const cpuPct = w.usage.loadAvg !== null && c.cpu.cores ? (w.usage.loadAvg / c.cpu.cores) * 100 : null;
+  const models = c ? modelNames(c) : [];
+  const memPct = c && w.usage.freeMemMb !== null && c.memMb ? 100 - (w.usage.freeMemMb / c.memMb) * 100 : null;
+  const cpuPct = c && w.usage.loadAvg !== null && c.cpu.cores ? (w.usage.loadAvg / c.cpu.cores) * 100 : null;
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -78,7 +78,7 @@ export function WorkerCard({ w }: { w: Worker }) {
         </div>
         <div className="flex flex-wrap items-center gap-2"><Status kind={h.kind} label={h.label} /></div>
       </div>
-      <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+      {!c ? <p className="mt-4 text-compact text-ink-3">Waiting for the worker's first hardware report. <span className="font-mono">{w.transport.address}</span></p> : <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
         <Fact label="System">{c.os.name} <span className="font-mono">{c.arch}</span></Fact>
         <Fact label="Connection">{providerLabel(w.transport.provider)} <span className="font-mono text-ink-3">{w.transport.address}</span></Fact>
         <Fact label="GPU">{gpuText(c)}</Fact>
@@ -87,7 +87,7 @@ export function WorkerCard({ w }: { w: Worker }) {
         <Fact label="Last seen">{w.online ? "Connected now" : ago(w.lastSeen)}</Fact>
         <div className="col-span-2">{cpuPct !== null ? <BarMeter label="CPU load" pct={cpuPct} value={`${w.usage.loadAvg!.toFixed(2)} on ${c.cpu.cores} cores`} /> : <Fact label="CPU load">Not reported</Fact>}</div>
         <div className="col-span-2">{memPct !== null ? <BarMeter label="Memory in use" pct={memPct} value={`${gb(c.memMb - w.usage.freeMemMb!)} of ${gb(c.memMb)}`} /> : <Fact label="Memory">{gb(c.memMb)}, use not reported</Fact>}</div>
-      </dl>
+      </dl>}
     </Card>
   );
 }

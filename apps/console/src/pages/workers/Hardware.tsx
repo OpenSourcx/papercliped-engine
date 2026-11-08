@@ -14,7 +14,8 @@ export function Fact({ label, children, mono }: { label: string; children: React
 }
 
 /** What a machine reports about itself. Used by the adopt flow (so approval is informed) and the detail page. */
-export function CapabilityFacts({ c }: { c: Capabilities }) {
+export function CapabilityFacts({ c }: { c: Capabilities | null }) {
+  if (!c) return <p className="text-compact text-ink-3">This worker has not reported its hardware yet. It appears here after its first connection.</p>;
   const models = modelNames(c);
   const tools = Object.entries(c.tools);
   return (
