@@ -56,7 +56,7 @@ export function CloudflareAccess() {
         {has && d && <Progress d={d} busy={create.isPending} onResume={() => create.mutate(false)} onReplace={() => create.mutate(true)} removing={removing} setRemoving={setRemoving} onRemove={() => remove.mutate()} removeBusy={remove.isPending} removeError={remove.error ? msg(remove.error, "Removal failed.") : undefined} />}
         <Card className="p-5 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap"><h2 className="font-medium">Token permissions</h2><Button loading={check.isPending} onClick={() => check.mutate()}>Check permissions</Button></div>
-          <p className="text-compact text-ink-3">The token needs exactly: {NEEDED.map((n) => n.label).join("; ")}.</p>
+          <p className="text-compact text-ink-3">The token needs at least: {NEEDED.map((n) => n.label).join("; ")}. A token with more permissions works too; ePaperclip only uses these.</p>
           {check.error && <Notice tone="warning" title="Could not check">{msg(check.error, "Try again.")}</Notice>}
           {check.data && <PermissionList p={check.data} />}
         </Card>

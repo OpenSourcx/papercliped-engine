@@ -189,6 +189,15 @@ describe("self-managed Cloudflare provisioning (fake Cloudflare API)", () => {
     expect(bad.accounts).toEqual([{ id: "a1", name: "Acme" }]); // account taken from the domain
   });
 
+  it("accepts a token with more permissions than needed: only a missing required one blocks", async () => {
+    // The fake grants everything it is asked for, as a broad (for example account-wide) token would.
+    const { prov } = setup();
+    const broad = await prov.permissions("example.com");
+    expect(broad.ready).toBe(true);
+    expect(broad.checks.every((c) => c.state === "ok")).toBe(true);
+    await expect(prov.provision("example.com", "app")).resolves.toMatchObject({ hostname: "app.example.com" });
+  });
+
   it("handles no domains and pages through many", async () => {
     const a = setup();
     a.cf.zones.length = 0;
