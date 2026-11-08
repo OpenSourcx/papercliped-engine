@@ -120,3 +120,6 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
   }
   throw new E(404, "not_found", "Not found");
 }
+
+/** For tests: the hub registered for this state. */
+export const __hubFor = (state: StateStore): FabricHub => registry.get(state)!.hub;
