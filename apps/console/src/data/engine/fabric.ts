@@ -126,7 +126,7 @@ export function useFabric() {
     for (const ev of ["worker", "lease", "pending", "audit"]) es.addEventListener(ev, refresh);
     return () => es.close();
   }, [live, qc]);
-  return useQuery({ queryKey: keys.overview, queryFn: fabricApi.overview, enabled: live, retry: (n, e) => !(e instanceof FabricError && e.status > 0 && e.status < 500) && n < 1, refetchInterval: 5_000 });
+  return useQuery({ queryKey: keys.overview, queryFn: fabricApi.overview, enabled: live, retry: false, refetchInterval: 5_000 });
 }
 
 export function useWorker(id: string) {
