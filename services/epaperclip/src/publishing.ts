@@ -35,7 +35,19 @@ export interface PublisherView {
   error?: string;
 }
 
-export interface PublishZone { id: string; name: string }
+export interface PublishZone { id: string; name: string; accountId?: string; accountName?: string }
+
+/** The permissions the customer's own Cloudflare API token needs. Shown before the token is accepted and named when one is missing. */
+export const CLOUDFLARE_PERMISSIONS = [
+  { id: "zone-read", label: "Zone: Zone: Read", required: true, why: "List your domains and find the one you choose." },
+  { id: "dns-edit", label: "Zone: DNS: Edit", required: true, why: "Create and remove the one DNS record for this device's address." },
+  { id: "tunnel-edit", label: "Account: Cloudflare Tunnel: Edit", required: true, why: "Create, configure and delete this device's named tunnel and read its run token." },
+  { id: "account-read", label: "Account: Account Settings: Read", required: false, why: "Optional. Lets ePaperclip show your account name; without it the account is taken from the domain." },
+] as const;
+
+/** One Cloudflare API answer. `need` names the permission the call depends on so a refusal can say exactly what is missing. */
+export interface CfCall { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown; need?: string; allow404?: boolean }
+export interface CfAnswer<T> { status: number; result: T; info?: { total_pages?: number; page?: number } }
 
 export interface PublicationPlan {
   provider: PublisherId;
@@ -123,6 +135,45 @@ export class Publishing {
     }
   }
 
+  private sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms));
+  /** Tests make rate-limit waits instant. */
+  setSleep(f: (ms: number) => Promise<void>) { this.sleep = f; }
+
+  /**
+   * One Cloudflare API call with the device's token. Rate limits (429) are waited out twice (Retry-After, capped at 5 s),
+   * then reported. Refusals name the missing permission. The token is never part of any message.
+   */
+  async cf<T = unknown>(path: string, o: CfCall = {}): Promise<CfAnswer<T>> {
+    const token = this.token();
+    if (!token) throw new HttpError(404, "not_configured", "Cloudflare publishing has no API token yet");
+    const method = o.method ?? "GET";
+    for (let attempt = 0; ; attempt++) {
+      let r: Response;
+      try {
+        r = await this.fetch(`https://api.cloudflare.com/client/v4${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(o.body !== undefined ? { "Content-Type": "application/json" } : {}) }, ...(o.body !== undefined ? { body: JSON.stringify(o.body) } : {}), signal: AbortSignal.timeout(15_000) });
+      } catch (e) {
+        if ((e as Error).name === "TimeoutError") throw new HttpError(502, "publisher_timeout", "Cloudflare did not answer within 15 seconds. Nothing was lost; try again.");
+        throw new HttpError(502, "publisher_unreachable", "Could not reach Cloudflare. Check this device's internet connection.");
+      }
+      if (r.status === 429) {
+        if (attempt >= 2) throw new HttpError(429, "rate_limited", "Cloudflare is rate limiting this token. Wait a minute, then press Resume. Nothing was lost.");
+        const wait = Math.min(Math.max(Number(r.headers.get("retry-after")) || 1, 1), 5) * 1000;
+        await this.sleep(wait);
+        continue;
+      }
+      if (r.status === 404 && o.allow404) return { status: 404, result: undefined as T };
+      let body: { success?: boolean; result?: T; result_info?: { total_pages?: number; page?: number }; errors?: { code?: number; message?: unknown }[] } = {};
+      try { body = await r.json() as typeof body; } catch { /* non-JSON error page */ }
+      if (r.ok && body.success !== false) return { status: r.status, result: body.result as T, info: body.result_info };
+      const detail = body.errors?.find((e) => typeof e.message === "string")?.message;
+      const text = typeof detail === "string" ? ` (${detail.slice(0, 160)})` : "";
+      if (r.status === 401) throw new HttpError(403, "token_invalid", `Cloudflare does not accept this API token${text}. Create a new token and paste it again.`);
+      if (r.status === 403) throw new HttpError(403, "missing_permission", `This token is missing a permission: ${o.need ?? "access to this Cloudflare resource"}.${text} Edit the token in Cloudflare (My Profile, API Tokens), add it, then try again.`);
+      if (r.status >= 500) throw new HttpError(502, "cloudflare_unavailable", `Cloudflare had a problem (${r.status}). Nothing was lost; try again shortly.`);
+      throw new HttpError(r.status === 409 ? 409 : 400, r.status === 409 ? "cloudflare_conflict" : "cloudflare_refused", `Cloudflare refused the request${text || ` (${r.status})`}.`);
+    }
+  }
+
   async test(): Promise<PublisherView> {
     const current = this.records().cloudflare;
     if (!current || !this.token()) throw new HttpError(404, "not_configured", "Cloudflare publishing has no API token yet");
@@ -132,16 +183,21 @@ export class Publishing {
     return this.list()[0]!;
   }
 
+  /** Active domains, all pages. A missing Zone: Read permission is named, never "could not load". */
   async zones(): Promise<PublishZone[]> {
-    const response = await this.request("/zones?status=active&per_page=50");
-    if (!response.ok) throw new HttpError(response.status === 401 || response.status === 403 ? 403 : 502, "zones_unavailable", "Cloudflare could not list the active domains for this token.");
-    const body = await response.json() as { result?: unknown };
-    if (!Array.isArray(body.result)) throw new HttpError(502, "zones_unavailable", "Cloudflare returned an invalid domain list.");
-    return body.result.flatMap((zone): PublishZone[] => {
-      if (!zone || typeof zone !== "object") return [];
-      const z = zone as { id?: unknown; name?: unknown };
-      return typeof z.id === "string" && typeof z.name === "string" ? [{ id: z.id, name: z.name }] : [];
-    });
+    const out: PublishZone[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const a = await this.cf<unknown>(`/zones?status=active&per_page=50&page=${page}`, { need: "Zone: Zone: Read" });
+      if (!Array.isArray(a.result)) throw new HttpError(502, "zones_unavailable", "Cloudflare returned an invalid domain list.");
+      for (const zone of a.result) {
+        if (!zone || typeof zone !== "object") continue;
+        const z = zone as { id?: unknown; name?: unknown; account?: { id?: unknown; name?: unknown } };
+        if (typeof z.id !== "string" || typeof z.name !== "string") continue;
+        out.push({ id: z.id, name: z.name, ...(typeof z.account?.id === "string" ? { accountId: z.account.id } : {}), ...(typeof z.account?.name === "string" ? { accountName: z.account.name } : {}) });
+      }
+      if (a.result.length < 50 || page >= (a.info?.total_pages ?? 1)) break;
+    }
+    return out;
   }
 
   /**
