@@ -8,14 +8,14 @@ import type { Capabilities } from "@papercliped-engine/worker-fabric";
 const sh = (cmd: string, args: string[], ms = 4000) =>
   new Promise<string | null>((res) => execFile(cmd, args, { timeout: ms, maxBuffer: 1 << 20 }, (e, out, err) => res(e ? null : String(out || err).trim())));
 
-const TOOLS: [string, string[]][] = [["git", ["--version"]], ["gh", ["--version"]], ["node", ["--version"]], ["npm", ["--version"]], ["pnpm", ["--version"]], ["python3", ["--version"]], ["uv", ["--version"]], ["docker", ["--version"]], ["make", ["--version"]], ["gcc", ["--version"]], ["cargo", ["--version"]], ["ollama", ["--version"]]];
+const TOOLS: [string, string[]][] = [["git", ["--version"]], ["gh", ["--version"]], ["node", ["--version"]], ["npm", ["--version"]], ["pnpm", ["--version"]], ["python3", ["--version"]], ["uv", ["--version"]], ["docker", ["--version"]], ["make", ["--version"]], ["gcc", ["--version"]], ["cargo", ["--version"]], ["ollama", ["--version"]], ["epaperclip-aider", ["--version"]]];
 
 export async function detectTools(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   await Promise.all(TOOLS.map(async ([t, a]) => {
     const v = await sh(t, a);
     const m = v ? /\d+\.\d+(\.\d+)?/.exec(v) : null;
-    if (m) out[t === "python3" ? "python" : t] = m[0];
+    if (m) out[t === "python3" ? "python" : t === "epaperclip-aider" ? "aider" : t] = m[0];
   }));
   return out;
 }
