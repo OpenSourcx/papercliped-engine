@@ -467,7 +467,7 @@ export class FabricHub {
       conn.calls.delete(m.id);
       clearTimeout(c.timer);
       if (m.ok) c.resolve(m.result);
-      else c.reject(new Error(typeof m.error === "string" ? m.error.slice(0, 500) : "The worker refused."));
+      else c.reject(new HttpError(502, "worker_error", typeof m.error === "string" ? m.error.slice(0, 500) : "The worker refused."));
       return;
     }
     switch (m.ev) {

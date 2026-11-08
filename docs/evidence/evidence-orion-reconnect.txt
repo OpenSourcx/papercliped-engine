@@ -1,0 +1,9 @@
+before: online = True
+1. daemon restart on Orion (systemctl --user restart epaperclip-worker)
+  seen offline after: 0.0s
+  back online after: 1.0s
+2. simulated network loss (daemon's simulate-offline hook, held 25 s)
+  seen offline after: 0.7s
+  back online after hook removed: 0.7s
+3. ePaperclip fabric host process killed and started again (state on disk)
+  worker back online (same id, same key) after 2.0s from host start
