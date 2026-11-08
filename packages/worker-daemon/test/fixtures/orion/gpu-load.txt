@@ -1,0 +1,5 @@
+17000000.gpu
+gpu.0
+gpu-throttle-alert
+0
+0

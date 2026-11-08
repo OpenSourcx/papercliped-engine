@@ -1,8 +1,11 @@
-import { ClientHandshake, decodePairing, orderEndpoints, type Capabilities, type Identity } from "@papercliped-engine/worker-fabric";
+import { ClientHandshake, LIMITS, decodePairing, orderEndpoints, type Capabilities, type Identity, type ManageEnvelope } from "@papercliped-engine/worker-fabric";
 import type { Server } from "node:http";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
+import { Manager } from "./manage.ts";
+import { StatsCollector } from "./stats.ts";
+import { statfsSync } from "node:fs";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
 import { Gate } from "./gate.ts";
 import { Runner } from "./runner.ts";
@@ -18,6 +21,8 @@ export interface ClientOptions {
   WebSocketImpl?: typeof WebSocket;
   backoff?: { minMs: number; maxMs: number };
   version?: string;
+  /** Statistics interval; tests shorten it. */
+  statsMs?: number;
 }
 
 type Json = Record<string, unknown>;
@@ -34,6 +39,8 @@ export class WorkerClient {
   private stopped = false;
   private ws: WebSocket | null = null;
   private runner: Runner;
+  private readonly collector: StatsCollector;
+  private readonly mgr: Manager;
   private gate: Gate | null = null;
   private gateServer: Server | null = null;
   private send: ((v: unknown) => void) | null = null;
@@ -45,6 +52,12 @@ export class WorkerClient {
   constructor(o: ClientOptions) {
     this.o = o;
     this.log = o.log ?? (() => {});
+    const ollamaUrls = () => [this.caps?.inference?.url ?? "", this.o.files.config().ollamaUrl].filter(Boolean);
+    this.collector = new StatsCollector({}, () => ({ workspaceRoot: this.o.files.config().workspaceRoot, ollamaUrls: ollamaUrls(), gate: () => this.gate?.stats() ?? null, pulls: () => this.mgr.pulls() }));
+    this.mgr = new Manager({
+      files: o.files, ollamaUrl: () => ollamaUrls()[0] ?? null, log: this.log, statsNow: () => this.collector.collect(),
+      freeGb: () => { try { const s = statfsSync(this.o.files.config().workspaceRoot); return (s.bavail * s.bsize) / 1e9; } catch { return 100; } },
+    });
     this.runner = new Runner(
       { out: (id, stream, data) => this.send?.({ ev: "out", id, stream, data }), exit: (id, r) => this.send?.({ ev: "exit", id, ...r }) },
       () => this.inferenceEnv(),
@@ -218,6 +231,9 @@ export class WorkerClient {
               await this.announce(cc);
               const hb = Math.max(100, Number(m.hbMs) || 10_000);
               this.timers.push(setInterval(() => this.beat(), hb));
+              const sm = this.o.statsMs ?? LIMITS.statsMs;
+              this.timers.push(setInterval(() => void this.sendStats(), sm));
+              void this.sendStats();
               return;
             }
             if (typeof m.op === "string") await this.handle(m as { id: string; op: string; args: Json }, c);
@@ -235,6 +251,9 @@ export class WorkerClient {
     this.caps = caps;
     this.send?.({ ev: "caps", caps, version: this.o.version ?? VERSION });
     this.beat();
+  }
+  private async sendStats() {
+    try { this.send?.({ ev: "stats", stats: await this.collector.collect() }); } catch (e) { this.log(`stats failed: ${(e as Error).message}`); }
   }
   private beat() {
     const g = this.gate?.stats();
@@ -266,6 +285,8 @@ export class WorkerClient {
         case "caps.refresh":
           await this.announce(c);
           return reply(true, {});
+        case "manage":
+          return reply(true, await this.mgr.handle(m.args as unknown as ManageEnvelope));
         case "revoked": {
           const cc = this.o.files.config();
           cc.revoked = true;

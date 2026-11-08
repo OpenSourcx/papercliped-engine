@@ -1,0 +1,22 @@
+cooling_device0
+cooling_device1
+cooling_device10
+cooling_device11
+cooling_device12
+cooling_device2
+cooling_device3
+cooling_device4
+cooling_device5
+cooling_device6
+/sys/class/thermal/thermal_zone0 cpu-thermal 52156
+/sys/class/thermal/thermal_zone1 gpu-thermal 52500
+/sys/class/thermal/thermal_zone2 cv0-thermal
+cat: /sys/class/thermal/thermal_zone2/temp: No data available
+/sys/class/thermal/thermal_zone3 cv1-thermal
+cat: /sys/class/thermal/thermal_zone3/temp: No data available
+/sys/class/thermal/thermal_zone4 cv2-thermal
+cat: /sys/class/thermal/thermal_zone4/temp: No data available
+/sys/class/thermal/thermal_zone5 soc0-thermal 50406
+/sys/class/thermal/thermal_zone6 soc1-thermal 51125
+/sys/class/thermal/thermal_zone7 soc2-thermal 50031
+/sys/class/thermal/thermal_zone8 tj-thermal 52718

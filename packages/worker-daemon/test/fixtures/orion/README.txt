@@ -1,0 +1,1 @@
+Captured read-only from the reference node (Jetson Orin Nano Super, JetPack/L4T R39, Ubuntu 24.04) on 2026-11-08 via ssh as an unprivileged user. Hostname scrubbed. No secrets. root/ mimics / for packages/worker-daemon/src/stats.ts; the other files are raw command outputs.
