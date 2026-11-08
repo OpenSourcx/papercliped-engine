@@ -5,5 +5,4 @@ export * from "./questions.ts";
 export * from "./typesafe.ts";
 export * from "./jev.ts";
 export * from "./router.ts";
-export * from "./settings.ts";
-export * from "./org.ts";
+export * from "./fake.ts";
