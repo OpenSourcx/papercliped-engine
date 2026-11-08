@@ -404,7 +404,7 @@ export class AgentContainers {
       set("template", template.exists, vmid && !template.exists ? "The template isn't there" : undefined);
 
       // Rights: for the user and for the token, on each path. The template's own right can only exist once the template does.
-      const { gaps } = await this.grantGaps(pve, p, template.exists);
+      const { gaps } = await this.grantGaps(pve, p, template.exists, true);
       grantGaps = gaps;
       const detail = gaps.length ? `Missing: ${describeGaps(gaps)}` : !template.exists ? "Rights on the pool, storage, bridge and node are in place; the template's own right is added once it is built" : undefined;
       set("grant", template.exists && gaps.length === 0, detail);
@@ -1087,9 +1087,13 @@ export class AgentContainers {
         const hit = acls.find((a) => a.path === path && a.roleid === role && a.ugid === id && a.type === who);
         const reaches = hit && (!path.startsWith("/pool/") || hit.propagate !== 0);
         if (reaches && !strict) continue;
+        if (hit && !reaches) {
+          gaps.push({ path, role, who, why: "not-inherited" });
+          continue;
+        }
         const lacking = await this.lackingPrivs(pve, path, role, id);
         if (lacking === null ? reaches : lacking.length === 0) continue;
-        gaps.push({ path, role, who, why: !hit ? "absent" : !reaches ? "not-inherited" : "ineffective", ...(lacking?.length ? { lacking } : {}) });
+        gaps.push({ path, role, who, why: hit ? "ineffective" : "absent", ...(hit && lacking?.length ? { lacking } : {}) });
       }
     }
     return { gaps };
