@@ -18,7 +18,7 @@ function DemoConnectors() {
   return (
     <PageFrame width="6xl">
       <PageHeader title="Plugins" subtitle="Machine-wide integrations, set up once. Cloudflare and other hosting or service plugins stay on this device and are separate from AI models." />
-      <Card className="overflow-x-auto edge-fade-x">
+      <Card className="hidden sm:block overflow-x-auto edge-fade-x">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="text-xs text-ink-3 border-b border-line">
@@ -50,6 +50,25 @@ function DemoConnectors() {
           </tbody>
         </table>
       </Card>
+      <div className="sm:hidden space-y-3">
+        {data.connectors.map((c) => (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center gap-3">
+              <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0">{hasOfficialMark(c.id) ? <BrandMark id={c.id} name={c.name} size={18} /> : ICON[c.kind]}</span>
+              <div className="min-w-0">
+                <div className="font-medium">{c.name}</div>
+                {c.status === "connected" ? <Status kind="good" label="Connected" /> : <Status kind="warning" label="Needs setup" />}
+              </div>
+            </div>
+            <ul className="mt-2 divide-y divide-line">
+              {[{ key: "pin", label: "Pin", on: c.access.pin, set: (v: boolean) => setConnectorAccess(c.id, "pin", v), toggleLabel: `Pin can use ${c.name}` },
+                ...data.orgs.map((o) => ({ key: o.slug, label: o.name, on: c.access.orgs.includes(o.slug), set: (v: boolean) => setConnectorAccess(c.id, o.slug, v), toggleLabel: `${o.name} can use ${c.name}` }))].map((r) => (
+                <li key={r.key} className="flex items-center justify-between gap-3 min-h-11"><span className="text-compact">{r.label}</span><Toggle label={r.toggleLabel} checked={r.on} disabled={c.status !== "connected"} onChange={r.set} /></li>
+              ))}
+            </ul>
+          </Card>
+        ))}
+      </div>
       <p className="text-xs text-ink-3 mt-3">Plugin credentials stay in the device vault. They are never made available to Pin, agents, or organizations unless a plugin explicitly supports a safe, scoped integration.</p>
     </PageFrame>
   );
