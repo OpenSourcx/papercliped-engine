@@ -34,6 +34,11 @@ const outIdx = process.argv.indexOf("--out");
   c("A05 viewer cannot read the private project by id", r.status >= 400, String(r.status));
   r = await bob.req("POST", `/api/companies/${co.id}/projects`, { name: "viewer write" });
   c("A06 viewer cannot create projects", r.status >= 400, String(r.status));
+  const pi = (await a.req("POST", `/api/companies/${co.id}/issues`, { title: "Private task", projectId: priv.id, status: "todo" })).body;
+  r = await bob.req("GET", `/api/companies/${co.id}/issues`);
+  c("A12 task inside a private project is hidden from the viewer (list)", ok2(r) && !JSON.stringify(r.body).includes("Private task"), String(r.status));
+  r = await bob.req("GET", `/api/issues/${pi.id}`);
+  c("A13 ... and by id", r.status >= 400, String(r.status));
 }
 // ---- epc
 {
@@ -59,6 +64,18 @@ const outIdx = process.argv.indexOf("--out");
   c("A06 viewer cannot create projects", r.status >= 400, String(r.status));
   r = await lee.req("GET", `/api/projects/${priv.id}`);
   c("A05b private project by id is not reachable by a viewer (route closed at the proxy, so 404 regardless)", r.status >= 400, String(r.status));
+  const pi = (await sam.req("POST", `/api/companies/${co.id}/issues`, { title: "Private task", projectId: priv.id, status: "todo" })).body;
+  r = await lee.req("GET", `/api/companies/${co.id}/issues`);
+  c("A12 task inside a private project is hidden from the viewer (list)", ok2(r) && !JSON.stringify(r.body).includes("Private task"), String(r.status));
+  r = await lee.req("GET", `/api/issues/${pi.id}`);
+  c("A13 ... and by id", r.status >= 400, String(r.status));
+  const leeId = (await lee.req("GET", "/api/cli-auth/me")).body?.userId;
+  r = await lee.req("POST", `/api/projects/${priv.id}/access-members`, { subjectType: "user", subjectId: leeId });
+  c("A09 viewer cannot grant themselves access to the private project", r.status >= 400, String(r.status));
+  r = await sam.req("POST", `/api/projects/${priv.id}/access-members`, { subjectType: "user", subjectId: leeId });
+  c("A10 owner grants the viewer access to the private project (route opened by this PR)", ok2(r), String(r.status));
+  r = await lee.req("GET", `/api/companies/${co.id}/projects`);
+  c("A11 viewer now sees the private project", ok2(r) && Array.isArray(r.body) && r.body.some((p) => p.name === "Private one"), `${r.status}`);
   const me = await lee.req("GET", "/api/cli-auth/me");
   c("A07 a non-admin Proxmox person is not an engine instance admin", me.body?.isInstanceAdmin === false, `isInstanceAdmin=${me.body?.isInstanceAdmin}`);
   const sm = await sam.req("GET", "/api/cli-auth/me");

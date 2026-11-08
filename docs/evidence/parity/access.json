@@ -1,5 +1,5 @@
 {
- "at": "2026-11-08T11:46:15.025Z",
+ "at": "2026-11-08T11:48:36.834Z",
  "rows": [
   {
    "id": "A01 invite + accept as viewer",
@@ -41,6 +41,20 @@
    "target": "native",
    "ok": true,
    "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A12 task inside a private project is hidden from the viewer (list)",
+   "target": "native",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A13 ... and by id",
+   "target": "native",
+   "ok": true,
+   "detail": "404",
    "level": "real Paperclip runtime"
   },
   {
@@ -90,6 +104,41 @@
    "target": "epc",
    "ok": true,
    "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A12 task inside a private project is hidden from the viewer (list)",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A13 ... and by id",
+   "target": "epc",
+   "ok": true,
+   "detail": "404",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A09 viewer cannot grant themselves access to the private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "403",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A10 owner grants the viewer access to the private project (route opened by this PR)",
+   "target": "epc",
+   "ok": true,
+   "detail": "201",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "A11 viewer now sees the private project",
+   "target": "epc",
+   "ok": true,
+   "detail": "200",
    "level": "real Paperclip runtime"
   },
   {

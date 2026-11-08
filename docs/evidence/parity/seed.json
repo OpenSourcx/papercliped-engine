@@ -1,0 +1,61 @@
+{
+ "at": "2026-11-08T11:47:41.101Z",
+ "rows": [
+  {
+   "id": "S01 onboarding-seed applies",
+   "target": "native",
+   "ok": true,
+   "detail": "200 {\"companyId\":\"e60e54a6-1257-4aed-96d9-d198b5eced9e\",\"revision\":\"rev-1\",\"applied\"",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S02 seeds goal + CEO + project + first task",
+   "target": "native",
+   "ok": true,
+   "detail": "goals 1 agents 1 projects 1 issues 1",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S03 CEO may create agents and skills",
+   "target": "native",
+   "ok": true,
+   "detail": "{\"canCreateAgents\":true,\"canCreateSkills\":true}",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S04 same revision twice is a no-op",
+   "target": "native",
+   "ok": true,
+   "detail": "200 agents 1",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S01 onboarding-seed applies",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 {\"companyId\":\"bd2adccc-49d5-4daf-af90-4538346af338\",\"revision\":\"rev-1\",\"applied\"",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S02 seeds goal + CEO + project + first task",
+   "target": "epc",
+   "ok": true,
+   "detail": "goals 1 agents 1 projects 1 issues 1",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S03 CEO may create agents and skills",
+   "target": "epc",
+   "ok": true,
+   "detail": "{\"canCreateAgents\":true,\"canCreateSkills\":true}",
+   "level": "real Paperclip runtime"
+  },
+  {
+   "id": "S04 same revision twice is a no-op",
+   "target": "epc",
+   "ok": true,
+   "detail": "200 agents 1",
+   "level": "real Paperclip runtime"
+  }
+ ]
+}
