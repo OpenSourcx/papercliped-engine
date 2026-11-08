@@ -68,11 +68,32 @@ async function main() {
       process.exitCode = bad ? 1 : 0;
       return;
     }
+    case "config": {
+      // epaperclip-worker config name=Orion ollamaUrl=http://100.93.29.26:11434 maxContext=4096 slots=1
+      const c = files.config();
+      const num = (v: string, what: string) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new Error(`${what} must be a whole number of at least 1`); return n; };
+      for (const kv of rest) {
+        const i = kv.indexOf("=");
+        if (i < 1) throw new Error("Usage: epaperclip-worker config key=value ... (name, ollamaUrl, prefer, workspaceRoot, maxContext, slots, gatePort)");
+        const k = kv.slice(0, i), v = kv.slice(i + 1);
+        if (k === "name") c.name = v;
+        else if (k === "ollamaUrl") { if (v && !/^https?:\/\//.test(v)) throw new Error("ollamaUrl must start with http:// or https://"); c.ollamaUrl = v; }
+        else if (k === "prefer") c.prefer = v || null;
+        else if (k === "workspaceRoot") { if (!v.startsWith("/")) throw new Error("workspaceRoot must be an absolute path"); c.workspaceRoot = v; }
+        else if (k === "maxContext") c.inference.maxContext = v ? num(v, k) : null;
+        else if (k === "slots") c.inference.slots = num(v, k);
+        else if (k === "gatePort") c.inference.gatePort = num(v, k);
+        else throw new Error(`Unknown setting ${k}`);
+      }
+      files.saveConfig(c);
+      console.log(JSON.stringify({ name: c.name, ollamaUrl: c.ollamaUrl, prefer: c.prefer, workspaceRoot: c.workspaceRoot, inference: c.inference }, null, 2));
+      return;
+    }
     case "version":
       console.log(VERSION);
       return;
     default:
-      console.log("epaperclip-worker <run|adopt|status|diagnose|caps|version>");
+      console.log("epaperclip-worker <run|adopt|status|config|diagnose|caps|version>");
   }
 }
 void chmodSync;
