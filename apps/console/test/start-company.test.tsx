@@ -158,7 +158,7 @@ describe("start a company", () => {
     expect(screen.getByText(/Connect a model for Pin first/)).toBeTruthy();
   });
 
-  it("points the CEO at the harness being connected, then signs in inside the organization's container", async () => {
+  it("starts the sign-in at once on the page, in the organization's container, for the provider chosen", async () => {
     handlers["POST /engine/api/companies/c1/setup-token-login-sessions"] = () => ({ sessionId: "s1", environmentId: "e1", status: "starting", expiresAt: null, failure: null, prompt: null });
     handlers["GET /engine/api/companies/c1/setup-token-login-sessions/s1"] = () => ({ sessionId: "s1", environmentId: "e1", status: "waiting_for_user", expiresAt: null, failure: null });
     handlers["POST /engine/api/companies/c1/setup-token-login-sessions/s1/cancel"] = () => ({});
@@ -167,24 +167,51 @@ describe("start a company", () => {
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Chief" } });
     next("Next");
     await screen.findByText("Connect a model");
-    fireEvent.click(screen.getByRole("radio", { name: /Claude Code/ }));
-    const signIn = await screen.findByRole("button", { name: /Sign in with your account/ });
-    await waitFor(() => expect((signIn as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(signIn);
+    // One click on the provider: no second "Sign in" button, no dialog.
+    fireEvent.click(screen.getByRole("radio", { name: /Claude/ }));
     await waitFor(() => expect(sent("PATCH", "/engine/api/agents/a1")[0]?.body).toEqual({ adapterType: "claude_local" }));
     await waitFor(() => expect(sent("POST", "/engine/api/companies/c1/setup-token-login-sessions")).toHaveLength(1));
-    expect(await screen.findByText("Sign in to Claude Code")).toBeTruthy();
+    expect(await screen.findByTestId("inline-sign-in")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Sign in to Claude Code")).toBeNull();
+    expect(screen.getByRole("button", { name: "Start sign-in again" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Sign in with your account/ })).toBeNull();
   });
 
-  it("offers an API key for Gemini and no account sign-in", async () => {
+  it("starts a new session when the person asks to start the sign-in again", async () => {
+    handlers["POST /engine/api/companies/c1/setup-token-login-sessions"] = () => ({ sessionId: `s${sent("POST", "/engine/api/companies/c1/setup-token-login-sessions").length}`, environmentId: "e1", status: "starting", expiresAt: null, failure: null, prompt: null });
+    handlers["GET /engine/api/companies/c1/setup-token-login-sessions/s1"] = () => ({ sessionId: "s1", environmentId: "e1", status: "waiting_for_user", expiresAt: null, failure: null });
+    handlers["POST /engine/api/companies/c1/setup-token-login-sessions/s1/cancel"] = () => ({});
     wrap();
     await throughName();
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Chief" } });
     next("Next");
     await screen.findByText("Connect a model");
-    fireEvent.click(screen.getByRole("radio", { name: /Gemini CLI/ }));
-    expect(await screen.findByRole("button", { name: /Use an API key/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /Claude/ }));
+    await waitFor(() => expect(sent("POST", "/engine/api/companies/c1/setup-token-login-sessions")).toHaveLength(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Start sign-in again" }));
+    await waitFor(() => expect(sent("POST", "/engine/api/companies/c1/setup-token-login-sessions")).toHaveLength(2));
+    await waitFor(() => expect(sent("POST", "/engine/api/companies/c1/setup-token-login-sessions/s1/cancel")).toHaveLength(1));
+  });
+
+  it("shows subscriptions first with each provider's own logo, and keeps Gemini to the API-key choice", async () => {
+    wrap();
+    await throughName();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Chief" } });
+    next("Next");
+    await screen.findByText("Connect a model");
+    for (const name of ["Claude", "OpenAI", "Grok"]) {
+      const card = screen.getByRole("radio", { name: new RegExp(name) });
+      expect(card.textContent).toContain("Subscription");
+      expect(card.querySelector("svg, img")).toBeTruthy();
+    }
+    expect(screen.queryByRole("radio", { name: /Gemini/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Use API key instead" }));
+    const gemini = await screen.findByRole("radio", { name: /Gemini/ });
+    expect(gemini.textContent).toContain("API key");
+    expect(gemini.querySelector("svg, img")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Sign in with your account/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Use your subscription instead" })).toBeTruthy();
   });
 
   it("resumes where it was, while the company still exists, and forgets a company that is gone", async () => {
