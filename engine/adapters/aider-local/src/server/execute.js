@@ -122,10 +122,10 @@ export async function execute(ctx) {
     const profile = profileForMemory(memMb);
     await onLog("stdout", `[aider] ${profile.tier} profile: ${profile.model}, ${profile.editFormat}, num_ctx=${profile.numCtx}, maxFiles=${profile.maxEditableFiles}\n`);
 
-    const epcDir = path.posix.join(effectiveCwd, ".epaperclip");
     const slug = cleanRun(runId);
-    const taskFile = path.posix.join(epcDir, `aider-task-${slug}.md`);
-    const settingsFile = path.posix.join(epcDir, `aider-model-${slug}.yml`);
+    const epcDir = path.posix.join("/tmp", "epaperclip-aider", slug);
+    const taskFile = path.posix.join(epcDir, "task.md");
+    const settingsFile = path.posix.join(epcDir, "model.yml");
     const writeFile = async (file, content) => {
       const r = await runProcess("sh", ["-lc", 'umask 077; mkdir -p "$(dirname "$1")"; cat > "$1"', "epaperclip-aider", file], { stdin: content, timeoutMs: 5000 });
       if (r.exitCode !== 0) throw new Error(`Could not write Aider run file: ${(r.stderr || r.stdout || "unknown error").slice(-500)}`);
