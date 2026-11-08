@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
-  adapterExecutionTargetIsRemote,
   adapterExecutionTargetRemoteCwd,
   overrideAdapterExecutionTargetRemoteCwd,
   ensureAdapterExecutionTargetCommandResolvable,
@@ -58,7 +57,6 @@ export async function execute(ctx) {
   const contract = taskContract(config, context);
   const command = asString(config.command, "epaperclip-aider");
   const executionTarget = readAdapterExecutionTarget({ executionTarget: ctx.executionTarget, legacyRemoteExecution: ctx.executionTransport?.remoteExecution });
-  const isRemote = adapterExecutionTargetIsRemote(executionTarget);
   const workspace = parseObject(context.paperclipWorkspace);
   const localCwd = asString(workspace.cwd, "") || asString(config.cwd, "") || process.cwd();
   await ensureAbsoluteDirectory(localCwd, { createIfMissing: true });
@@ -70,6 +68,7 @@ export async function execute(ctx) {
 
   let effectiveCwd = adapterExecutionTargetRemoteCwd(executionTarget, localCwd);
   let restoreRemoteWorkspace = null;
+  let cleanupRunFiles = null;
   let runtimeTarget = executionTarget;
   try {
     if (executionTarget?.kind === "remote") {
@@ -126,6 +125,7 @@ export async function execute(ctx) {
     const epcDir = path.posix.join("/tmp", "epaperclip-aider", slug);
     const taskFile = path.posix.join(epcDir, "task.md");
     const settingsFile = path.posix.join(epcDir, "model.yml");
+    cleanupRunFiles = async () => { try { await runProcess("rm", ["-rf", "--", epcDir], { timeoutMs: 5000 }); } catch {} };
     const writeFile = async (file, content) => {
       const r = await runProcess("sh", ["-lc", 'umask 077; mkdir -p "$(dirname "$1")"; cat > "$1"', "epaperclip-aider", file], { stdin: content, timeoutMs: 5000 });
       if (r.exitCode !== 0) throw new Error(`Could not write Aider run file: ${(r.stderr || r.stdout || "unknown error").slice(-500)}`);
@@ -174,6 +174,7 @@ export async function execute(ctx) {
     if (outcome.passed || !contract.escalationAdapter) return baseResult;
 
     await onLog("stderr", `[aider] ESCALATE -> ${contract.escalationAdapter}; handing off the current diff and failing test log\n`);
+    if (cleanupRunFiles) { await cleanupRunFiles(); cleanupRunFiles = null; }
     if (restoreRemoteWorkspace) {
       await restoreRemoteWorkspace();
       restoreRemoteWorkspace = null;
@@ -192,6 +193,7 @@ export async function execute(ctx) {
     await onLog("stderr", `[aider] ${err instanceof Error ? err.message : String(err)}\n`);
     return { exitCode: 1, signal: null, timedOut: false, errorMessage: err instanceof Error ? err.message : String(err), resultJson: { adapter: "aider_local", outcome: "error" } };
   } finally {
+    if (cleanupRunFiles) await cleanupRunFiles();
     if (restoreRemoteWorkspace) await restoreRemoteWorkspace();
   }
 }
