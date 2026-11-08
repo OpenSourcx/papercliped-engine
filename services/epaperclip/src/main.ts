@@ -81,7 +81,7 @@ const handle = createApp({
   containers: { pluginDir: env.EPC_PLUGIN_DIR || undefined },
   ...(env.EPC_BROKER_MANAGEMENT_TOKEN ? { broker: { url: env.EPC_BROKER_URL || "http://127.0.0.1:8787", managementToken: env.EPC_BROKER_MANAGEMENT_TOKEN } } : {}),
   routerListen,
-  ...(fabricAddr ? { fabric: { port: fabricAddr.port, controlUrl: `http://${controlAddr.host}:${controlAddr.port}`, pluginDir: env.EPC_FABRIC_PLUGIN_DIR || "/opt/epaperclip/plugins/remote-worker", customUrl: env.EPC_FABRIC_PUBLIC_URL || null } } : {}),
+  ...(fabricAddr ? { fabric: { port: fabricAddr.port, controlUrl: `http://${controlAddr.host}:${controlAddr.port}`, pluginDir: env.EPC_FABRIC_PLUGIN_DIR || "/opt/epaperclip/plugins/remote-worker", aiderAdapterDir: env.EPC_AIDER_ADAPTER_DIR || "/opt/epaperclip/engine/adapters/aider-local", customUrl: env.EPC_FABRIC_PUBLIC_URL || null } } : {}),
   marketplace: { url: env.EPC_MARKETPLACE_URL, keys: [...TRUSTED_KEYS, ...(env.EPC_MARKETPLACE_KEY ? [trustedKey(env.EPC_MARKETPLACE_KEY.replace(/\\n/g, "\n"))] : [])] },
 });
 
