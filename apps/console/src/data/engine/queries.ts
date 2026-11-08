@@ -284,6 +284,11 @@ export function useContainersSetup() {
   return useMutation({ mutationFn: host.agentContainers.setup, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
 }
 
+export function useContainersStep() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: host.agentContainers.step, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
+}
+
 export function useContainersTeardown() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: host.agentContainers.teardown, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });

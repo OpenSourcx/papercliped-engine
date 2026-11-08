@@ -92,14 +92,20 @@ export class ProxmoxApiError extends Error {
   }
 }
 
+import { diagnoseLxc, redactLines, summarizeDiagnosis, type LxcDiagnosis } from "./lxc-diagnose.js";
+
 export class ProxmoxTaskError extends Error {
   readonly upid: string;
   readonly exitStatus: string;
   readonly logTail: string[];
 
+  readonly diagnosis: LxcDiagnosis;
+
   constructor(action: string, upid: string, exitStatus: string, logTail: string[]) {
-    const tail = logTail.filter((line) => line.trim().length > 0 && line.trim() !== "TASK ERROR: " + exitStatus).slice(-5);
-    super(`Proxmox task ${action} failed: ${exitStatus}${tail.length > 0 ? ` (log: ${tail.join(" | ")})` : ""}`);
+    const tail = redactLines(logTail.filter((line) => line.trim().length > 0 && line.trim() !== "TASK ERROR: " + exitStatus)).slice(-5);
+    const diagnosis = diagnoseLxc({ exitstatus: exitStatus, log: logTail });
+    super(`Proxmox task ${action} failed: ${exitStatus}${tail.length > 0 ? ` (log: ${tail.join(" | ")})` : ""}${diagnosis.id === "unknown" ? "" : ` Why: ${summarizeDiagnosis(diagnosis)}`}`);
+    this.diagnosis = diagnosis;
     this.name = "ProxmoxTaskError";
     this.upid = upid;
     this.exitStatus = exitStatus;
@@ -280,7 +286,7 @@ export class ProxmoxClient {
     return this.request<TaskStatus>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/status`);
   }
 
-  async taskLogTail(node: string, upid: string, lines = 20): Promise<string[]> {
+  async taskLogTail(node: string, upid: string, lines = 200): Promise<string[]> {
     try {
       const entries = await this.request<Array<{ n: number; t: string }>>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/log`, {
         start: 0,

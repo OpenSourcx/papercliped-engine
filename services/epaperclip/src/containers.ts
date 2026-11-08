@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ProxmoxError, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
+import { diagnoseLxc, redactLines, summarizeDiagnosis, ProxmoxError, type LxcDiagnoseInput, type LxcDiagnosis, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import type { EngineGateway } from "./engine.ts";
 import { HttpError } from "./http.ts";
 import type { StateStore } from "./state.ts";
@@ -45,8 +45,8 @@ export type StepId = "check" | "access" | "key" | "template" | "grant" | "plugin
 const STEPS: { id: StepId; label: string }[] = [
   { id: "access", label: "Create the sandbox user, role and API token in Proxmox" },
   { id: "key", label: "Generate the SSH key the engine uses" },
-  { id: "template", label: "Build the agent container template" },
   { id: "grant", label: "Give the token rights on the pool, template, storage and bridge" },
+  { id: "template", label: "Build the agent container template" },
   { id: "plugin", label: "Install the Proxmox provider in the engine" },
   { id: "environments", label: "Create an environment for each organization" },
   { id: "enforce", label: "Stop agents from running on the host" },
@@ -97,6 +97,8 @@ export interface JobView {
   steps: { id: StepId | "teardown"; label: string; state: StepState; detail?: string }[];
   log: { t: number; level: "info" | "warn" | "error"; text: string }[];
   error?: string;
+  /** Why the failed Proxmox task failed, when it was one: the matched cause, the exact fix and the (redacted) log lines it rests on. */
+  diagnosis?: LxcDiagnosis & { step: string };
 }
 
 interface Guest {
@@ -122,8 +124,43 @@ interface EngineEnv {
 }
 
 class StepError extends Error {}
+/** A failed Proxmox task with the diagnosis made from its log; `input` lets a later probe refine it. */
+class DiagError extends StepError {
+  readonly diagnosis: LxcDiagnosis;
+  readonly input: LxcDiagnoseInput;
+  readonly what: string;
+  constructor(message: string, diagnosis: LxcDiagnosis, input: LxcDiagnoseInput, what: string) {
+    super(message);
+    this.diagnosis = diagnosis;
+    this.input = input;
+    this.what = what;
+  }
+}
+
+/** A grant that is wanted: a role on a path for the sandbox user and its token. */
+interface GrantGap {
+  path: string;
+  role: string;
+  who: "user" | "token";
+  /** Why it counts as missing: no entry, or an entry that does not reach the pool's members. */
+  why: "absent" | "not-inherited" | "ineffective";
+  /** Privileges Proxmox says are not effective (only for "ineffective"). */
+  lacking?: string[];
+}
 
 /** A call to the engine as a person who can manage the organization (the signed-in administrator). */
+const describeGaps = (gaps: GrantGap[]): string => {
+  const by = new Map<string, { path: string; role: string; who: string[]; lacking: Set<string> }>();
+  for (const g of gaps) {
+    const k = `${g.path}\0${g.role}`;
+    const e = by.get(k) ?? { path: g.path, role: g.role, who: [], lacking: new Set<string>() };
+    e.who.push(g.who === "user" ? "the user" : "the token");
+    for (const l of g.lacking ?? []) e.lacking.add(l);
+    by.set(k, e);
+  }
+  return [...by.values()].map((e) => `${e.role} on ${e.path} for ${e.who.join(" and ")}${e.lacking.size ? ` (lacking ${[...e.lacking].join(", ")})` : ""}`).join("; ");
+};
+
 export type EngineActor = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
 const STORAGE_RE = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
@@ -341,14 +378,11 @@ export class AgentContainers {
     let template: { vmid?: number; name?: string; exists: boolean } = { exists: false };
     let tokenExists = false;
     let pluginInstalled = false;
+    let grantGaps: GrantGap[] = [];
     const environments: { companyId: string; environmentId: string; ok: boolean }[] = [];
     const tokenSecret = this.tokenSecret();
     try {
-      const [roles, acls, guests] = await Promise.all([
-        pve.call<{ roleid: string; privs?: string }[]>("GET", "/access/roles"),
-        pve.call<{ path: string; ugid: string; type: string; roleid: string }[]>("GET", "/access/acl").catch(() => []),
-        pve.clusterResources(),
-      ]);
+      const [roles, guests] = await Promise.all([pve.call<{ roleid: string; privs?: string }[]>("GET", "/access/roles"), pve.clusterResources()]);
       const user = await pve.call<unknown>("GET", `/access/users/${encodeURIComponent(SANDBOX_USER)}`).then(() => true, () => false);
       const tokens = user ? await pve.call<{ tokenid: string }[]>("GET", `/access/users/${encodeURIComponent(SANDBOX_USER)}/token`).catch(() => []) : [];
       tokenExists = tokens.some((t) => t.tokenid === TOKEN_NAME);
@@ -369,15 +403,11 @@ export class AgentContainers {
       template = { vmid, name: g ? TEMPLATE_HOSTNAME : undefined, exists: Boolean(g && g.template === 1 && hasTag(g.tags, TEMPLATE_TAG)) };
       set("template", template.exists, vmid && !template.exists ? "The template isn't there" : undefined);
 
-      // Rights: for the user and for the token, on each path.
-      const want = this.wantedAcls(p, vmid);
-      const missing: string[] = [];
-      for (const [path, role] of want) {
-        for (const [type, id] of [["user", SANDBOX_USER], ["token", TOKEN_ID]] as const) {
-          if (!acls.some((a) => a.path === path && a.roleid === role && a.ugid === id && a.type === type)) missing.push(`${path} (${type})`);
-        }
-      }
-      set("grant", vmid !== undefined && missing.length === 0, missing.length ? `Missing: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}` : undefined);
+      // Rights: for the user and for the token, on each path. The template's own right can only exist once the template does.
+      const { gaps } = await this.grantGaps(pve, p, template.exists, true);
+      grantGaps = gaps;
+      const detail = gaps.length ? `Missing: ${describeGaps(gaps)}` : !template.exists ? "Rights on the pool, storage, bridge and node are in place; the template's own right is added once it is built" : undefined;
+      set("grant", template.exists && gaps.length === 0, detail);
     } catch (e) {
       checkError = `Couldn't check Proxmox. ${errText(e)}`;
       // The reason is shown once, above the steps; each step only says it wasn't checked.
@@ -419,6 +449,8 @@ export class AgentContainers {
       environments,
       template,
       token: { exists: tokenExists },
+      grantMissing: grantGaps.map((g) => ({ path: g.path, role: g.role, who: g.who, why: g.why, lacking: g.lacking })),
+      ...(state !== "ready" && st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.diagnosis ? { diagnosis: st.lastJob.diagnosis } : {}),
       params: st.params ?? null,
       options: await this.options(pve, st.params ?? null),
       ...(checkError ? { error: checkError } : state === "error" && st.lastJob?.error ? { error: st.lastJob.error } : {}),
@@ -519,6 +551,31 @@ export class AgentContainers {
     return { jobId: job.id, alreadyRunning: false };
   }
 
+  /**
+   * Runs one step again on its own, as the signed-in administrator, for when a single step is what's left (the rights,
+   * the provider, the organizations' environments). Needs a full setup to have chosen the host settings first.
+   */
+  async startStep(getPve: () => Promise<ProxmoxClient>, who: string, id: unknown, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
+    if (id !== "grant" && id !== "plugin" && id !== "environments") throw new HttpError(400, "bad_request", "Only the rights, provider and environments steps can be run alone");
+    if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
+    if (!this.stored().params) throw new HttpError(409, "not_set_up", "Run the full setup once first so the host settings are known");
+    await this.assertEngineReady();
+    const label = STEPS.find((x) => x.id === id)!;
+    const job = this.newJob("setup", who, [label]);
+    this.job = job;
+    this.actor = actor;
+    const params = this.params();
+    void (async () => {
+      const pve = await getPve();
+      await this.step(job, id, () => (id === "grant" ? this.stepGrant(job, pve, params) : id === "plugin" ? this.stepPlugin(job) : this.stepEnvironments(job, params)));
+      job.status = "done";
+      job.finishedAt = this.now();
+      this.log(job, "info", `${label.label}: done.`);
+      this.finish(job);
+    })().catch((e) => this.fail(job, e));
+    return { jobId: job.id, alreadyRunning: false };
+  }
+
   private newJob(kind: "setup" | "teardown", who: string, steps: { id: StepId | "teardown"; label: string }[]): JobView {
     const job: JobView = { id: randomBytes(6).toString("hex"), kind, status: "running", startedAt: this.now(), startedBy: who, steps: steps.map((s) => ({ ...s, state: "pending" as StepState })), log: [] };
     this.jobs.set(job.id, job);
@@ -535,6 +592,7 @@ export class AgentContainers {
     }
     job.status = "failed";
     job.error = msg;
+    if (e instanceof DiagError) job.diagnosis = { ...e.diagnosis, step: e.what };
     job.finishedAt = this.now();
     this.log(job, "error", msg);
     this.finish(job);
@@ -562,9 +620,29 @@ export class AgentContainers {
     this.save({ params, createdBy: this.stored().createdBy ?? job.startedBy, createdAt: this.stored().createdAt ?? this.now() });
     await this.step(job, "access", () => this.stepAccess(job, pve, params));
     await this.step(job, "key", async () => this.stepKey(job));
-    await this.step(job, "template", () => this.stepTemplate(job, pve, params));
+    // Rights on the pool, storage, bridge and node need no template; the template's own right is added when it is built.
     await this.step(job, "grant", () => this.stepGrant(job, pve, params));
+    // The provider install doesn't depend on the template, so a template that fails to build doesn't hide whether it works.
+    let templateError: unknown = null;
+    try {
+      await this.step(job, "template", () => this.stepTemplate(job, pve, params));
+    } catch (e) {
+      templateError = e;
+      const running = job.steps.find((x) => x.state === "running");
+      if (running) {
+        running.state = "failed";
+        running.detail = this.clean(e instanceof StepError || e instanceof HttpError ? e.message : errText(e));
+      }
+    }
     await this.step(job, "plugin", () => this.stepPlugin(job));
+    if (templateError) {
+      for (const id of ["environments", "enforce"] as StepId[]) {
+        const s = job.steps.find((x) => x.id === id)!;
+        s.state = "skipped";
+        s.detail = "Waits for the template";
+      }
+      throw templateError;
+    }
     await this.step(job, "environments", () => this.stepEnvironments(job, params));
     await this.step(job, "enforce", async () => {
       const r = await this.enforce();
@@ -593,10 +671,21 @@ export class AgentContainers {
     } catch {
       throw new StepError(`The Proxmox provider plugin isn't installed on this host (expected a built copy in ${this.pluginDir}). Reinstall or upgrade ePaperclip.`);
     }
+    const ver = await pve.version().catch(() => null);
+    const major = Number(/^(\d+)/.exec(ver?.version ?? "")?.[1]);
+    if (ver) this.log(job, "info", `Proxmox VE ${ver.version}`);
+    if (Number.isFinite(major) && major < 8) throw new StepError(`This is Proxmox VE ${ver!.version}. Agent containers need Proxmox VE 8 or later: the network permission they use (SDN.Use) doesn't exist before it. Upgrade Proxmox, or set the provider up by hand (docs/PROXMOX-SANDBOX.md).`);
     const storages = await pve.nodeStorages(node, "rootdir").catch((e) => {
       throw new StepError(`Couldn't list the node's storage: ${errText(e)}`);
     });
     if (!storages.some((s) => s.storage === p.storage)) throw new StepError(`Storage "${p.storage}" can't hold container disks on this node. Choose one of: ${storages.map((s) => s.storage).join(", ") || "(none)"}.`);
+    const sst = await pve.storageStatus(node, p.storage).catch(() => null);
+    if (sst) {
+      if (sst.active === 0) throw new StepError(`Storage "${p.storage}" is not active on this node (a drive or share that isn't mounted?). On the host, 'pvesm status' shows it; mount it and try again.`);
+      if (typeof sst.avail === "number" && sst.avail < 4 * 1024 ** 3) throw new StepError(`Storage "${p.storage}" has only ${(sst.avail / 1024 ** 3).toFixed(1)} GiB free; building the template needs about 4 GiB and every agent container more. Free space or choose another storage.`);
+      this.log(job, "info", `Container storage "${p.storage}": ${sst.type ?? "unknown type"}, ${typeof sst.avail === "number" ? (sst.avail / 1024 ** 3).toFixed(1) + " GiB free" : "free space unknown"}`);
+      if (sst.type && /^(dir|nfs|cifs|glusterfs|cephfs)$/i.test(sst.type)) this.log(job, "warn", `"${p.storage}" is ${sst.type} storage. Unprivileged containers need its filesystem to support ownership and extended attributes (ext4, xfs, btrfs, ZFS). NTFS, exFAT, FAT and root-squashed network shares can't run them; if the container then fails to start, this is the first thing to check.`);
+    }
     const tpl = await pve.nodeStorages(node, "vztmpl");
     if (!tpl.some((s) => s.storage === p.templateStorage)) throw new StepError(`Storage "${p.templateStorage}" can't hold container templates on this node. Choose one of: ${tpl.map((s) => s.storage).join(", ") || "(none)"}.`);
     const net = await pve.network(node);
@@ -604,20 +693,86 @@ export class AgentContainers {
     return "Host looks ready";
   }
 
-  private async task(pve: ProxmoxClient, upid: string | null | undefined, what: string, timeoutMs = 600_000) {
+  /**
+   * Waits for a Proxmox task, relaying its log lines to the job log as they appear (downloads and container creation
+   * can take minutes). When it fails, the full task log, the container's config and the host journal are read and
+   * matched against the known causes, so the error says why and what to do instead of "Proxmox reported an error".
+   */
+  private async task(pve: ProxmoxClient, upid: string | null | undefined, what: string, timeoutMs = 600_000, ctx: { vmid?: number; diagnose?: boolean } = {}) {
     if (!upid || typeof upid !== "string" || !upid.startsWith("UPID:")) return;
-    try {
-      await pve.waitTask(this.d.node, upid, { timeoutMs, pollMs: 1000, sleep: (ms) => this.pace(ms) });
-    } catch (e) {
-      let tail = "";
-      try {
-        const lines = await pve.taskLog(this.d.node, upid, 500);
-        tail = lines.slice(-4).map((l) => l.t).join(" / ");
-      } catch {
-        /* the log is a courtesy */
+    const node = this.d.node;
+    const job = this.job;
+    const deadline = Date.now() + timeoutMs;
+    let seen = 0;
+    let shown = 0;
+    let lastDecile = -1;
+    const relay = async () => {
+      if (!job) return;
+      const lines = await pve.taskLog(node, upid, 200, seen).catch(() => []);
+      for (const l of lines) {
+        if (l.n <= seen) continue;
+        seen = l.n;
+        const pct = /\b(\d{1,3})(?:\.\d+)?%/.exec(l.t)?.[1];
+        if (pct !== undefined) {
+          const decile = Math.floor(Number(pct) / 10);
+          if (decile === lastDecile) continue;
+          lastDecile = decile;
+        }
+        if (++shown > 80) {
+          if (shown === 81) this.log(job, "info", "(more of this task's log is in Proxmox: Node, Tasks)");
+          continue;
+        }
+        this.log(job, "info", `  ${redactLines([l.t.slice(0, 300)])[0]}`);
       }
-      throw new StepError(`${what} failed: ${errText(e)}${tail ? ` (${tail})` : ""}`);
+    };
+    for (;;) {
+      let st: Awaited<ReturnType<ProxmoxClient["taskStatus"]>>;
+      try {
+        st = await pve.taskStatus(node, upid);
+      } catch (e) {
+        throw new StepError(`${what} failed: ${errText(e)}`);
+      }
+      await relay();
+      if (st.status === "stopped") {
+        if (st.exitstatus === "OK" || st.exitstatus?.startsWith("WARNINGS")) return;
+        throw await this.explainTaskFailure(pve, upid, what, st.exitstatus, ctx);
+      }
+      if (Date.now() > deadline) throw new StepError(`${what} didn't finish within ${Math.round(timeoutMs / 60_000)} minutes. It may still be running: see Node, Tasks in Proxmox.`);
+      await this.pace(1000);
     }
+  }
+
+  /** Reads what Proxmox will tell us about a failed task and turns it into a diagnosis the person can act on. */
+  private async explainTaskFailure(pve: ProxmoxClient, upid: string, what: string, exitstatus: string | undefined, ctx: { vmid?: number; diagnose?: boolean }): Promise<StepError> {
+    const node = this.d.node;
+    const lines = await pve.taskLog(node, upid, 1000).catch(() => []);
+    const ev = ctx.vmid !== undefined ? await this.gatherEvidence(pve, ctx.vmid) : {};
+    const input: LxcDiagnoseInput = { exitstatus, log: lines.map((l) => l.t), vmid: ctx.vmid, ...ev };
+    if (ctx.diagnose === false) return new StepError(`${what} failed: ${exitstatus ?? "unknown"}`);
+    const d = diagnoseLxc(input);
+    const job = this.job;
+    if (job) {
+      this.log(job, "warn", `${what} failed${exitstatus ? ` (Proxmox: ${redactLines([exitstatus])[0]})` : ""}. Evidence:`);
+      for (const l of d.evidence) this.log(job, "warn", `  ${l.slice(0, 300)}`);
+      this.log(job, "error", `${d.title}. ${d.plain}`);
+      for (const f of d.fix) this.log(job, "info", `  Fix: ${f}`);
+    }
+    return new DiagError(this.clean(`${what} failed. ${summarizeDiagnosis(d)}`), d, input, what);
+  }
+
+  /** The equivalent of `pct config`, the node journal and `pvesm status` for a container, each best effort. */
+  private async gatherEvidence(pve: ProxmoxClient, vmid: number): Promise<Pick<LxcDiagnoseInput, "config" | "journal" | "storage">> {
+    const node = this.d.node;
+    const [config, journal] = await Promise.all([pve.lxcConfig(node, vmid).catch(() => undefined), pve.nodeJournal(node, 300).catch(() => [])]);
+    const sname = typeof config?.rootfs === "string" ? config.rootfs.split(":")[0] : this.stored().params?.storage;
+    const status = sname ? await pve.storageStatus(node, sname).catch(() => undefined) : undefined;
+    const safe = config ? Object.fromEntries(Object.entries(config).filter(([k]) => !/ssh-public-keys|password|description/i.test(k))) : undefined;
+    if (safe && this.job) this.log(this.job, "info", `Container ${vmid} config: ${redactLines([Object.entries(safe).map(([k, v]) => `${k}=${String(v)}`).join(" ")])[0]}`);
+    return {
+      config: safe,
+      journal,
+      storage: sname ? { name: sname, type: status?.type, active: status ? status.active === 1 : undefined, availBytes: status?.avail } : undefined,
+    };
   }
 
   private async stepAccess(job: JobView, pve: ProxmoxClient, p: Params): Promise<string> {
@@ -725,20 +880,13 @@ export class AgentContainers {
     const catalog = await pve.templateCatalog(node);
     const file = newestDebian(catalog.map((c) => c.template));
     if (!file) throw new StepError("Proxmox's template catalog has no Debian standard template. Run 'pveam update' on the host (or check its internet access), then try again.");
-    const present = await pve.storageContent(node, p.templateStorage, "vztmpl");
     const volid = `${p.templateStorage}:vztmpl/${file}`;
-    if (present.some((x) => x.volid === volid)) this.log(job, "info", `Using ${file} already in ${p.templateStorage}`);
-    else {
-      this.log(job, "info", `Downloading ${file} to ${p.templateStorage}`);
-      await this.task(pve, await pve.downloadTemplate(node, p.templateStorage, file), "The template download", 900_000);
-      const after = await pve.storageContent(node, p.templateStorage, "vztmpl");
-      if (!after.some((x) => x.volid === volid)) throw new StepError(`${file} didn't appear in ${p.templateStorage} after the download`);
-    }
+    await this.ensureBaseTemplate(job, pve, p, file, volid, catalog.find((c) => c.template === file)?.sha512sum, false);
     // 2. An unprivileged container from it, with our key.
     this.log(job, "info", `Creating unprivileged container ${vmid}`);
     let created = false;
     try {
-      await this.task(
+      const create = async () => this.task(
         pve,
         await pve.createLxc(node, {
           vmid,
@@ -759,9 +907,21 @@ export class AgentContainers {
           description: "Agent template for the ePaperclip Proxmox sandbox provider. Built by ePaperclip's guided setup.",
         }),
         "Creating the container",
+        600_000,
+        { vmid },
       );
+      try {
+        await create();
+      } catch (e) {
+        // A damaged base template (an interrupted earlier download) is replaced once, automatically.
+        if (!(e instanceof DiagError) || e.diagnosis.id !== "template-corrupt") throw e;
+        this.log(job, "warn", `${file} looks damaged; removing it and downloading it again`);
+        await this.destroy(pve, vmid).catch(() => {});
+        await this.ensureBaseTemplate(job, pve, p, file, volid, catalog.find((c) => c.template === file)?.sha512sum, true);
+        await create();
+      }
       created = true;
-      await this.task(pve, await pve.startLxc(node, vmid), "Starting the container", 120_000);
+      await this.startWithProbe(job, pve, vmid);
       const ip = await this.waitIp(job, pve, vmid);
       const target = { host: ip, user: "root", privateKey: key };
       this.log(job, "info", `Container is up at ${ip}; waiting for SSH`);
@@ -794,6 +954,8 @@ export class AgentContainers {
       const done = await pve.lxcConfig(node, vmid);
       if (Number(done.template) !== 1) throw new StepError("Proxmox didn't mark the container as a template");
       this.log(job, "info", `Template ${vmid} is ready`);
+      // The token may clone it now that it exists.
+      await this.stepGrant(job, pve, p);
       return `Template ${vmid}`;
     } catch (e) {
       if (created) {
@@ -801,6 +963,67 @@ export class AgentContainers {
         await this.destroy(pve, vmid).catch((x) => this.log(job, "warn", `Couldn't remove container ${vmid}: ${errText(x)}`));
       }
       throw e;
+    }
+  }
+
+  /**
+   * Makes sure the Debian base template is in the template storage. Proxmox itself checks a download against the sha512
+   * from its catalog and deletes a file that doesn't match; a file that was already there is only checked for a plausible
+   * size (a cut-off download is a few kilobytes), and a damaged one is caught when the container is created.
+   */
+  private async ensureBaseTemplate(job: JobView, pve: ProxmoxClient, p: Params, file: string, volid: string, sha512: string | undefined, force: boolean) {
+    const node = this.d.node;
+    const MIN = 20 * 1024 * 1024;
+    const have = async () => (await pve.storageContent(node, p.templateStorage, "vztmpl")).find((x) => x.volid === volid);
+    let cur = await have();
+    if (cur && (force || (typeof cur.size === "number" && cur.size < MIN))) {
+      this.log(job, "warn", `${file} in ${p.templateStorage} ${force ? "is being replaced" : `is only ${cur.size} bytes, so it was cut off`}; removing it`);
+      await this.task(pve, await pve.deleteVolume(node, p.templateStorage, volid), "Removing the damaged template", 120_000);
+      cur = await have();
+      if (cur) throw new StepError(`${volid} is damaged and Proxmox wouldn't remove it. Remove it on the host: pveam remove ${volid}`);
+    }
+    if (cur) {
+      this.log(job, "info", `Using ${file} already in ${p.templateStorage}`);
+      return;
+    }
+    this.log(job, "info", `Downloading ${file} to ${p.templateStorage}${sha512 ? ` (Proxmox checks it against sha512 ${sha512.slice(0, 12)}…)` : ""}`);
+    await this.task(pve, await pve.downloadTemplate(node, p.templateStorage, file), "The template download", 900_000);
+    cur = await have();
+    if (!cur) throw new StepError(`${file} didn't appear in ${p.templateStorage} after the download`);
+    if (typeof cur.size === "number" && cur.size < MIN) throw new StepError(`${file} is only ${cur.size} bytes after the download; the storage may be full or the download was cut off. Check 'df -h' for ${p.templateStorage} and try again.`);
+    this.log(job, "info", `Downloaded ${file}${typeof cur.size === "number" ? ` (${(cur.size / 1024 ** 2).toFixed(0)} MiB)` : ""}`);
+  }
+
+  /**
+   * Starts the template container. If it fails with a cause the logs don't explain, it is started once more without its
+   * features (the container is ours and throwaway) to learn whether nesting is what the host refuses, then the features
+   * are put back and the answer goes into the diagnosis.
+   */
+  private async startWithProbe(job: JobView, pve: ProxmoxClient, vmid: number) {
+    const node = this.d.node;
+    try {
+      await this.task(pve, await pve.startLxc(node, vmid), "Starting the container", 120_000, { vmid });
+    } catch (e) {
+      if (!(e instanceof DiagError) || !(e.diagnosis.confidence === "generic" || e.diagnosis.id === "features")) throw e;
+      const features = String((await pve.lxcConfig(node, vmid).catch(() => ({}) as Record<string, string | number | undefined>)).features ?? "");
+      if (!features) throw e;
+      this.log(job, "info", `Trying once without the container features (${features}) to find out whether the host refuses them`);
+      let starts = false;
+      try {
+        await pve.setLxcConfig(node, vmid, { delete: "features" });
+        await this.task(pve, await pve.startLxc(node, vmid), "Starting the container without features", 120_000, { diagnose: false });
+        starts = true;
+        await this.task(pve, await pve.stopLxc(node, vmid), "Stopping the container", 120_000, { diagnose: false }).catch(() => {});
+      } catch {
+        starts = false;
+      } finally {
+        await pve.setLxcConfig(node, vmid, { features }).catch(() => {});
+      }
+      this.log(job, starts ? "warn" : "info", starts ? "It starts without the features: the host refuses them." : "It fails the same way without the features, so they are not the cause.");
+      const d = diagnoseLxc({ ...e.input, startsWithoutFeatures: starts });
+      this.log(job, "error", `${d.title}. ${d.plain}`);
+      for (const f of d.fix) this.log(job, "info", `  Fix: ${f}`);
+      throw new DiagError(this.clean(`Starting the container failed. ${summarizeDiagnosis(d)}`), d, { ...e.input, startsWithoutFeatures: starts }, e.what);
     }
   }
 
@@ -825,26 +1048,75 @@ export class AgentContainers {
     await this.task(pve, await pve.destroyGuest(this.d.node, "lxc", vmid), "Removing the container", 300_000);
   }
 
-  private async setAcl(pve: ProxmoxClient, path: string, role: string, remove = false) {
-    await pve.call("PUT", "/access/acl", { path, roles: role, users: SANDBOX_USER, propagate: true, ...(remove ? { delete: true } : {}) });
-    await pve.call("PUT", "/access/acl", { path, roles: role, tokens: TOKEN_ID, propagate: true, ...(remove ? { delete: true } : {}) });
+  /** One grant, for the sandbox user or for its token. */
+  private async setAcl(pve: ProxmoxClient, path: string, role: string, who: "user" | "token") {
+    await pve.call("PUT", "/access/acl", { path, roles: role, ...(who === "user" ? { users: SANDBOX_USER } : { tokens: TOKEN_ID }), propagate: true });
+  }
+
+  private async removeAcl(pve: ProxmoxClient, path: string, role: string) {
+    for (const who of ["user", "token"] as const) await pve.call("PUT", "/access/acl", { path, roles: role, ...(who === "user" ? { users: SANDBOX_USER } : { tokens: TOKEN_ID }), propagate: true, delete: true });
+  }
+
+  /** Which of the privileges a role holds Proxmox does not give this user or token on this path; null if Proxmox can't say. */
+  private async lackingPrivs(pve: ProxmoxClient, path: string, role: string, id: string): Promise<string[] | null> {
+    try {
+      const have = await pve.effectivePrivileges(path, id);
+      return (ROLES[role] ?? []).filter((x) => !have[x]);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Exactly which grants are missing: for each wanted path and role, for the user and for the token. A grant counts as
+   * present when its entry exists (and, on a pool, reaches the pool's members), or when Proxmox says the rights are
+   * effective anyway (given through a group or a parent path). `strict` asks Proxmox for the effective rights even when
+   * the entry exists, which is how a fresh grant is verified. Rights on the pool propagate, so containers created later
+   * (new vmids) are covered; the template is the only single guest with its own entry.
+   */
+  private async grantGaps(pve: ProxmoxClient, p: Params, templateReady: boolean, strict = false): Promise<{ gaps: GrantGap[] }> {
+    const [pools, acls] = await Promise.all([pve.pools(), pve.call<{ path: string; ugid: string; type: string; roleid: string; propagate?: number }[]>("GET", "/access/acl")]);
+    const vmid = templateReady ? this.stored().templateVmid : undefined;
+    const want = this.wantedAcls(p, vmid).filter(([path]) => {
+      const pool = /^\/pool\/(.+)$/.exec(path)?.[1];
+      return !pool || pools.some((x) => x.poolid === pool);
+    });
+    const gaps: GrantGap[] = [];
+    for (const [path, role] of want) {
+      for (const [who, id] of [["user", SANDBOX_USER], ["token", TOKEN_ID]] as const) {
+        const hit = acls.find((a) => a.path === path && a.roleid === role && a.ugid === id && a.type === who);
+        const reaches = hit && (!path.startsWith("/pool/") || hit.propagate !== 0);
+        if (reaches && !strict) continue;
+        if (hit && !reaches) {
+          gaps.push({ path, role, who, why: "not-inherited" });
+          continue;
+        }
+        const lacking = await this.lackingPrivs(pve, path, role, id);
+        if (lacking === null ? reaches : lacking.length === 0) continue;
+        gaps.push({ path, role, who, why: hit ? "ineffective" : "absent", ...(hit && lacking?.length ? { lacking } : {}) });
+      }
+    }
+    return { gaps };
+  }
+
+  private async templateReady(pve: ProxmoxClient): Promise<boolean> {
+    const vmid = this.stored().templateVmid;
+    const g = vmid !== undefined ? (await this.guests(pve)).find((x) => x.vmid === vmid) : undefined;
+    return Boolean(g && g.template === 1 && hasTag(g.tags, TEMPLATE_TAG));
   }
 
   private async stepGrant(job: JobView, pve: ProxmoxClient, p: Params): Promise<string> {
-    const pools = await pve.pools();
-    const want = this.wantedAcls(p, this.stored().templateVmid);
-    let n = 0;
-    for (const [path, role] of want) {
-      const pool = /^\/pool\/(.+)$/.exec(path)?.[1];
-      if (pool && !pools.some((x) => x.poolid === pool)) {
-        this.log(job, "warn", `Pool ${pool} doesn't exist in Proxmox; skipped`);
-        continue;
-      }
-      await this.setAcl(pve, path, role);
-      n++;
+    const ready = await this.templateReady(pve);
+    const { gaps } = await this.grantGaps(pve, p, ready);
+    for (const g of gaps) {
+      await this.setAcl(pve, g.path, g.role, g.who);
+      this.log(job, "info", `Granted ${g.role} on ${g.path} to the ${g.who === "user" ? SANDBOX_USER : TOKEN_ID}`);
     }
-    this.log(job, "info", `Granted ${n} paths to ${SANDBOX_USER} and its token (the token gets only what both have)`);
-    return `${n} paths`;
+    // Verify with what Proxmox will really allow, not only that the entries exist. A privilege-separated token gets the overlap of its own and its user's rights.
+    const after = await this.grantGaps(pve, p, ready, true);
+    if (after.gaps.length) throw new StepError(`Proxmox still doesn't give the token these rights: ${describeGaps(after.gaps)}. Check that the signed-in account may change permissions (Permissions.Modify on /), and that no role was edited.`);
+    this.log(job, "info", gaps.length ? `Granted ${gaps.length} missing right${gaps.length === 1 ? "" : "s"} and checked them in Proxmox${ready ? "" : "; the template's own right follows once it is built"}` : `All rights were already in place${ready ? "" : "; the template's own right follows once it is built"}`);
+    return gaps.length ? `${gaps.length} granted` : "In place";
   }
 
   private async stepPlugin(job: JobView): Promise<string> {
@@ -1007,7 +1279,7 @@ export class AgentContainers {
     const pool = this.pools()[companyId]?.pool;
     if (pool) {
       try {
-        await this.setAcl(pve, `/pool/${pool}`, "EPCSandbox");
+        for (const who of ["user", "token"] as const) await this.setAcl(pve, `/pool/${pool}`, "EPCSandbox", who);
       } catch (e) {
         warnings.push(`Agent containers can't use the pool ${pool} until a Proxmox administrator re-runs the agent containers setup (${errText(e)}).`);
       }
@@ -1062,7 +1334,7 @@ export class AgentContainers {
     if (st.pluginId) await this.eng("DELETE", `/api/plugins/${encodeURIComponent(st.pluginId)}`).then(() => this.log(job, "info", "Uninstalled the provider"), (e) => this.log(job, "warn", `Couldn't uninstall the provider: ${errText(e)}`));
     // Proxmox: rights, token, user, roles, our template, and the pool if we made it and it is empty.
     const p = this.params();
-    for (const [path, role] of this.wantedAcls(p, st.templateVmid)) await this.setAcl(pve, path, role, true).catch(() => {});
+    for (const [path, role] of this.wantedAcls(p, st.templateVmid)) await this.removeAcl(pve, path, role).catch(() => {});
     await pve.call("DELETE", `/access/users/${encodeURIComponent(SANDBOX_USER)}/token/${TOKEN_NAME}`).then(() => this.log(job, "info", `Removed token ${TOKEN_ID}`), () => {});
     await pve.call("DELETE", `/access/users/${encodeURIComponent(SANDBOX_USER)}`).then(() => this.log(job, "info", `Removed user ${SANDBOX_USER}`), (e) => this.log(job, "warn", `Couldn't remove ${SANDBOX_USER}: ${errText(e)}`));
     for (const name of Object.keys(ROLES)) await pve.call("DELETE", `/access/roles/${name}`).then(() => this.log(job, "info", `Removed role ${name}`), () => {});
