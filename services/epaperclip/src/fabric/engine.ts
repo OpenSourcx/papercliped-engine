@@ -7,7 +7,8 @@ import type { FabricHub } from "./hub.ts";
 
 /** Creates the Paperclip side of a remote-worker environment: the provider plugin, a secret holding the control token, and the environment. */
 
-export const REMOTE_PLUGIN_KEY = "epaperclip.remote-worker-provider";\nexport const AIDER_ADAPTER_TYPE = "aider_local";
+export const REMOTE_PLUGIN_KEY = "epaperclip.remote-worker-provider";
+export const AIDER_ADAPTER_TYPE = "aider_local";
 const ENVS = "fabric.envs";
 interface EnvRec { companyId: string; secretId: string }
 interface EngineEnv { id: string; name: string; status: string; config?: Record<string, unknown> | null; metadata?: { epaperclip?: string; companyId?: string } | null }
