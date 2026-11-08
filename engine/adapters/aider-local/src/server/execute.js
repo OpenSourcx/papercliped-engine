@@ -107,15 +107,13 @@ export async function execute(ctx) {
           onLog: onChunk,
         });
       }
-      return runChildProcess(cmd, {
-        args,
+      return runChildProcess(`${runId}-aider-${Date.now()}`, cmd, args, {
         cwd: effectiveCwd,
         env: runEnv,
         stdin: opts.stdin,
-        timeout: opts.timeoutMs || timeoutSec * 1000,
-        graceMs: graceSec * 1000,
-        onStdout: (c) => onChunk("stdout", c),
-        onStderr: (c) => onChunk("stderr", c),
+        timeoutSec: Math.max(1, Math.ceil((opts.timeoutMs || timeoutSec * 1000) / 1000)),
+        graceSec,
+        onLog: onChunk,
       });
     };
 
