@@ -95,7 +95,7 @@ export interface AppDeps {
   /** The privileged tunnel helper (tests inject a fake; default is the root helper's socket). */
   tunnelHelper?: TunnelHelper;
   /** The Worker Fabric (docs/WORKER-FABRIC.md). Omit it and /api/fabric answers 503. */
-  fabric?: { port: number; controlUrl: string; pluginDir: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
+  fabric?: { port: number; controlUrl: string; pluginDir: string; aiderAdapterDir: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
 }
 
 const COOKIE_BASE = "epc_session";
@@ -501,7 +501,7 @@ export function createApp(d: AppDeps) {
     const net = fb.netInfo ?? (() => realNetInfo(fb.customUrl ?? null));
     const transports = () => detectTransports(net(), fb.port);
     fabricHub = new FabricHub({ state, now, transports, heartbeatMs: fb.heartbeatMs });
-    registerFabric(state, { hub: fabricHub, envs: new FabricEnvironments({ gateway, hub: fabricHub, state, pluginDir: fb.pluginDir, controlUrl: fb.controlUrl }), transports, listen: { url: fb.customUrl ?? null, port: fb.port } });
+    registerFabric(state, { hub: fabricHub, envs: new FabricEnvironments({ gateway, hub: fabricHub, state, pluginDir: fb.pluginDir, controlUrl: fb.controlUrl, aiderAdapterDir: fb.aiderAdapterDir }), transports, listen: { url: fb.customUrl ?? null, port: fb.port } });
   }
   const broker = d.broker ? new BrokerAdmin({ url: d.broker.url, token: d.broker.managementToken, fetch: d.broker.fetch }) : null;
 
