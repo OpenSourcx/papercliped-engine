@@ -95,7 +95,7 @@ export interface AppDeps {
   /** The privileged tunnel helper (tests inject a fake; default is the root helper's socket). */
   tunnelHelper?: TunnelHelper;
   /** The Worker Fabric (docs/WORKER-FABRIC.md). Omit it and /api/fabric answers 503. */
-  fabric?: { port: number; controlUrl: string; pluginDir: string; aiderAdapterDir: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
+  fabric?: { port: number; controlUrl: string; pluginDir: string; aiderAdapterDir?: string; customUrl?: string | null; netInfo?: () => NetInfo; heartbeatMs?: number };
 }
 
 const COOKIE_BASE = "epc_session";
