@@ -25,12 +25,14 @@ export class FabricEnvironments {
   private readonly state: StateStore;
   private readonly pluginDir: string;
   private readonly controlUrl: string;
-  constructor(o: { gateway: EngineGateway | null; hub: FabricHub; state: StateStore; pluginDir: string; controlUrl: string }) {
+  private readonly aiderAdapterDir: string;
+  constructor(o: { gateway: EngineGateway | null; hub: FabricHub; state: StateStore; pluginDir: string; controlUrl: string; aiderAdapterDir?: string }) {
     this.gw = o.gateway;
     this.hub = o.hub;
     this.state = o.state;
     this.pluginDir = o.pluginDir;
     this.controlUrl = o.controlUrl;
+    this.aiderAdapterDir = o.aiderAdapterDir ?? "/opt/epaperclip/engine/adapters/aider-local";
   }
   private async eng<T>(method: string, path: string, body?: unknown): Promise<T> {
     if (!this.gw) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
