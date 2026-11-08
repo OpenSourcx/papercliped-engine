@@ -193,7 +193,7 @@ step_ollama() {
     did "downloading Ollama $OLLAMA_VERSION (${OLLAMA_ASSETS[*]}) and verifying SHA-256" || true
     if [ "$CHECK" = 0 ]; then
       base="$mirror/$OLLAMA_VERSION"
-      local d; d="$(mktemp -d /var/tmp/epb.XXXXXX)"; trap 'rm -rf "$d"' RETURN
+      local d; d="$(mktemp -d /var/tmp/epb.XXXXXX)"; TMPD="$d"; trap 'rm -rf "${TMPD:-}"' EXIT
       curl -fsSL --retry 3 -o "$d/sha256sum.txt" "$base/sha256sum.txt" || die "could not download $base/sha256sum.txt"
       local a want
       for a in "${OLLAMA_ASSETS[@]}"; do
@@ -206,6 +206,7 @@ step_ollama() {
       for a in "${OLLAMA_ASSETS[@]}"; do tar -I zstd -xf "$d/$a" -C /usr/local; done
       made "file /usr/local/bin/ollama"; made "dir /usr/local/lib/ollama"
       note "installed ollama $OLLAMA_VERSION"
+      rm -rf "$d"; TMPD=""
     fi
   fi
   # Service user and unit (same shape as the reference node's).

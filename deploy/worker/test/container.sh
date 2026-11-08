@@ -14,8 +14,8 @@ bad() { fail=$((fail+1)); echo "  FAIL $1"; }
 t()   { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else bad "$d"; fi; }
 nt()  { local d="$1"; shift; if "$@" >/dev/null 2>&1; then bad "$d"; else ok "$d"; fi; }
 X()   { docker exec "$C" bash -c "$*"; }
-admin() { curl -fsS -m 120 -H 'content-type: application/json' "http://127.0.0.1:3140$1" ${2:+-d "$2"}; }
-cleanup() { [ "$KEEP" = 1 ] || { docker rm -f "$C" >/dev/null 2>&1; }; [ -z "${HOSTPID:-}" ] || kill "$HOSTPID" 2>/dev/null; }
+admin() { curl -fsS -m 120 -H 'content-type: application/json' "http://127.0.0.1:13140$1" ${2:+-d "$2"}; }
+cleanup() { [ "$KEEP" = 1 ] || { docker rm -f "$C" >/dev/null 2>&1; }; pkill -f "[c]ontainer/host.ts" 2>/dev/null; true; }
 trap cleanup EXIT
 
 echo "build the clean target and the worker release"
@@ -24,10 +24,10 @@ bash "$REPO/scripts/package-worker.sh" "$W/release" >/dev/null || { echo "packag
 docker rm -f "$C" >/dev/null 2>&1
 docker run -d --name "$C" --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock "$IMG" >/dev/null || { echo "docker run failed"; exit 1; }
 for i in $(seq 1 30); do X 'systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"' && break; sleep 1; done
-GW="$(docker inspect -f '{{.NetworkSettings.Gateway}}' "$C")"
+GW="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}' "$C")"
 docker exec "$C" mkdir -p /root/rel && docker cp "$W/release/." "$C:/root/rel/" && X 'cd /root/rel && tar xzf epaperclip-worker-*.tar.gz && mv epaperclip-worker-*/ pkg'
 X 'cd /mirror && nohup python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 &'
-(cd "$REPO/services/epaperclip" && node --experimental-strip-types "$HERE/container/host.ts" "$W/host-state" "$GW" >"$W/host.log" 2>&1) & HOSTPID=$!
+(cd "$REPO/services/epaperclip" && node --experimental-strip-types "$HERE/container/host.ts" "$W/host-state" "$GW" 17843 13140 >"$W/host.log" 2>&1) & HOSTPID=$!
 for i in $(seq 1 20); do admin /workers >/dev/null 2>&1 && break; sleep 0.5; done
 B='cd /root/rel/pkg && EPB_MIRROR=http://127.0.0.1:8099 ./bootstrap.sh'
 
@@ -99,8 +99,8 @@ admin /manage "{\"id\":\"$ID\",\"action\":\"model-pull\",\"params\":{\"name\":\"
 admin /audit | python3 -c 'import sys,json;a=[e["action"] for e in json.load(sys.stdin)];assert "manage.restart-ollama" in a and "manage.logs" in a' && ok "management actions are in the audit log" || bad "audit log"
 
 echo "7. signed update over https (local CA), then rollback is available"
-X 'cd /root && mkdir -p up && cd up && tar xzf ../rel/epaperclip-worker-*.tar.gz && echo "// update-proof" >> epaperclip-worker-*/epaperclip-worker.mjs && tar czf /root/update.tar.gz epaperclip-worker-* && openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" -keyout /root/k.pem -out /root/c.pem 2>/dev/null && mkdir -p /srv/up && cp /root/update.tar.gz /srv/up/ && cd /srv/up && nohup python3 -c "import http.server,ssl;s=http.server.HTTPServer((\"127.0.0.1\",8443),http.server.SimpleHTTPRequestHandler);c=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);c.load_cert_chain(\"/root/c.pem\",\"/root/k.pem\");s.socket=c.wrap_socket(s.socket,server_side=True);s.serve_forever()" >/dev/null 2>&1 &'
-X 'mkdir -p /etc/systemd/system/epaperclip-worker.service.d && printf "[Service]\nEnvironment=NODE_EXTRA_CA_CERTS=/root/c.pem\n" > /etc/systemd/system/epaperclip-worker.service.d/test-ca.conf && chmod 644 /root/c.pem && systemctl daemon-reload && systemctl restart epaperclip-worker'
+X 'cd /root && mkdir -p up && cd up && tar xzf ../rel/epaperclip-worker-*.tar.gz && echo "// update-proof" >> epaperclip-worker-*/epaperclip-worker.mjs && tar czf /root/update.tar.gz epaperclip-worker-* && openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" -keyout /root/k.pem -out /root/c.pem 2>/dev/null && mkdir -p /srv/up && chmod 755 /srv /srv/up && cp /root/update.tar.gz /root/c.pem /srv/up/ && chmod 644 /srv/up/* && cd /srv/up && nohup python3 -c "import http.server,ssl;s=http.server.HTTPServer((\"127.0.0.1\",8443),http.server.SimpleHTTPRequestHandler);c=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);c.load_cert_chain(\"/root/c.pem\",\"/root/k.pem\");s.socket=c.wrap_socket(s.socket,server_side=True);s.serve_forever()" >/dev/null 2>&1 &'
+X 'mkdir -p /etc/systemd/system/epaperclip-worker.service.d && printf "[Service]\nEnvironment=NODE_EXTRA_CA_CERTS=/srv/up/c.pem\n" > /etc/systemd/system/epaperclip-worker.service.d/test-ca.conf && systemctl daemon-reload && systemctl restart epaperclip-worker'
 for i in $(seq 1 30); do admin /workers | grep -q '"online":true' && break; sleep 1; done
 SHA="$(X 'sha256sum /root/update.tar.gz | cut -d" " -f1')"
 nt "an update with the wrong checksum is refused" admin /manage "{\"id\":\"$ID\",\"action\":\"update\",\"params\":{\"url\":\"https://127.0.0.1:8443/update.tar.gz\",\"sha256\":\"$(printf 'a%.0s' $(seq 64))\"}}"
