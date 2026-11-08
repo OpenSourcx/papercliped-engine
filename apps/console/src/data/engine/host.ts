@@ -63,6 +63,8 @@ export interface ResourceGroupState extends ResourceGroupSize {
 export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
 export interface ContainersStep { id: string; label: string; done: boolean; detail?: string }
 export interface ContainersParams { storage: string; templateStorage: string; bridge: string; pool: string; size: { cores: number; memoryMb: number; diskGb: number } }
+/** Why a failed Proxmox task failed, in plain words, with the exact fix and the redacted log lines it rests on. */
+export interface ContainersDiagnosis { id: string; step: string; title: string; plain: string; fix: string[]; evidence: string[]; confidence: "matched" | "generic" }
 export interface ContainersStatus {
   state: ContainersState;
   steps: ContainersStep[];
@@ -76,6 +78,9 @@ export interface ContainersStatus {
   /** What the node offers for the three host choices, and a valid starting pick for each (null when it couldn't be read). */
   options?: { storages: string[]; templateStorages: string[]; bridges: string[]; suggested: { storage: string | null; templateStorage: string | null; bridge: string | null } } | null;
   error?: string;
+  /** Exactly which rights the sandbox user or its token lacks. */
+  grantMissing?: { path: string; role: string; who: "user" | "token"; why: string; lacking?: string[] }[];
+  diagnosis?: ContainersDiagnosis;
 }
 export interface ContainersJob {
   id: string;
@@ -87,6 +92,7 @@ export interface ContainersJob {
   steps: { id: string; label: string; state: "pending" | "running" | "done" | "failed" | "skipped"; detail?: string }[];
   log: { t: number; level: "info" | "warn" | "error"; text: string }[];
   error?: string;
+  diagnosis?: ContainersDiagnosis;
 }
 
 export class HostError extends Error {
@@ -158,6 +164,8 @@ export const host = {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
     setup: (choices: Partial<ContainersParams>) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/setup", choices),
     job: (id: string) => call<ContainersJob>("GET", `/api/agent-containers/jobs/${enc(id)}`),
+    /** Runs one step again on its own: "grant", "plugin" or "environments". */
+    step: (id: "grant" | "plugin" | "environments") => call<{ jobId: string; alreadyRunning: boolean }>("POST", `/api/agent-containers/steps/${enc(id)}`, {}),
     teardown: (confirm: string) => call<{ jobId: string }>("DELETE", "/api/agent-containers", { confirm }),
   },
   resourceGroups: {

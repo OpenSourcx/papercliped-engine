@@ -94,6 +94,7 @@ export interface CatalogTemplate {
   section?: string; // system | turnkeylinux | mail ...
   type?: string; // lxc
   infopage?: string;
+  sha512sum?: string;
 }
 
 export interface BackupJob {
@@ -494,9 +495,26 @@ export class ProxmoxClient {
   }
 
   /** A task's log lines. Proxmox fills a log that has nothing in it yet with placeholder lines whose text is "no content" (with line numbers, not only 0); those aren't output, so they are dropped. */
-  async taskLog(node: string, upid: string, limit = 500) {
-    const lines = await this.call<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/log`, { start: 0, limit });
+  async taskLog(node: string, upid: string, limit = 500, start = 0) {
+    const lines = await this.call<{ n: number; t: string }[]>("GET", `/nodes/${seg(node)}/tasks/${seg(upid)}/log`, { start, limit });
     return lines.filter((l) => l.t.trim() !== "no content");
+  }
+
+  /** The node's systemd journal, newest last (needs Sys.Syslog). Kernel messages such as AppArmor denials are in it. */
+  async nodeJournal(node: string, lastentries = 200): Promise<string[]> {
+    const lines = await this.call<unknown>("GET", `/nodes/${seg(node)}/journal`, { lastentries });
+    return Array.isArray(lines) ? lines.filter((l): l is string => typeof l === "string") : [];
+  }
+
+  /** One storage's state on a node: type, whether it is active and enabled, and free space. */
+  storageStatus(node: string, storage: string) {
+    return this.call<{ type?: string; active?: number; enabled?: number; avail?: number; total?: number; used?: number; content?: string; shared?: number }>("GET", `/nodes/${seg(node)}/storage/${seg(storage)}/status`);
+  }
+
+  /** The effective privileges of a user or API token on a path (what Proxmox will really allow). */
+  async effectivePrivileges(path: string, userid: string): Promise<Record<string, number>> {
+    const r = await this.call<Record<string, Record<string, number>>>("GET", "/access/permissions", { path, userid });
+    return r?.[path] ?? {};
   }
 
   createVm(node: string, params: Record<string, string | number | boolean | undefined>) {
@@ -713,7 +731,7 @@ export class ProxmoxClient {
       const s = await this.taskStatus(node, upid);
       if (s.status === "stopped") {
         // A task that finished with warnings reports "WARNINGS: n" and still succeeded.
-        if (s.exitstatus !== "OK" && !s.exitstatus?.startsWith("WARNINGS")) throw new ProxmoxError(`Proxmox task failed: ${s.exitstatus ?? "unknown"}`, 500);
+        if (s.exitstatus !== "OK" && !s.exitstatus?.startsWith("WARNINGS")) throw new ProxmoxError(`Proxmox task failed: ${s.exitstatus ?? "unknown"}`, 500, s.exitstatus ? `Proxmox's task ended with: ${s.exitstatus}` : null);
         return;
       }
       if (Date.now() > deadline) throw new ProxmoxError(`Proxmox task did not finish within ${timeoutMs} ms`, 504);

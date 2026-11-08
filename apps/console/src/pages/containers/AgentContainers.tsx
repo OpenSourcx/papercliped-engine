@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Container, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
-import { errorText, useAgentContainers, useContainersJob, useContainersSetup, useContainersTeardown } from "../../data/engine/queries.ts";
-import type { ContainersJob, ContainersParams, ContainersStatus } from "../../data/engine/host.ts";
+import { errorText, useAgentContainers, useContainersJob, useContainersSetup, useContainersStep, useContainersTeardown } from "../../data/engine/queries.ts";
+import type { ContainersDiagnosis, ContainersJob, ContainersParams, ContainersStatus } from "../../data/engine/host.ts";
 import { useEngine } from "../../data/store.tsx";
 import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Select } from "../../ui/primitives.tsx";
 
@@ -43,6 +43,29 @@ function Log({ job }: { job: ContainersJob }) {
   );
 }
 
+/** Why a Proxmox task failed: the cause in plain words, the exact fix, and the log lines it rests on. */
+export function Diagnosis({ d }: { d: ContainersDiagnosis }) {
+  return (
+    <div role="group" aria-label="Why it failed" className="mt-3 rounded-lg border border-critical/40 bg-critical/10 p-4 text-compact space-y-3">
+      <div>
+        <div className="font-medium">{d.title}</div>
+        <p className="mt-1 text-ink-2">{d.plain}</p>
+        {d.confidence === "generic" && <p className="mt-1 text-xs text-ink-3">Proxmox gave no specific reason, so this lists the checks that find it. Nothing here is a guess about your host.</p>}
+      </div>
+      <div>
+        <div className="text-xs uppercase tracking-wide text-ink-3">What to do</div>
+        <ol className="mt-1 list-decimal pl-5 space-y-1">{d.fix.map((f, i) => <li key={i} className="break-words">{f}</li>)}</ol>
+      </div>
+      {d.evidence.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs text-ink-2">What Proxmox said ({d.evidence.length} lines, secrets removed)</summary>
+          <pre aria-label="Proxmox task log" className="mt-2 max-h-56 overflow-auto rounded border border-line bg-surface-2 p-2 text-xs leading-5 font-mono whitespace-pre-wrap break-words">{d.evidence.join("\n")}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 /** The Settings section: live devices only (the demo has no Proxmox to put containers on). */
 export function AgentContainersSettings() {
   if (useEngine().live) return <AgentContainers />;
@@ -59,6 +82,7 @@ export function AgentContainers() {
   const q = useAgentContainers();
   const setup = useContainersSetup();
   const teardown = useContainersTeardown();
+  const stepRun = useContainersStep();
   const [jobId, setJobId] = useState<string | null>(null);
   const [choices, setChoices] = useState<ContainersParams | null>(null);
   const [typed, setTyped] = useState("");
@@ -70,7 +94,7 @@ export function AgentContainers() {
   }, [runningId, jobId]);
   const job = useContainersJob(jobId);
   const j = job.data;
-  const running = j?.status === "running" || setup.isPending || teardown.isPending;
+  const running = j?.status === "running" || setup.isPending || teardown.isPending || stepRun.isPending;
   const opts = status?.options ?? null;
   // Start from what is saved, else from what this host offers (a default of local-lvm means nothing on a host without it).
   const form = useMemo<ContainersParams>(
@@ -112,6 +136,7 @@ export function AgentContainers() {
             </div>
           )}
           {status.error && <p role="alert" className="mb-3 text-compact text-critical">{status.error}</p>}
+          {canManage && status.diagnosis && !(j?.diagnosis) && <Diagnosis d={status.diagnosis} />}
           <Card className="divide-y divide-line">
             {status.steps.length === 0 && <p className="px-5 py-4 text-sm text-ink-2">Only Proxmox administrators can see the steps.</p>}
             {status.steps.map((s) => {
@@ -124,6 +149,14 @@ export function AgentContainers() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm">{s.label}</div>
                     {note && <div className={`text-xs mt-0.5 ${st === "failed" ? "text-critical" : "text-ink-3"}`}>{note}</div>}
+                    {s.id === "grant" && !s.done && (status.grantMissing?.length ?? 0) > 0 && (
+                      <ul aria-label="Missing rights" className="mt-1 text-xs text-ink-2 font-mono space-y-0.5">
+                        {status.grantMissing!.map((g, i) => <li key={i}>{g.role} on {g.path} for the {g.who}{g.lacking?.length ? ` (lacking ${g.lacking.join(", ")})` : ""}</li>)}
+                      </ul>
+                    )}
+                    {canManage && !s.done && !running && (s.id === "grant" || s.id === "plugin" || s.id === "environments") && status.params && (
+                      <button type="button" className="mt-1 text-xs text-accent underline" onClick={() => stepRun.mutate(s.id as "grant" | "plugin" | "environments", { onSuccess: (r) => setJobId(r.jobId) })}>Run only this step</button>
+                    )}
                   </div>
                 </div>
               );
@@ -163,10 +196,12 @@ export function AgentContainers() {
                 <span>{j.kind === "teardown" ? "Removal" : "Setup"} {j.status === "running" ? "in progress" : j.status === "done" ? "finished" : "stopped"}</span>
               </div>
               {j.status === "failed" && j.error && <p role="alert" className="text-compact text-critical mt-2">{j.error}</p>}
+              {j.status === "failed" && j.diagnosis && <Diagnosis d={j.diagnosis} />}
               {j.status === "failed" && <p className="text-xs text-ink-3 mt-1">Press the button again to resume: what's done is kept, and a half-made container has been removed.</p>}
               <Log job={j} />
             </div>
           )}
+          {stepRun.isError && <p role="alert" className="text-compact text-critical mt-3">{errorText(stepRun.error)}</p>}
           {job.error && <p role="alert" className="text-compact text-critical mt-3">{errorText(job.error)}</p>}
 
           {canManage && (

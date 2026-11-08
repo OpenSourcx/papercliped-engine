@@ -825,6 +825,16 @@ export function createApp(d: AppDeps) {
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
+    const acStep = path.match(/^\/api\/agent-containers\/steps\/([a-z]+)$/);
+    if (method === "POST" && acStep) {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
+        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b));
+      });
+      return sendJson(res, r.alreadyRunning ? 200 : 202, r);
+    }
     const acJob = path.match(/^\/api\/agent-containers\/jobs\/([0-9a-f]{12})$/);
     if (method === "GET" && acJob) {
       requireSession(req);

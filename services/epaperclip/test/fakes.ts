@@ -341,11 +341,17 @@ export function fakePve() {
   const failures = new Set<string>();
   const storageFiles = new Map<string, string[]>([["local", []]]);
   const tasks = new Map<string, string>();
+  // What a failing task reports: its exit status and its log lines (default: the failure text as both).
+  const failLogs = new Map<string, string[]>();
+  const taskLines = new Map<string, string[]>();
+  /** The node's journal, the container config extras and the storage status the fake serves. */
+  const host = { journal: [] as string[], storage: { type: "lvmthin", active: 1, avail: 100 * 1024 ** 3 } as Record<string, unknown>, features: undefined as string | undefined, startFailsWithFeatures: false, corruptOnce: false, version: "9.0.3", fileSizes: new Map<string, number>() };
   const catalog = ["debian-12-standard_12.7-1_amd64.tar.zst", "debian-12-standard_12.12-1_amd64.tar.zst", "debian-13-standard_13.1-2_amd64.tar.zst", "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"];
   let nextVmid = 9000;
   const task = (what: string, fail?: string) => {
     const upid = `UPID:pve:0000${tasks.size + 1}:00000001:00000001:${what}:x:sam@pve:`;
     tasks.set(upid, failures.has(what) ? `${fail ?? what + " failed on purpose"}` : "OK");
+    if (failures.has(what) && failLogs.has(what)) taskLines.set(upid, failLogs.get(what)!);
     return upid;
   };
   const ok = (data: unknown) => ({ status: 200, body: JSON.stringify({ data }) });
@@ -364,6 +370,19 @@ export function fakePve() {
     const user = tickets.get(decodeURIComponent((req.headers.Cookie ?? "").replace("PVEAuthCookie=", "")));
     if (!user) return { status: 401, body: "" };
     const admin = users[user].admin;
+    if (path === "/access/permissions" && u.searchParams.get("userid")) {
+      // What the user or token can really do on the path: the privileges of the roles bound to it (or a parent), for a token only what its user has too.
+      const target = u.searchParams.get("userid")!;
+      const at = u.searchParams.get("path") ?? "/";
+      const privsFor = (ug: string, type: string) => {
+        const out: Record<string, number> = {};
+        for (const a of acl) if (a.ugid === ug && a.type === type && (a.path === at || a.path === "/" || (a.propagate && (at.startsWith(a.path + "/") || at.startsWith(a.path)))) && a.path.split("/").length <= at.split("/").length) for (const x of (a.roleid === "Administrator" ? ["VM.Allocate", "VM.Audit", "VM.Clone", "VM.PowerMgmt", "Sys.Audit", "SDN.Use", "Pool.Audit", "Datastore.AllocateSpace", "Datastore.Audit", "VM.Config.CPU", "VM.Config.Memory", "VM.Config.Disk", "VM.Config.Network", "VM.Config.Options"] : (roles.get(a.roleid) ?? "").split(","))) if (x) out[x] = 1;
+        return out;
+      };
+      const t = target.includes("!") ? privsFor(target, "token") : privsFor(target, "user");
+      const eff = target.includes("!") ? Object.fromEntries(Object.keys(t).filter((k) => privsFor(target.split("!")[0], "user")[k])) : t;
+      return ok({ [at]: Object.fromEntries(Object.keys(eff).map((k) => [k, 1])) });
+    }
     if (path === "/access/permissions") return ok(admin ? { [u.searchParams.get("path") ?? "/"]: { "Sys.Modify": 1, "Sys.Audit": 1, "User.Modify": 1, "Permissions.Modify": 1 } } : { "/vms": { "VM.Audit": 1 } });
     const f = new URLSearchParams(req.body ?? "");
     const deny = { status: 403, body: JSON.stringify({ message: "Permission check failed\n" }) };
@@ -449,7 +468,18 @@ export function fakePve() {
       return ok(upid);
     }
     const sc = path.match(/^\/nodes\/pve\/storage\/([\w-]+)\/content$/);
-    if (sc) return ok((storageFiles.get(sc[1]) ?? []).map((file) => ({ volid: `${sc[1]}:vztmpl/${file}`, content: "vztmpl" })));
+    if (sc) return ok((storageFiles.get(sc[1]) ?? []).map((file) => ({ volid: `${sc[1]}:vztmpl/${file}`, content: "vztmpl", size: host.fileSizes.get(file) ?? 130 * 1024 ** 2 })));
+    const sdel = path.match(/^\/nodes\/pve\/storage\/([\w-]+)\/content\/(.+)$/);
+    if (sdel && req.method === "DELETE") {
+      const file = decodeURIComponent(sdel[2]).replace(/^[\w-]+:vztmpl\//, "");
+      const list = storageFiles.get(sdel[1]) ?? [];
+      const i = list.indexOf(file);
+      if (i >= 0) list.splice(i, 1);
+      return ok(task("deletevolume"));
+    }
+    const sstat = path.match(/^\/nodes\/pve\/storage\/([\w-]+)\/status$/);
+    if (sstat) return ok(host.storage);
+    if (path === "/nodes/pve/journal") return ok(host.journal);
     if (path === "/cluster/nextid") {
       while (guests.has(nextVmid)) nextVmid++;
       return ok(String(nextVmid));
@@ -462,14 +492,35 @@ export function fakePve() {
       const vmid = Number(f.get("vmid"));
       if (guests.has(vmid)) return { status: 500, body: JSON.stringify({ message: `CT ${vmid} already exists\n` }) };
       if (failures.has("create")) return { status: 500, body: JSON.stringify({ message: "unable to create CT: storage 'local-lvm' is full\n" }) };
-      guests.set(vmid, { hostname: f.get("hostname")!, unprivileged: Number(f.get("unprivileged")), tags: f.get("tags")!, status: "stopped", template: 0, "ssh-public-keys": f.get("ssh-public-keys")!, features: f.get("features")! });
+      guests.set(vmid, { hostname: f.get("hostname")!, unprivileged: Number(f.get("unprivileged")), tags: f.get("tags")!, status: "stopped", template: 0, "ssh-public-keys": f.get("ssh-public-keys")!, features: f.get("features")!, rootfs: f.get("rootfs")!, net0: f.get("net0")! });
+      if (host.corruptOnce) {
+        host.corruptOnce = false;
+        const upid = task("create");
+        const exit = `unable to create CT ${vmid} - command 'tar xpf' failed: exit code 2`;
+        tasks.set(upid, exit);
+        taskLines.set(upid, ["extracting archive 'local:vztmpl/debian.tar.zst'", "zstd: /var/lib/vz/template/cache/debian.tar.zst: unexpected end of file", "tar: Unexpected EOF in archive", "TASK ERROR: " + exit]);
+        return ok(upid);
+      }
       return ok(task("create"));
     }
     const ct = path.match(/^\/nodes\/pve\/lxc\/(\d+)(?:\/(config|status\/start|status\/shutdown|status\/stop|interfaces|template))?$/);
     if (ct && guests.has(Number(ct[1]))) {
       const g = guests.get(Number(ct[1]))!;
-      if (ct[2] === "config") return ok({ unprivileged: g.unprivileged, template: g.template, tags: g.tags, hostname: g.hostname });
-      if (ct[2] === "status/start") return g.status = "running", ok(task("start"));
+      if (ct[2] === "config" && req.method === "PUT") {
+        if (f.get("delete") === "features") delete g.features;
+        else if (f.has("features")) g.features = f.get("features")!;
+        return ok(null);
+      }
+      if (ct[2] === "config") return ok({ unprivileged: g.unprivileged, template: g.template, tags: g.tags, hostname: g.hostname, rootfs: g.rootfs, net0: g.net0, ...(g.features ? { features: g.features } : {}), ostype: "debian", arch: "amd64", "ssh-public-keys": g["ssh-public-keys"] });
+      if (ct[2] === "status/start") {
+        const failNow = failures.has("start") || (host.startFailsWithFeatures && Boolean(g.features));
+        const exit = `startup for container '${ct[1]}' failed`;
+        const upid = task("start", exit);
+        if (!failNow) return g.status = "running", ok(upid);
+        tasks.set(upid, exit);
+        taskLines.set(upid, failLogs.get("start") ?? [exit]);
+        return ok(upid);
+      }
       if (ct[2] === "status/shutdown" || ct[2] === "status/stop") return g.status = "stopped", ok(task("shutdown"));
       if (ct[2] === "interfaces") return ok([{ name: "lo", inet: "127.0.0.1/8" }, { name: "eth0", inet: "10.9.8.7/24", hwaddr: "aa" }]);
       if (ct[2] === "template") return failures.has("template") ? { status: 500, body: JSON.stringify({ message: "can't convert on purpose\n" }) } : (g.template = 1, ok(null));
@@ -479,13 +530,15 @@ export function fakePve() {
     if (tsk) {
       const res = tasks.get(decodeURIComponent(tsk[1]));
       if (res === undefined) return { status: 404, body: "" };
-      return tsk[2] === "status" ? ok({ status: "stopped", exitstatus: res }) : ok([{ n: 1, t: res === "OK" ? "TASK OK" : res }]);
+      const lines = taskLines.get(decodeURIComponent(tsk[1])) ?? [res === "OK" ? "TASK OK" : res];
+      const start = Number(u.searchParams.get("start") ?? 0);
+      return tsk[2] === "status" ? ok({ status: "stopped", exitstatus: res }) : ok(lines.map((t, i) => ({ n: i + 1, t })).slice(start));
     }
     if (path === "/access/domains") return ok([{ realm: "pve", type: "pve" }, { realm: "pam", type: "pam" }]);
     if (path === "/access/groups" && req.method === "GET") return ok([...groups].map(([groupid, comment]) => ({ groupid, comment })));
     if (path === "/access/groups" && req.method === "POST") return admin ? (groups.set(f.get("groupid")!, f.get("comment") ?? ""), ok(null)) : deny;
     if (path === "/access/password" && req.method === "PUT") return admin && f.get("confirmation-password") === "right" ? ok(null) : deny;
-    if (path === "/version") return ok({ version: "9.0.3" });
+    if (path === "/version") return ok({ version: host.version });
     if (path === "/nodes/pve/status") return admin ? ok({ cpu: 0.25, memory: { used: 4, total: 16 }, uptime: 100, kversion: "Linux 6" }) : { status: 403, body: "" };
     if (path === "/cluster/resources" && u.searchParams.get("type") === "storage") return ok([{ type: "storage", node: "pve", storage: "local", plugintype: "dir", content: "iso", status: "available", disk: 1, maxdisk: 10 }]);
     if (path === "/cluster/resources") return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running", maxmem: 2048 }, { id: "node/pve", type: "node", node: "pve" }]);
@@ -505,7 +558,7 @@ export function fakePve() {
     if (pool && req.method === "DELETE") return admin ? (pools.delete(pool[1]), ok(null)) : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles };
+  return { transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles, failLogs, host };
 }
 
 /**
