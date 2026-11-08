@@ -83,6 +83,7 @@ export class FabricEnvironments {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(o.companyId)) throw new HttpError(400, "bad_request", "Bad organization id.");
     if (o.workerId && !this.hub.worker(o.workerId)) throw new HttpError(404, "not_found", "No such worker.");
     await this.ensurePlugin();
+    await this.ensureAiderAdapter();
     const cid = encodeURIComponent(o.companyId);
     const token = this.hub.issueControlToken(o.companyId);
     const secret = await this.eng<{ id: string }>("POST", `/api/companies/${cid}/secrets`, { name: `epaperclip-fabric-token-${randomBytes(3).toString("hex")}`, value: token, description: "Created by ePaperclip's Worker Fabric" });
