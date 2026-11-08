@@ -53,7 +53,7 @@ interface Stored {
   pairings: Record<string, PairingRec>;
   denied: string[];
   leases: Record<string, LeaseRec>;
-  tokens: Record<string, string>;
+  tokens: Record<string, string | string[]>;
   audit: AuditRec[];
   seq: number;
 }
@@ -591,7 +591,12 @@ export class FabricHub {
   issueControlToken(companyId: string): string {
     if (!ID.test(companyId)) throw new HttpError(400, "bad_request", "Bad organization id.");
     const token = `fct_${randomBytes(24).toString("base64url")}`;
-    this.mutate((s) => { s.tokens[companyId] = sha256hex(token); });
+    this.mutate((s) => {
+      // Every environment keeps its own token; an organization may have several.
+      const cur = s.tokens[companyId];
+      const list = Array.isArray(cur) ? cur : cur ? [cur] : [];
+      s.tokens[companyId] = [...list, sha256hex(token)].slice(-50);
+    });
     this.audit("host", "token.issue", undefined, companyId);
     return token;
   }
@@ -599,7 +604,7 @@ export class FabricHub {
   companyForToken(token: string | undefined): string | null {
     if (!token || !token.startsWith("fct_")) return null;
     const h = sha256hex(token);
-    for (const [c, hash] of Object.entries(this.read().tokens)) if (eq(hash, h)) return c;
+    for (const [c, hashes] of Object.entries(this.read().tokens)) for (const hash of Array.isArray(hashes) ? hashes : [hashes]) if (eq(hash, h)) return c;
     return null;
   }
 
@@ -620,6 +625,13 @@ export class FabricHub {
     {
       const s = this.read();
       const dup = Object.values(s.leases).find((l) => l.state === "active" && l.companyId === companyId && l.agentId === a.agentId && l.workspace.endsWith(`/${wsKey}`));
+      // A kept (reusable) lease the engine has not released is the same agent coming back to its own workspace: hand it back.
+      // It gets a new lease on the same workspace; the old one is released so two runs never share one lease.
+      if (dup && a.reuse && dup.environmentId === a.environmentId) {
+        this.mutate((st) => { const o = st.leases[dup.id]; if (o) { o.state = "released"; o.releasedAt = this.now(); } });
+        this.audit("provider", "lease.supersede", dup.workerId, dup.id);
+        return this.acquire(companyId, a);
+      }
       if (dup) throw new HttpError(409, "lease_conflict", "That agent already holds a lease on this workspace.");
       const all = Object.values(s.workers).filter((w) => w.state === "adopted").map((w) => this.candidate(w, Object.values(s.leases)));
       // A reusable workspace comes back to the worker that has it.
@@ -683,12 +695,21 @@ export class FabricHub {
     const conn = this.conns.get(l.workerId);
     if (!conn || !this.online(l.workerId)) throw new HttpError(409, "offline", "The worker is offline.");
     if (typeof p.command !== "string" || !p.command || p.command.length > 4096 || (p.args ?? []).some((x) => typeof x !== "string")) throw new HttpError(400, "bad_request", "Bad command.");
-    const cwd = (p.cwd ?? l.workspace).replace(/\/+$/, "");
-    if (cwd !== l.workspace && !cwd.startsWith(`${l.workspace}/`)) throw new HttpError(403, "outside_workspace", "Commands run inside the lease's workspace.");
+    const cwd = (p.cwd || l.workspace).replace(/(?<=.)\/+$/, "");
+    if (!cwd.startsWith("/") || cwd.includes("\0")) throw new HttpError(400, "bad_request", "cwd must be an absolute path.");
+    // The shell on a worker is deliberately not sandboxed (docs/WORKER-FABRIC-GUIDE.md), but one agent's run is not pointed at another's
+    // files by mistake: inside this organization's workspace folder only this agent's own folder is allowed.
+    const own = l.workspace.slice(0, l.workspace.lastIndexOf("/"));
+    const orgDir = own.slice(0, own.lastIndexOf("/"));
+    if ((cwd === orgDir || cwd.startsWith(`${orgDir}/`)) && cwd !== own && !cwd.startsWith(`${own}/`)) throw new HttpError(403, "outside_workspace", `This agent's commands run in its own workspace folder (not ${cwd}).`);
     const secrets = Object.entries(p.env ?? {}).filter(([k, v]) => /KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL/i.test(k) && typeof v === "string" && v.length >= 8).map(([, v]) => v);
     const execId = `x_${randomBytes(6).toString("hex")}`;
+    const debug = process.env.EPC_FABRIC_DEBUG === "1";
+    const seen: string[] = [];
+    const out = debug ? (st: "stdout" | "stderr", d: string) => { if (seen.join("").length < 600) seen.push(`[${st}] ${d}`); onOut(st, d); } : onOut;
+    const done = (r: ExecResult) => { this.audit("provider", "exec.end", l.workerId, `${execId} exit=${r.exitCode ?? r.signal}${r.timedOut ? " timeout" : ""}`); if (debug) console.log("exec", execId, p.command, JSON.stringify(p.args ?? []).slice(0, 300), "cwd", cwd, "->", r.exitCode, seen.join("").slice(0, 600)); return r; };
     return await new Promise<ExecResult>((resolve, reject) => {
-      conn.execs.set(execId, { onOut, resolve, leaseId: id, secrets });
+      conn.execs.set(execId, { onOut: out, resolve: (r) => resolve(done(r)), leaseId: id, secrets });
       onStart?.(execId);
       this.audit("provider", "exec.start", l.workerId, `${id} ${execId} ${p.command.split(/\s+/)[0]!.slice(0, 60)}`);
       this.call(l.workerId, "exec", { id: execId, command: p.command, args: p.args ?? [], cwd, env: p.env ?? {}, stdin: p.stdin, timeoutMs: p.timeoutMs, owner: id }, 5_000).catch((e) => {

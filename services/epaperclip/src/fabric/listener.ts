@@ -48,7 +48,7 @@ export function controlHandler(hub: FabricHub) {
       if (!company) throw new HttpError(401, "unauthorized", "A valid control token is required.");
       const path = (req.url ?? "").split("?")[0]!;
       if (req.method !== "POST" || !path.startsWith("/control/v1/")) throw new HttpError(404, "not_found", "Not found");
-      const b = await readJson(req, 256 * 1024);
+      const b = await readJson(req, 40 * 1024 * 1024);
       const claimed = typeof b.companyId === "string" ? b.companyId : company;
       if (claimed !== company) throw new HttpError(403, "wrong_organization", "This token belongs to another organization.");
       if (path === "/control/v1/probe") {

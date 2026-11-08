@@ -1,7 +1,7 @@
 import { ClientHandshake, decodePairing, orderEndpoints, type Capabilities, type Identity } from "@papercliped-engine/worker-fabric";
 import type { Server } from "node:http";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
 import { Gate } from "./gate.ts";
@@ -55,11 +55,18 @@ export class WorkerClient {
     this.status = s;
     this.onStatus?.(s);
   }
+  /** Added to every command: the tools the worker brought (its own Node.js) and the user's ~/.local/bin on PATH, and the inference gate. */
   private inferenceEnv(): Record<string, string> {
-    if (!this.gateServer) return {};
-    const port = this.o.files.config().inference.gatePort;
-    const url = `http://127.0.0.1:${port}`;
-    return { OLLAMA_HOST: url, EPAPERCLIP_INFERENCE_URL: url };
+    const home = process.env.HOME ?? "";
+    const extra = [dirname(process.execPath), home ? join(home, ".local", "bin") : ""].filter((d) => d && existsSync(d));
+    const path = [...extra, ...(process.env.PATH ?? "").split(":").filter(Boolean)].filter((d, i, a) => a.indexOf(d) === i).join(":");
+    const env: Record<string, string> = { PATH: path };
+    if (this.gateServer) {
+      const url = `http://127.0.0.1:${this.o.files.config().inference.gatePort}`;
+      env.OLLAMA_HOST = url;
+      env.EPAPERCLIP_INFERENCE_URL = url;
+    }
+    return env;
   }
 
   /** Stores the pairing code's contents; the next connection adopts. */
@@ -248,9 +255,9 @@ export class WorkerClient {
           return reply(true, {});
         case "exec": {
           const a = m.args as unknown as { id: string; command: string; args: string[]; cwd: string; env: Record<string, string>; stdin?: string; timeoutMs?: number; owner: string };
-          // The host chose the lease; the worker still refuses to run anywhere but under its own workspace root.
-          const { safePath } = await import("./workspace.ts");
-          const cwd = safePath(root, a.cwd);
+          // The shell is unrestricted by design; the directory must at least exist and be absolute.
+          const cwd = String(a.cwd);
+          if (!cwd.startsWith("/") || !existsSync(cwd)) throw new WorkspaceError(`the directory ${cwd} does not exist on this worker`);
           this.runner.start({ id: a.id, command: a.command, args: a.args ?? [], cwd, env: a.env ?? {}, stdin: a.stdin, timeoutMs: a.timeoutMs, owner: a.owner });
           return reply(true, { started: true });
         }
