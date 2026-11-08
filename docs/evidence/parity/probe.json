@@ -1,0 +1,684 @@
+{
+ "at": "2026-11-08T11:33:42.723Z",
+ "rows": [
+  {
+   "cap": "org/list companies",
+   "path": "/api/companies",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "org/chart json",
+   "path": "/api/companies/{c}/org",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "org/chart svg",
+   "path": "/api/companies/{c}/org.svg",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "org/branding",
+   "path": "/api/companies/{c}/branding",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "org/export",
+   "path": "/api/companies/{c}/export",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "org/invites",
+   "path": "/api/companies/{c}/invites",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "org/members",
+   "path": "/api/companies/{c}/members",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "org/join requests",
+   "path": "/api/companies/{c}/join-requests",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "org/user directory",
+   "path": "/api/companies/{c}/user-directory",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "goals/list",
+   "path": "/api/companies/{c}/goals",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "goals/get",
+   "path": "/api/goals/{goal}",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "agents/list",
+   "path": "/api/companies/{c}/agents",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "agents/get",
+   "path": "/api/agents/{a}",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "agents/configuration",
+   "path": "/api/agents/{a}/configuration",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "agents/config revisions",
+   "path": "/api/agents/{a}/config-revisions",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "agents/permissions",
+   "path": "/api/agents/{a}/permissions",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "agents/keys",
+   "path": "/api/agents/{a}/keys",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "agents/instructions",
+   "path": "/api/agents/{a}/instructions-bundle",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "agents/skills",
+   "path": "/api/agents/{a}/skills",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "agents/runtime state",
+   "path": "/api/agents/{a}/runtime-state",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "agents/task sessions",
+   "path": "/api/agents/{a}/task-sessions",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "agents/inbox",
+   "path": "/api/agents/me/inbox-lite",
+   "native": 401,
+   "epc": 404,
+   "state": "differs"
+  },
+  {
+   "cap": "adapters/list",
+   "path": "/api/adapters",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "adapters/models",
+   "path": "/api/companies/{c}/adapters/process/models",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "adapters/config schema",
+   "path": "/api/adapters/process/config-schema",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "runtime/environments",
+   "path": "/api/companies/{c}/environments",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "runtime/env capabilities",
+   "path": "/api/companies/{c}/environments/capabilities",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "models/ai connections",
+   "path": "/api/companies/{c}/ai-connections",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "models/connection intents",
+   "path": "/api/companies/{c}/connection-intents",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "secrets/list",
+   "path": "/api/companies/{c}/secrets",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "secrets/providers",
+   "path": "/api/companies/{c}/secret-providers",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "secrets/provider configs",
+   "path": "/api/companies/{c}/secret-provider-configs",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "skills/company",
+   "path": "/api/companies/{c}/skills",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "skills/catalog",
+   "path": "/api/skills/catalog",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "skills/sources",
+   "path": "/api/companies/{c}/skill-sources",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/list",
+   "path": "/api/companies/{c}/issues",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/get",
+   "path": "/api/issues/{i}",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/comments",
+   "path": "/api/issues/{i}/comments",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/heartbeat context",
+   "path": "/api/issues/{i}/heartbeat-context",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "issues/documents",
+   "path": "/api/issues/{i}/documents",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/work products",
+   "path": "/api/issues/{i}/work-products",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/attachments",
+   "path": "/api/issues/{i}/attachments",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/labels",
+   "path": "/api/companies/{c}/labels",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/tree control",
+   "path": "/api/issues/{i}/tree-control/state",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "issues/approvals",
+   "path": "/api/issues/{i}/approvals",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "issues/interactions",
+   "path": "/api/issues/{i}/interactions",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "projects/list",
+   "path": "/api/companies/{c}/projects",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "projects/get",
+   "path": "/api/projects/{p}",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "projects/workspaces",
+   "path": "/api/projects/{p}/workspaces",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "projects/access members",
+   "path": "/api/projects/{p}/access-members",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "routines/list",
+   "path": "/api/companies/{c}/routines",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "workspaces/execution",
+   "path": "/api/companies/{c}/execution-workspaces",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "approvals/list",
+   "path": "/api/companies/{c}/approvals",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "governance/decisions",
+   "path": "/api/companies/{c}/decisions",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "costs/summary",
+   "path": "/api/companies/{c}/costs/summary",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "costs/by agent",
+   "path": "/api/companies/{c}/costs/by-agent",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "costs/finance",
+   "path": "/api/companies/{c}/costs/finance-summary",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "costs/window spend",
+   "path": "/api/companies/{c}/costs/window-spend",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "budgets/overview",
+   "path": "/api/companies/{c}/budgets/overview",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "budgets/policies",
+   "path": "/api/companies/{c}/budgets/policies",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "runs/heartbeat list",
+   "path": "/api/companies/{c}/heartbeat-runs",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "runs/live",
+   "path": "/api/companies/{c}/live-runs",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "runs/scheduler",
+   "path": "/api/instance/scheduler-heartbeats",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "activity/list",
+   "path": "/api/companies/{c}/activity",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "search/query",
+   "path": "/api/companies/{c}/search?q=a",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "dashboard",
+   "path": "/api/companies/{c}/dashboard",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "sidebar/badges",
+   "path": "/api/companies/{c}/sidebar-badges",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "inbox/dismissals",
+   "path": "/api/companies/{c}/inbox-dismissals",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "attention",
+   "path": "/api/companies/{c}/attention",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/gallery (apps/MCP connectors)",
+   "path": "/api/companies/{c}/tools/gallery",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/connections",
+   "path": "/api/companies/{c}/tools/connections",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/profiles",
+   "path": "/api/companies/{c}/tools/profiles",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/policies",
+   "path": "/api/companies/{c}/tools/policies",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/action requests",
+   "path": "/api/companies/{c}/tools/action-requests",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "tools/applications",
+   "path": "/api/companies/{c}/tool-applications",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "mcp/aggregators",
+   "path": "/api/companies/{c}/mcp-aggregators",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "plugins/list",
+   "path": "/api/plugins",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "plugins/ui contributions",
+   "path": "/api/plugins/ui-contributions",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "plugins/examples",
+   "path": "/api/plugins/examples",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "chat/endpoints",
+   "path": "/api/companies/{c}/chat-endpoints",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "chat/board",
+   "path": "/api/companies/{c}/chats",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "email/status",
+   "path": "/api/companies/{c}/email",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "artifacts/list",
+   "path": "/api/companies/{c}/artifacts",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "folders",
+   "path": "/api/companies/{c}/folders",
+   "native": 400,
+   "epc": 404,
+   "state": "differs"
+  },
+  {
+   "cap": "teams/catalog",
+   "path": "/api/teams/catalog",
+   "native": 500,
+   "epc": 404,
+   "state": "differs"
+  },
+  {
+   "cap": "resource memberships (me)",
+   "path": "/api/companies/{c}/resource-memberships/me",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "admin/instance general",
+   "path": "/api/instance/settings/general",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "admin/experimental",
+   "path": "/api/instance/settings/experimental",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "admin/db backups",
+   "path": "/api/instance/database-backups",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "admin/users",
+   "path": "/api/admin/users",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "identity/cli-auth me",
+   "path": "/api/cli-auth/me",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "identity/user profile",
+   "path": "/api/users/me/profile",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "health",
+   "path": "/api/health",
+   "native": 200,
+   "epc": 200,
+   "state": "same"
+  },
+  {
+   "cap": "llms/agent config doc",
+   "path": "/llms/agent-configuration.txt",
+   "native": 200,
+   "epc": 404,
+   "state": "closed at proxy"
+  },
+  {
+   "cap": "announcements",
+   "path": "/api/companies/{c}/announcements",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "status cards",
+   "path": "/api/companies/{c}/status-cards",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  },
+  {
+   "cap": "voice sessions",
+   "path": "/api/companies/{c}/voice-sessions",
+   "native": 404,
+   "epc": 404,
+   "state": "same"
+  }
+ ]
+}
