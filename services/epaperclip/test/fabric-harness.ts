@@ -58,7 +58,7 @@ export function newWorker(o: { dir?: string; caps?: Partial<Capabilities>; name?
   c.workspaceRoot = root;
   if (o.name) c.name = o.name;
   files.saveConfig(c);
-  const client = new WorkerClient({ files, backoff: { minMs: 50, maxMs: 300 }, detect: async (cc) => fakeCaps(cc.workspaceRoot, o.caps), version: "test" });
+  const client = new WorkerClient({ files, backoff: { minMs: 50, maxMs: 300 }, detect: async (cc) => fakeCaps(cc.workspaceRoot, o.caps), version: "test", statsMs: 100 });
   return { client, files, dir, root };
 }
 

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { LIMITS, ServerHandshake, fingerprint, generateIdentity, select, sha256hex, verificationString, newPairingSecret, encodePairing, type Candidate, type Capabilities, type Heartbeat, type Identity, type Requirements, type Transport, endpointsFor, type SchedRequest } from "@papercliped-engine/worker-fabric";
+import { LIMITS, ServerHandshake, manageMessage, signWith, type ManageEnvelope, fingerprint, generateIdentity, select, sha256hex, verificationString, newPairingSecret, encodePairing, type Candidate, type Capabilities, type Heartbeat, type Identity, type Requirements, type Transport, endpointsFor, type SchedRequest } from "@papercliped-engine/worker-fabric";
 import type { StateStore } from "../state.ts";
+import { StatsStore, cleanStats, type HistoryPoint } from "./stats.ts";
 import { HttpError } from "../http.ts";
 
 /**
@@ -84,6 +85,8 @@ export interface HubOptions {
 }
 
 const SETTING = "fabric";
+const STATS_SETTING = "fabric.stats";
+const MANAGE_ACTIONS = new Set(["restart-worker", "restart-ollama", "model-pull", "model-remove", "update", "logs", "stats"]);
 const AUDIT_MAX = 600;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const sanitizeKey = (s: string) => s.replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^[.-]+/, "").slice(0, 64) || "x";
@@ -103,6 +106,7 @@ export class FabricHub {
   private readonly hbMs: number;
   private readonly transports: () => Transport[];
   private sweepTimer: NodeJS.Timeout | null = null;
+  private readonly statsStore: StatsStore;
   private readonly unauthed = new Map<string, number>();
 
   constructor(o: HubOptions) {
@@ -120,6 +124,7 @@ export class FabricHub {
       this.write({ ...this.read(), hostPublic: pub });
     }
     this.host = { privatePem: priv, publicKey: pub };
+    this.statsStore = new StatsStore(this.state.getSetting<Record<string, HistoryPoint[]>>(STATS_SETTING) ?? {});
   }
 
   // ---- state
@@ -476,6 +481,12 @@ export class FabricHub {
         if (hb && typeof hb === "object") conn.hb = { at: this.now(), loadAvg: num(hb.loadAvg), freeMemMb: num(hb.freeMemMb), running: num(hb.running) ?? 0, inferenceRunning: num(hb.inferenceRunning) ?? 0, inferenceQueued: num(hb.inferenceQueued) ?? 0 };
         break;
       }
+      case "stats": {
+        const st = cleanStats(m.stats, this.now());
+        if (st && this.statsStore.add(conn.workerId, st)) this.state.setSetting(STATS_SETTING, this.statsStore.snapshot());
+        if (st) this.emit("stats", { id: conn.workerId });
+        break;
+      }
       case "caps": {
         const caps = m.caps as Capabilities;
         if (!caps || typeof caps !== "object" || typeof caps.arch !== "string") break;
@@ -579,7 +590,51 @@ export class FabricHub {
     if (w.state !== "revoked") throw new HttpError(409, "not_revoked", "Revoke the worker before removing its record.");
     // The key stays on the deny list.
     this.mutate((s) => { delete s.workers[id]; for (const [k, l] of Object.entries(s.leases)) if (l.workerId === id) delete s.leases[k]; });
+    this.statsStore.drop(id);
+    this.state.setSetting(STATS_SETTING, this.statsStore.snapshot());
     this.audit(by, "worker.forget", id);
+  }
+
+  /** Latest sample plus recent (about an hour) and 24 hour history for the console charts. */
+  stats(id: string) {
+    if (!this.worker(id)) throw new HttpError(404, "not_found", "No such worker.");
+    return { online: this.online(id), ...this.statsStore.get(id) };
+  }
+
+  /**
+   * A management action, signed with the host key and audited with who asked. The worker verifies the signature against the
+   * key it pinned at adoption, so only this host can make a worker do any of these. Parameters are checked again on the worker.
+   */
+  async manage(by: string, id: string, action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    const w = this.worker(id);
+    if (!w || w.state !== "adopted") throw new HttpError(404, "not_found", "No such worker.");
+    if (!MANAGE_ACTIONS.has(action)) throw new HttpError(400, "bad_request", "Unknown management action.");
+    const clean: Record<string, unknown> = {};
+    if (action === "model-pull" || action === "model-remove") {
+      if (typeof params.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._\-/]{0,80}(:[A-Za-z0-9._\-]{1,40})?$/.test(params.name)) throw new HttpError(400, "bad_request", "That is not a valid model name.");
+      clean.name = params.name;
+    }
+    if (action === "logs") {
+      if (!["worker", "ollama", "tailscale"].includes(String(params.unit))) throw new HttpError(400, "bad_request", "unit must be worker, ollama or tailscale.");
+      clean.unit = params.unit;
+      clean.lines = Math.max(10, Math.min(500, Math.floor(Number(params.lines ?? 100)) || 100));
+    }
+    if (action === "update") {
+      if (typeof params.url !== "string" || !/^https:\/\/\S{4,480}$/.test(params.url) || typeof params.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(params.sha256)) throw new HttpError(400, "bad_request", "An update needs an https:// address and the 64 character sha256 of the tarball.");
+      clean.url = params.url;
+      clean.sha256 = params.sha256;
+    }
+    const base = { action, params: clean, workerId: id, ts: this.now(), nonce: randomBytes(12).toString("base64url") } as Omit<ManageEnvelope, "sig">;
+    const env: ManageEnvelope = { ...base, sig: signWith(this.host, Buffer.from(manageMessage(base))) };
+    const detail = action === "logs" ? String(clean.unit) : (clean.name as string | undefined) ?? (clean.url as string | undefined) ?? "";
+    try {
+      const r = await this.call(id, "manage", env, action === "update" ? 180_000 : action === "restart-ollama" ? 90_000 : 45_000);
+      this.audit(by, `manage.${action}`, id, `ok ${detail}`.trim());
+      return r;
+    } catch (e) {
+      this.audit(by, `manage.${action}`, id, `failed ${detail}: ${(e as Error).message}`.slice(0, 280));
+      throw e;
+    }
   }
 
   refresh(id: string) {
