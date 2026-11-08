@@ -117,4 +117,5 @@ check "user settings kept" test -f "$HOME/.local/share/epaperclip-worker/config.
 nocheck "no Node and no --fetch-node: refused" env PATH="$H/bin:/nonexistent" EPW_NODE=/no/node bash "$PKG/install.sh" --user --check
 
 echo; echo "worker installer: $pass passed, $fail failed"
+bash "$HERE/bootstrap.sh" || fail=$((fail+1))
 [ "$fail" = 0 ]

@@ -23,7 +23,7 @@ async function main() {
       return;
     }
     case "adopt": {
-      const code = rest.find((a) => !a.startsWith("--"));
+      const code = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
       const c = new WorkerClient({ files, log });
       if (code) c.adopt(code);
       else if (flag("url") && flag("host-key")) c.requestAdoption(flag("host-key")!, [{ provider: flag("provider") ?? "custom", url: flag("url")! }]);
