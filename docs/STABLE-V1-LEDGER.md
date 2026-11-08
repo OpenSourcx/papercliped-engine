@@ -263,3 +263,5 @@ Labels: I implemented, L local tests, CI GitHub run, E live engine 2026.1023.0, 
 | 19 | Final report | see the lead's report |
 
 Known limits: no reboot test; the per-agent lifecycle verification on the disposable engine needed the stand-in CLI to be named `claude`; the shell is not sandboxed; no live test on a second physical machine; Execute has no abort signal (cancel works through lease stop); transfers over 40 MB per command are refused.
+
+Parity with native Paperclip 2026.1023.0: see [PAPERCLIP-PARITY-MATRIX.md](PAPERCLIP-PARITY-MATRIX.md) and [DIFFERENTIATION-MATRIX.md](DIFFERENTIATION-MATRIX.md) (PR #23).
