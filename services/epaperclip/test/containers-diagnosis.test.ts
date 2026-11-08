@@ -256,7 +256,7 @@ describe("agent containers: the token's rights", () => {
     expect(job.status).toBe("done");
     expect(job.steps.map((x: any) => x.id)).toEqual(["grant"]);
     expect(pve.calls.filter((c) => c.method === "PUT" && c.path === "/access/acl").length - before).toBe(1);
-    expect(titles(job)).toContain(`Granted EPCSandbox on /pool/${pool} to the epc`);
+    expect(titles(job)).toContain(`Granted EPCSandbox on /pool/${pool} to the epaperclip-sandbox@pve`);
     s = await status(sam);
     expect(s.state).toBe("ready");
     expect(s.grantMissing).toEqual([]);
@@ -264,7 +264,7 @@ describe("agent containers: the token's rights", () => {
 
   it("treats an entry that does not reach the pool's members as missing", async () => {
     const { sam, pool } = await ready();
-    pve.acl.find((a) => a.path === `/pool/${pool}` && a.type === "user")!.propagate = 0;
+    pve.acl.find((a) => a.path === `/pool/${pool}` && a.type === "user" && a.roleid === "EPCSandbox")!.propagate = 0;
     const s = await status(sam);
     expect(s.grantMissing.map((x: any) => x.why)).toContain("not-inherited");
   });
