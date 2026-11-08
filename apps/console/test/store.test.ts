@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStoreItems, filterItems, tileHue } from "../src/pages/store/catalog.ts";
+import { buildStoreItems, filterItems } from "../src/pages/store/catalog.ts";
 import { demoBackend } from "../src/data/backend.ts";
 
 const base = { catalog: [], isoFiles: {}, tplFiles: {}, latest: {}, installedPlugins: new Set<string>() };
@@ -36,11 +36,6 @@ describe("the Store's catalog", () => {
     expect(filterItems(items, "home", "ALPINE").map((i) => i.id)).toEqual(["alpine"]);
     expect(filterItems(items, "os", "nothing-like-this")).toEqual([]);
   });
-
-  it("gives a name the same colour every time", () => {
-    expect(tileHue("Debian")).toBe(tileHue("Debian"));
-    expect(tileHue("Debian")).toBeGreaterThanOrEqual(0);
-  });
 });
 
 describe("catalog entries from the marketplace", () => {
@@ -58,5 +53,14 @@ describe("the demo's installer lookup", () => {
     const b = demoBackend(() => []);
     expect((await b.libraryLatest("alpine")).filename).toMatch(/^alpine-virt-/);
     await expect(b.libraryLatest("windows-11")).rejects.toThrow();
+  });
+});
+
+describe("the Plugins section's groups", () => {
+  it("splits plugins into model providers, app connectors, adapters and skills", async () => {
+    const { pluginGroup } = await import("../src/pages/store/catalog.ts");
+    const items = buildStoreItems(base).filter((i) => i.category === "plugin");
+    const g = (id: string) => pluginGroup(items.find((i) => i.id === id)!);
+    expect([g("openai"), g("github"), g("codex_local"), g("weekly-report")]).toEqual(["model", "connector", "adapter", "skill"]);
   });
 });

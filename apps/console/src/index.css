@@ -758,5 +758,5 @@ body {
  * allow src/pages/Appearance.tsx | colour | the accent swatches and colour picker are literal colours the user chooses
  * allow src/ui/Select.tsx | control | the dropdown is a real <select> underneath, by design
  * allow src/ui/Slider.tsx | control | the slider is a real range input underneath, by design
- * allow src/data/brandIcons.ts | colour | third-party brand marks keep their own colours
+ * allow src/data/brandIcons.ts | colour, motion | third-party brand marks keep their own colours, and SVG path data can look like a "1s" timing
  */

@@ -1,10 +1,9 @@
 import { useConfirm } from "../../ui/Confirm.tsx";
-import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Box, Check, Download, ExternalLink, FileUp, Loader2, Package, Puzzle, Search, Store as StoreIcon, Trash2 } from "lucide-react";
-import { BRAND_ICONS } from "../../data/brandIcons.ts";
+import { BrandMark } from "../../ui/BrandMark.tsx";
 import { ApiError } from "../../data/api.ts";
 import { connectApi } from "../../data/engine/connectApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
@@ -13,25 +12,16 @@ import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, selectClass, Select } from "../../ui/primitives.tsx";
 import { storagesWith } from "../storage/content.ts";
-import { CATEGORIES, filterItems, statusLabel, tileHue, type Category, type StoreItem } from "./catalog.ts";
+import { CATEGORIES, PLUGIN_GROUPS, filterItems, pluginGroup, statusLabel, type Category, type StoreItem } from "./catalog.ts";
 import { useStoreItems } from "./useStore.ts";
 
 const select = selectClass;
 
-/** An item's logo from the icons the console ships with, or a coloured monogram when there isn't one. */
+/** An item's official mark, or a labelled generic glyph when it has none. */
 function Tile({ id, name, size = 44 }: { id: string; name: string; size?: number }) {
-  const icon = BRAND_ICONS[id];
-  if (icon) {
-    return (
-      <span className="grid place-items-center rounded-xl bg-surface-2 border border-line text-ink shrink-0" style={{ width: size, height: size }}>
-        <svg viewBox="0 0 24 24" width={size * 0.55} height={size * 0.55} fill="currentColor" role="img" aria-label={icon.title}><path d={icon.path} /></svg>
-      </span>
-    );
-  }
-  const h = tileHue(name);
   return (
-    <span className="identity-gradient grid place-items-center rounded-xl font-semibold shrink-0" style={{ width: size, height: size, fontSize: size * 0.42, "--hue": h } as CSSProperties} aria-hidden>
-      {name.replace(/[^A-Za-z0-9]/g, "").slice(0, 1).toUpperCase()}
+    <span className="grid place-items-center rounded-xl bg-surface-2 border border-line text-ink shrink-0" style={{ width: size, height: size }}>
+      <BrandMark id={id} name={name} size={Math.round(size * 0.55)} />
     </span>
   );
 }
@@ -91,6 +81,11 @@ export function Store() {
         CATEGORIES.map((c) => {
           const list = items.filter((i) => i.category === c.id);
           return list.length ? <section key={c.id} className="mb-7"><h2 className="text-sm font-medium">{c.label}</h2><p className="text-xs text-ink-3 mb-2.5">{c.blurb}</p>{grid(list.slice(0, 6))}{list.length > 6 && <button className="text-compact text-ink-2 hover:text-ink mt-2" onClick={() => setCat(c.id)}>See all {list.length}</button>}</section> : null;
+        })
+      ) : cat === "plugin" && !q && shown.length ? (
+        PLUGIN_GROUPS.map((g) => {
+          const list = shown.filter((i) => pluginGroup(i) === g.id);
+          return list.length ? <section key={g.id} className="mb-7"><h2 className="text-sm font-medium">{g.label}</h2><p className="text-xs text-ink-3 mb-2.5">{g.blurb}</p>{grid(list)}</section> : null;
         })
       ) : shown.length ? grid(shown) : loading ? (
         <div className="py-16 grid place-items-center text-ink-3"><Loader2 className="h-5 w-5 animate-spin" /></div>

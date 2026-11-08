@@ -87,16 +87,20 @@ export function buildStoreItems(i: BuildInput): StoreItem[] {
   return items;
 }
 
+/** The groups the Plugins section is split into. */
+export const PLUGIN_GROUPS = [
+  { id: "model", label: "Model providers", blurb: "Where agents and Pin get their models." },
+  { id: "connector", label: "App connectors", blurb: "Code, chat, mail and network apps agents can use." },
+  { id: "adapter", label: "Agent adapters", blurb: "Ways to run an agent: Claude Code, Codex and more." },
+  { id: "skill", label: "Skills", blurb: "Jobs Pin learns." },
+] as const;
+export type PluginGroup = (typeof PLUGIN_GROUPS)[number]["id"];
+export const pluginGroup = (it: StoreItem): PluginGroup => (it.kind === "adapter" ? "adapter" : it.kind === "skill" ? "skill" : it.plugin?.connectorKind === "model" ? "model" : "connector");
+
 export function filterItems(items: StoreItem[], category: Category | "home", query: string): StoreItem[] {
   const q = query.trim().toLowerCase();
   return items.filter((it) => (category === "home" || it.category === category) && (!q || `${it.name} ${it.vendor} ${it.summary}`.toLowerCase().includes(q)));
 }
 
-/** A steady colour for an item's tile, from its name. Identity only, never data. */
-export function tileHue(name: string): number {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return h;
-}
 
 export const statusLabel = (s: StoreItem): string => (s.status === "installed" ? "Installed" : s.status === "update" ? "Update available" : s.status === "manual" ? "Bring your own ISO" : "Not installed");

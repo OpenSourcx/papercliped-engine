@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Bot, Cable, ExternalLink, Plus, Server, Trash2 } from "lucide-react";
-import { BRAND_ICONS } from "../../data/brandIcons.ts";
+import { hasOfficialMark } from "../../data/brandMarks.ts";
+import { BrandMark } from "../../ui/BrandMark.tsx";
 import { connectApi, type CatalogEntry, type Connection } from "../../data/engine/connectApi.ts";
 import { qk } from "../../data/engine/keys.ts";
 import { ago } from "../../data/engine/map.ts";
@@ -17,10 +18,9 @@ const KEY = ["connect", "connections"] as const;
 const pidOf = (c: Connection) => (c.builtin ? c.id : `x:${c.id}`);
 
 function Logo({ c }: { c: Connection }) {
-  const b = BRAND_ICONS[c.catalog];
   return (
     <span className="h-8 w-8 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2 shrink-0">
-      {b ? <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" role="img" aria-label={b.title}><path d={b.path} /></svg> : c.entry.kind === "hosted" ? <Bot className="h-4 w-4" aria-hidden /> : <Server className="h-4 w-4" aria-hidden />}
+      {hasOfficialMark(c.catalog) ? <BrandMark id={c.catalog} name={c.label ?? c.catalog} size={18} /> : c.entry.kind === "hosted" ? <Bot className="h-4 w-4" aria-hidden /> : <Server className="h-4 w-4" aria-hidden />}
     </span>
   );
 }
