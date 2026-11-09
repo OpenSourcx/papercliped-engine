@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 const pinSettings = { current: { provider: "anthropic", model: "claude-x" } as { provider: string | null; model: string | null } };
 const orgList = { current: [] as { id: string; name: string; status: string; issuePrefix: string }[] };
@@ -19,6 +19,7 @@ vi.mock("../src/data/engine/queries.ts", async (orig) => ({
 }));
 
 import { StartCompany } from "../src/pages/start/StartCompany.tsx";
+import { useModals } from "../src/modals/useModals.ts";
 
 interface Call { method: string; path: string; body: any }
 let calls: Call[];
@@ -62,6 +63,27 @@ async function throughName() {
 }
 
 describe("start a company", () => {
+  it("opens Agent containers in front of the wizard and returns to it, keeping what was typed", async () => {
+    handlers["GET /api/agent-containers"] = () => ({ state: "not_set_up", canManage: true, steps: [], environments: [] });
+    function Host() {
+      const m = useModals();
+      return <><output data-testid="url">{useLocation().search}</output><button type="button" onClick={m.closeSettings}>Close settings</button><StartCompany onClose={m.close} /></>;
+    }
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={["/pve/home?modal=new-org"]}><Host /></MemoryRouter></QueryClientProvider>);
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Northwind" } });
+    const wizard = screen.getByRole("region", { name: "Start a company" });
+    next("Set up");
+    await waitFor(() => expect(wizard.hidden).toBe(true));
+    const url = () => new URLSearchParams(screen.getByTestId("url").textContent ?? "");
+    expect(url().get("settings")).toBe("agent-containers");
+    expect(url().get("modal")).toBe("new-org");
+    next("Close settings");
+    await waitFor(() => expect(wizard.hidden).toBe(false));
+    expect(url().get("settings")).toBeNull();
+    expect(url().get("modal")).toBe("new-org");
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Northwind");
+  });
+
   it("goes back through an existing company without creating it twice", async () => {
     wrap();
     await throughName();
