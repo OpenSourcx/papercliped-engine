@@ -1108,13 +1108,15 @@ export class AgentContainers {
     this.log(job, "info", `Creating unprivileged container ${vmid}`);
     let created = false;
     try {
+      // Proxmox lets only root@pam set features other than nesting, so another administrator's request for keyctl is refused.
+      let features = "nesting=1,keyctl=1";
       const create = async () => {
-        const upid = await pve.createLxc(node, {
+        const spec = {
           vmid,
           ostemplate: volid,
           hostname: TEMPLATE_HOSTNAME,
           unprivileged: true,
-          features: "nesting=1,keyctl=1",
+          features,
           ostype: "debian",
           cores: 2,
           memory: 2048,
@@ -1126,7 +1128,16 @@ export class AgentContainers {
           tags: `${TAG};${TEMPLATE_TAG}`,
           "ssh-public-keys": pub,
           description: "Agent template for the ePaperclip Proxmox sandbox provider. Built by ePaperclip's guided setup.",
-        });
+        };
+        let upid: string;
+        try {
+          upid = await pve.createLxc(node, spec);
+        } catch (e) {
+          if (!/only allowed for root@pam/.test(String((e as Error).message))) throw e;
+          this.log(job, "warn", "Proxmox lets only root@pam set keyctl; creating the container with nesting=1 only");
+          features = "nesting=1";
+          upid = await pve.createLxc(node, { ...spec, features });
+        }
         await this.task(pve, upid, "Creating the container", 600_000, { vmid });
         // Proxmox records the template's own architecture in this task's log. Verify it rather than trusting the name.
         const unpacked = await this.detectedArch(pve, upid);
@@ -1136,8 +1147,8 @@ export class AgentContainers {
         // nesting (and keyctl for its session keyring).
         const cfg = await pve.lxcConfig(node, vmid).catch(() => ({}) as Record<string, string | number | undefined>);
         if (!String(cfg.features ?? "").includes("nesting")) {
-          this.log(job, "warn", `Proxmox created ${vmid} without nesting; setting nesting=1,keyctl=1`);
-          await pve.setLxcConfig(node, vmid, { features: "nesting=1,keyctl=1" });
+          this.log(job, "warn", `Proxmox created ${vmid} without nesting; setting ${features}`);
+          await pve.setLxcConfig(node, vmid, { features });
         }
         return upid;
       };
