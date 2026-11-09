@@ -286,7 +286,12 @@ export function useContainersSetup() {
 
 export function useContainersStep() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: host.agentContainers.step, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
+  return useMutation({ mutationFn: (v: "grant" | "plugin" | "environments" | "template" | { id: "grant" | "plugin" | "environments" | "template"; force?: boolean }) => (typeof v === "string" ? host.agentContainers.step(v) : host.agentContainers.step(v.id, v.force)), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
+}
+
+export function useContainersSettings() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: host.agentContainers.settings, onSuccess: () => qc.invalidateQueries({ queryKey: qk.agentContainers }) });
 }
 
 export function useContainersTeardown() {

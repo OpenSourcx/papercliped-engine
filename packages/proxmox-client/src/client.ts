@@ -511,6 +511,19 @@ export class ProxmoxClient {
     return this.call<{ type?: string; active?: number; enabled?: number; avail?: number; total?: number; used?: number; content?: string; shared?: number }>("GET", `/nodes/${seg(node)}/storage/${seg(storage)}/status`);
   }
 
+  /** A storage's configuration (`/storage/<id>`): its type, content, and for `dir` storage its path. */
+  storageConfig(storage: string) {
+    return this.call<{ storage?: string; type?: string; content?: string; path?: string; "is_mountpoint"?: string | number; shared?: number }>("GET", `/storage/${seg(storage)}`);
+  }
+
+  /**
+   * The filesystems Proxmox itself mounted for `dir` storages on a node: path, fs type and mount options. This is how the
+   * API can answer "does this storage support unprivileged containers?" without a shell on the host.
+   */
+  nodeStorageDirectories(node: string) {
+    return this.call<{ path?: string; type?: string; device?: string; options?: string; unitfile?: string }[]>("GET", `/nodes/${seg(node)}/disks/directory`);
+  }
+
   /** The effective privileges of a user or API token on a path (what Proxmox will really allow). */
   async effectivePrivileges(path: string, userid: string): Promise<Record<string, number>> {
     const r = await this.call<Record<string, Record<string, number>>>("GET", "/access/permissions", { path, userid });

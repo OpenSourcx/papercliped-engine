@@ -345,7 +345,20 @@ export function fakePve() {
   const failLogs = new Map<string, string[]>();
   const taskLines = new Map<string, string[]>();
   /** The node's journal, the container config extras and the storage status the fake serves. */
-  const host = { journal: [] as string[], storage: { type: "lvmthin", active: 1, avail: 100 * 1024 ** 3 } as Record<string, unknown>, features: undefined as string | undefined, startFailsWithFeatures: false, corruptOnce: false, version: "9.0.3", fileSizes: new Map<string, number>() };
+  const host = {
+    journal: [] as string[],
+    storage: { type: "lvmthin", active: 1, avail: 100 * 1024 ** 3 } as Record<string, unknown>,
+    features: undefined as string | undefined,
+    startFailsWithFeatures: false,
+    corruptOnce: false,
+    version: "9.0.3",
+    fileSizes: new Map<string, number>(),
+    /** The template catalog (a test can list both architectures, as a real synced host did). */
+    catalog: undefined as string[] | undefined,
+    /** `GET /storage/<id>` for a dir storage, and what `/disks/directory` says about it. */
+    storageConfig: { storage: "local", type: "dir", path: "/var/lib/vz", content: "vztmpl,rootdir,iso" } as Record<string, unknown>,
+    directories: [] as { path?: string; type?: string; options?: string }[],
+  };
   const catalog = ["debian-12-standard_12.7-1_amd64.tar.zst", "debian-12-standard_12.12-1_amd64.tar.zst", "debian-13-standard_13.1-2_amd64.tar.zst", "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"];
   let nextVmid = 9000;
   const task = (what: string, fail?: string) => {
@@ -460,7 +473,7 @@ export function fakePve() {
     }
     if (path === "/nodes/pve/storage") return ok([{ storage: "local", type: "dir", active: 1, enabled: 1 }, { storage: "local-lvm", type: "lvmthin", active: 1, enabled: 1 }].filter((x) => (u.searchParams.get("content") === "vztmpl" ? x.storage === "local" : true)));
     if (path === "/nodes/pve/network") return ok([{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }]);
-    if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok(catalog.map((template) => ({ template, type: "lxc", section: "system" })));
+    if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok((host.catalog ?? catalog).map((template) => ({ template, type: "lxc", section: "system" })));
     if (path === "/nodes/pve/aplinfo" && req.method === "POST") {
       if (!admin) return deny;
       const upid = task("download");
@@ -480,6 +493,9 @@ export function fakePve() {
     const sstat = path.match(/^\/nodes\/pve\/storage\/([\w-]+)\/status$/);
     if (sstat) return ok(host.storage);
     if (path === "/nodes/pve/journal") return ok(host.journal);
+    if (path === "/nodes/pve/disks/directory") return ok(host.directories);
+    const stor = path.match(/^\/storage\/([\w-]+)$/);
+    if (stor && req.method === "GET") return ok(host.storageConfig);
     if (path === "/cluster/nextid") {
       while (guests.has(nextVmid)) nextVmid++;
       return ok(String(nextVmid));
@@ -501,7 +517,13 @@ export function fakePve() {
         taskLines.set(upid, ["extracting archive 'local:vztmpl/debian.tar.zst'", "zstd: /var/lib/vz/template/cache/debian.tar.zst: unexpected end of file", "tar: Unexpected EOF in archive", "TASK ERROR: " + exit]);
         return ok(upid);
       }
-      return ok(task("create"));
+      const upid = task("create");
+      // A real create task log names the template it unpacked and the architecture it detected. That line is what lets
+      // the diagnosis (and the setup itself) catch an arm64 template on an amd64 host with certainty.
+      const ostemplate = f.get("ostemplate") ?? "";
+      const arch = /_arm64\./.test(ostemplate) ? "arm64" : "amd64";
+      taskLines.set(upid, [`extracting archive '${ostemplate}'`, `Detected container architecture: ${arch}`, "TASK OK"]);
+      return ok(upid);
     }
     const ct = path.match(/^\/nodes\/pve\/lxc\/(\d+)(?:\/(config|status\/start|status\/shutdown|status\/stop|interfaces|template))?$/);
     if (ct && guests.has(Number(ct[1]))) {

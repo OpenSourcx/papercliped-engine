@@ -140,7 +140,7 @@ describe("agent containers setup", () => {
 
     // The template: an unprivileged container, tagged, created with our public key, provisioned over ssh, then converted.
     const g = pve.guests.get(9000)!;
-    expect(g).toMatchObject({ unprivileged: 1, template: 1, tags: "epaperclip;epaperclip-template", features: "nesting=1" });
+    expect(g).toMatchObject({ unprivileged: 1, template: 1, tags: "epaperclip;epaperclip-template", features: "nesting=1,keyctl=1" });
     expect(String(g["ssh-public-keys"])).toMatch(/^ssh-ed25519 /);
     expect(ssh.st.scripts).toHaveLength(1);
     expect(ssh.st.scripts[0]).toContain("NODE_VERSION='24.21.0'");
@@ -476,6 +476,43 @@ describe("keeping agents off the host", () => {
     expect(s.steps.find((x: any) => x.id === "enforce").done).toBe(false);
     await app.containers.enforce();
     expect((await status(sam)).steps.find((x: any) => x.id === "enforce").done).toBe(true);
+  });
+
+  it("resumes from the first unfinished step instead of redoing what is already in place", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    const creates = () => pve.calls.filter((c) => c.method === "POST" && c.path === "/nodes/pve/lxc").length;
+    const before = creates();
+    const again = await runSetup(sam);
+    expect(again.status).toBe("done");
+    expect(again.log.map((l: any) => l.text).join("\n")).toContain("already in place");
+    // Nothing was created a second time, and no new token was made.
+    expect(creates()).toBe(before);
+    expect(pve.tokenSecrets).toHaveLength(1);
+  });
+
+  it("applies a storage change without rebuilding the template", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam, { storage: "local-lvm" })).status).toBe("done");
+    const creates = () => pve.calls.filter((c) => c.method === "POST" && c.path === "/nodes/pve/lxc").length;
+    const before = creates();
+    const start = await send("POST", "/api/agent-containers/settings", sam, { storage: "local" });
+    expect(start.status).toBeLessThan(300);
+    let job: any;
+    for (let i = 0; i < 400; i++) {
+      job = (await send("GET", `/api/agent-containers/jobs/${start.json.jobId}`, sam)).json;
+      if (job.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(job.status).toBe("done");
+    // The template was kept; the organization's environment now points at the new storage.
+    expect(creates()).toBe(before);
+    const s = await status(sam);
+    expect(s.params.storage).toBe("local");
+    const env = [...eng.st.envs.values()].find((e: any) => e.metadata?.companyId === co);
+    expect(env?.config?.storage).toBe("local");
   });
 });
 
