@@ -278,6 +278,19 @@ describe("leases, workspaces and execution", () => {
     expect(existsSync(l.json.workspace)).toBe(true);
   });
 
+  it("refuses a command that arrives while the lease is being stopped, so nothing outlives a stopped lease", async () => {
+    const { h, token } = await setup();
+    const l = await acquire(h, token, "agent-race");
+    const marker = join(l.json.workspace, "late.txt");
+    // Not awaited: the stop is in flight (cancel sent to the worker) while the lease is still being closed.
+    const stop = control(h, token, `/control/v1/leases/${l.json.leaseId}/stop`, {});
+    const late = await exec(h, token, l.json.leaseId, { command: "sh", args: ["-c", `sleep 1; echo ran > ${marker}`] });
+    expect((await stop).json.state).toBe("stopped");
+    await sleep(1800);
+    expect(late.lines.at(-1)).toMatchObject({ ev: "error", code: "lease_inactive" });
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("times out a command", async () => {
     const { h, token } = await setup();
     const l = await acquire(h, token, "agent-t");
