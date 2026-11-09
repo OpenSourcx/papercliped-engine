@@ -1077,6 +1077,7 @@ export class AgentContainers {
         g = undefined;
       } else {
         this.log(job, "info", `Template ${vmid} already exists${st.templateArch ? ` (built for ${st.templateArch})` : ""}`);
+        this.save({ templateAttempts: 0, lastTemplateError: undefined }); // a usable template ends the failure streak
         return `Template ${vmid}`;
       }
     }
@@ -1108,13 +1109,15 @@ export class AgentContainers {
     this.log(job, "info", `Creating unprivileged container ${vmid}`);
     let created = false;
     try {
+      // Proxmox lets only root@pam set features other than nesting, so another administrator's request for keyctl is refused.
+      let features = "nesting=1,keyctl=1";
       const create = async () => {
-        const upid = await pve.createLxc(node, {
+        const spec = {
           vmid,
           ostemplate: volid,
           hostname: TEMPLATE_HOSTNAME,
           unprivileged: true,
-          features: "nesting=1,keyctl=1",
+          features,
           ostype: "debian",
           cores: 2,
           memory: 2048,
@@ -1126,7 +1129,16 @@ export class AgentContainers {
           tags: `${TAG};${TEMPLATE_TAG}`,
           "ssh-public-keys": pub,
           description: "Agent template for the ePaperclip Proxmox sandbox provider. Built by ePaperclip's guided setup.",
-        });
+        };
+        let upid: string;
+        try {
+          upid = await pve.createLxc(node, spec);
+        } catch (e) {
+          if (!/only allowed for root@pam/.test(String((e as Error).message))) throw e;
+          this.log(job, "warn", "Proxmox lets only root@pam set keyctl; creating the container with nesting=1 only");
+          features = "nesting=1";
+          upid = await pve.createLxc(node, { ...spec, features });
+        }
         await this.task(pve, upid, "Creating the container", 600_000, { vmid });
         // Proxmox records the template's own architecture in this task's log. Verify it rather than trusting the name.
         const unpacked = await this.detectedArch(pve, upid);
@@ -1136,8 +1148,8 @@ export class AgentContainers {
         // nesting (and keyctl for its session keyring).
         const cfg = await pve.lxcConfig(node, vmid).catch(() => ({}) as Record<string, string | number | undefined>);
         if (!String(cfg.features ?? "").includes("nesting")) {
-          this.log(job, "warn", `Proxmox created ${vmid} without nesting; setting nesting=1,keyctl=1`);
-          await pve.setLxcConfig(node, vmid, { features: "nesting=1,keyctl=1" });
+          this.log(job, "warn", `Proxmox created ${vmid} without nesting; setting ${features}`);
+          await pve.setLxcConfig(node, vmid, { features });
         }
         return upid;
       };
@@ -1182,7 +1194,12 @@ export class AgentContainers {
       const cfg = await pve.lxcConfig(node, vmid);
       if (Number(cfg.unprivileged) !== 1) throw new StepError("The template container isn't unprivileged; refusing to use it");
       await this.task(pve, await pve.convertToTemplate(node, "lxc", vmid), "Converting to a template");
-      const done = await pve.lxcConfig(node, vmid);
+      let done = await pve.lxcConfig(node, vmid);
+      // Observed on the physical host: the task had finished and the template flag was set, yet this first read missed it.
+      for (let i = 0; i < 10 && Number(done.template) !== 1; i++) {
+        await this.pace(1000);
+        done = await pve.lxcConfig(node, vmid);
+      }
       if (Number(done.template) !== 1) throw new StepError("Proxmox didn't mark the container as a template");
       this.log(job, "info", `Template ${vmid} is ready`);
       this.save({ templateAttempts: 0, lastTemplateError: undefined });
