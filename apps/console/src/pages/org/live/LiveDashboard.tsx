@@ -7,6 +7,8 @@ import { connectApi } from "../../../data/engine/connectApi.ts";
 import { ago, dollars } from "../../../data/engine/map.ts";
 import { ISSUE_ICON, ISSUE_LABEL, agentStatusOf, isOpen } from "../../../data/engine/labels.tsx";
 import { useActivity, useAgentContainers, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
+import { useAgentReadiness } from "../../../data/engine/readiness.ts";
+import { ReadinessPill } from "./AgentReadiness.tsx";
 import { suggestSize } from "../../../pin/brain.ts";
 import { formatBytes } from "../../../lib/storage.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
@@ -75,12 +77,16 @@ function GettingStartedCard({ base, device }: { base: string; device: string }) 
   const agents = useAgents(companyId);
   const issues = useIssues(companyId);
   const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), retry: 1 });
+  const readiness = useAgentReadiness(companyId, agents.data ?? []);
   const repair = useSetResourceGroup(companyId, org.name);
   const [suggested] = useState(() => suggestSize(engine.host, engine.data));
   const g = group.group;
   const resourceReady = !!g && (!g.provisioning || g.provisioning.state === "ready");
   const containersReady = containers.data?.state === "ready" && containers.data.environments.some((environment) => environment.companyId === companyId && environment.ok);
-  const modelReady = accounts.data?.connections.some((account) => account.status === "connected" || account.status === "active") === true;
+  // An organization-level AI connection is one proof; a subscription sign-in or a Vault key held by the agent is
+  // another, and the readiness check already knows how to see both.
+  const modelReady = accounts.data?.connections.some((account) => account.status === "connected" || account.status === "active") === true
+    || [...readiness.values()].some((r) => r.checks.some((c) => c.id === "model" && c.state === "ok"));
   const hasAgent = (agents.data ?? []).some((a) => a.status !== "terminated");
   const hasTask = (issues.data ?? []).length > 0;
   if (resourceReady && containersReady && hasAgent && modelReady && hasTask) return null;
@@ -121,6 +127,7 @@ export function LiveDashboard() {
   const d = dash.data;
   const working = (agents.data ?? []).filter((a) => a.status === "running").length;
   const live = (agents.data ?? []).filter((a) => a.status !== "terminated");
+  const readiness = useAgentReadiness(companyId, live);
   const open = (issues.data ?? []).filter((i) => isOpen(i.status));
 
   return (
@@ -173,6 +180,7 @@ export function LiveDashboard() {
                       <div className="text-sm font-medium">{a.name} <span className="text-ink-3 font-normal">· {names.role(a)}</span></div>
                       <div className="text-xs text-ink-3 truncate">{a.adapterType}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
                     </div>
+                    <ReadinessPill readiness={readiness.get(a.id)} />
                     <Status kind={kind} label={label} />
                   </Link>
                 );

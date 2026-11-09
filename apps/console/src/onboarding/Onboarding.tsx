@@ -169,7 +169,7 @@ export function Onboarding() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-ink-3 mt-3">{provider ? "You'll finish signing in from Connectors once the console opens." : "No account yet? Pin can still run quick actions, but it can't chat until you connect one."}</p>
+          <p className="text-xs text-ink-3 mt-3">{provider ? "You'll finish signing in from Settings → Agent sign-in once the console opens." : "No account yet? Pin can still run quick actions, but it can't chat until you connect one."}</p>
           <div className="flex items-center justify-between mt-6">
             <button type="button" onClick={() => { setProvider(null); next(); }} className="text-sm text-ink-3 hover:text-ink-2">Do this later</button>
             <Continue />

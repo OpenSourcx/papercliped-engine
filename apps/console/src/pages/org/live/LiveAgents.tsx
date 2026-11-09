@@ -5,7 +5,9 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgentReadiness, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAgentReadiness } from "../../../data/engine/readiness.ts";
+import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
@@ -19,7 +21,6 @@ export function LiveAgents() {
   const { setup } = useEngine();
   const b = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   const agents = useAgents(companyId);
-  const readiness = useAgentReadiness(companyId);
   const names = useNames(companyId);
   const [params, setParams] = useSearchParams();
   const creating = params.get("new") === "1";
@@ -27,6 +28,7 @@ export function LiveAgents() {
   const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
   const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
   const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
+  const readiness = useAgentReadiness(companyId, list);
   const working = list.filter((a) => a.status === "running").length;
   return (
     <PageFrame width="6xl">
@@ -38,17 +40,14 @@ export function LiveAgents() {
         {list.map((a) => {
           const [kind, label] = agentStatusOf(a.status);
           const latest = latestRunStatusOf(latestByAgent.get(a.id));
-          const ready = readiness.data?.agents.find((r) => r.agentId === a.id);
+          const ready = readiness.get(a.id);
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
                 <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
+                <div className="mt-2 flex flex-wrap items-center gap-2"><ReadinessPill readiness={ready} /></div>
+                {ready && ready.state !== "ready" && <p className="text-xs text-ink-3 mt-1.5">{ready.summary}</p>}
                 <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
-                {ready && !ready.ready && (
-                  <div className="text-xs text-ink-3 mt-1.5" title={ready.issues.map((i) => i.detail).join(" ")}>
-                    Needs setup: {ready.issues[0]?.detail ?? "not ready to run"}
-                  </div>
-                )}
                 {latest && <div className="mt-2"><Status kind={latest[0]} label={`Latest run: ${latest[1]}`} /></div>}
                 {a.budgetMonthlyCents ? <BarMeter className="mt-3" label="Budget this month" pct={(a.spentMonthlyCents / a.budgetMonthlyCents) * 100} value={`${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}`} /> : null}
               </Card>
@@ -159,6 +158,8 @@ export function LiveAgentDetail() {
   const act = useAgentAction(companyId);
   const canRun = useAgentsCanRun();
   const a = agent.data;
+  const readiness = useAgentReadiness(companyId, a ? [a] : []);
+  const current = a ? readiness.get(a.id) : undefined;
   const [params, setParams] = useSearchParams();
   type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
@@ -175,7 +176,7 @@ export function LiveAgentDetail() {
         <>
           <PageHeader
             title={<span className="inline-flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} />{a.name}</span>}
-            subtitle={<><Status kind={kind} label={label} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
+            subtitle={<><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
             actions={
               <>
                 {a.status === "paused" ? (
@@ -196,6 +197,7 @@ export function LiveAgentDetail() {
           {tab === "skills" && <AgentSkillsTab agent={a} />}
           {tab === "budget" && <AgentBudgetTab key={a.budgetMonthlyCents} agent={a} />}
           {tab === "overview" && <>
+            {current && <Card className="p-5 mb-4"><ReadinessPanel readiness={current} /></Card>}
             {latestRun && latestRunStatus && <Card className="p-5 mb-4 flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-48"><div className="text-compact font-semibold uppercase tracking-label text-ink-3">{latestRun.status === "queued" || latestRun.status === "running" ? "Live run" : "Latest run"}</div><div className="mt-1 text-sm text-ink-2">{String(latestRun.invocationSource).replace(/_/g, " ")} · started {ago(latestRun.startedAt ?? latestRun.createdAt)}</div></div>
               <Status kind={latestRunStatus[0]} label={latestRunStatus[1]} />

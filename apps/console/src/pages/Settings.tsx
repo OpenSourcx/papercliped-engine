@@ -39,6 +39,23 @@ export function Settings() {
         <p className="text-xs text-ink-3 mt-3">This name is the root of every address in the console: /{setup?.deviceName}/home, /{setup?.deviceName}/&lt;organization&gt;. It does not rename the server; its hostname is changed on the host itself (see the Proxmox documentation on renaming a node).</p>
       </Card>
       <Card className="p-5">
+        <SectionTitle>The Papercliped family</SectionTitle>
+        <p className="text-sm text-ink-2 mb-4">The power of the Pin: ePaperclip is the Proxmox-native home for your homelab, Pin is your companion, Papercliped connects AI apps, and Connect is the managed way back to this machine.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            { name: "ePaperclip", body: "This device and the agents on it", to: `/${setup?.deviceName ?? "pve"}/home` },
+            { name: "Pin", body: "Your system companion", to: `/${setup?.deviceName ?? "pve"}/pin` },
+            { name: "Papercliped MCP", body: "Connect Claude, ChatGPT, Codex or another MCP app", to: `/${setup?.deviceName ?? "pve"}/home?settings=apps` },
+            { name: "Papercliped Connect", body: "Reach this device from outside your network", to: `/${setup?.deviceName ?? "pve"}/home?settings=access&access=remote` },
+          ].map((item) => (
+            <Link key={item.name} to={item.to} className="rounded-lg border border-line p-3 transition-control hover:border-line-strong hover:bg-surface-2/50">
+              <div className="text-sm font-medium">{item.name}</div>
+              <div className="text-xs text-ink-3 mt-0.5">{item.body}</div>
+            </Link>
+          ))}
+        </div>
+      </Card>
+      <Card className="p-5">
         <SectionTitle action={<Link to={`/${setup?.deviceName ?? "pve"}/pin`} className="text-compact text-ink-3 hover:text-ink">Open Pin's page</Link>}>Pin</SectionTitle>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-ink-2">Mode</div>
