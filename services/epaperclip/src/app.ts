@@ -380,6 +380,14 @@ export function tfaMethods(ticket: string): TfaMethods {
   }
 }
 
+/**
+ * The broker is optional. Not configured, or configured but not answering, means host-side leases are unavailable —
+ * the organization's agent containers are still limited by its own quota. That is a skipped step, not a failed
+ * organization. Only a broker that answers and refuses the policy is a real failure.
+ */
+export const brokerOptionalUnavailable = (e: unknown): boolean =>
+  e instanceof HttpError && (e.code === "broker_not_configured" || e.code === "broker_unavailable");
+
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
   // Over HTTPS the session cookie carries the __Host- prefix: browsers then refuse to take it from a sibling domain or over
@@ -843,7 +851,7 @@ export function createApp(d: AppDeps) {
         pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
         try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) {
           // No broker on this device is a valid setup: the organization's agent containers are limited by the provider's own aggregate quota, and nothing needs the broker. A broker that exists but fails is still a failure.
-          if (e instanceof HttpError && e.code === "broker_not_configured") { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
+          if (brokerOptionalUnavailable(e)) { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up or not answering on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
         // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
         const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
         warnings.push(...environmentWarnings);
