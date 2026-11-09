@@ -101,9 +101,10 @@ export function evaluateAgentReadiness(input: {
     return { state: "blocked", summary: detail, checks, source };
   }
 
-  // The host service's answer is authoritative when it is present: it is computed from the engine's live
-  // adapters, credentials and environments, which the browser cannot see in full.
-  if (backend) {
+  // The host service's full answer (with its three checks) is authoritative: it is computed from the
+  // engine's live adapters, credentials and environments, which the browser cannot see in full. A bare
+  // { ready } without those checks is treated conservatively below.
+  if (backend?.checks) {
     return backend.ready
       ? { state: "ready", summary: "Ready to run.", checks, source }
       : { state: "blocked", summary: backend.reasons.join(" ") || "The engine reports that this agent is not ready.", checks, source };
@@ -113,6 +114,10 @@ export function evaluateAgentReadiness(input: {
   if (blocking.length > 0) {
     return { state: "blocked", summary: blocking.map((c) => c.detail).join(" "), checks, source };
   }
+  if (backend && !backend.ready) {
+    return { state: "blocked", summary: backend.reasons.join(" ") || "The engine reports that this agent is not ready.", checks, source };
+  }
+  if (backend?.ready) return { state: "ready", summary: "The engine reports that this agent is ready to run.", checks, source };
 
   const uncertain = checks.filter((c) => c.state === "unknown");
   if (uncertain.length > 0) {
