@@ -19,6 +19,10 @@ export interface Session {
   agent?: string;
   /** How the person signed in: with a password (and code), or through an OpenID Connect realm. */
   via?: "password" | "openid";
+  /** The identity link behind a federated sign-in (never a secret). Unlinking that link ends exactly these sessions. */
+  link?: string;
+  /** An absolute end earlier than the normal idle/total caps (federated sessions are capped at 8 h). */
+  maxAt?: number;
   /** The person's engine session (their managed engine account's cookie). Server-side only, never sent to the browser. */
   engine?: EngineLogin;
   /**
@@ -76,9 +80,9 @@ export class SessionStore {
     this.now = now;
   }
 
-  create(username: string, ticket: string, csrf: string, meta: { ip?: string; agent?: string; via?: "password" | "openid" } = {}): Session {
+  create(username: string, ticket: string, csrf: string, meta: { ip?: string; agent?: string; via?: "password" | "openid"; link?: string; maxAt?: number } = {}): Session {
     const t = this.now();
-    const s: Session = { id: newId(), username, ticket, csrf, createdAt: t, renewedAt: t, lastSeen: t, ...(meta.ip ? { ip: meta.ip } : {}), ...(meta.agent ? { agent: meta.agent.slice(0, 200) } : {}), ...(meta.via ? { via: meta.via } : {}) };
+    const s: Session = { id: newId(), username, ticket, csrf, createdAt: t, renewedAt: t, lastSeen: t, ...(meta.ip ? { ip: meta.ip } : {}), ...(meta.agent ? { agent: meta.agent.slice(0, 200) } : {}), ...(meta.via ? { via: meta.via } : {}), ...(meta.link ? { link: meta.link } : {}), ...(meta.maxAt ? { maxAt: meta.maxAt } : {}) };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -89,7 +93,7 @@ export class SessionStore {
     const s = this.sessions.get(id);
     if (!s) return null;
     const t = this.now();
-    if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS) {
+    if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt)) {
       this.sessions.delete(id);
       return null;
     }
@@ -102,7 +106,7 @@ export class SessionStore {
     const s = this.sessions.get(id);
     if (!s) return null;
     const t = this.now();
-    return t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS ? null : s;
+    return t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt) ? null : s;
   }
 
   needsRenewal(s: Session): boolean {
@@ -130,7 +134,14 @@ export class SessionStore {
   /** Live sessions, optionally of one person, oldest first. */
   list(username?: string): Session[] {
     const t = this.now();
-    return [...this.sessions.values()].filter((s) => (!username || s.username === username) && t - s.lastSeen <= IDLE_MS && t - s.createdAt <= MAX_MS).sort((a, b) => a.createdAt - b.createdAt);
+    return [...this.sessions.values()].filter((s) => (!username || s.username === username) && t - s.lastSeen <= IDLE_MS && t - s.createdAt <= MAX_MS && (s.maxAt === undefined || t < s.maxAt)).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Ends every session created through one identity link. Returns how many. */
+  destroyLink(linkId: string): number {
+    let n = 0;
+    for (const [id, s] of this.sessions) if (s.link === linkId) (this.sessions.delete(id), n++);
+    return n;
   }
 
   /** Ends one session by its public handle, if it belongs to `username` (or to anyone when `username` is null). Returns who it was. */
@@ -180,7 +191,7 @@ export class SessionStore {
 
   sweep() {
     const t = this.now();
-    for (const [id, s] of this.sessions) if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS) this.sessions.delete(id);
+    for (const [id, s] of this.sessions) if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt)) this.sessions.delete(id);
     for (const [id, p] of this.pending) if (p.expiresAt < t) this.pending.delete(id);
   }
 

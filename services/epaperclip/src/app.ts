@@ -14,7 +14,7 @@ import { FEATURES } from "./features/index.ts";
 import { CHANNEL_INGRESS, channelIngress } from "./channel-ingress.ts";
 import { vaultFor } from "./features/vault-store.ts";
 import { activity } from "./activity.ts";
-import { BearerAuth, appendAudit } from "./features/access-tokens.ts";
+import { BearerAuth, appendAudit, revokeAllForUser } from "./features/access-tokens.ts";
 import { ConnectService, registerConnect } from "./features/connect-oauth.ts";
 import { connectRoot, isConnectRoot } from "./features/connect.ts";
 import { registerMarket } from "./features/connect-adapters.ts";
@@ -26,11 +26,13 @@ import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
 import { AppAccessManager } from "./app-access.ts";
 import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
+import { companyAgentReadiness } from "./agent-readiness.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
 import { CloudflareProvision } from "./cloudflareProvision.ts";
 import { socketTunnelHelper } from "./tunnelHelper.ts";
 import { ConnectLink } from "./connectLink.ts";
+import { IdentityLinks, type LocalPrincipal } from "./identityLinks.ts";
 import { type TunnelHelper } from "./tunnelHelper.ts";
 import { Pin, type PinToolHost } from "./pin.ts";
 import { draftCeo } from "./features/pin-company.ts";
@@ -485,6 +487,16 @@ export function createApp(d: AppDeps) {
   const connectors = new Connectors(state, outbound, now);
   const publishing = new Publishing(state, outbound, now);
   const link = new ConnectLink(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now, { helper: d.tunnelHelper });
+  const identity = new IdentityLinks(state, outbound, d.connectUrl ?? process.env.EPC_CONNECT_URL ?? "https://connect.papercliped.co", now, {
+    device: () => link.status().device,
+    audit: (action, target, detail) => appendAudit(state, now, { actor: "device", action, target, ...(detail ? { detail } : {}) }),
+    federationEnabled: () => state.getSetting<{ issuer?: string }>("identity.oidc")?.issuer !== undefined,
+    onLinkRevoked: async (linkId) => {
+      // Only what derives from a federated link: its console sessions and the OAuth/MCP grants consented in them.
+      d.sessions.destroyLink(linkId);
+      await connect.revokeByLink(linkId);
+    },
+  });
   const cloudflare = new CloudflareProvision(publishing, state, d.tunnelHelper ?? socketTunnelHelper(), outbound, now);
   trustTunnelWhen(() => link.tunnelTrusted() || (link.mode() === "cloudflare-self" && cloudflare.tunnelTrusted()));
   const connections = new ConnectionsStore({ state, connectors, fetch: outbound, now });
@@ -544,9 +556,9 @@ export function createApp(d: AppDeps) {
     }
   };
 
-  const signIn = (req: IncomingMessage, res: ServerResponse, username: string, ticket: string, csrf: string, via: "password" | "openid" = "password", extraCookies: string[] = []) => {
+  const signIn = (req: IncomingMessage, res: ServerResponse, username: string, ticket: string, csrf: string, via: "password" | "openid" = "password", extraCookies: string[] = [], federated?: { link: string }) => {
     const ua = req.headers["user-agent"];
-    const s = d.sessions.create(username, ticket, csrf, { ip: clientIp(req), agent: typeof ua === "string" ? ua : undefined, via });
+    const s = d.sessions.create(username, ticket, csrf, { ip: clientIp(req), agent: typeof ua === "string" ? ua : undefined, via, ...(federated ? { link: federated.link, maxAt: now() + 8 * 3600_000 } : {}) });
     appendAudit(state, now, { actor: username, action: "session.sign-in", detail: via === "openid" ? "OpenID Connect" : "password", ip: clientIp(req) });
     sendJson(res, 200, { user: { username } }, { "Set-Cookie": [cookie(s.id, 12 * 3600), ...extraCookies] });
     // Open (or create) the person's engine account in the background; sign-in to the console never waits on the engine.
@@ -735,7 +747,19 @@ export function createApp(d: AppDeps) {
       try {
         const r = await ProxmoxClient.openidLogin(pveOpts, { code, state: st, redirectUrl: pending.redirectUrl });
         limiter.clear(keys);
-        return signIn(req, res, r.username, r.ticket, r.csrf!, "openid", [clear]);
+        // Defence in depth for the Papercliped realm: Proxmox accepted the token, but only an active federated link
+        // may open a console session. A hand-made or revoked <id>@papercliped user is refused here, ticket discarded.
+        let federated: { link: string } | undefined;
+        if (pending.realm === "papercliped") {
+          const at = r.username.lastIndexOf("@");
+          const linked = at > 0 ? identity.federatedFor(r.username.slice(0, at), r.username.slice(at + 1)) : undefined;
+          if (!linked) {
+            appendAudit(state, now, { actor: r.username, action: "session.sign-in.refused", detail: "no active Papercliped identity link", ip: clientIp(req) });
+            throw new HttpError(403, "not_linked", "This Papercliped account has no active sign-in link on this machine. An administrator can approve one in Access.");
+          }
+          federated = { link: linked.linkId };
+        }
+        return signIn(req, res, r.username, r.ticket, r.csrf!, "openid", [clear], federated);
       } catch (e) {
         if (e instanceof ProxmoxError && e.status >= 400 && e.status < 500) {
           limiter.fail(keys);
@@ -773,6 +797,15 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, { groups });
     }
 
+    // ---- Per-agent readiness: the engine's real adapter, credential and default environment, not just the agent row.
+    if (method === "GET" && path === "/api/agent-readiness") {
+      const s = requireSession(req);
+      const companyId = str(url.searchParams.get("companyId"), 64);
+      if (!companyId || !/^[A-Za-z0-9_-]{1,64}$/.test(companyId)) throw new HttpError(400, "bad_request", "companyId is required");
+      if (!(await needEngine().membership(s, companyId))) throw new HttpError(403, "not_member", "You aren't a member of that organization");
+      return sendJson(res, 200, await companyAgentReadiness(needEngine(), s, companyId, now()));
+    }
+
     const rg = path.match(/^\/api\/resource-groups\/([A-Za-z0-9_-]{1,64})$/);
     if (rg && (method === "PUT" || method === "DELETE")) {
       requireSameSite(req);
@@ -787,7 +820,14 @@ export function createApp(d: AppDeps) {
       const existing = all[companyId];
       if (spec) {
         const pool = await asUser(req, res, async (pve) => {
-          if (existing) return existing.pool;
+          if (existing) {
+            // Idempotent retries reuse the pool, but only while Proxmox still has it. A pool removed outside ePaperclip is
+            // recreated under the same name, so the stored group never points at a pool that no longer exists.
+            const pools = await pve.pools().catch(() => null);
+            if (pools === null || pools.some((p) => p.poolid === existing.pool)) return existing.pool;
+            await pve.call("POST", "/pools", { poolid: existing.pool, comment: `ePaperclip organization: ${spec.name}` });
+            return existing.pool;
+          }
           const taken = new Set([...(await pve.pools().catch(() => [])).map((p) => p.poolid), ...Object.values(all).map((g) => g.pool)]);
           const base = `epc-${poolSlug(spec.name)}`;
           const free = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find((p) => !taken.has(p));
@@ -837,10 +877,23 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && path === "/api/agent-containers/setup") {
       requireSameSite(req);
       const s = requireSession(req);
-      const over = parseSetup(await readJson(req));
+      const body = await readJson(req);
+      const over = parseSetup(body);
+      const force = body.force === true;
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can set up agent containers");
-        return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
+        return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b), force);
+      });
+      return sendJson(res, r.alreadyRunning ? 200 : 202, r);
+    }
+    if (method === "POST" && path === "/api/agent-containers/settings") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const body = await readJson(req);
+      const over = parseSetup(body);
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
+        return containers.startSettings(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
@@ -848,9 +901,10 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && acStep) {
       requireSameSite(req);
       const s = requireSession(req);
+      const body = await readJson(req);
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
-        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b));
+        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b), body.force === true);
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
@@ -1001,6 +1055,134 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, { deployment: view });
     }
 
+    // Identity links: association and federated sign-in. A link grants no Proxmox permission; the principal always
+    // comes from the local session, never from a request field.
+    if (path.startsWith("/api/papercliped/connect/identity/")) {
+      const rest = path.slice("/api/papercliped/connect/identity/".length);
+      const s = requireSession(req);
+      if (s.apiToken) throw new HttpError(403, "ticket_only", "Identity links are managed by a signed-in person, not with an API token.");
+      const admin = await asUser(req, res, (pve) => isNodeAdmin(pve));
+      const ensureFederated = async (accountId: string) => {
+        await asUser(req, res, async (pve) => {
+          const userid = `${accountId}@papercliped`;
+          const users = await pve.call<{ userid: string }[]>("GET", "/access/users").catch(() => []);
+          if (users.some((u) => u.userid === userid)) { await pve.call("PUT", `/access/users/${encodeURIComponent(userid)}`, { enable: 1 }); return; }
+          await pve.call("POST", "/access/users", { userid, enable: 1 });
+        });
+      };
+      const principal = (): LocalPrincipal => {
+        const at = s.username.lastIndexOf("@");
+        return { userid: s.username.slice(0, at), realm: s.username.slice(at + 1) };
+      };
+      if (rest === "oidc" && method === "GET") {
+        const o = identity.oidc();
+        return sendJson(res, 200, { enabled: !!o, ...(o ? { issuer: o.issuer, clientId: o.clientId, realm: o.realm } : {}), canManage: admin });
+      }
+      if (rest === "oidc/enable" && method === "POST") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can enable Sign in with Papercliped.");
+        const b = await readJson(req, 16 * 1024);
+        const redirectUris = b.redirectUris === undefined ? [connect.origin(req)] : b.redirectUris;
+        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || redirectUris.length > 8 || !redirectUris.every((u) => typeof u === "string")) throw new HttpError(400, "bad_request", "redirectUris is 1 to 8 addresses.");
+        const client = await identity.registerOidc(redirectUris as string[]);
+        try {
+          await asUser(req, res, async (pve) => {
+            const existing = await pve.call<{ realm: string; type?: string; "issuer-url"?: string; "client-id"?: string }[]>("GET", "/access/domains").catch(() => []);
+            const found = existing.find((r) => r.realm === "papercliped");
+            if (found) {
+              const full = await pve.call<Record<string, unknown>>("GET", "/access/domains/papercliped");
+              if (full.type !== "openid" || full["issuer-url"] !== client.issuer || full["client-id"] !== client.clientId) throw new HttpError(409, "realm_conflict", "A realm called papercliped already exists with different settings. Remove or rename it in Proxmox first.");
+              return;
+            }
+            await pve.call("POST", "/access/domains", {
+              realm: "papercliped", type: "openid", comment: "Sign in with Papercliped (managed by ePaperclip)",
+              "issuer-url": client.issuer, "client-id": client.clientId, "client-key": client.clientSecret,
+              "username-claim": "subject", scopes: "openid", "query-userinfo": false, autocreate: false,
+            });
+          });
+        } catch (e) {
+          await identity.removeOidc().catch(() => undefined);
+          throw e;
+        }
+        identity.saveOidc({ issuer: client.issuer, clientId: client.clientId });
+        appendAudit(state, now, { actor: s.username, action: "identity.oidc.enable", target: "papercliped", detail: client.issuer, ip: clientIp(req) });
+        return sendJson(res, 200, { enabled: true, issuer: client.issuer, clientId: client.clientId, realm: "papercliped" });
+      }
+      if (rest === "oidc/disable" && method === "POST") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can disable Sign in with Papercliped.");
+        const o = identity.oidc();
+        if (o) {
+          await asUser(req, res, async (pve) => {
+            const existing = await pve.call<{ realm: string; type?: string; "issuer-url"?: string; "client-id"?: string }[]>("GET", "/access/domains").catch(() => []);
+            const found = existing.find((r) => r.realm === "papercliped");
+            if (!found) return;
+            const full = await pve.call<Record<string, unknown>>("GET", "/access/domains/papercliped");
+            if (full.type !== "openid" || full["issuer-url"] !== o.issuer || full["client-id"] !== o.clientId) throw new HttpError(409, "realm_conflict", "The papercliped realm was changed outside ePaperclip. Remove it in Proxmox yourself.");
+            await pve.call("DELETE", "/access/domains/papercliped");
+          });
+          await identity.revokeFederated("federation disabled");
+          await identity.removeOidc().catch(() => undefined);
+          identity.saveOidc(undefined);
+        }
+        appendAudit(state, now, { actor: s.username, action: "identity.oidc.disable", target: "papercliped", ip: clientIp(req) });
+        return sendJson(res, 200, { enabled: false });
+      }
+      if (rest === "link/start" && method === "POST") {
+        const b = await readJson(req, 16 * 1024);
+        return sendJson(res, 201, await identity.start({ sessionId: s.id, username: s.username, origin: connect.origin(req), returnTo: b.returnTo, kind: b.kind, replaceLinkId: b.replaceLinkId, isAdmin: admin }));
+      }
+      if (rest === "links" && method === "GET") return sendJson(res, 200, { links: identity.linksFor(principal().userid, principal().realm, admin), canManageAll: admin });
+      if (rest === "link-requests" && method === "GET") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can see requests waiting for approval.");
+        return sendJson(res, 200, { requests: identity.requests() });
+      }
+      if (rest === "preapprovals") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can manage pre-approvals.");
+        if (method === "GET") return sendJson(res, 200, { preapprovals: identity.preapprovalList() });
+        if (method === "POST") { const b = await readJson(req, 16 * 1024); return sendJson(res, 201, { preapproval: identity.addPreapproval({ principal: b.principal, boundAccountId: b.boundAccountId, kind: b.kind, ttlHours: b.ttlHours, admin: s.username }) }); }
+      }
+      const pre = rest.match(/^preapprovals\/([0-9a-f-]{36})$/);
+      if (pre && method === "DELETE") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can manage pre-approvals.");
+        return sendJson(res, 200, identity.removePreapproval(pre[1]!, s.username));
+      }
+      if (rest === "reconcile" && method === "POST") {
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can reconcile links.");
+        return sendJson(res, 200, await identity.reconcile());
+      }
+      if (rest === "security/revoke-principal-access" && method === "POST") {
+        const b = await readJson(req, 8 * 1024);
+        if (b.confirm !== true || !b.principal || typeof b.principal !== "object") throw new HttpError(400, "confirm", "Send { principal: { userid, realm }, confirm: true }.");
+        const p = b.principal as { userid?: unknown; realm?: unknown };
+        if (typeof p.userid !== "string" || typeof p.realm !== "string") throw new HttpError(400, "bad_request", "principal is { userid, realm }.");
+        const target: LocalPrincipal = { userid: p.userid, realm: p.realm };
+        return sendJson(res, 200, await identity.revokePrincipalAccess(target, {
+          username: s.username, isAdmin: admin,
+          endSessions: () => d.sessions.destroyUser(`${target.userid}@${target.realm}`),
+          revokeTokens: () => revokeAllForUser(state, `${target.userid}@${target.realm}`),
+        }));
+      }
+      const one = rest.match(/^link\/([0-9a-f-]{36})$/);
+      if (one && method === "GET") {
+        const v = identity.link(one[1]!);
+        if (!v) throw new HttpError(404, "not_found", "No such link on this machine.");
+        if (!admin && `${v.principal.userid}@${v.principal.realm}` !== s.username && `${v.requestedBy.userid}@${v.requestedBy.realm}` !== s.username) throw new HttpError(403, "forbidden", "That link belongs to another person.");
+        return sendJson(res, 200, v);
+      }
+      const act = rest.match(/^link\/([0-9a-f-]{36})\/(poll|confirm|cancel|admin-approve|admin-deny)$/);
+      if (act) {
+        const b = method === "POST" ? await readJson(req, 16 * 1024) : {};
+        if (act[2] === "poll" && method === "POST") return sendJson(res, 200, await identity.poll(act[1]!, s.id, admin));
+        if (act[2] === "confirm" && method === "POST") return sendJson(res, 200, await identity.confirm({ linkId: act[1]!, sessionId: s.id, accountId: b.accountId, username: s.username, isAdmin: admin, ensureFederatedPrincipal: ensureFederated }));
+        if (act[2] === "cancel" && method === "POST") return sendJson(res, 200, await identity.cancel(act[1]!, s.id, s.username));
+        if (!admin) throw new HttpError(403, "not_admin", "Only a Proxmox administrator can do this.");
+        if (act[2] === "admin-approve" && method === "POST") return sendJson(res, 200, await identity.adminApprove(act[1]!, b.accountId, s.username, ensureFederated));
+        if (act[2] === "admin-deny" && method === "POST") return sendJson(res, 200, await identity.adminDeny(act[1]!, s.username, typeof b.reason === "string" ? b.reason : undefined));
+      }
+      const del = rest.match(/^links\/([0-9a-f-]{36})$/);
+      if (del && method === "DELETE") return sendJson(res, 200, await identity.unlink(del[1]!, { username: s.username, isAdmin: admin }));
+      throw new HttpError(404, "not_found", "Unknown identity-link action");
+    }
+
     // Papercliped Connect: remote-access mode and ownership pairing. Machine-wide, so Proxmox administrators only.
     if (path.startsWith("/api/papercliped/connect/")) {
       const action = path.slice("/api/papercliped/connect/".length);
@@ -1023,6 +1205,9 @@ export function createApp(d: AppDeps) {
       if (action === "pairing/poll") return sendJson(res, 200, await link.poll());
       if (action === "pairing/confirm") return sendJson(res, 200, await link.confirm(body.accountId, body.deviceName));
       if (action === "pairing/cancel") return sendJson(res, 200, link.cancel());
+      // Unpairing revokes every identity link first, while this device's registration still exists at Connect. Local
+      // revocation always wins; a Connect outage only leaves the remote revoke pending for reconcile.
+      await identity.revokeAll("device", "unpair");
       return sendJson(res, 200, await link.unpair());
     }
 
@@ -2125,5 +2310,5 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 500, { error: "Internal error", code: "internal" });
     }
   };
-  return Object.assign(handle, { upgrade, link, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }), fabric: fabricHub });
+  return Object.assign(handle, { upgrade, link, identity, engine: gateway, containers, router: routerHandler({ router, keys: routerKeys }), fabric: fabricHub });
 }

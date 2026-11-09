@@ -48,6 +48,17 @@ describe("Papercliped Connect pairing (device side)", () => {
     expect(link.status()).toEqual({ mode: "local", paired: false });
   });
 
+  it("reports a refusal at once instead of waiting for the pairing to expire", async () => {
+    const { fc, link, state } = make();
+    await link.start();
+    fc.deny();
+    const s = await link.poll();
+    expect(s.pairing!.state).toBe("denied");
+    expect(s.paired).toBe(false);
+    expect(state.getSecret("connect.pairing.token")).toBeNull();
+    await expect(link.confirm("acct_one", "lab")).rejects.toMatchObject({ code: "not_approved" });
+  });
+
   it("modes are exclusive: remote modes switch only via local-only, and Connect needs a pairing", async () => {
     const { fc, link } = make();
     expect((await link.setMode("cloudflare-self")).mode).toBe("cloudflare-self");

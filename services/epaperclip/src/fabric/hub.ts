@@ -726,8 +726,9 @@ export class FabricHub {
   async release(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.lease(companyId, id);
     if (l.state === "active") {
-      await this.killAll(l.workerId, id);
+      // State first: while the cancel is in flight no new command may be admitted on this lease.
       this.setLease(id, { state: "released", releasedAt: this.now() });
+      await this.killAll(l.workerId, id);
       this.audit("provider", "lease.release", l.workerId, id);
       this.emit("lease", { id });
     }
@@ -736,8 +737,8 @@ export class FabricHub {
   async stop(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.lease(companyId, id);
     if (l.state === "destroyed") return l;
-    await this.killAll(l.workerId, id);
     this.setLease(id, { state: "stopped", releasedAt: this.now() });
+    await this.killAll(l.workerId, id);
     this.audit("provider", "lease.stop", l.workerId, id);
     this.emit("lease", { id });
     return this.lease(companyId, id);
@@ -746,6 +747,7 @@ export class FabricHub {
   async destroy(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.read().leases[id];
     if (!l || l.companyId !== companyId) return { id, workerId: "", companyId, agentId: "", runId: "", environmentId: "", workspace: "", state: "destroyed", needsInference: false, createdAt: 0 };
+    this.mutate((s) => { delete s.leases[id]; });
     await this.killAll(l.workerId, id);
     try {
       await this.call(l.workerId, "ws.remove", { path: l.workspace });
@@ -753,7 +755,6 @@ export class FabricHub {
       // Offline: the removal is owed and happens when the worker reconnects.
       this.mutate((s) => { const w = s.workers[l.workerId]; if (w && !w.cleanup.includes(l.workspace)) w.cleanup.push(l.workspace); });
     }
-    this.mutate((s) => { delete s.leases[id]; });
     this.audit("provider", "lease.destroy", l.workerId, id);
     this.emit("lease", { id });
     return { ...l, state: "destroyed" };

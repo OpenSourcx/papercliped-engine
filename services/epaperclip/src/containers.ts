@@ -75,11 +75,18 @@ interface OrgSecrets {
 interface Stored {
   params?: Params;
   templateVmid?: number;
+  /** The architecture the current template was built from; a template from another architecture is never reused. */
+  templateArch?: HostArch;
+  /** Consecutive failed template builds. Three in a row needs an explicit "try again" after the cause is fixed. */
+  templateAttempts?: number;
+  lastTemplateError?: string;
   publicKey?: string;
   pluginId?: string;
   poolCreated?: boolean;
   environments?: Record<string, { environmentId: string }>;
   secrets?: Record<string, OrgSecrets>;
+  /** What Proxmox reported about the chosen storages on the last check. */
+  storageFacts?: Record<string, StorageFacts>;
   createdBy?: string;
   createdAt?: number;
   lastJob?: JobView;
@@ -175,7 +182,7 @@ const TEMPLATE_DISK_GB = 8;
 
 /** Strict parse of the setup request. Anything not recognised is refused. */
 export function parseSetup(b: Record<string, unknown>): Partial<Params> & { size?: Size } {
-  const known = new Set(["storage", "bridge", "pool", "templateStorage", "size"]);
+  const known = new Set(["storage", "bridge", "pool", "templateStorage", "size", "force"]);
   for (const k of Object.keys(b)) if (!known.has(k)) throw new HttpError(400, "bad_request", `Unknown setting ${k.slice(0, 40)}`);
   const out: Partial<Params> & { size?: Size } = {};
   const text = (k: string, re: RegExp, what: string) => {
@@ -195,14 +202,33 @@ export function parseSetup(b: Record<string, unknown>): Partial<Params> & { size
   return out;
 }
 
-/** The newest debian-NN-standard template in a catalog. */
-export function newestDebian(files: string[]): string | null {
+/** The processor architecture container templates must match. The host service runs on the Proxmox node, so this is the
+ * node's own architecture. `arm64` covers the ARM hosts; `amd64` is x86-64. */
+export type HostArch = "amd64" | "arm64";
+
+export function hostArch(): HostArch | null {
+  const a = (globalThis as { process?: { arch?: string } }).process?.arch;
+  return a === "arm64" ? "arm64" : a === "x64" ? "amd64" : null;
+}
+
+/**
+ * The newest debian-NN-standard template in a catalog for the host's architecture.
+ *
+ * The catalog can list templates for more than one processor at once (a host whose `pveam` catalog was synced with both
+ * amd64 and arm64 entries). Sorting by version alone then picks whatever is newest — which is exactly how an amd64 host
+ * came to unpack an arm64 template and report "the container's init process died". When `arch` is given, only templates
+ * for that architecture are considered.
+ */
+export function newestDebian(files: string[], arch?: HostArch | null): string | null {
   const re = /^debian-(\d+)-standard_([\w.+~-]+?)_(amd64|arm64)\.tar\.(zst|gz|xz)$/;
   const ver = (f: string) => {
     const m = re.exec(f)!;
     return [Number(m[1]), ...m[2].split(/[.-]/).map((x) => Number(x) || 0)];
   };
-  const list = files.filter((f) => re.test(f));
+  const list = files.filter((f) => {
+    const m = re.exec(f);
+    return Boolean(m) && (!arch || m![3] === arch);
+  });
   list.sort((a, b) => {
     const x = ver(a);
     const y = ver(b);
@@ -210,6 +236,69 @@ export function newestDebian(files: string[]): string | null {
     return 0;
   });
   return list[0] ?? null;
+}
+
+/** What Proxmox's API can say about one storage, and what it means for unprivileged container disks. */
+export interface StorageFacts {
+  name: string;
+  /** Proxmox storage type: dir, lvmthin, zfspool, nfs, cifs, ... */
+  type?: string;
+  active?: boolean;
+  enabled?: boolean;
+  availBytes?: number;
+  totalBytes?: number;
+  content?: string;
+  /** For dir storage: the host path and, when Proxmox reports it, the filesystem and mount options behind it. */
+  path?: string;
+  filesystem?: string;
+  mountOptions?: string[];
+  verdict: "ok" | "warning" | "unsupported" | "unknown";
+  /** One sentence an administrator can act on. Always set when the verdict is not "ok". */
+  reason?: string;
+  /** The host command that answers what the API could not. Set when the verdict is "unknown". */
+  hostCheck?: string;
+}
+
+const BLOCK_TYPES = new Set(["lvm", "lvmthin", "zfspool", "zfs", "rbd", "iscsi", "iscsidirect"]);
+const NETWORK_TYPES = new Set(["nfs", "cifs", "glusterfs", "cephfs"]);
+/** Filesystems that cannot hold an unprivileged container's root: no ownership/xattrs for uid 100000+, or no POSIX modes. */
+const UNSUITABLE_FS = new Set(["ntfs", "ntfs3", "exfat", "vfat", "msdos", "fuseblk", "fat"]);
+
+/**
+ * Whether a storage can hold unprivileged container disks, from what Proxmox reports. Pure, so the console and the tests
+ * can use the same rule. It never guesses: when the filesystem behind `dir` storage is not reported, the verdict is
+ * "unknown" and says which host command answers it.
+ */
+export function storageVerdict(f: Omit<StorageFacts, "verdict" | "reason" | "hostCheck">): StorageFacts {
+  const base = { ...f };
+  const name = f.name;
+  if (f.active === false) return { ...base, verdict: "unsupported", reason: `Storage "${name}" is not active on this node. On the host, 'pvesm status' shows why (an unmounted drive or share).` };
+  if (typeof f.availBytes === "number" && f.availBytes < 4 * 1024 ** 3) return { ...base, verdict: "unsupported", reason: `Storage "${name}" has only ${(f.availBytes / 1024 ** 3).toFixed(1)} GiB free; building the template needs about 4 GiB and every agent container more.` };
+  if (f.type && BLOCK_TYPES.has(f.type)) return { ...base, verdict: "ok" };
+  if (f.type && NETWORK_TYPES.has(f.type)) {
+    return { ...base, verdict: "warning", reason: `Storage "${name}" is ${f.type} storage. Unprivileged containers need the share to allow ownership and extended attributes (export with no_root_squash; CIFS needs uid/gid mapping). If a container fails to start, this is the first thing to check.` };
+  }
+  if (f.type === "dir" || f.path || f.filesystem) {
+    const fs = (f.filesystem ?? "").toLowerCase();
+    if (fs && UNSUITABLE_FS.has(fs)) {
+      return { ...base, verdict: "unsupported", reason: `Storage "${name}" is on ${fs}, whose filesystem cannot store an unprivileged container's files (they belong to uid 100000+ and need POSIX ownership and extended attributes). Use ext4, xfs, btrfs, ZFS or LVM.`, hostCheck: `findmnt -T ${f.path ?? "<storage path>"} -o TARGET,SOURCE,FSTYPE,OPTIONS` };
+    }
+    const opts = (f.mountOptions ?? []).map((o) => o.toLowerCase());
+    if (opts.includes("noexec") || opts.includes("ro")) {
+      return { ...base, verdict: "unsupported", reason: `Storage "${name}" is mounted ${opts.includes("ro") ? "read-only" : "noexec"}, so the container cannot run its own init from it.`, hostCheck: `findmnt -T ${f.path ?? "<storage path>"} -o TARGET,SOURCE,FSTYPE,OPTIONS` };
+    }
+    if (opts.includes("nodev")) {
+      return { ...base, verdict: "warning", reason: `Storage "${name}" is mounted nodev. Unprivileged containers may still start (their /dev is provided by LXC), but if a device inside the container fails this is the first thing to check.` };
+    }
+    if (fs) return { ...base, verdict: "ok" };
+    return {
+      ...base,
+      verdict: "unknown",
+      reason: `Proxmox does not report which filesystem is behind "${name}" through its API. ePaperclip cannot confirm it supports unprivileged containers.`,
+      hostCheck: `findmnt -T ${f.path ?? "<storage path>"} -o TARGET,SOURCE,FSTYPE,OPTIONS   # must not be ntfs/exfat/vfat, and not noexec/nodev/ro`,
+    };
+  }
+  return { ...base, verdict: "unknown", reason: `Proxmox did not report enough about "${name}" (type ${f.type ?? "unknown"}) to judge whether it can hold unprivileged container disks.`, hostCheck: `pvesm status ; findmnt -T <its path>` };
 }
 
 const fp = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
@@ -233,6 +322,8 @@ export interface ContainersDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Waits between polls are multiplied by this (tests use 0). */
   paceMs?: number;
+  /** The node's processor architecture (tests set it); defaults to the host service's own. */
+  arch?: HostArch | null;
 }
 
 /** Harness adapters that have both an ACP lane (the engine's default) and a direct command-line lane. */
@@ -249,6 +340,8 @@ export class AgentContainers {
   private scrub = new Set<string>();
   private reconciling: Promise<void> | null = null;
   private actor: EngineActor | null = null;
+  /** Set by an explicit "try the template again": allows a rebuild after repeated failures. */
+  private force = false;
 
   constructor(d: ContainersDeps) {
     this.d = d;
@@ -286,8 +379,40 @@ export class AgentContainers {
   private pools(): Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }> {
     return this.d.state.getSetting<Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }>>("resourceGroups") ?? {};
   }
-  private poolFor(companyId: string, p: Params) {
-    return this.pools()[companyId]?.pool ?? p.pool;
+  private poolFor(companyId: string): string {
+    return this.pools()[companyId]?.pool ?? "";
+  }
+  /** The node's architecture; templates for the other one cannot run here. */
+  private arch(): HostArch | null {
+    return this.d.arch !== undefined ? this.d.arch : hostArch();
+  }
+
+  /**
+   * What Proxmox can say about a storage: its type and state, and for `dir` storage the path, filesystem and mount
+   * options from `/nodes/{node}/disks/directory`. Every call is best effort: a missing answer becomes "unknown", never a
+   * guessed cause.
+   */
+  async storageFacts(pve: ProxmoxClient, storage: string): Promise<StorageFacts> {
+    const node = this.d.node;
+    const [status, config, dirs] = await Promise.all([
+      pve.storageStatus(node, storage).catch(() => undefined),
+      pve.storageConfig(storage).catch(() => undefined),
+      pve.nodeStorageDirectories(node).catch(() => []),
+    ]);
+    const path = config?.path;
+    const dir = path ? dirs.find((d) => d.path === path) : undefined;
+    return storageVerdict({
+      name: storage,
+      type: status?.type ?? config?.type,
+      active: status ? status.active !== 0 : undefined,
+      enabled: status ? status.enabled !== 0 : undefined,
+      availBytes: status?.avail,
+      totalBytes: status?.total,
+      content: status?.content ?? config?.content,
+      path,
+      filesystem: dir?.type,
+      mountOptions: dir?.options?.split(",").map((o) => o.trim()).filter(Boolean),
+    });
   }
 
   // ---- job log
@@ -375,7 +500,7 @@ export class AgentContainers {
       s.detail = detail;
     };
     let checkError: string | null = null;
-    let template: { vmid?: number; name?: string; exists: boolean } = { exists: false };
+    let template: { vmid?: number; name?: string; exists: boolean; arch?: HostArch | null } = { exists: false };
     let tokenExists = false;
     let pluginInstalled = false;
     let grantGaps: GrantGap[] = [];
@@ -400,7 +525,7 @@ export class AgentContainers {
 
       const vmid = st.templateVmid;
       const g = vmid ? (guests as Guest[]).find((x) => x.vmid === vmid) : undefined;
-      template = { vmid, name: g ? TEMPLATE_HOSTNAME : undefined, exists: Boolean(g && g.template === 1 && hasTag(g.tags, TEMPLATE_TAG)) };
+      template = { vmid, name: g ? TEMPLATE_HOSTNAME : undefined, exists: Boolean(g && g.template === 1 && hasTag(g.tags, TEMPLATE_TAG)), arch: st.templateArch ?? null };
       set("template", template.exists, vmid && !template.exists ? "The template isn't there" : undefined);
 
       // Rights: for the user and for the token, on each path. The template's own right can only exist once the template does.
@@ -449,6 +574,9 @@ export class AgentContainers {
       environments,
       template,
       token: { exists: tokenExists },
+      storageFacts: Object.values(st.storageFacts ?? {}),
+      templateAttempts: st.templateAttempts ?? 0,
+      arch: this.arch(),
       grantMissing: grantGaps.map((g) => ({ path: g.path, role: g.role, who: g.who, why: g.why, lacking: g.lacking })),
       ...(state !== "ready" && st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.diagnosis ? { diagnosis: st.lastJob.diagnosis } : {}),
       params: st.params ?? null,
@@ -508,6 +636,11 @@ export class AgentContainers {
   /** What an environment's config must contain. Secrets are referenced by Paperclip secret id, never by value. */
   private envConfig(companyId: string, p: Params, vmid: number | undefined, sec: OrgSecrets | undefined, size: Size): Record<string, unknown> | null {
     if (vmid === undefined || !sec) return null;
+    // An organization gets a container environment only for its own resource group's pool. There is deliberately no
+    // shared, unrestricted pool to fall back to: that would look like isolation while giving every organization the same
+    // boundary.
+    const pool = this.poolFor(companyId);
+    if (!pool) return null;
     const cfg: Record<string, unknown> = {
       provider: "proxmox",
       apiUrl: new URL(this.d.pveUrl).origin,
@@ -515,7 +648,7 @@ export class AgentContainers {
       apiTokenId: TOKEN_ID,
       apiTokenSecret: sec.tokenSecretId,
       template: String(vmid),
-      pool: this.poolFor(companyId, p),
+      pool,
       storage: p.storage,
       bridge: p.bridge,
       cores: size.cores,
@@ -541,22 +674,25 @@ export class AgentContainers {
   }
 
   /** Starts a setup job (or returns the one already running). Checks that need no Proxmox call happen first. */
-  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
+  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null, force = false): Promise<{ jobId: string; alreadyRunning: boolean }> {
     if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
     await this.assertEngineReady();
     const job = this.newJob("setup", who, JOB_STEPS);
     this.job = job;
     this.actor = actor;
-    void this.runSetup(job, getPve, over).catch((e) => this.fail(job, e));
+    this.force = force;
+    void this.runSetup(job, getPve, over, force).catch((e) => this.fail(job, e));
     return { jobId: job.id, alreadyRunning: false };
   }
 
   /**
    * Runs one step again on its own, as the signed-in administrator, for when a single step is what's left (the rights,
-   * the provider, the organizations' environments). Needs a full setup to have chosen the host settings first.
+   * the provider, the organizations' environments, the template after an explicit retry). Needs a full setup to have
+   * chosen the host settings first.
    */
-  async startStep(getPve: () => Promise<ProxmoxClient>, who: string, id: unknown, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
-    if (id !== "grant" && id !== "plugin" && id !== "environments") throw new HttpError(400, "bad_request", "Only the rights, provider and environments steps can be run alone");
+  async startStep(getPve: () => Promise<ProxmoxClient>, who: string, id: unknown, actor: EngineActor | null = null, force = false): Promise<{ jobId: string; alreadyRunning: boolean }> {
+    if (id !== "grant" && id !== "plugin" && id !== "environments" && id !== "template") throw new HttpError(400, "bad_request", "Only the rights, provider, environments and template steps can be run alone");
+    if (id === "template" && !force) throw new HttpError(400, "force_required", 'Rebuilding the container template needs an explicit confirmation. Send force: true after fixing the cause of the last failure.');
     if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
     if (!this.stored().params) throw new HttpError(409, "not_set_up", "Run the full setup once first so the host settings are known");
     await this.assertEngineReady();
@@ -564,13 +700,47 @@ export class AgentContainers {
     const job = this.newJob("setup", who, [label]);
     this.job = job;
     this.actor = actor;
+    this.force = force;
     const params = this.params();
     void (async () => {
       const pve = await getPve();
-      await this.step(job, id, () => (id === "grant" ? this.stepGrant(job, pve, params) : id === "plugin" ? this.stepPlugin(job) : this.stepEnvironments(job, params)));
+      await this.step(job, id, () => (id === "grant" ? this.stepGrant(job, pve, params) : id === "plugin" ? this.stepPlugin(job) : id === "template" ? this.stepTemplate(job, pve, params) : this.stepEnvironments(job, params)));
       job.status = "done";
       job.finishedAt = this.now();
       this.log(job, "info", `${label.label}: done.`);
+      this.finish(job);
+    })().catch((e) => this.fail(job, e));
+    return { jobId: job.id, alreadyRunning: false };
+  }
+
+  /**
+   * Applies new host settings (container storage, template storage, bridge, size) to an installation that is already
+   * partly or fully set up, without rebuilding the template or discarding what worked. It validates the new storage the
+   * same way the full setup does, saves the choice, then re-grants the token's rights on the new storage and updates every
+   * organization's environment. A change to the template storage takes effect the next time the template is built.
+   */
+  async startSettings(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
+    if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
+    if (!this.stored().params) throw new HttpError(409, "not_set_up", "Run the full setup once first so the host settings are known");
+    if (!Object.keys(over).length) throw new HttpError(400, "bad_request", "Nothing to change");
+    await this.assertEngineReady();
+    const job = this.newJob("setup", who, [
+      { id: "check", label: "Check the new storage" },
+      { id: "grant", label: "Give the token rights on the new storage" },
+      { id: "environments", label: "Point each organization's environment at it" },
+    ]);
+    this.job = job;
+    this.actor = actor;
+    const merged = this.params(over);
+    void (async () => {
+      const pve = await getPve();
+      await this.step(job, "check", () => this.check(job, pve, merged));
+      this.save({ params: merged });
+      await this.step(job, "grant", () => this.stepGrant(job, pve, merged));
+      await this.step(job, "environments", () => this.stepEnvironments(job, merged));
+      job.status = "done";
+      job.finishedAt = this.now();
+      this.log(job, "info", "The new settings are in place. The template storage, if it changed, is used the next time the template is built.");
       this.finish(job);
     })().catch((e) => this.fail(job, e));
     return { jobId: job.id, alreadyRunning: false };
@@ -601,6 +771,7 @@ export class AgentContainers {
   private finish(job: JobView) {
     this.scrub = new Set();
     this.actor = null;
+    this.force = false;
     this.save({ lastJob: { ...job, log: job.log.slice(-200) } });
   }
 
@@ -613,28 +784,49 @@ export class AgentContainers {
     if (detail) s.detail = detail;
   }
 
-  private async runSetup(job: JobView, getPve: () => Promise<ProxmoxClient>, over: Partial<Params>) {
+  private async runSetup(job: JobView, getPve: () => Promise<ProxmoxClient>, over: Partial<Params>, force: boolean) {
     const pve = await getPve();
+    const before = this.stored().params;
     const params = this.params(over);
+    this.force = force;
+    // A changed host setting invalidates the grants/environment checks, so it is never a resume.
+    const changed = (Object.keys(over) as (keyof Params)[]).some((k) => over[k] !== undefined && JSON.stringify(over[k]) !== JSON.stringify(before?.[k]));
     await this.step(job, "check", () => this.check(job, pve, params));
     this.save({ params, createdBy: this.stored().createdBy ?? job.startedBy, createdAt: this.stored().createdAt ?? this.now() });
-    await this.step(job, "access", () => this.stepAccess(job, pve, params));
-    await this.step(job, "key", async () => this.stepKey(job));
+    // Resume from the first valid unfinished step: what Proxmox and the engine already have is not redone. The check step
+    // always runs (it is the validation); a force rebuild only affects the template.
+    const resumed = new Set<StepId>();
+    if (!changed && before) {
+      const snap = await this.status(pve, true).catch(() => null);
+      if (snap) for (const s of snap.steps) if (s.done) resumed.add(s.id as StepId);
+    }
+    const skip = (id: StepId, why: string) => {
+      const s = job.steps.find((x) => x.id === id)!;
+      s.state = "done";
+      s.detail = why;
+      this.log(job, "info", `${s.label}: already in place`);
+    };
+    if (resumed.has("access")) skip("access", "Already in place"); else await this.step(job, "access", () => this.stepAccess(job, pve, params));
+    if (resumed.has("key")) skip("key", "Already in place"); else await this.step(job, "key", async () => this.stepKey(job));
     // Rights on the pool, storage, bridge and node need no template; the template's own right is added when it is built.
-    await this.step(job, "grant", () => this.stepGrant(job, pve, params));
+    if (resumed.has("grant")) skip("grant", "Already in place"); else await this.step(job, "grant", () => this.stepGrant(job, pve, params));
     // The provider install doesn't depend on the template, so a template that fails to build doesn't hide whether it works.
     let templateError: unknown = null;
-    try {
-      await this.step(job, "template", () => this.stepTemplate(job, pve, params));
-    } catch (e) {
-      templateError = e;
-      const running = job.steps.find((x) => x.state === "running");
-      if (running) {
-        running.state = "failed";
-        running.detail = this.clean(e instanceof StepError || e instanceof HttpError ? e.message : errText(e));
+    if (resumed.has("template") && !force) skip("template", "Already in place");
+    else {
+      try {
+        await this.step(job, "template", () => this.stepTemplate(job, pve, params));
+      } catch (e) {
+        templateError = e;
+        const running = job.steps.find((x) => x.state === "running");
+        if (running) {
+          running.state = "failed";
+          running.detail = this.clean(e instanceof StepError || e instanceof HttpError ? e.message : errText(e));
+        }
+        this.save({ templateAttempts: (this.stored().templateAttempts ?? 0) + 1, lastTemplateError: running?.detail });
       }
     }
-    await this.step(job, "plugin", () => this.stepPlugin(job));
+    if (resumed.has("plugin")) skip("plugin", "Already in place"); else await this.step(job, "plugin", () => this.stepPlugin(job));
     if (templateError) {
       for (const id of ["environments", "enforce"] as StepId[]) {
         const s = job.steps.find((x) => x.id === id)!;
@@ -643,7 +835,7 @@ export class AgentContainers {
       }
       throw templateError;
     }
-    await this.step(job, "environments", () => this.stepEnvironments(job, params));
+    if (resumed.has("environments")) skip("environments", "Already in place"); else await this.step(job, "environments", () => this.stepEnvironments(job, params));
     await this.step(job, "enforce", async () => {
       const r = await this.enforce();
       if (!r.ok) throw new StepError(`The engine wouldn't turn on its managed-sandbox-only policy: ${r.error}`);
@@ -679,15 +871,17 @@ export class AgentContainers {
       throw new StepError(`Couldn't list the node's storage: ${errText(e)}`);
     });
     if (!storages.some((s) => s.storage === p.storage)) throw new StepError(`Storage "${p.storage}" can't hold container disks on this node. Choose one of: ${storages.map((s) => s.storage).join(", ") || "(none)"}.`);
-    const sst = await pve.storageStatus(node, p.storage).catch(() => null);
-    if (sst) {
-      if (sst.active === 0) throw new StepError(`Storage "${p.storage}" is not active on this node (a drive or share that isn't mounted?). On the host, 'pvesm status' shows it; mount it and try again.`);
-      if (typeof sst.avail === "number" && sst.avail < 4 * 1024 ** 3) throw new StepError(`Storage "${p.storage}" has only ${(sst.avail / 1024 ** 3).toFixed(1)} GiB free; building the template needs about 4 GiB and every agent container more. Free space or choose another storage.`);
-      this.log(job, "info", `Container storage "${p.storage}": ${sst.type ?? "unknown type"}, ${typeof sst.avail === "number" ? (sst.avail / 1024 ** 3).toFixed(1) + " GiB free" : "free space unknown"}`);
-      if (sst.type && /^(dir|nfs|cifs|glusterfs|cephfs)$/i.test(sst.type)) this.log(job, "warn", `"${p.storage}" is ${sst.type} storage. Unprivileged containers need its filesystem to support ownership and extended attributes (ext4, xfs, btrfs, ZFS). NTFS, exFAT, FAT and root-squashed network shares can't run them; if the container then fails to start, this is the first thing to check.`);
-    }
+    // What Proxmox can say about the storage, including the filesystem and mount options behind a directory storage.
+    const facts = await this.storageFacts(pve, p.storage);
+    const tplFacts = await this.storageFacts(pve, p.templateStorage);
+    this.save({ storageFacts: { [p.storage]: facts, [p.templateStorage]: tplFacts } });
+    if (facts.verdict === "unsupported") throw new StepError(`${facts.reason}${facts.hostCheck ? ` On the host: ${facts.hostCheck}` : ""}`);
+    if (facts.verdict === "warning") this.log(job, "warn", facts.reason!);
+    if (facts.verdict === "unknown") this.log(job, "warn", `${facts.reason}${facts.hostCheck ? ` On the host: ${facts.hostCheck}` : ""}`);
+    this.log(job, "info", `Container storage "${p.storage}": ${facts.type ?? "unknown type"}${facts.filesystem ? ` on ${facts.filesystem}` : ""}${typeof facts.availBytes === "number" ? `, ${(facts.availBytes / 1024 ** 3).toFixed(1)} GiB free` : ""}${facts.verdict === "ok" ? "" : ` (${facts.verdict})`}`);
     const tpl = await pve.nodeStorages(node, "vztmpl");
     if (!tpl.some((s) => s.storage === p.templateStorage)) throw new StepError(`Storage "${p.templateStorage}" can't hold container templates on this node. Choose one of: ${tpl.map((s) => s.storage).join(", ") || "(none)"}.`);
+    if (tplFacts.verdict === "unsupported" && tplFacts.active === false) throw new StepError(tplFacts.reason!);
     const net = await pve.network(node);
     if (!net.interfaces.some((i) => i.iface === p.bridge && /bridge/i.test(i.type))) throw new StepError(`There is no bridge named "${p.bridge}" on this node. Choose one of: ${net.interfaces.filter((i) => /bridge/i.test(i.type)).map((i) => i.iface).join(", ") || "(none)"}.`);
     return "Host looks ready";
@@ -747,7 +941,7 @@ export class AgentContainers {
     const node = this.d.node;
     const lines = await pve.taskLog(node, upid, 1000).catch(() => []);
     const ev = ctx.vmid !== undefined ? await this.gatherEvidence(pve, ctx.vmid) : {};
-    const input: LxcDiagnoseInput = { exitstatus, log: lines.map((l) => l.t), vmid: ctx.vmid, ...ev };
+    const input: LxcDiagnoseInput = { exitstatus, log: lines.map((l) => l.t), vmid: ctx.vmid, hostArch: this.arch() ?? undefined, ...ev };
     if (ctx.diagnose === false) return new StepError(`${what} failed: ${exitstatus ?? "unknown"}`);
     const d = diagnoseLxc(input);
     const job = this.job;
@@ -844,6 +1038,16 @@ export class AgentContainers {
     return (await pve.clusterResources()) as Guest[];
   }
 
+  /** The architecture Proxmox unpacked, from the create task's own log ("Detected container architecture: arm64"). */
+  private async detectedArch(pve: ProxmoxClient, upid: string): Promise<HostArch | null> {
+    const lines = await pve.taskLog(this.d.node, upid, 1000).catch(() => []);
+    for (const l of lines) {
+      const m = /Detected container architecture:\s*(amd64|arm64)/i.exec(l.t);
+      if (m) return m[1].toLowerCase() as HostArch;
+    }
+    return null;
+  }
+
   private versions(): Record<string, string> {
     const text = readFileSync(join(this.pluginDir, "template", "versions.sh"), "utf8");
     const out: Record<string, string> = {};
@@ -854,15 +1058,27 @@ export class AgentContainers {
 
   private async stepTemplate(job: JobView, pve: ProxmoxClient, p: Params): Promise<string> {
     const node = this.d.node;
-    const pub = this.stored().publicKey;
+    const arch = this.arch();
+    if (!arch) throw new StepError("This host's processor architecture couldn't be determined, so ePaperclip can't pick a matching container template. Run the setup from the Proxmox node itself.");
+    const st = this.stored();
+    if ((st.templateAttempts ?? 0) >= 3 && !this.force) {
+      throw new StepError(`Building the template has failed ${st.templateAttempts} times in a row${st.lastTemplateError ? ` (last: ${st.lastTemplateError})` : ""}. Fix the cause shown above, then press "Try the template again" so ePaperclip knows it is safe to retry.`);
+    }
+    const pub = st.publicKey;
     const key = this.sshKey();
     if (!pub || !key || !/^ssh-ed25519 [A-Za-z0-9+/=]+( [\w.-]+)?$/.test(pub)) throw new StepError("The SSH key is missing; run the setup again");
-    let vmid = this.stored().templateVmid;
+    let vmid = st.templateVmid;
     let guests = await this.guests(pve);
     let g = vmid !== undefined ? guests.find((x) => x.vmid === vmid) : undefined;
     if (g && g.type === "lxc" && g.template === 1 && hasTag(g.tags, TEMPLATE_TAG)) {
-      this.log(job, "info", `Template ${vmid} already exists`);
-      return `Template ${vmid}`;
+      if (st.templateArch && st.templateArch !== arch) {
+        this.log(job, "warn", `Template ${vmid} was built for ${st.templateArch}, but this host is ${arch}; removing it and building the matching one`);
+        await this.destroy(pve, vmid!);
+        g = undefined;
+      } else {
+        this.log(job, "info", `Template ${vmid} already exists${st.templateArch ? ` (built for ${st.templateArch})` : ""}`);
+        return `Template ${vmid}`;
+      }
     }
     if (g && g.type === "lxc" && hasTag(g.tags, TEMPLATE_TAG) && g.template !== 1) {
       this.log(job, "warn", `Container ${vmid} is an unfinished template build from an earlier run; removing it`);
@@ -876,24 +1092,29 @@ export class AgentContainers {
       vmid = await pve.nextId();
       this.save({ templateVmid: vmid });
     }
-    // 1. The Debian base template.
+    // 1. The Debian base template for this host's processor. A catalog can list both architectures; picking by version
+    // alone is what unpacked an arm64 template on an amd64 host and made the container's init die.
     const catalog = await pve.templateCatalog(node);
-    const file = newestDebian(catalog.map((c) => c.template));
-    if (!file) throw new StepError("Proxmox's template catalog has no Debian standard template. Run 'pveam update' on the host (or check its internet access), then try again.");
+    const file = newestDebian(catalog.map((c) => c.template), arch);
+    if (!file) {
+      const all = catalog.map((c) => c.template).filter((t) => /^debian-\d+-standard_/.test(t));
+      throw new StepError(`Proxmox's template catalog has no Debian standard template for this ${arch} host${all.length ? ` (it lists: ${all.slice(0, 4).join(", ")})` : ""}. Run 'pveam update' on the host (or check its internet access), then try again.`);
+    }
+    this.log(job, "info", `Using ${arch} template ${file}`);
     const volid = `${p.templateStorage}:vztmpl/${file}`;
     await this.ensureBaseTemplate(job, pve, p, file, volid, catalog.find((c) => c.template === file)?.sha512sum, false);
-    // 2. An unprivileged container from it, with our key.
+    // 2. An unprivileged container from it, with our key. nesting and keyctl are what systemd (Debian 13 has 257) needs
+    // inside an unprivileged container.
     this.log(job, "info", `Creating unprivileged container ${vmid}`);
     let created = false;
     try {
-      const create = async () => this.task(
-        pve,
-        await pve.createLxc(node, {
+      const create = async () => {
+        const upid = await pve.createLxc(node, {
           vmid,
           ostemplate: volid,
           hostname: TEMPLATE_HOSTNAME,
           unprivileged: true,
-          features: "nesting=1",
+          features: "nesting=1,keyctl=1",
           ostype: "debian",
           cores: 2,
           memory: 2048,
@@ -905,11 +1126,21 @@ export class AgentContainers {
           tags: `${TAG};${TEMPLATE_TAG}`,
           "ssh-public-keys": pub,
           description: "Agent template for the ePaperclip Proxmox sandbox provider. Built by ePaperclip's guided setup.",
-        }),
-        "Creating the container",
-        600_000,
-        { vmid },
-      );
+        });
+        await this.task(pve, upid, "Creating the container", 600_000, { vmid });
+        // Proxmox records the template's own architecture in this task's log. Verify it rather than trusting the name.
+        const unpacked = await this.detectedArch(pve, upid);
+        if (unpacked) this.save({ templateArch: unpacked });
+        if (unpacked && unpacked !== arch) throw new StepError(`Proxmox unpacked a template for ${unpacked}, but this host is ${arch}. ePaperclip removes it; run setup again to build from the ${arch} template.`);
+        // A create can succeed with the features we asked for; confirm they are on the container, since systemd 257 needs
+        // nesting (and keyctl for its session keyring).
+        const cfg = await pve.lxcConfig(node, vmid).catch(() => ({}) as Record<string, string | number | undefined>);
+        if (!String(cfg.features ?? "").includes("nesting")) {
+          this.log(job, "warn", `Proxmox created ${vmid} without nesting; setting nesting=1,keyctl=1`);
+          await pve.setLxcConfig(node, vmid, { features: "nesting=1,keyctl=1" });
+        }
+        return upid;
+      };
       try {
         await create();
       } catch (e) {
@@ -954,6 +1185,7 @@ export class AgentContainers {
       const done = await pve.lxcConfig(node, vmid);
       if (Number(done.template) !== 1) throw new StepError("Proxmox didn't mark the container as a template");
       this.log(job, "info", `Template ${vmid} is ready`);
+      this.save({ templateAttempts: 0, lastTemplateError: undefined });
       // The token may clone it now that it exists.
       await this.stepGrant(job, pve, p);
       return `Template ${vmid}`;
@@ -1153,6 +1385,11 @@ export class AgentContainers {
   /** Makes sure the organization's secrets and environment exist and match, and its agents default to it. */
   private async ensureOrg(companyId: string, name: string, p: Params, job?: JobView): Promise<string[]> {
     const warnings: string[] = [];
+    // No resource group, no container environment. An organization uses only the Proxmox pool allocated to it; handing it
+    // the shared agent pool would present a shared boundary as an isolated one.
+    if (!this.pools()[companyId]) {
+      return [`${name}: no resource group yet, so its agents have no container environment. Create one in the organization's settings (Resources); ePaperclip then gives that pool the sandbox rights and points the organization's agents at it.`];
+    }
     const st = this.stored();
     const token = this.tokenSecret();
     const key = this.sshKey();

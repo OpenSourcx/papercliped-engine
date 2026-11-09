@@ -140,7 +140,7 @@ describe("agent containers setup", () => {
 
     // The template: an unprivileged container, tagged, created with our public key, provisioned over ssh, then converted.
     const g = pve.guests.get(9000)!;
-    expect(g).toMatchObject({ unprivileged: 1, template: 1, tags: "epaperclip;epaperclip-template", features: "nesting=1" });
+    expect(g).toMatchObject({ unprivileged: 1, template: 1, tags: "epaperclip;epaperclip-template", features: "nesting=1,keyctl=1" });
     expect(String(g["ssh-public-keys"])).toMatch(/^ssh-ed25519 /);
     expect(ssh.st.scripts).toHaveLength(1);
     expect(ssh.st.scripts[0]).toContain("NODE_VERSION='24.21.0'");
@@ -328,19 +328,26 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
   });
 
-  it("an organization without a resource group uses the shared pool, and new agents follow on reconcile", async () => {
+  it("does not give an organization without a resource group a shared-pool environment", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);
-    expect((await runSetup(sam)).status).toBe("done");
-    expect([...eng.st.envs.values()][0].config.pool).toBe("epc-agents");
-    eng.st.agents.get(o.co)!.push({ id: "a2", name: "New", status: "idle", defaultEnvironmentId: null });
+    const done = await runSetup(sam);
+    expect(done.status).toBe("done");
+    // No shared epc-agents fallback: the organization has no pool of its own, so it gets no environment and says why.
+    expect([...eng.st.envs.values()]).toHaveLength(0);
+    expect(done.log.map((l: any) => l.text).join("\n")).toContain("no resource group yet");
+    // Creating its resource group afterwards gives it a dedicated pool and environment.
+    await send("PUT", `/api/resource-groups/${o.co}`, sam, { name: "Plain", cores: 2, memoryMb: 4096, diskGb: 16, maxGuests: 2 });
     await app.containers.reconcile();
-    expect(eng.st.agents.get(o.co)![1].defaultEnvironmentId).toBe([...eng.st.envs.values()][0].id);
+    const envs = [...eng.st.envs.values()];
+    expect(envs).toHaveLength(1);
+    expect(envs[0].config.pool).not.toBe("epc-agents");
+    expect(envs[0].metadata.companyId).toBe(o.co);
   });
 
   it("never gives Pin's own identity agent the organization's container environment, so it can never take a container", async () => {
     const sam = await admin();
-    const o = await org(sam, "Pinned", false);
+    const o = await org(sam, "Pinned", true);
     expect((await runSetup(sam)).status).toBe("done");
     state.setSetting("pin.appIdentities", { [o.co]: "pin-id" });
     eng.st.agents.get(o.co)!.push({ id: "pin-id", name: "Pin (host)", status: "paused", defaultEnvironmentId: null });
@@ -353,7 +360,7 @@ describe("agent containers setup", () => {
 
   it("puts agents on the direct command-line lane unless they chose one, and leaves other adapters alone", async () => {
     const sam = await admin();
-    const o = await org(sam, "Plain", false);
+    const o = await org(sam, "Plain", true);
     eng.st.agents.set(o.co, [
       { id: "c1", name: "Claude", status: "idle", adapterType: "claude_local", adapterConfig: { model: "x" }, defaultEnvironmentId: null },
       { id: "c2", name: "Chose ACP", status: "idle", adapterType: "codex_local", adapterConfig: { engine: "acp" }, defaultEnvironmentId: null },
@@ -370,7 +377,7 @@ describe("agent containers setup", () => {
 
   it("leaves an agent's deliberate non-local environment alone", async () => {
     const sam = await admin();
-    const o = await org(sam, "Plain", false);
+    const o = await org(sam, "Plain", true);
     eng.st.envs.set("some-ssh-env", { id: "some-ssh-env", name: "Their own", driver: "ssh", status: "active", config: {}, metadata: null });
     eng.st.agents.set(o.co, [{ id: "a9", name: "Custom", status: "idle", defaultEnvironmentId: "some-ssh-env" }]);
     expect((await runSetup(sam)).status).toBe("done");
@@ -476,6 +483,43 @@ describe("keeping agents off the host", () => {
     expect(s.steps.find((x: any) => x.id === "enforce").done).toBe(false);
     await app.containers.enforce();
     expect((await status(sam)).steps.find((x: any) => x.id === "enforce").done).toBe(true);
+  });
+
+  it("resumes from the first unfinished step instead of redoing what is already in place", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    const creates = () => pve.calls.filter((c) => c.method === "POST" && c.path === "/nodes/pve/lxc").length;
+    const before = creates();
+    const again = await runSetup(sam);
+    expect(again.status).toBe("done");
+    expect(again.log.map((l: any) => l.text).join("\n")).toContain("already in place");
+    // Nothing was created a second time, and no new token was made.
+    expect(creates()).toBe(before);
+    expect(pve.tokenSecrets).toHaveLength(1);
+  });
+
+  it("applies a storage change without rebuilding the template", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam, { storage: "local-lvm" })).status).toBe("done");
+    const creates = () => pve.calls.filter((c) => c.method === "POST" && c.path === "/nodes/pve/lxc").length;
+    const before = creates();
+    const start = await send("POST", "/api/agent-containers/settings", sam, { storage: "local" });
+    expect(start.status).toBeLessThan(300);
+    let job: any;
+    for (let i = 0; i < 400; i++) {
+      job = (await send("GET", `/api/agent-containers/jobs/${start.json.jobId}`, sam)).json;
+      if (job.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(job.status).toBe("done");
+    // The template was kept; the organization's environment now points at the new storage.
+    expect(creates()).toBe(before);
+    const s = await status(sam);
+    expect(s.params.storage).toBe("local");
+    const env = [...eng.st.envs.values()].find((e: any) => e.metadata?.companyId === co);
+    expect(env?.config?.storage).toBe("local");
   });
 });
 

@@ -66,6 +66,27 @@ Agents run in unprivileged Proxmox LXC containers through the Proxmox sandbox pr
 
 Routes (all need the Proxmox session; writes need `X-EPC-Request: 1`): `GET /api/agent-containers` returns `{ state: "not_set_up" | "partial" | "ready" | "error", steps: [{ id, label, done, detail? }], pluginInstalled, environments: [{ companyId, environmentId, ok }], template: { vmid?, name?, exists }, token: { exists }, canManage, job }` (non-administrators get the state and `canManage: false` only); `POST /api/agent-containers/setup` with optional `{ storage, templateStorage, bridge, pool, size: { cores, memoryMb, diskGb } }` returns `202 { jobId }` (or `200` with the running job's id); `GET /api/agent-containers/jobs/:id` returns the steps, states and log lines; `DELETE /api/agent-containers`. Inputs are validated strictly and unknown fields are refused.
 
+### Agent readiness
+
+`GET /api/agent-readiness?companyId=` answers, for every agent in one organization, whether it can really run. The answer is computed from the engine on every request, never from an agent row existing:
+
+- **adapter**: an adapter type is set, and the engine's environment capabilities do not say it is unsupported in a sandbox;
+- **credential**: a managed `runtimeConfig.aiConnection`, an `adapterConfig.env` binding under the harness's credential variable (and, for `secret_ref`, a company secret that still exists), or the engine's own `adapters/{type}/auth-signal` answering `present`. `unknown` is never treated as ready;
+- **environment**: `defaultEnvironmentId` names an existing environment of this organization with driver `sandbox` and status `active`.
+
+Each agent gets `{ ready, configured, adapter, credential, environment, issues, checkedAt }`. `configured` ignores lifecycle state; `ready` is false while the engine says `terminated`, `pending_approval` or `paused`. The result is read as the signed-in person, so the engine's membership checks apply; a viewer whose role cannot read the cheap auth signal gets `unknown`, not a false ready. The console maps this onto each organization's agents (`Agent.readiness`) and shows the first issue on the Agents list.
+
+A resource group for an organization is created only after Proxmox accepts the pool. When a later `PUT` finds the stored pool missing (removed outside ePaperclip), it recreates that pool under the same name before returning the group, so the limits never point at a vanished pool. An organization without a resource group continues to use the agent-containers setup's shared pool (`epc-agents`) with no aggregate quota from this host; that fallback is the containers lane's documented behaviour, and readiness/UI surfaces the missing group rather than treating it as restricted.
+
+### Creating the first agent and task
+
+The start wizard creates the organization through the engine, then calls the engine's own `POST /api/companies/{id}/onboarding-seed` (checked against `@paperclipai/server` 2026.1023.0, not assumed). That route is idempotent per `revision` and, on first application:
+
+- creates the first agent with the structural role `ceo`, the person's free-text role as its `title`, the default onboarding adapter and the core skill set;
+- creates the mission as the company-level goal, an `Onboarding` project, and the first task as a real engine issue assigned to that agent (`assigneeAgentId`).
+
+The model step that follows is `PATCH /api/agents/{id} {adapterType}`; credentials are then attached either as an organization credential (auth-signal) or as the agent's `adapterConfig.env` secret reference. Readiness is what decides whether the agent can actually run, not the fact that the agent row exists.
+
 ### Keeping agents off the host: what is and isn't enforced
 
 How Paperclip picks where a run goes (checked in its source and by running it): the agent's default environment, else the instance default, else the built-in `local` environment, which runs the agent as the engine's system user on the host. Paperclip has an instance setting, `enableManagedSandboxOnly` (experimental settings), under which a run that would land on `local` is refused ("managed sandbox only") and the `local` environment is hidden. It is unmodified engine code, set through the engine's own API.

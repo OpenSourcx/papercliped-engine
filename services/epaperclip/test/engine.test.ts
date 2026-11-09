@@ -318,6 +318,26 @@ describe("resource groups", () => {
     expect((await (await send("PUT", "/api/resource-groups/c1", limits, { Cookie: c })).json() as any).group.pool).toBe("epc-northwind-labs-2");
   });
 
+  it("stores no resource group when Proxmox refuses to create the pool", async () => {
+    const c = await owner();
+    pve.failures.add("pool");
+    const r = await send("PUT", "/api/resource-groups/c1", limits, { Cookie: c });
+    expect(r.status).toBe(502);
+    expect((await r.json() as any).code).toBe("proxmox_rejected");
+    expect(await (await fetch(base + "/api/resource-groups", { headers: { Cookie: c } })).json() as any).toEqual({ groups: [] });
+  });
+
+  it("recreates a pool that was removed outside ePaperclip before returning the stored group", async () => {
+    const c = await owner();
+    await send("PUT", "/api/resource-groups/c1", limits, { Cookie: c });
+    pve.pools.delete("epc-northwind-labs");
+    const again = await send("PUT", "/api/resource-groups/c1", { ...limits, cores: 6 }, { Cookie: c });
+    expect(again.status).toBe(200);
+    expect((await again.json() as any).group).toMatchObject({ pool: "epc-northwind-labs", cores: 6 });
+    expect(pve.pools.has("epc-northwind-labs")).toBe(true);
+    expect(pve.calls.filter((x) => x.method === "POST" && x.path === "/pools")).toHaveLength(2);
+  });
+
   it("is only for the organization's owners and admins, and checks the limits", async () => {
     const c = await signIn();
     await until(() => eng.users.has(managedEmail("sam@pve")));
@@ -350,6 +370,51 @@ describe("resource groups", () => {
     expect((await (await send("DELETE", "/api/resource-groups/c1", undefined, { Cookie: c })).json() as any).poolRemoved).toBe(true);
     expect(pve.pools.has("epc-second")).toBe(false);
     expect((await send("DELETE", "/api/resource-groups/c1", undefined, { Cookie: c })).status).toBe(404);
+  });
+});
+
+describe("agent readiness", () => {
+  async function member(username = "sam", role = "owner") {
+    const c = await signIn(username);
+    const email = managedEmail(`${username}@pve`);
+    await until(() => eng.users.has(email));
+    eng.company("c1", "Northwind", { [eng.userId(email)!]: role });
+    return c;
+  }
+
+  it("computes readiness from the engine's adapters, credential references and environments", async () => {
+    const c = await member();
+    eng.st.envs.set("e1", { id: "e1", companyId: "c1", name: "Containers", driver: "sandbox", status: "active", config: {}, metadata: { companyId: "c1" } });
+    eng.st.secrets.set("s1", { companyId: "c1", name: "OPENAI_API_KEY", value: "sk-test" });
+    eng.st.authSignals.set("c1|claude_local", "present");
+    eng.st.agents.set("c1", [
+      { id: "a1", companyId: "c1", name: "Ada", status: "idle", adapterType: "claude_local", adapterConfig: {}, defaultEnvironmentId: "e1" },
+      // A second Claude agent shares the organization credential, so the cheap signal is read once.
+      { id: "a2", companyId: "c1", name: "Bea", status: "idle", adapterType: "claude_local", adapterConfig: {}, defaultEnvironmentId: "e1" },
+      { id: "a3", companyId: "c1", name: "Cleo", status: "idle", adapterType: "codex_local", adapterConfig: { env: { OPENAI_API_KEY: { type: "secret_ref", secretId: "s1" } } }, defaultEnvironmentId: "e1" },
+      { id: "a4", companyId: "c1", name: "Dee", status: "idle", adapterType: "gemini_local", adapterConfig: {}, defaultEnvironmentId: "e1" },
+      { id: "a5", companyId: "c1", name: "Eve", status: "idle", adapterType: "claude_local", adapterConfig: {}, defaultEnvironmentId: null },
+    ]);
+    const r = await send("GET", "/api/agent-readiness?companyId=c1", undefined, { Cookie: c });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as any;
+    expect(body.companyId).toBe("c1");
+    expect(Object.fromEntries(body.agents.map((a: any) => [a.agentId, a.ready]))).toEqual({ a1: true, a2: true, a3: true, a4: false, a5: false });
+    expect(body.agents.find((a: any) => a.agentId === "a1").credential).toMatchObject({ ok: true, source: "organization_credential" });
+    expect(body.agents.find((a: any) => a.agentId === "a3").credential).toMatchObject({ ok: true, source: "agent_environment", detail: "OPENAI_API_KEY" });
+    expect(body.agents.find((a: any) => a.agentId === "a4").issues.map((i: any) => i.code)).toContain("credential_unknown");
+    expect(body.agents.find((a: any) => a.agentId === "a5").issues.map((i: any) => i.code)).toContain("no_environment");
+    // Two Claude agents with the same environment share one read; the one without a default makes its own.
+    expect(eng.st.authSignalCalls.filter((x) => x === "c1|claude_local?e1")).toHaveLength(1);
+    expect(eng.st.authSignalCalls.filter((x) => x.startsWith("c1|claude_local"))).toHaveLength(2);
+  });
+
+  it("needs membership, and asks for a company id", async () => {
+    const outsider = await signIn("lee");
+    await until(() => eng.users.has(managedEmail("lee@pve")));
+    expect((await send("GET", "/api/agent-readiness?companyId=c1", undefined, { Cookie: outsider })).status).toBe(403);
+    const c = await member();
+    expect((await send("GET", "/api/agent-readiness", undefined, { Cookie: c })).status).toBe(400);
   });
 });
 

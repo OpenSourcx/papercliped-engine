@@ -1,4 +1,5 @@
 import type { Rule } from "@papercliped-engine/automations";
+import type { AgentReadiness } from "./engine/host.ts";
 
 export type PinMode = "assistant" | "agent";
 
@@ -38,6 +39,8 @@ export interface Agent {
   reportsTo?: string | null; // agent id, for the org chart
   spendUsd?: number; // this month
   budgetUsd?: number;
+  /** Live only: whether the engine really has an adapter, credential and sandbox environment for this agent. */
+  readiness?: AgentReadiness;
 }
 
 export interface ResourceGroup {

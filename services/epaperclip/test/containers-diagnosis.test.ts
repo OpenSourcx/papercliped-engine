@@ -124,7 +124,7 @@ describe("agent containers: why a container failed to start", () => {
     expect(text).toContain("Trying once without the container features");
     expect(text).toContain("Fix:");
     expect(text).toMatch(/Container 9000 config: .*features=nesting=1/);
-    expect(text).toContain('"local-lvm" is dir storage');
+    expect(text).toContain('Proxmox does not report which filesystem is behind "local-lvm"');
     // The half-made container is gone, and the provider step still ran although the template did not.
     expect(pve.guests.size).toBe(0);
     expect(failed.steps.find((s: any) => s.id === "template").state).toBe("failed");
@@ -163,8 +163,27 @@ describe("agent containers: why a container failed to start", () => {
     expect(failed.diagnosis.evidence.join("\n")).not.toContain("Accepted publickey");
   });
 
-  it("replaces a damaged base template once and carries on", async () => {
+  it("builds from the template for this host's processor when the catalog lists both", async () => {
     const sam = await admin();
+    await org(sam, "Northwind");
+    // The real host's catalog had both: an older amd64 and a newer arm64. Sorting by version alone picked arm64.
+    pve.host.catalog = [
+      "debian-13-standard_13.1-2_amd64.tar.zst",
+      "debian-13-standard_13.6-1_arm64.tar.zst",
+      "ubuntu-24.04-standard_24.04-2_amd64.tar.zst",
+    ];
+    const done = await runSetup(sam);
+    expect(done.status).toBe("done");
+    const create = pve.calls.find((c) => c.method === "POST" && c.path === "/nodes/pve/lxc");
+    expect(create?.body ?? "").toContain("_amd64.tar.zst");
+    expect(create?.body ?? "").not.toContain("_arm64.tar.zst");
+    expect(done.log.map((l: any) => l.text).join("\n")).toContain("Using amd64 template debian-13-standard_13.1-2_amd64.tar.zst");
+    const s = await status(sam);
+    expect(s.arch).toBe("amd64");
+    expect(s.template.arch).toBe("amd64");
+  });
+
+  it("replaces a damaged base template once and carries on", async () => {    const sam = await admin();
     await org(sam, "Northwind");
     pve.host.corruptOnce = true;
     const done = await runSetup(sam);
@@ -199,7 +218,7 @@ describe("agent containers: why a container failed to start", () => {
     pve.host.storage = { type: "cifs", active: 1, avail: 50 * 1024 ** 3 };
     const done = await runSetup(sam);
     expect(titles(done)).toContain("cifs storage");
-    expect(titles(done)).toContain("NTFS, exFAT, FAT");
+    expect(titles(done)).toContain("no_root_squash");
   });
 });
 

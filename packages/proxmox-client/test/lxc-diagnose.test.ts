@@ -50,8 +50,31 @@ describe("LXC failure diagnosis", () => {
     expect(d.fix.length).toBeGreaterThan(0);
   });
 
-  it("uses a no-features probe result: it starts without nesting", () => {
-    const d = diagnoseLxc({ log: OWNER_LOG, vmid: 104, config: { features: "nesting=1" }, startsWithoutFeatures: true });
+  it("names a template built for another processor, from Proxmox's own create log", () => {
+    // The owner's host: Intel Xeon, an arm64 template unpacked, then only LXC's generic init death.
+    const log = [
+      "extracting archive '/mnt/pve/drive2/template/cache/debian-13-standard_13.6-1_arm64.tar.zst'",
+      "Total bytes read: 593008640 (566MiB, 189MiB/s)",
+      "Detected container architecture: arm64",
+      ...OWNER_LOG,
+    ];
+    const d = diagnoseLxc({ exitstatus: "startup for container '104' failed", log, vmid: 104, hostArch: "amd64" });
+    expect(d.id).toBe("template-arch-mismatch");
+    expect(d.confidence).toBe("matched");
+    expect(d.title).toContain("different processor");
+    expect(d.plain).toContain("arm64");
+    expect(d.plain).toContain("amd64");
+    expect(d.fix.join("\n")).toContain("amd64 Debian template");
+    expect(d.evidence.join("\n")).toContain("Detected container architecture: arm64");
+  });
+
+  it("does not claim an architecture problem when the template matches the host", () => {
+    const log = ["Detected container architecture: amd64", ...OWNER_LOG];
+    const d = diagnoseLxc({ exitstatus: "startup for container '104' failed", log, vmid: 104, hostArch: "amd64" });
+    expect(d.id).toBe("unknown-start-failure");
+  });
+
+  it("uses a no-features probe result: it starts without nesting", () => {    const d = diagnoseLxc({ log: OWNER_LOG, vmid: 104, config: { features: "nesting=1" }, startsWithoutFeatures: true });
     expect(d.id).toBe("features-blocked");
     expect(d.plain).toContain("nesting=1");
   });

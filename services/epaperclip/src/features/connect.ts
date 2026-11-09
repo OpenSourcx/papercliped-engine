@@ -344,7 +344,7 @@ export async function connectApi(ctx: FeatureCtx): Promise<boolean> {
       await ctx.asUser((pve) => pve.call("DELETE", `/access/users/${encodeURIComponent(s.username)}/token/${encodeURIComponent(pveName)}`)).catch(() => {});
       throw e;
     }
-    const { code, grant } = svc.createGrant({ req: { ...req, scope }, userid: s.username, direct, orgs, tokenId: id });
+    const { code, grant } = svc.createGrant({ req: { ...req, scope }, userid: s.username, direct, orgs, tokenId: id, ...(s.link ? { link: s.link } : {}) });
     svc.auditFor(s.username, "oauth.consent", `grant ${grant.id}`, `${req.client.name} (${level}${direct ? ", direct" : ""}${orgs ? `, ${orgs.length} org(s)` : ""})`, clientIp(ctx.req));
     // Tidy up Proxmox tokens that earlier unfinished approvals left behind.
     await ctx.asUser((pve, sess) => svc.sweepOrphans(pve, sess.username, false)).catch(() => ({ deleted: 0, failed: 0 }));

@@ -6,6 +6,7 @@ export const qk = {
   adapters: ["engine", "adapters"] as const,
   connectors: ["host", "connectors"] as const,
   resourceGroups: ["host", "resource-groups"] as const,
+  agentReadiness: (id: string) => ["host", "agent-readiness", id] as const,
   agentContainers: ["host", "agent-containers"] as const,
   agentContainersJob: (id: string) => ["host", "agent-containers-job", id] as const,
   company: (id: string) => ["engine", "co", id] as const,

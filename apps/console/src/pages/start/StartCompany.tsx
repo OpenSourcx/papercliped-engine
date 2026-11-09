@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, KeyRound, LogIn, Sparkles, UserPlus, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, Check, Sparkles, UserPlus, X } from "lucide-react";
 import { type LoginAdapter } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../data/store.tsx";
 import { orgSlug } from "../../data/engine/map.ts";
-import { engine, errorText, useCanCreateOrgs, useCreateOrg, useEngineStatus, useOrgs } from "../../data/engine/queries.ts";
+import { engine, errorText, useCanCreateOrgs, useContainersStep, useCreateOrg, useEngineStatus, useOrgs } from "../../data/engine/queries.ts";
+import { qk } from "../../data/engine/keys.ts";
+import { useAgentReadiness } from "../../data/engine/readiness.ts";
 import { host } from "../../data/engine/host.ts";
 import { startApi } from "../../data/engine/startApi.ts";
 import { suggestSize } from "../../pin/brain.ts";
@@ -15,7 +17,8 @@ import { useModals } from "../../modals/useModals.ts";
 import { cn } from "../../lib/storage.ts";
 import { Avatar, Button, Chip, Field, IconButton, Input, Notice, Spinner } from "../../ui/primitives.tsx";
 import { textareaClass } from "../org/live/common.tsx";
-import { ApiKeyModal, HARNESSES, SignInModal, type Harness } from "../AgentSignIn.tsx";
+import { ApiKeyModal, HARNESSES, InlineSignIn, type Harness } from "../AgentSignIn.tsx";
+import { BrandMark } from "../../ui/BrandMark.tsx";
 import { SizeChoice } from "./SizeChoice.tsx";
 
 /**
@@ -43,6 +46,8 @@ interface Draft {
   ceoTitle: string;
   agentId: string | null;
   firstTask?: string;
+  /** True when the person chose "Skip for now" at the model step. The limitation is shown in the task and org views. */
+  modelSkipped?: boolean;
 }
 const EMPTY: Draft = { step: "name", company: null, mission: "", ceoName: "", ceoTitle: "", agentId: null };
 
@@ -166,7 +171,14 @@ function NameStep({ c }: { c: Ctx }) {
   const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
   const containers = useQuery({ queryKey: ["start", "containers"], queryFn: host.agentContainers.get, retry: false });
   const dupe = name.trim() && eng.data.orgs.some((o) => o.engine?.companyId !== draft.company?.id && o.name.toLowerCase() === name.trim().toLowerCase());
-  const blocked = gate.state !== "ready" ? "The engine isn't ready yet." : canCreate === false ? "Organizations on this device are created by a Proxmox administrator, who can then invite you." : null;
+  // Say what is actually being waited on instead of offering a button that can only fail.
+  const blocked = (() => {
+    if (gate.state === "checking") return "Checking whether the engine is ready…";
+    if (gate.state !== "ready" && gate.state !== "demo") return gate.message;
+    if (canCreate === undefined) return "Checking whether you can create organizations…";
+    if (canCreate === false) return "Organizations on this device are created by a Proxmox administrator, who can then invite you.";
+    return null;
+  })();
   const next = async () => {
     if (!name.trim() || dupe || busy || blocked) return;
     if (draft.company) { patch({ step: "ceo" }); return; }
@@ -252,7 +264,7 @@ function CeoStep({ c }: { c: Ctx }) {
     <Screen title="Create your first agent" subtitle="The CEO leads the organization: it plans the work and hires the rest of the team." onBack={() => patch({ step: "name" })} next={{ label: "Next", onClick: next, disabled: !draft.ceoName.trim(), loading: busy }}>
       <div role="radiogroup" aria-label="How to create the CEO" className="flex flex-col sm:flex-row gap-3">
         {choice("me", <UserPlus className="h-4 w-4" />, "Create it myself", "Name your first agent.")}
-        {choice("pin", <Sparkles className="h-4 w-4 text-accent" />, "Let Pin create it", pinReady ? "Pin drafts a name and a role from what the organization is for. You review it." : "Connect a model for Pin first (Settings → Connectors).", !pinReady)}
+        {choice("pin", <Sparkles className="h-4 w-4 text-accent" />, "Let Pin create it", pinReady ? "Pin drafts a name and a role from what the organization is for. You review it." : "Connect a model for Pin first (Settings → Agent models).", !pinReady)}
       </div>
       {mode === "pin" && (
         <div className="space-y-3">
@@ -274,17 +286,40 @@ function CeoStep({ c }: { c: Ctx }) {
 
 
 
+/** What a card calls each harness: the provider the person knows, not the command-line tool that runs it. */
+const PROVIDER: Record<Harness, string> = { claude_local: "Claude", codex_local: "OpenAI", grok_local: "Grok", gemini_local: "Gemini" };
+
 function ModelStep({ c }: { c: Ctx }) {
-  const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
+  const { draft, patch, setError, error, warning, modals } = c;
+  const qc = useQueryClient();
   const [picked, setPicked] = useState<Harness | null>(null);
   const [connected, setConnected] = useState<Partial<Record<Harness, boolean>>>({});
   const [flow, setFlow] = useState<{ kind: "login" | "key"; adapter: Harness } | null>(null);
-  const [prepping, setPrepping] = useState(false);
-  // The container environment is made within a minute of the organization; wait for it before offering a sign-in.
-  const env = useQuery({ queryKey: ["start", "env", draft.company!.id], queryFn: host.agentContainers.get, retry: false, refetchInterval: (q) => (q.state.data?.environments.some((e) => e.companyId === draft.company!.id && e.ok) ? false : 3000) });
-  const environmentId = env.data?.environments.find((e) => e.companyId === draft.company!.id && e.ok)?.environmentId ?? null;
+  // Paperclip's order: a subscription first, an API key as the quieter second choice.
+  const [mode, setMode] = useState<"account" | "key">("account");
+  // Read the host directly, under the same cache key as useAgentContainers: the wizard must still work while the
+  // session probe is settling, and it needs to know whether this organization's environment exists yet.
+  const containers = useQuery({
+    queryKey: qk.agentContainers,
+    queryFn: host.agentContainers.get,
+    retry: 1,
+    refetchInterval: (q) => {
+      const s = q.state.data;
+      if (!s || s.environments.some((e) => e.companyId === draft.company!.id && e.ok)) return false;
+      return s.state === "ready" ? 3_000 : 30_000;
+    },
+  });
+  const makeEnvironment = useContainersStep();
+  const environment = containers.data?.environments.find((e) => e.companyId === draft.company!.id) ?? null;
+  const environmentId = environment?.ok ? environment.environmentId : null;
+  // The model step is re-entered from the task step; ask the backend what is really connected instead of trusting a
+  // component-local flag that vanished on unmount.
+  const agent = useQuery({ queryKey: qk.agent(draft.company!.id, draft.agentId ?? ""), queryFn: () => engine.agents.get(draft.agentId!), enabled: !!draft.agentId, retry: false });
+  const readiness = useAgentReadiness(draft.company!.id, agent.data ? [agent.data] : []);
+  const modelCheck = draft.agentId ? readiness.get(draft.agentId)?.checks.find((check) => check.id === "model") : undefined;
+  const modelConnected = modelCheck?.state === "ok";
+  const logsIn = (a: Harness) => HARNESSES.find((h) => h.adapter === a)?.login === true;
   const start = async (kind: "login" | "key", adapter: Harness) => {
-    setPrepping(true);
     setError(null);
     try {
       // The CEO runs on whichever harness the person connects.
@@ -292,35 +327,65 @@ function ModelStep({ c }: { c: Ctx }) {
       setFlow({ kind, adapter });
     } catch (e) {
       setError(errorText(e));
-    } finally {
-      setPrepping(false);
     }
   };
-  const chosen = HARNESSES.find((h) => h.adapter === picked);
+  const choose = (adapter: Harness) => {
+    setFlow(null);
+    setPicked(adapter);
+    if (mode === "key" || !logsIn(adapter)) void start("key", adapter);
+  };
+  // Choosing a provider starts its sign-in at once, as soon as the container is there to run it.
+  useEffect(() => {
+    if (picked && mode === "account" && logsIn(picked) && environmentId && !flow && !connected[picked] && !modelConnected) void start("login", picked);
+  }, [picked, mode, environmentId, modelConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  const switchMode = () => {
+    setFlow(null);
+    setPicked(null);
+    setError(null);
+    setMode((m) => (m === "account" ? "key" : "account"));
+  };
+  // A successful sign-in or saved key is real state: refresh the readiness view and forget an earlier skip.
+  const connectedNow = (adapter: Harness) => {
+    setConnected((m) => ({ ...m, [adapter]: true }));
+    patch({ modelSkipped: false });
+    void qc.invalidateQueries({ queryKey: ["connect", "org-ai", draft.company!.id] });
+    void qc.invalidateQueries({ queryKey: ["vault"] });
+    void qc.invalidateQueries({ queryKey: ["agent-auth", draft.company!.id] });
+    if (draft.agentId) void qc.invalidateQueries({ queryKey: qk.agent(draft.company!.id, draft.agentId) });
+  };
+  const shown = HARNESSES.filter((h) => mode === "key" || h.login);
+  const any = modelConnected || Object.values(connected).some(Boolean);
+  const environmentState = () => {
+    if (containers.isPending) return <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />Checking this organization's container…</p>;
+    if (containers.error) return <Notice tone="warning" title="Couldn't check the agent container" action={<Button size="sm" variant="ghost" onClick={() => void containers.refetch()}>Try again</Button>}>The sign-in runs inside this organization's container, and the device didn't answer whether it is ready.</Notice>;
+    const s = containers.data;
+    if (!s) return null;
+    if (s.state !== "ready") return <Notice tone="warning" title="Agent containers aren't set up yet" action={s.canManage ? <Button size="sm" onClick={() => modals.selectSection("agent-containers")}>Set up</Button> : undefined}>A Claude, Codex or Grok sign-in runs inside this organization's container. You can connect a model later, but its agent can't execute until containers are set up.</Notice>;
+    if (!environment) return <Notice tone="info" title="This organization's container is still being set up" action={s.canManage ? <Button size="sm" loading={makeEnvironment.isPending} onClick={() => makeEnvironment.mutate("environments")}>Create it now</Button> : undefined}>The account sign-in can start as soon as it exists. An API key can be saved now.</Notice>;
+    if (!environment.ok) return <Notice tone="warning" title="This organization's container isn't healthy">The engine reports that its container environment isn't running. An administrator can repair it in Settings → Agent containers.</Notice>;
+    return null;
+  };
   return (
-    <Screen title="Connect a model" subtitle="Your agents work with your account or an API key." onBack={() => patch({ step: "ceo" })} next={{ label: Object.values(connected).some(Boolean) ? "Next" : "Skip for now", onClick: () => patch({ step: "task" }), variant: Object.values(connected).some(Boolean) ? "primary" : "secondary" }} avatar={draft.ceoName}>
-      <div role="radiogroup" aria-label="Model" className="grid grid-cols-2 gap-3">
-        {HARNESSES.map((h) => (
-          <button key={h.adapter} type="button" role="radio" aria-checked={picked === h.adapter} onClick={() => setPicked(h.adapter)} className={cn("transition-control rounded-xl border p-3.5 text-left", picked === h.adapter ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong")}>
-            <div className="flex items-center justify-between gap-2 font-medium text-sm">{h.name}{connected[h.adapter] && <Chip tone="good"><Check className="h-3 w-3" />Connected</Chip>}</div>
-            <p className="text-xs text-ink-3 mt-1">{h.login ? "Account or API key" : "API key"}</p>
+    <Screen title="Connect a model" subtitle="Your agents work with your subscription or an API key." onBack={() => patch({ step: "ceo" })} next={{ label: any ? "Next" : "Skip for now", onClick: () => patch({ step: "task", modelSkipped: !any }), variant: any ? "primary" : "secondary" }} avatar={draft.ceoName}>
+      <div role="radiogroup" aria-label="Model" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {shown.map((h) => (
+          <button key={h.adapter} type="button" role="radio" aria-checked={picked === h.adapter} onClick={() => choose(h.adapter)} className={cn("transition-control flex flex-col items-center gap-1.5 rounded-xl border p-4 text-center", picked === h.adapter ? "border-accent/60 bg-accent-soft" : "border-line hover:border-line-strong")}>
+            <BrandMark id={h.adapter} name={PROVIDER[h.adapter]} size={22} />
+            <span className="font-medium text-sm">{PROVIDER[h.adapter]}</span>
+            <span className="text-xs text-ink-3">{mode === "account" ? "Subscription" : "API key"}</span>
+            {(connected[h.adapter] || (modelConnected && agent.data?.adapterType === h.adapter)) && <Chip tone="good"><Check className="h-3 w-3" />Connected</Chip>}
           </button>
         ))}
       </div>
-      {chosen && (
-        <div className="space-y-3">
-          <p className="text-compact text-ink-2">{chosen.how}</p>
-          <div className="flex flex-wrap gap-2">
-            {chosen.login && <Button variant="primary" disabled={!environmentId} loading={prepping} onClick={() => void start("login", chosen.adapter)}><LogIn className="h-4 w-4" />Sign in with your account</Button>}
-            <Button loading={prepping && !chosen.login} onClick={() => void start("key", chosen.adapter)}><KeyRound className="h-4 w-4" />Use an API key</Button>
-          </div>
-          {chosen.login && !environmentId && <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />Setting up this organization's container so the sign-in has somewhere to run…</p>}
-        </div>
-      )}
+      <button type="button" onClick={switchMode} className="self-start text-compact text-ink-3 underline underline-offset-2 hover:text-ink transition-control">{mode === "account" ? "Use API key instead" : "Use your subscription instead"}</button>
+      {environmentState()}
+      {makeEnvironment.data && <p className="text-xs text-ink-3">Environment setup was requested. This page updates on its own.</p>}
+      {makeEnvironment.error && <p role="alert" className="text-compact text-critical">{errorText(makeEnvironment.error)}</p>}
+      {!any && !flow && <Notice tone="info" title="You can connect a model later">Without one, {draft.ceoName || "the agent"} can't execute tasks. If you skip this step, the organization will show what is still missing.</Notice>}
+      {flow?.kind === "login" && environmentId && <InlineSignIn key={flow.adapter} companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter as LoginAdapter} environmentId={environmentId} onDone={() => connectedNow(flow.adapter)} />}
+      {flow?.kind === "key" && <ApiKeyModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter} onClose={() => setFlow(null)} onDone={() => connectedNow(flow.adapter)} />}
       {warning && <Notice tone="warning">{warning}</Notice>}
       {error && <p role="alert" className="text-compact text-critical">{error}</p>}
-      {flow?.kind === "login" && environmentId && <SignInModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter as LoginAdapter} environmentId={environmentId} onClose={() => setFlow(null)} onDone={() => setConnected((c) => ({ ...c, [flow.adapter]: true }))} />}
-      {flow?.kind === "key" && <ApiKeyModal companyId={draft.company!.id} org={draft.company!.name} adapter={flow.adapter} onClose={() => setFlow(null)} onDone={() => setConnected((c) => ({ ...c, [flow.adapter]: true }))} />}
     </Screen>
   );
 }
@@ -328,7 +393,14 @@ function ModelStep({ c }: { c: Ctx }) {
 
 
 function TaskStep({ c }: { c: Ctx }) {
-  const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
+  const { draft, patch, setError, error, busy, setBusy, goToOrg, modals } = c;
+  const agent = useQuery({ queryKey: qk.agent(draft.company!.id, draft.agentId ?? ""), queryFn: () => engine.agents.get(draft.agentId!), enabled: !!draft.agentId, retry: false });
+  const readiness = useAgentReadiness(draft.company!.id, agent.data ? [agent.data] : []);
+  const current = draft.agentId ? readiness.get(draft.agentId) : undefined;
+  const model = current?.checks.find((check) => check.id === "model");
+  const environment = current?.checks.find((check) => check.id === "environment");
+  // "Skip for now" is respected, but never mistaken for readiness: the task is created and waits.
+  const skipped = draft.modelSkipped === true && model?.state !== "ok";
   const text = draft.firstTask ?? "";
   const launch = async (withTask: boolean) => {
     if (busy) return;
@@ -346,8 +418,20 @@ function TaskStep({ c }: { c: Ctx }) {
       setBusy(false);
     }
   };
+  const readinessNotice = () => {
+    if (agent.isPending) return <p className="text-xs text-ink-3 flex items-center gap-1.5"><Spinner />Checking whether {draft.ceoName || "the agent"} can run…</p>;
+    // The skip is something the person just chose, so it is shown even if the readiness read itself failed.
+    if (skipped) return <Notice tone="warning" title="No model is connected" action={<Button size="sm" onClick={() => patch({ step: "model" })}>Connect a model</Button>}>{draft.ceoName || "This agent"} can't execute tasks yet. The task is saved and waits until a model account or API key is connected.</Notice>;
+    if (agent.error) return <Notice tone="info" title="Couldn't check whether it can run">The task can still be created. {errorText(agent.error)}</Notice>;
+    if (model?.state === "blocked") return <Notice tone="warning" title="No model is available to this agent" action={<Button size="sm" onClick={() => patch({ step: "model" })}>Connect a model</Button>}>{model.detail} The task is saved and waits.</Notice>;
+    if (environment?.state === "blocked") return <Notice tone="warning" title="The agent can't run in a container yet" action={<Button size="sm" onClick={() => modals.selectSection("agent-containers")}>Open Agent containers</Button>}>{environment.detail} The task is saved and waits.</Notice>;
+    if (current?.state === "unknown") return <Notice tone="info" title="Readiness couldn't be fully checked">{current.summary} The task can still be created.</Notice>;
+    if (current?.state === "ready") return <Notice tone="good" title="Ready to run">{current.summary}</Notice>;
+    return null;
+  };
   return (
-    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. Your agent can work on it once its model and container are ready." onBack={() => patch({ step: "model" })} next={{ label: "Create task", onClick: () => void launch(true), disabled: !text.trim(), loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
+    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. It waits for the agent until its model and container are ready." onBack={() => patch({ step: "model" })} next={{ label: "Create task", onClick: () => void launch(true), disabled: !text.trim(), loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
+      {readinessNotice()}
       <Field label="First task" htmlFor="first-task">
         <textarea id="first-task" autoFocus rows={5} value={text} onChange={(e) => patch({ firstTask: e.target.value })} className={textareaClass} placeholder={"Plan the first week\nPropose a plan and the team we need."} />
       </Field>

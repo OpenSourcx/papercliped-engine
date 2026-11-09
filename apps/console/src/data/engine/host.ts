@@ -77,10 +77,46 @@ export interface ResourceGroupState extends ResourceGroupSize {
   provisioning?: { state: "ready" | "pending" | "failed"; at: number; error?: string; steps: { id: "pool" | "acl" | "broker" | "environment"; state: "pending" | "done" | "failed" | "skipped"; detail?: string }[] };
 }
 
+/** Whether one agent can really run: adapter, credential reference and an active sandbox default environment. */
+export interface AgentReadiness {
+  agentId: string;
+  companyId: string;
+  name: string;
+  status: string;
+  ready: boolean;
+  configured: boolean;
+  adapter: { type: string | null; ok: boolean };
+  credential: { ok: boolean; source: "ai_connection" | "agent_environment" | "organization_credential" | "none" | "unknown"; detail?: string };
+  environment: { ok: boolean; id: string | null; driver: string | null; status: string | null };
+  issues: { code: string; detail: string }[];
+  checkedAt: string;
+}
+export interface AgentReadinessAnswer {
+  companyId: string;
+  checkedAt: string;
+  agents: AgentReadiness[];
+}
+
 /** Agent containers: agents run in unprivileged Proxmox containers, set up once by a Proxmox administrator. */
 export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
 export interface ContainersStep { id: string; label: string; done: boolean; detail?: string }
 export interface ContainersParams { storage: string; templateStorage: string; bridge: string; pool: string; size: { cores: number; memoryMb: number; diskGb: number } }
+/** What Proxmox could say about a storage, and whether it can hold unprivileged container disks. */
+export interface ContainersStorageFacts {
+  name: string;
+  type?: string;
+  active?: boolean;
+  enabled?: boolean;
+  availBytes?: number;
+  totalBytes?: number;
+  content?: string;
+  path?: string;
+  filesystem?: string;
+  mountOptions?: string[];
+  verdict: "ok" | "warning" | "unsupported" | "unknown";
+  reason?: string;
+  hostCheck?: string;
+}
 /** Why a failed Proxmox task failed, in plain words, with the exact fix and the redacted log lines it rests on. */
 export interface ContainersDiagnosis { id: string; step: string; title: string; plain: string; fix: string[]; evidence: string[]; confidence: "matched" | "generic" }
 export interface ContainersStatus {
@@ -88,11 +124,17 @@ export interface ContainersStatus {
   steps: ContainersStep[];
   pluginInstalled: boolean;
   environments: { companyId: string; environmentId: string; ok: boolean }[];
-  template: { vmid?: number; name?: string; exists: boolean };
+  template: { vmid?: number; name?: string; exists: boolean; arch?: "amd64" | "arm64" | null };
   token: { exists: boolean };
   canManage: boolean;
   job: { id: string; status: "running" | "done" | "failed" } | null;
   params?: ContainersParams | null;
+  /** What Proxmox reported about the chosen storages on the last check. */
+  storageFacts?: ContainersStorageFacts[];
+  /** Consecutive failed template builds; three needs an explicit "try again". */
+  templateAttempts?: number;
+  /** This host's processor architecture, which the template must match. */
+  arch?: "amd64" | "arm64" | null;
   /** What the node offers for the three host choices, and a valid starting pick for each (null when it couldn't be read). */
   options?: { storages: string[]; templateStorages: string[]; bridges: string[]; suggested: { storage: string | null; templateStorage: string | null; bridge: string | null } } | null;
   error?: string;
@@ -152,7 +194,7 @@ export interface ConnectStatusView {
   mode: RemoteMode;
   paired: boolean;
   device?: { deviceId: string; accountId: string; name: string; pairedAt: number };
-  pairing?: { id: string; state: "pending" | "approved" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
   tunnel?: { state: string; message: string; hostname?: string };
 }
 
@@ -184,10 +226,12 @@ export const host = {
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
-    setup: (choices: Partial<ContainersParams>) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/setup", choices),
+    setup: (choices: Partial<ContainersParams> & { force?: boolean }) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/setup", choices),
+    /** Applies new host settings to a partial/ready installation without rebuilding the template. */
+    settings: (choices: Partial<ContainersParams>) => call<{ jobId: string; alreadyRunning: boolean }>("POST", "/api/agent-containers/settings", choices),
     job: (id: string) => call<ContainersJob>("GET", `/api/agent-containers/jobs/${enc(id)}`),
-    /** Runs one step again on its own: "grant", "plugin" or "environments". */
-    step: (id: "grant" | "plugin" | "environments") => call<{ jobId: string; alreadyRunning: boolean }>("POST", `/api/agent-containers/steps/${enc(id)}`, {}),
+    /** Runs one step again on its own: "grant", "plugin", "environments", or "template" with force. */
+    step: (id: "grant" | "plugin" | "environments" | "template", force = false) => call<{ jobId: string; alreadyRunning: boolean }>("POST", `/api/agent-containers/steps/${enc(id)}`, force ? { force: true } : {}),
     teardown: (confirm: string) => call<{ jobId: string }>("DELETE", "/api/agent-containers", { confirm }),
   },
   resourceGroups: {
@@ -195,6 +239,10 @@ export const host = {
     list: () => call<{ groups: ResourceGroupState[] }>("GET", "/api/resource-groups").then((r) => r?.groups ?? []),
     /** Creates or resizes the group; the host service makes the Proxmox pool as the signed-in person. Owners and admins only. */
     put: (companyId: string, spec: ResourceGroupSize & { name: string }) => call<{ group: ResourceGroupState }>("PUT", `/api/resource-groups/${enc(companyId)}`, spec).then((r) => r.group),
+  },
+  agentReadiness: {
+    /** Per-agent readiness from the host service, computed from the engine's adapters, credentials and environments. */
+    get: (companyId: string) => call<AgentReadinessAnswer>("GET", `/api/agent-readiness?companyId=${enc(companyId)}`),
   },
 };
 

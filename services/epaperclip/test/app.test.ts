@@ -1172,3 +1172,63 @@ describe("Papercliped Connect tunnel: client addresses", () => {
 });
 const api2 = (path: string, cookie: string, body?: unknown) =>
   fetch(base + "/api/papercliped/connect/" + path, { method: body === undefined ? "GET" : "POST", headers: { Cookie: cookie, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+describe("Papercliped identity links through the console", () => {
+  const api = (path: string, cookie: string, body?: unknown, method = body === undefined ? "GET" : "POST") =>
+    fetch(base + "/api/papercliped/connect/identity/" + path, { method, headers: { Cookie: cookie, "Content-Type": "application/json", "X-EPC-Request": "1" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const pair = async (sam: string) => {
+    await api2("pairing/start", sam, {}); connect.approve("acct_owner"); await api2("pairing/poll", sam, {});
+    await api2("pairing/confirm", sam, { accountId: "acct_owner", deviceName: "rack" });
+  };
+  it("links the signed-in principal to the account that approved it, with no permission or session created", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    const started = await api("link/start", sam, { returnTo: "/access" });
+    expect(started.status).toBe(201);
+    const s = await started.json() as any;
+    expect(s).toMatchObject({ kind: "association", principal: { userid: "sam", realm: "pve" }, state: "awaiting_account" });
+    expect(s.userCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect((await api("links", sam)).status).toBe(200);
+    expect((await (await api("links", sam)).json() as any).links).toHaveLength(1);
+    connect.approveIdentity("acct_owner", s.linkId);
+    expect((await (await api(`link/${s.linkId}/poll`, sam, {})).json() as any).state).toBe("awaiting_confirm");
+    expect((await (await api(`link/${s.linkId}`, sam)).json() as any).state).toBe("awaiting_confirm");
+    expect((await (await api(`link/${s.linkId}/confirm`, sam, { accountId: "acct_wrong" })).json() as any).code).toBe("wrong_account");
+    const active = await (await api(`link/${s.linkId}/confirm`, sam, { accountId: "acct_owner" })).json() as any;
+    expect(active).toMatchObject({ state: "active", role: "owner", account: { id: "acct_owner" } });
+    expect(JSON.stringify(active)).not.toMatch(/verifier|sessionBinding|challenge/);
+    // Unlinking is local first and does not need Connect to be reachable.
+    connect.state.down = true;
+    const out = await (await api(`links/${s.linkId}`, sam, undefined, "DELETE")).json() as any;
+    expect(out).toEqual({ ok: true, remote: "pending" });
+    connect.state.down = false;
+  });
+
+  it("lets a non-administrator link only their own principal and see only their own links", async () => {
+    const sam = await signIn("sam");
+    const lee = await signIn("lee");
+    await pair(sam);
+    const s = await (await api("link/start", lee, {})).json() as any;
+    expect(s.principal).toEqual({ userid: "lee", realm: "pve" });
+    expect((await api("link-requests", lee)).status).toBe(403);
+    expect((await api("links", sam)).status).toBe(200);
+    expect((await (await api("links", lee)).json() as any).links.map((l: any) => l.linkId)).toEqual([s.linkId]);
+    // An administrator cannot confirm on behalf of the person: the starting session must do it.
+    connect.approveIdentity("acct_owner", s.linkId);
+    await api(`link/${s.linkId}/poll`, lee, {}); // the starting session learns which account approved
+    expect((await api(`link/${s.linkId}/confirm`, sam, { accountId: "acct_owner" })).status).toBe(403);
+  });
+
+  it("unpairing revokes the links while the device registration still exists", async () => {
+    const sam = await signIn("sam");
+    await pair(sam);
+    const s = await (await api("link/start", sam, {})).json() as any;
+    connect.approveIdentity("acct_owner", s.linkId);
+    await api(`link/${s.linkId}/poll`, sam, {});
+    await api(`link/${s.linkId}/confirm`, sam, { accountId: "acct_owner" });
+    expect((await (await api2("unpair", sam, {})).json() as any).paired).toBe(false);
+    const links = await (await api("links", sam)).json() as any;
+    // The link remains as a local audit record, but is no longer active.
+    expect(links.links.find((l: any) => l.linkId === s.linkId).state).toBe("revoked");
+  });
+});
