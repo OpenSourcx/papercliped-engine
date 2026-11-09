@@ -212,13 +212,20 @@ Not yet exercised on real hardware: model authentication, the first-task executi
 non-admin permission checks, and TestSprite. Two later Agent Containers fixes (late template-flag poll, failure-streak
 reset) were pushed after that host run and have not been re-exercised.
 
+**Final candidate deployed (2026-11-09).** `main` at `29d9362` was built and installed on `pve` as `pinned-29d9362`:
+service active, engine active, `GET /api/health` returns `{"ok":true}`, and the console serves. It includes the UI
+wayfinding fixes (#35, #37), the broker-skip decision (#38), the Agent Containers fixes (#34) and the test-fixture fix
+(#36). The Agent Containers template (CT 104), the qualification organization and pool were left in place; the
+containers were not re-run after this final deploy. The broker unit remains disabled and is now a skipped step, not a
+failed organization.
+
 ---
 
 ## 7. Outstanding environmental blockers
 
-1. **Deployment is on `pinned-b09af44`, not current `main`.** Agent Containers reached Ready on the real host; the remaining
-   scenarios still need to run. Redeploy `81f29eb` (or the next candidate) only when a product change lands; it restarts
-   `epaperclip.service`.
+1. **The final candidate is deployed, but the remaining scenarios are not run.** Agent Containers reached Ready on the
+   real host under `b09af44`; `29d9362` is healthy but the flow needs a fresh pass. The broker is disabled; that is now
+   `skipped`, not `failed`.
 2. **Connect-side identity routes and the OIDC issuer exist and are merged, but are not deployed.** Device-side identity
    links and “Sign in with Papercliped” are implemented against them (`papercliped-connect` main `5e1d012`, identity-link
    commit `9ede4fb`; `identity-links.test.mjs`, `engine-contract.test.mjs`). The remaining gap is deployment and live
@@ -242,7 +249,7 @@ reset) were pushed after that host run and have not been re-exercised.
 
 ```sh
 # on pve, as root; the built HEAD must equal the SHA
-SHA=81f29eb8ab950ef286c1d3c7bc6b9d9ee0be29f0
+SHA=29d9362486d640592f51bc27834eb50482348eff
 curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/main/deploy/from-source.sh | EPC_COMMIT=$SHA bash
 systemctl status epaperclip --no-pager
 ```
@@ -293,7 +300,7 @@ the unit. It does not touch guests, storage or networking.
 - [x] Pin/Jev interoperability at the API level; no second orchestrator.
 - [x] Typechecks and unit/integration suites on the integrated branch.
 - [x] Recovered Worker Fabric cancellation fix and the worker-daemon de-flake integrated and tested.
-- [x] Deployed to `pve`; Agent Containers reached **Ready** on real hardware (`pinned-b09af44`, 2026-11-09).
+- [x] Deployed to `pve`; Agent Containers reached **Ready** on real hardware (`pinned-b09af44`, 2026-11-09). Final candidate `pinned-29d9362` is deployed and healthy.
 - [ ] Remaining real-host scenarios: model auth + first task, Pin, Jev, Worker Fabric, Cloudflare, non-admin checks.
 - [ ] Connect identity/OIDC **deployed** and exercised on real infrastructure — merged (`5e1d012`, `9ede4fb`), not deployed.
 - [ ] TestSprite/browser/mobile campaign — **tomorrow (Claude)**.
