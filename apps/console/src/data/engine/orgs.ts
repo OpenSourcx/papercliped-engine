@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Org } from "../types.ts";
 import { mapCompany } from "./map.ts";
-import { useAgentsOf, useOrgs, useResourceGroups } from "./queries.ts";
+import { useAgentReadinessOf, useAgentsOf, useOrgs, useResourceGroups } from "./queries.ts";
 
 export interface LiveOrgs {
   /** Null until the first answer; an empty list means the person really has no organizations. */
@@ -16,10 +16,11 @@ export function useLiveOrgs(): LiveOrgs {
   const ids = useMemo(() => list.map((c) => c.id), [list]);
   const agents = useAgentsOf(ids);
   const groups = useResourceGroups();
+  const readiness = useAgentReadinessOf(ids);
   // The query result arrays are rebuilt every render; this changes only when one of their answers does.
-  const sig = `${agents.map((a) => a.dataUpdatedAt).join(",")}|${groups.dataUpdatedAt}${groups.isError ? "e" : ""}`;
+  const sig = `${agents.map((a) => a.dataUpdatedAt).join(",")}|${groups.dataUpdatedAt}${groups.isError ? "e" : ""}|${readiness.map((r) => r.dataUpdatedAt).join(",")}`;
   const orgs = useMemo(
-    () => (companies.data ? list.map((c, i) => mapCompany(c, agents[i]?.data, groups.data ? groups.data.find((g) => g.companyId === c.id) ?? null : undefined)) : null),
+    () => (companies.data ? list.map((c, i) => mapCompany(c, agents[i]?.data, groups.data ? groups.data.find((g) => g.companyId === c.id) ?? null : undefined, readiness[i]?.data?.agents)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [companies.data, list, sig],
   );

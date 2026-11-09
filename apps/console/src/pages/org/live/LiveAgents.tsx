@@ -5,7 +5,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgentReadiness, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
@@ -19,6 +19,7 @@ export function LiveAgents() {
   const { setup } = useEngine();
   const b = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   const agents = useAgents(companyId);
+  const readiness = useAgentReadiness(companyId);
   const names = useNames(companyId);
   const [params, setParams] = useSearchParams();
   const creating = params.get("new") === "1";
@@ -37,11 +38,17 @@ export function LiveAgents() {
         {list.map((a) => {
           const [kind, label] = agentStatusOf(a.status);
           const latest = latestRunStatusOf(latestByAgent.get(a.id));
+          const ready = readiness.data?.agents.find((r) => r.agentId === a.id);
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
                 <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
                 <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
+                {ready && !ready.ready && (
+                  <div className="text-xs text-ink-3 mt-1.5" title={ready.issues.map((i) => i.detail).join(" ")}>
+                    Needs setup: {ready.issues[0]?.detail ?? "not ready to run"}
+                  </div>
+                )}
                 {latest && <div className="mt-2"><Status kind={latest[0]} label={`Latest run: ${latest[1]}`} /></div>}
                 {a.budgetMonthlyCents ? <BarMeter className="mt-3" label="Budget this month" pct={(a.spentMonthlyCents / a.budgetMonthlyCents) * 100} value={`${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}`} /> : null}
               </Card>
