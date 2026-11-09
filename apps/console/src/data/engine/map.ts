@@ -1,6 +1,6 @@
 import type { Agent as EngineAgent, Company } from "@papercliped-engine/engine-client";
 import { RESERVED, type Agent, type AgentStatus, type Guest, type Org } from "../types.ts";
-import type { ResourceGroupState } from "./host.ts";
+import type { AgentReadiness, ResourceGroupState } from "./host.ts";
 
 /**
  * Maps the engine's answers onto the console's shapes. Pure, so it is easy to test. Paperclip calls an organization a
@@ -33,7 +33,7 @@ export function agentStatus(s: string): AgentStatus {
   return "idle";
 }
 
-export function mapAgent(a: EngineAgent): Agent {
+export function mapAgent(a: EngineAgent, readiness?: AgentReadiness): Agent {
   return {
     id: a.id,
     name: a.name,
@@ -45,6 +45,7 @@ export function mapAgent(a: EngineAgent): Agent {
     reportsTo: a.reportsTo,
     spendUsd: a.spentMonthlyCents / 100,
     budgetUsd: a.budgetMonthlyCents ? a.budgetMonthlyCents / 100 : undefined,
+    ...(readiness ? { readiness } : {}),
   };
 }
 
@@ -54,7 +55,8 @@ const NO_GROUP = { pool: "", cores: 0, memoryMb: 0, diskGb: 0, maxGuests: 0 };
  * One live organization. `rg` is its resource group: the state when known, null when it has none, undefined while
  * unknown. Usage is added later from the machines actually in its pool.
  */
-export function mapCompany(c: Company, agents: EngineAgent[] | undefined, rg: ResourceGroupState | null | undefined): Org {
+export function mapCompany(c: Company, agents: EngineAgent[] | undefined, rg: ResourceGroupState | null | undefined, readiness?: AgentReadiness[] | undefined): Org {
+  const readinessById = new Map((readiness ?? []).map((r) => [r.agentId, r]));
   return {
     slug: orgSlug(c),
     name: c.name,
@@ -63,7 +65,7 @@ export function mapCompany(c: Company, agents: EngineAgent[] | undefined, rg: Re
     resourceGroup: rg ? { pool: rg.pool, cores: rg.cores, memoryMb: rg.memoryMb, diskGb: rg.diskGb, maxGuests: rg.maxGuests } : NO_GROUP,
     usage: { cpuCores: 0, memoryMb: 0, diskGb: 0, guests: 0 },
     memory: "postgres",
-    agents: (agents ?? []).filter((a) => a.status !== "terminated").map(mapAgent),
+    agents: (agents ?? []).filter((a) => a.status !== "terminated").map((a) => mapAgent(a, readinessById.get(a.id))),
     tasks: [],
     goals: [],
     projects: [],

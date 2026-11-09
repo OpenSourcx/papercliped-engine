@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], secretBodies: 0 };
+  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -152,6 +152,17 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
     }
     const envList = p.match(/^\/api\/companies\/([\w-]+)\/environments$/);
     if (envList && req.method === "GET") return json(res, 200, [...st.envs.values()]);
+    if (p.match(/^\/api\/companies\/([\w-]+)\/environments\/capabilities$/) && req.method === "GET") {
+      const adapters = ["claude_local", "codex_local", "gemini_local", "grok_local", "kimi_local", "opencode_local", "pi_local", "http", "process"];
+      const remote = new Set(["claude_local", "codex_local", "gemini_local", "grok_local", "kimi_local", "opencode_local", "pi_local"]);
+      return json(res, 200, { adapters: adapters.map((adapterType) => ({ adapterType, drivers: { local: "supported", sandbox: remote.has(adapterType) ? "supported" : "unsupported" } })) });
+    }
+    const signal = p.match(/^\/api\/companies\/([\w-]+)\/adapters\/([\w-]+)\/auth-signal$/);
+    if (signal && req.method === "GET") {
+      const key = `${signal[1]}|${signal[2]}`;
+      st.authSignalCalls.push(`${key}${u.searchParams.get("environmentId") ? `?${u.searchParams.get("environmentId")}` : ""}`);
+      return json(res, 200, { status: st.authSignals.get(key) ?? "unknown" });
+    }
     if (envList && req.method === "POST") {
       if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
       st.envBodies.push(body.toString());
@@ -569,6 +580,7 @@ export function fakePve() {
     if (path === "/pools" && req.method === "GET") return ok([...pools.keys()].map((poolid) => ({ poolid })));
     if (path === "/pools" && req.method === "POST") {
       if (!admin) return { status: 403, body: "" };
+      if (failures.has("pool")) return { status: 500, body: JSON.stringify({ message: "pool creation refused on purpose\n" }) };
       const f = new URLSearchParams(req.body);
       const id = f.get("poolid")!;
       if (pools.has(id)) return { status: 500, body: JSON.stringify({ message: `pool '${id}' already exists\n` }) };

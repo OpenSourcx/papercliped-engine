@@ -26,6 +26,7 @@ import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
 import { AppAccessManager } from "./app-access.ts";
 import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
+import { companyAgentReadiness } from "./agent-readiness.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
 import { CloudflareProvision } from "./cloudflareProvision.ts";
@@ -773,6 +774,15 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, { groups });
     }
 
+    // ---- Per-agent readiness: the engine's real adapter, credential and default environment, not just the agent row.
+    if (method === "GET" && path === "/api/agent-readiness") {
+      const s = requireSession(req);
+      const companyId = str(url.searchParams.get("companyId"), 64);
+      if (!companyId || !/^[A-Za-z0-9_-]{1,64}$/.test(companyId)) throw new HttpError(400, "bad_request", "companyId is required");
+      if (!(await needEngine().membership(s, companyId))) throw new HttpError(403, "not_member", "You aren't a member of that organization");
+      return sendJson(res, 200, await companyAgentReadiness(needEngine(), s, companyId, now()));
+    }
+
     const rg = path.match(/^\/api\/resource-groups\/([A-Za-z0-9_-]{1,64})$/);
     if (rg && (method === "PUT" || method === "DELETE")) {
       requireSameSite(req);
@@ -787,7 +797,14 @@ export function createApp(d: AppDeps) {
       const existing = all[companyId];
       if (spec) {
         const pool = await asUser(req, res, async (pve) => {
-          if (existing) return existing.pool;
+          if (existing) {
+            // Idempotent retries reuse the pool, but only while Proxmox still has it. A pool removed outside ePaperclip is
+            // recreated under the same name, so the stored group never points at a pool that no longer exists.
+            const pools = await pve.pools().catch(() => null);
+            if (pools === null || pools.some((p) => p.poolid === existing.pool)) return existing.pool;
+            await pve.call("POST", "/pools", { poolid: existing.pool, comment: `ePaperclip organization: ${spec.name}` });
+            return existing.pool;
+          }
           const taken = new Set([...(await pve.pools().catch(() => [])).map((p) => p.poolid), ...Object.values(all).map((g) => g.pool)]);
           const base = `epc-${poolSlug(spec.name)}`;
           const free = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find((p) => !taken.has(p));
