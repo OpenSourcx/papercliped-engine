@@ -6,6 +6,15 @@ import { Gate } from "../src/gate.ts";
 const closers: (() => void)[] = [];
 afterEach(() => closers.splice(0).forEach((c) => c()));
 
+async function until(fn: () => boolean, ms = 5000, what = "condition") {
+  const t0 = Date.now();
+  for (;;) {
+    if (fn()) return;
+    if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 async function fakeOllama(delayMs: number) {
   const seen = { concurrent: 0, max: 0, bodies: [] as unknown[] };
   const s = createServer((req, res) => {
@@ -33,11 +42,12 @@ async function gateFor(url: string, slots: number, maxContext: number | null) {
 
 describe("inference gate", () => {
   it("runs one generation at a time and queues the rest in order", async () => {
-    const up = await fakeOllama(400);
+    // Long enough that all four requests reach the gate before the first upstream run finishes, even on a loaded machine.
+    const up = await fakeOllama(800);
     const { g, base } = await gateFor(up.url, 1, 4096);
     const order: number[] = [];
     const calls = [1, 2, 3, 4].map((n) => fetch(`${base}/api/generate`, { method: "POST", body: JSON.stringify({ model: "m", prompt: String(n) }) }).then(() => order.push(n)));
-    await new Promise((r) => setTimeout(r, 150));
+    await until(() => g.stats().running === 1 && g.stats().queued === 3, 5000, "one generation running and three queued");
     expect(g.stats()).toEqual({ running: 1, queued: 3 });
     await Promise.all(calls);
     expect(up.seen.max).toBe(1);
