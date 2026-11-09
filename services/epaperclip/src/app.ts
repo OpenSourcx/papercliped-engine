@@ -837,10 +837,23 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && path === "/api/agent-containers/setup") {
       requireSameSite(req);
       const s = requireSession(req);
-      const over = parseSetup(await readJson(req));
+      const body = await readJson(req);
+      const over = parseSetup(body);
+      const force = body.force === true;
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can set up agent containers");
-        return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
+        return containers.startSetup(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b), force);
+      });
+      return sendJson(res, r.alreadyRunning ? 200 : 202, r);
+    }
+    if (method === "POST" && path === "/api/agent-containers/settings") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const body = await readJson(req);
+      const over = parseSetup(body);
+      const r = await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
+        return containers.startSettings(() => clientFor(s), s.username, over, (m, p, b) => needEngine().userJson(s, m, p, b));
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }
@@ -848,9 +861,10 @@ export function createApp(d: AppDeps) {
     if (method === "POST" && acStep) {
       requireSameSite(req);
       const s = requireSession(req);
+      const body = await readJson(req);
       const r = await asUser(req, res, async (pve) => {
         if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can change agent containers");
-        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b));
+        return containers.startStep(() => clientFor(s), s.username, acStep[1], (m, p, b) => needEngine().userJson(s, m, p, b), body.force === true);
       });
       return sendJson(res, r.alreadyRunning ? 200 : 202, r);
     }

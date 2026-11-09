@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Container, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
-import { errorText, useAgentContainers, useContainersJob, useContainersSetup, useContainersStep, useContainersTeardown } from "../../data/engine/queries.ts";
-import type { ContainersDiagnosis, ContainersJob, ContainersParams, ContainersStatus } from "../../data/engine/host.ts";
+import { errorText, useAgentContainers, useContainersJob, useContainersSettings, useContainersSetup, useContainersStep, useContainersTeardown } from "../../data/engine/queries.ts";
+import type { ContainersDiagnosis, ContainersJob, ContainersParams, ContainersStatus, ContainersStorageFacts } from "../../data/engine/host.ts";
 import { useEngine } from "../../data/store.tsx";
 import { Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Select } from "../../ui/primitives.tsx";
 
@@ -66,6 +66,19 @@ export function Diagnosis({ d }: { d: ContainersDiagnosis }) {
   );
 }
 
+/** What Proxmox reported about a storage and whether it can hold unprivileged container disks. */
+export function StorageFact({ f }: { f: ContainersStorageFacts }) {
+  if (f.verdict === "ok") return <li className="text-ink-3">{f.name}: {f.filesystem ?? f.type ?? "storage"}{typeof f.availBytes === "number" ? `, ${(f.availBytes / 1024 ** 3).toFixed(1)} GiB free` : ""}</li>;
+  const tone = f.verdict === "unsupported" ? "text-critical" : f.verdict === "warning" ? "text-warning" : "text-ink-2";
+  return (
+    <li className={tone}>
+      <span className="font-medium">{f.name}: </span>{f.reason}
+      {f.hostCheck && <span className="block text-xs text-ink-3 font-mono break-words mt-0.5">{f.hostCheck}</span>}
+      {f.verdict === "unknown" && <span className="block text-xs text-ink-3 mt-0.5">This is not a diagnosis: it says only what Proxmox could not report.</span>}
+    </li>
+  );
+}
+
 /** The Settings section: live devices only (the demo has no Proxmox to put containers on). */
 export function AgentContainersSettings() {
   if (useEngine().live) return <AgentContainers />;
@@ -81,6 +94,7 @@ export function AgentContainersSettings() {
 export function AgentContainers() {
   const q = useAgentContainers();
   const setup = useContainersSetup();
+  const settings = useContainersSettings();
   const teardown = useContainersTeardown();
   const stepRun = useContainersStep();
   const [jobId, setJobId] = useState<string | null>(null);
@@ -94,7 +108,7 @@ export function AgentContainers() {
   }, [runningId, jobId]);
   const job = useContainersJob(jobId);
   const j = job.data;
-  const running = j?.status === "running" || setup.isPending || teardown.isPending || stepRun.isPending;
+  const running = j?.status === "running" || setup.isPending || settings.isPending || teardown.isPending || stepRun.isPending;
   const opts = status?.options ?? null;
   // Start from what is saved, else from what this host offers (a default of local-lvm means nothing on a host without it).
   const form = useMemo<ContainersParams>(
@@ -107,6 +121,12 @@ export function AgentContainers() {
   const start = () =>
     setup.mutate({ storage: form.storage.trim(), templateStorage: form.templateStorage.trim(), bridge: form.bridge.trim(), pool: form.pool.trim(), size: form.size }, { onSuccess: (r) => setJobId(r.jobId) });
   const remove = () => teardown.mutate(typed, { onSuccess: (r) => { setJobId(r.jobId); setTyped(""); } });
+  const formBody = { storage: form.storage.trim(), templateStorage: form.templateStorage.trim(), bridge: form.bridge.trim(), pool: form.pool.trim(), size: form.size };
+  // A host setting that differs from the saved one can be applied on its own: the template is kept and only the rights and
+  // the organizations' environments are updated.
+  const changed = Boolean(status?.params) && JSON.stringify(formBody) !== JSON.stringify(status!.params);
+  const apply = () => settings.mutate(formBody, { onSuccess: (r) => setJobId(r.jobId) });
+  const retryTemplate = () => stepRun.mutate({ id: "template", force: true }, { onSuccess: (r) => setJobId(r.jobId) });
 
   const stepState = (id: string, done: boolean): "done" | "running" | "failed" | "pending" => {
     const js = j?.status === "running" || j?.status === "failed" ? j.steps.find((s) => s.id === id) : undefined;
@@ -176,13 +196,32 @@ export function AgentContainers() {
                   <span className="block text-xs text-ink-3 mt-1">The most a container gets; an organization's resource group can make it smaller.</span>
                 </label>
               </div>
+              {(status.storageFacts?.length ?? 0) > 0 && (
+                <ul aria-label="Storage checks" className="mt-3 rounded-lg border border-line bg-surface-2 px-4 py-3 text-xs space-y-1">
+                  {status.storageFacts!.map((f) => <StorageFact key={f.name} f={f} />)}
+                </ul>
+              )}
+              {status.arch && <p className="mt-2 text-xs text-ink-3">This host is {status.arch}; the template is built from the matching Debian {status.arch} image.</p>}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <Button variant="primary" onClick={start} disabled={running || !form.storage.trim() || !form.templateStorage.trim() || !form.bridge.trim()}>
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : status.state === "ready" ? <RefreshCw className="h-4 w-4" /> : <Container className="h-4 w-4" />}
                   {running ? "Working…" : label}
                 </Button>
+                {changed && (
+                  <Button onClick={apply} disabled={running}>
+                    {settings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Apply storage and bridge changes
+                  </Button>
+                )}
+                {!status.template.exists && (status.templateAttempts ?? 0) > 0 && (
+                  <Button onClick={retryTemplate} disabled={running}>
+                    {stepRun.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Try the template again{status.templateAttempts ? ` (${status.templateAttempts} failed)` : ""}
+                  </Button>
+                )}
                 <span className="text-xs text-ink-3">It's safe to run again; steps already done are skipped. It carries on if you close this page. Building the template takes several minutes.</span>
               </div>
+              {settings.isError && <p role="alert" className="text-compact text-critical mt-3">{errorText(settings.error)}</p>}
               {setup.isError && <p role="alert" className="text-compact text-critical mt-3">{errorText(setup.error)}</p>}
             </>
           ) : (

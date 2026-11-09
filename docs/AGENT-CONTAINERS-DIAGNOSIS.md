@@ -1,6 +1,49 @@
 # Agent containers: why a container fails to start, and how setup now says so
 
-Status: simulated only. Nothing here has run against a real Proxmox host. Where a real host is needed it says so.
+Status: the root cause of the owner's failure is now **confirmed from the real host** (2026-11-09); the rest is still
+simulated until a clean template build is run on the host. Where a real host is needed it says so.
+
+## CONFIRMED: the real cause on the owner's host (2026-11-09)
+
+Host `pve` (Proxmox VE 9.2.25, Intel Xeon W3520, **amd64**). The failed container was 104 on `drive2`. The host's own
+`vzcreate:104` task log says:
+
+```
+extracting archive '/mnt/pve/drive2/template/cache/debian-13-standard_13.6-1_arm64.tar.zst'
+Detected container architecture: arm64
+```
+
+and the `vzstart:104` task log says only:
+
+```
+sync_wait: 34 An error occurred in another process (expected sequence number 7)
+__lxc_start: 2288 Failed to spawn container "104"
+WARN: Systemd 257 detected. You may need to enable nesting.
+TASK ERROR: startup for container '104' failed
+```
+
+Proxmox unpacked an **arm64** root filesystem on an **amd64** host. Its `/sbin/init` cannot execute, so the init process
+dies and LXC reports only the generic handshake failure. The "Systemd 257 / nesting" line was a red herring.
+
+Why it happened: `pveam`'s catalog on that host listed both
+`debian-13-standard_13.1-2_amd64.tar.zst` and the newer `debian-13-standard_13.6-1_arm64.tar.zst`. Setup sorted only by
+version, so the newer arm64 image won. `newestDebian()` did not know the host's architecture.
+
+What was **ruled out with real evidence** (not assumptions): `drive2` is xfs on `/dev/sdb1`, mounted `rw,relatime` (so not
+ntfs/exfat, not noexec/nodev/ro); `/etc/subuid` and `/etc/subgid` both contain `root:100000:65536`; `/sys/fs/cgroup` is
+`cgroup2fs`; `user.max_user_namespaces` is 116600. The storage-ownership, idmap, cgroup and namespace hypotheses did not
+apply to this host.
+
+Fix in this release:
+* `newestDebian(files, arch)` only considers templates for the host's processor. The setup never falls back to the other
+  architecture; if the catalog has none for this host it says so and lists what it does have.
+* After creating the container, setup reads the create task log's `Detected container architecture:` line and verifies it
+  against the host. A mismatch is reported as a certain cause (`template-arch-mismatch`) and the half-made container is
+  removed, rather than being started and failing generically.
+* The built template's architecture is stored (`templateArch`). A stored template from the other architecture is removed
+  and rebuilt instead of reused.
+* The template container is created with `nesting=1,keyctl=1` (what systemd 257 needs in an unprivileged container), and
+  the features are re-checked and set after creation if Proxmox did not apply them.
 
 ## The owner's failure
 
@@ -53,12 +96,28 @@ I cannot say which one the owner's host has. That needs the debug log (runbook b
 
 ## What the setup now does
 
+* **Picks the template for the host's processor** and verifies it from the create task's own `Detected container
+  architecture:` line (see the confirmed section above). A mismatch is a certain cause, not a generic one.
+* **Checks storage capability from what Proxmox reports.** For `dir` storage it reads `GET /storage/{id}` for the path and
+  `GET /nodes/{node}/disks/directory` for the filesystem and mount options. NTFS/exFAT/FAT/fuseblk, `noexec` and read-only
+  mounts are refused with the exact host command to confirm it; network storage is a warning (root squash); when the API
+  cannot say, the verdict is "unknown" and names the missing host information (`findmnt -T <path>`). It never dresses a
+  guess as a diagnosis. `lvmthin`, `lvm`, `zfspool`, `rbd` are accepted without a filesystem question.
+* **Resumes from the first unfinished step.** A re-run checks what Proxmox and the engine already have and marks completed
+  steps "already in place" instead of redoing them. A changed host setting is never treated as a resume.
+* **Applies host-setting changes without a rebuild.** `POST /api/agent-containers/settings` validates the new storage,
+  grants the token's rights on it and updates every organization's environment; the template is kept. A changed template
+  storage takes effect the next time the template is built.
+* **Bounds template retries.** Consecutive failed builds are counted; after three, setup refuses to retry until the
+  administrator presses "Try the template again" (`POST /api/agent-containers/steps/template` with `force: true`), so a
+  broken host is not hammered with new containers.
 * On a failed task it reads the full task log, the container config (`pct config` equivalent), the storage status, and the
   node journal (`GET /nodes/{node}/journal`: AppArmor denials, cgroup and kernel messages), and matches them with
-  `packages/proxmox-client/src/lxc-diagnose.ts`: 18 known causes (template missing/corrupt, wrong arch, storage full /
-  unavailable / ownership, mount denied, idmap, AppArmor, cgroup, namespaces, features, network, devices, locked, no init,
-  memory, pre-start hook). When only LXC's generic failure is present it says so ("Proxmox gave no specific reason"), lists
-  the checks in order and the exact `lxc-start -n <id> -F -l DEBUG -o /tmp/lxc-<id>.log` command. It never invents a cause.
+  `packages/proxmox-client/src/lxc-diagnose.ts`: 19 known causes (including the new architecture mismatch; template
+  missing/corrupt, wrong arch, storage full / unavailable / ownership, mount denied, idmap, AppArmor, cgroup, namespaces,
+  features, network, devices, locked, no init, memory, pre-start hook). When only LXC's generic failure is present it says
+  so ("Proxmox gave no specific reason"), lists the checks in order and the exact
+  `lxc-start -n <id> -F -l DEBUG -o /tmp/lxc-<id>.log` command. It never invents a cause.
 * A generic start failure triggers one probe: start the throwaway template container again without its features. If it
   starts, the diagnosis is "the host refuses nesting"; if not, "nesting is not the cause". Features are restored.
 * A damaged base template (zstd/tar errors) is deleted and downloaded again once, automatically. A pre-existing file under
@@ -99,11 +158,14 @@ After a fix, press Resume setup (a half-made container has already been removed)
 
 ## Validation (honest labels)
 
-* simulated: unit tests of every matcher rule and redaction (`packages/proxmox-client/test/lxc-diagnose.test.ts`); setup
-  flow against the fake Proxmox for the owner's exact log, nesting probe, journal-driven AppArmor, corrupt-template retry,
-  inactive/full storage, old Proxmox, grant gaps (absent, not inherited, ineffective), single-step repair
-  (`services/epaperclip/test/containers-diagnosis.test.ts`).
-* real Proxmox: none. Unverified against a real host: the journal and `/access/permissions?userid=` endpoint shapes,
-  `PUT .../config delete=features`, that the matcher patterns hit real LXC wording, and whether the owner's host fails for
-  one of the causes above. Needs a disposable Proxmox host (or the owner running the runbook and pasting the lxc-start
-  ERROR lines).
+* simulated: unit tests of every matcher rule and redaction (`packages/proxmox-client/test/lxc-diagnose.test.ts`), including
+  the confirmed arm64-on-amd64 create log; template-architecture selection and storage verdicts
+  (`services/epaperclip/test/containers-arch.test.ts`); setup flow against the fake Proxmox for the owner's exact log,
+  nesting probe, journal-driven AppArmor, corrupt-template retry, inactive/full storage, old Proxmox, grant gaps (absent,
+  not inherited, ineffective), single-step repair, resume-without-repeating, storage change without a rebuild
+  (`services/epaperclip/test/containers-diagnosis.test.ts`, `containers.test.ts`).
+* real Proxmox (evidence gathered 2026-11-09): the failed `vzcreate:104` / `vzstart:104` task logs, the template catalog
+  containing both `13.1-2_amd64` and `13.6-1_arm64`, and `drive2`'s xfs mount. This confirmed the cause above.
+* not yet run on a real host: a **successful** template build end to end with the fixed architecture selection (container
+  104 was already removed; the next setup run on the host is the proof), the journal and `/access/permissions?userid=`
+  endpoint shapes, `PUT .../config delete=features`, and whether `keyctl=1` is accepted on this host's AppArmor profile.

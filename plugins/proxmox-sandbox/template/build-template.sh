@@ -171,8 +171,11 @@ fi
 # ---------------------------------------------------------------------------
 log "Updating the CT template catalogue"
 pveam update >/dev/null || warn "pveam update failed; using the cached catalogue"
-TEMPLATE_FILE="$(pveam available --section system | awk '{print $2}' | grep -E "^debian-${DEBIAN_RELEASE}-standard_.*_(amd64|arm64)\.tar\.(zst|gz|xz)$" | sort -V | tail -n 1 || true)"
-[[ -n "$TEMPLATE_FILE" ]] || die "no debian-${DEBIAN_RELEASE}-standard template in the catalogue (pveam available --section system)"
+# The catalogue can list both amd64 and arm64 images. Pick this host's, or pct unpacks the wrong one and the container's
+# init cannot run ("Detected container architecture: arm64" on an amd64 host).
+HOST_ARCH="$(dpkg --print-architecture)"
+TEMPLATE_FILE="$(pveam available --section system | awk '{print $2}' | grep -E "^debian-${DEBIAN_RELEASE}-standard_.*_${HOST_ARCH}\.tar\.(zst|gz|xz)$" | sort -V | tail -n 1 || true)"
+[[ -n "$TEMPLATE_FILE" ]] || die "no debian-${DEBIAN_RELEASE}-standard template for ${HOST_ARCH} in the catalogue (pveam available --section system)"
 if pveam list "$TEMPLATE_STORAGE" | awk '{print $1}' | grep -qx "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_FILE}"; then
   log "Using cached ${TEMPLATE_FILE}"
 else
@@ -187,7 +190,7 @@ log "Creating unprivileged container $VMID"
 pct create "$VMID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_FILE}" \
   --hostname "$HOSTNAME_VALUE" \
   --unprivileged 1 \
-  --features nesting=1 \
+  --features nesting=1,keyctl=1 \
   --ostype debian \
   --cores "$CORES" \
   --memory "$MEMORY_MB" \

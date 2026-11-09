@@ -44,6 +44,12 @@ export interface LxcDiagnoseInput {
   storage?: { name?: string; type?: string; active?: boolean; availBytes?: number };
   /** Result of starting the same container with no container features, when that was tried: true = it started. */
   startsWithoutFeatures?: boolean;
+  /**
+   * The host's processor architecture ("amd64" or "arm64"), when known. Proxmox's create task log records the template's
+   * own architecture ("Detected container architecture: arm64"); comparing the two turns an otherwise generic init death
+   * into a certain cause.
+   */
+  hostArch?: string;
 }
 
 interface Rule {
@@ -233,11 +239,35 @@ export function redactLines(lines: string[]): string[] {
   });
 }
 
+/** The architecture of the process reading the log, when it runs on the Proxmox node itself. "" when it cannot be told. */
+function processArch(): string {
+  const a = (globalThis as { process?: { arch?: string } }).process?.arch;
+  return a === "arm64" ? "arm64" : a === "x64" ? "amd64" : "";
+}
+
 export function diagnoseLxc(input: LxcDiagnoseInput): LxcDiagnosis {
   const log = redactLines(input.log);
   const journal = redactLines(relevantJournal(input.journal ?? [], input.vmid));
   const all = [...log, ...journal];
   const text = all.join("\n");
+  // A template for another processor is a certain cause when both architectures are written in the log Proxmox produced
+  // while unpacking it ("Detected container architecture: arm64" on an amd64 host). Checked first: every later rule would
+  // otherwise report the generic init death.
+  const detected = /Detected container architecture:\s*(amd64|arm64)/i.exec(text)?.[1]?.toLowerCase();
+  const wantArch = (input.hostArch ?? processArch()).toLowerCase();
+  if (detected && wantArch && detected !== wantArch) {
+    return {
+      id: "template-arch-mismatch",
+      title: "The template is for a different processor",
+      plain: `Proxmox unpacked a template built for ${detected}, but this host is ${wantArch}. Its /sbin/init cannot run here, so the container's first process dies before the system starts. This is why the container fails even though the storage, permissions and nesting are fine.`,
+      fix: [
+        `Use the ${wantArch} Debian template. ePaperclip now picks the template that matches this host automatically; run setup again so it rebuilds the template from the right one.`,
+        `The wrong template file can be removed: pveam remove ${input.storage?.name ?? "<template storage>"}:vztmpl/<the ${detected} file>`,
+      ],
+      evidence: pickEvidence(all, /Detected container architecture|exec format error|Failed to spawn|sync_wait/i),
+      confidence: "matched",
+    };
+  }
   for (const r of RULES) {
     const m = r.re.exec(text);
     if (m) return { id: r.id, title: r.title, plain: r.plain(m, input), fix: r.fix(m, input), evidence: pickEvidence(all, r.re), confidence: "matched" };
