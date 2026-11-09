@@ -20,7 +20,8 @@ export const PRIORITY_LABEL: Record<IssuePriority, string> = { critical: "Critic
 
 export const ENGINE_AGENT_STATUS: Record<string, [StatusKind, string]> = {
   running: ["working", "Working"],
-  active: ["idle", "Ready"],
+  // "active" is the engine's lifecycle word, not a promise that the runtime, model and container are ready.
+  active: ["idle", "Active"],
   idle: ["idle", "Idle"],
   paused: ["paused", "Paused"],
   pending_approval: ["warning", "Waiting for approval"],

@@ -214,6 +214,30 @@ describe("start a company", () => {
     expect(screen.getByRole("button", { name: "Use your subscription instead" })).toBeTruthy();
   });
 
+  it("carries 'Skip for now' into the task step as a real limitation, not as 'Ready'", async () => {
+    handlers["GET /engine/api/agents/a1"] = () => ({ id: "a1", name: "Chief", status: "active", adapterType: "claude_local", runtimeConfig: {}, adapterConfig: {} });
+    wrap();
+    await throughName();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Chief" } });
+    next("Next");
+    await screen.findByText("Connect a model");
+    next("Skip for now");
+    expect(await screen.findByText("No model is connected")).toBeTruthy();
+    expect(screen.getByText(/can't execute tasks yet/)).toBeTruthy();
+    expect(screen.queryByText("Ready to run")).toBeNull();
+  });
+
+  it("reflects a model the engine already has when the step is opened again", async () => {
+    handlers["GET /engine/api/agents/a1"] = () => ({ id: "a1", name: "Ada", status: "active", adapterType: "claude_local", runtimeConfig: { aiConnection: { provider: "anthropic", method: "subscription", mode: "responsible_user" } }, adapterConfig: {} });
+    orgList.current = [{ id: "c1", name: "Northwind", status: "active", issuePrefix: "NOR" }];
+    localStorage.setItem("epc.start.draft", JSON.stringify({ step: "model", company: { id: "c1", issuePrefix: "NOR", name: "Northwind" }, mission: "", ceoName: "Ada", ceoTitle: "", agentId: "a1" }));
+    wrap();
+    expect(await screen.findByText("Connect a model")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Next" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(await screen.findByText("Connected")).toBeTruthy();
+  });
+
   it("resumes where it was, while the company still exists, and forgets a company that is gone", async () => {
     localStorage.setItem("epc.start.draft", JSON.stringify({ step: "task", company: { id: "c1", issuePrefix: "NOR", name: "Northwind" }, mission: "", ceoName: "Ada", ceoTitle: "", agentId: "a1" }));
     orgList.current = [{ id: "c1", name: "Northwind", status: "active", issuePrefix: "NOR" }];
