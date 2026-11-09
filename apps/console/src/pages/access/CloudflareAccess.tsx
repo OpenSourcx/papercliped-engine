@@ -30,13 +30,19 @@ export function CloudflareAccess() {
   // The token is entered right here, in a popup, wherever it is the problem: none yet, refused, or missing a permission.
   const tokenButton = (label: string, variant?: "primary") => canManage ? <Button variant={variant} onClick={() => setTokenOpen(true)}><KeyRound className="h-4 w-4 mr-1.5" aria-hidden />{label}</Button> : null;
   const set = (d: CloudflareDeployment) => qc.setQueryData(KEY, d);
-  const create = useMutation({ mutationFn: (confirm: boolean) => host.publishing.cloudflareCreate(selectedZone, subdomain.trim(), confirm), onSuccess: set });
+  const create = useMutation({ mutationFn: (target: { zone: string; label: string; confirm: boolean }) => host.publishing.cloudflareCreate(target.zone, target.label, target.confirm), onSuccess: set });
   const remove = useMutation({ mutationFn: host.publishing.cloudflareRemove, onSuccess: (d) => { set(d); setRemoving(false); } });
   const check = useMutation({ mutationFn: () => host.publishing.cloudflarePermissions(zone || zones.data?.[0]?.name) });
   const availableZones = zones.data ?? [];
   const selectedZone = zone || availableZones[0]?.name || "";
   const d = dep.data;
   const has = !!d && d.state !== "none";
+  // Resume and Replace continue the address that exists, not whatever domain happens to be selected now: the
+  // deployment record is authoritative, and a different (or newly first) domain must not make a retry fail.
+  const deployed = (confirm: boolean) => {
+    if (!d?.hostname || !d.zone) return;
+    create.mutate({ zone: d.zone, label: d.hostname.slice(0, -(d.zone.length + 1)), confirm });
+  };
 
   return (
     <div className="space-y-4">
@@ -53,13 +59,13 @@ export function CloudflareAccess() {
             <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end">
               <label className="block text-compact">Subdomain<Input value={subdomain} onChange={(e) => setSubdomain(e.target.value)} spellCheck={false} className="mt-1" aria-label="Subdomain" /></label>
               <label className="block text-compact">Domain<Select value={selectedZone} onChange={(e) => setZone(e.target.value)} className="mt-1" aria-label="Cloudflare domain">{availableZones.map((z) => <option key={z.id} value={z.name}>{z.name}{z.accountName ? ` (${z.accountName})` : ""}</option>)}</Select></label>
-              <Button variant="primary" loading={create.isPending} disabled={!selectedZone || !subdomain.trim()} onClick={() => create.mutate(false)}>Create address</Button>
+              <Button variant="primary" loading={create.isPending} disabled={!selectedZone || !subdomain.trim()} onClick={() => create.mutate({ zone: selectedZone, label: subdomain.trim(), confirm: false })}>Create address</Button>
             </div>
             <p className="text-xs text-ink-3">This will create, in your Cloudflare account: one named tunnel (<span className="font-mono">epaperclip-…</span>), its route to <span className="font-mono">https://127.0.0.1:443</span> on this device, and one proxied DNS record for <span className="font-mono">{subdomain.trim() || "…"}.{selectedZone || "…"}</span>. An existing record with that name is never changed without your confirmation.</p>
           </>}
           {create.error && <p className="text-compact text-critical" role="alert">{msg(create.error, "Could not create the address.")}</p>}
         </Card>
-        {has && d && <Progress d={d} busy={create.isPending} onResume={() => create.mutate(false)} onReplace={() => create.mutate(true)} removing={removing} setRemoving={setRemoving} onRemove={() => remove.mutate()} removeBusy={remove.isPending} removeError={remove.error ? msg(remove.error, "Removal failed.") : undefined} />}
+        {has && d && <Progress d={d} busy={create.isPending} onResume={() => deployed(false)} onReplace={() => deployed(true)} removing={removing} setRemoving={setRemoving} onRemove={() => remove.mutate()} removeBusy={remove.isPending} removeError={remove.error ? msg(remove.error, "Removal failed.") : undefined} />}
         <Card className="p-5 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap"><h2 className="font-medium">Token permissions</h2><div className="flex gap-2 flex-wrap">{tokenButton("Replace token")}<Button loading={check.isPending} onClick={() => check.mutate()}>Check permissions</Button></div></div>
           <p className="text-compact text-ink-3">The token needs at least: {NEEDED.map((n) => n.label).join("; ")}. A token with more permissions works too; ePaperclip only uses these.</p>

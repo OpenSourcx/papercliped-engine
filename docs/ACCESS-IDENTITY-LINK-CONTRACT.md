@@ -1,6 +1,40 @@
-# Identity linking contract (PROPOSED, not implemented)
+# Identity linking contract (PROPOSED, device side implemented)
 
 Status: proposal for the Connect/identity agent. Nothing here changes an existing shape; every endpoint is new and additive to `docs/PAPERCLIPED-ACCOUNT.md` (device side) and Connect `docs/DEVICE-PROTOCOL.md` (cloud side). Source docs: ADR-001 (`bridge.accounts.id` is the only customer identity), DEVICE-PROTOCOL v0.1, `connectLink.ts`.
+
+## Implementation status on the device (2026-11-09)
+
+Implemented on `v1/connect-access` against revision 2.1 of this contract
+(`origin/docs/identity-link-contract`), in `services/epaperclip/src/identityLinks.ts` with routes under
+`/api/papercliped/connect/identity/` in `app.ts` and a fake Connect that verifies every signature in
+`test/fakes-papercliped.ts`:
+
+- `link/start` (association and federated), `link/{id}`, `link/{id}/poll`, `link/{id}/confirm`,
+  `link/{id}/cancel`, `links`, `links/{id}` (unlink), `link-requests`, `link/{id}/admin-approve`,
+  `link/{id}/admin-deny`, `preapprovals` (+ delete), `reconcile`, `security/revoke-principal-access`.
+- A device-held PKCE-style verifier sealed in the `StateStore` vault and deleted on every terminal path;
+  a session-bound confirm; the exact approved account shown and checked before confirm; local-admin
+  approval and device-local, single-use pre-approvals.
+- Linking is independent of the remote-access mode and of any tunnel or entitlement. Unlink is local
+  first with `pendingRevoke` retried by a 15-minute reconciler; unpair revokes every link while the
+  device registration still exists.
+- "Sign in with Papercliped": `oidc/enable|disable` register one confidential client per device with
+  Connect and create only the agreed `papercliped` Proxmox OpenID realm. The local link gate refuses a
+  ticket for an `<id>@papercliped` principal with no active federated link, tags the session with the
+  link (8 h absolute cap), and refuses to take over a realm with different settings. The permissionless
+  `<accountId>@papercliped` user gets no group, role or ACL. Federated unlink ends exactly the sessions
+  and OAuth/MCP grants carrying that link.
+- Tests use fakes only: `test/identity-links.test.ts`, `test/identity-oidc.test.ts`, and the route
+  cases in `test/app.test.ts`. Nothing ran against live Connect or a real Proxmox host.
+- The device does not claim `iss`/`aud`/`nonce`/JWKS validation of an `id_token`: Proxmox is the OIDC
+  client that receives and validates it, as section 10.7 of revision 2.1 requires.
+- Deviation required by revision 2.1's start table: the start message has no link id, yet the userCode
+  hash and session binding need one. The device generates `linkId` (a UUID) and includes it as a signed
+  `start` field/body value; Connect stores it as the row id. The remaining fields follow 5.3's order.
+
+Still absent everywhere: the Connect-side routes/tables, the real OIDC issuer, and real-host PVE
+validation.
+
 
 ## Goals and non-goals
 - Link one Papercliped account (`bridge.accounts.id`) to one **local Proxmox principal** (`userid@realm`, for example `alice@pam`) **on one paired device**, so a person has an explicit account on that machine.

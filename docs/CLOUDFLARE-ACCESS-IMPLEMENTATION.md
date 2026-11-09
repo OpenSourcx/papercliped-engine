@@ -8,7 +8,7 @@ Supersedes the "not implemented" status of `CLOUDFLARE-PROVISIONING-DESIGN.md`.
 - Routes (admin only, same-site, audited): `GET /api/publishing/cloudflare/permissions`, `GET|POST|DELETE /api/publishing/cloudflare/deployment`. POST needs mode `cloudflare-self`. Deleting the token while an address exists is refused (409).
 - The tunnel run token goes Cloudflare -> host -> root helper socket only; not stored, returned or logged. Leaving self-managed mode stops the connector (objects stay); Remove deletes DNS record, connections, tunnel and stops the connector, idempotently and resumably.
 - Safety: one address per device; foreign DNS records need explicit confirmation; tunnel adopted by deterministic name `epaperclip-<deviceid>` (a locally managed one of that name is refused); reserved labels refused. Client IP is read from CF-Connecting-IP while the self tunnel is running.
-- UI: `apps/console/src/pages/access/CloudflareAccess.tsx` (token guide, permission self-check, create, step list, Resume, replace-record confirm, Remove). Copy states that no Worker is deployed.
+- UI: `apps/console/src/pages/access/CloudflareAccess.tsx` (token guide, permission self-check, create, step list, Resume, replace-record confirm, Remove). The token is added or replaced in a popup on the same page (PR #30), where a missing permission or refused token can be fixed without going to Settings. Resume/Replace continue the deployed address using the deployment record's zone and label, so a different first domain cannot make a retry fail. Copy states that no Worker is deployed.
 
 ## Limits
 - Edit permissions (DNS, Tunnel) cannot be probed without writing; the self-check confirms read access and the create step names an Edit failure exactly.

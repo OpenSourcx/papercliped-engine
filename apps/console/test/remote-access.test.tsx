@@ -74,11 +74,20 @@ describe("Self-managed Cloudflare", () => {
   it("asks before replacing a foreign DNS record", async () => {
     const CloudflareAccess = await load();
     vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z", name: "example.com" }]);
-    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "needs_confirmation", hostname: "app.example.com", steps: steps(3), message: "exists", conflict: { type: "A", content: "203.0.113.9" } });
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "needs_confirmation", hostname: "app.example.com", zone: "example.com", steps: steps(3), message: "exists", conflict: { type: "A", content: "203.0.113.9" } });
     const create = vi.spyOn(host.publishing, "cloudflareCreate").mockResolvedValue({ state: "connecting", hostname: "app.example.com", steps: steps(5), message: "ok" });
     wrap(<CloudflareAccess />);
     fireEvent.click(await screen.findByRole("button", { name: "Replace the record" }));
     await waitFor(() => expect(create).toHaveBeenCalledWith("example.com", "app", true));
+  });
+  it("resumes the deployed address even when another domain is listed first", async () => {
+    const CloudflareAccess = await load();
+    vi.spyOn(host.publishing, "cloudflareZones").mockResolvedValue([{ id: "z2", name: "other.org" }, { id: "z1", name: "example.com" }]);
+    vi.spyOn(host.publishing, "cloudflareDeployment").mockResolvedValue({ state: "stopped", hostname: "pve.example.com", zone: "example.com", steps: steps(4), message: "stopped" });
+    const create = vi.spyOn(host.publishing, "cloudflareCreate").mockResolvedValue({ state: "connecting", hostname: "pve.example.com", zone: "example.com", steps: steps(5), message: "ok" });
+    wrap(<CloudflareAccess />);
+    fireEvent.click(await screen.findByRole("button", { name: "Resume" }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith("example.com", "pve", false));
   });
   it("names missing permissions in the self-check", async () => {
     const CloudflareAccess = await load();

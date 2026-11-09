@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 import type { StateStore } from "./state.ts";
+import { canonicalIdentityMessage, type IdentityAction } from "./identityLinkCrypto.ts";
 
 /**
  * Device-owned signing key for managed Papercliped Connect enrollment.
@@ -80,6 +81,15 @@ export class PaperclipedDeviceIdentity {
   signTunnelRequest(deviceId: string, tsSec: number): string {
     if (!UUID.test(deviceId) || !Number.isSafeInteger(tsSec)) throw new Error("Invalid tunnel request");
     const msg = Buffer.from("papercliped-connect:tunnel:v1:" + deviceId.toLowerCase() + ":" + tsSec);
+    return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
+  }
+
+  /**
+   * Signs one identity-link action over the canonical, field-tagged text (identityLinkCrypto.ts). The text is rebuilt
+   * locally from the exact fields; it is never taken from a request body.
+   */
+  signIdentity(action: IdentityAction, fields: readonly (readonly [string, string | number])[]): string {
+    const msg = Buffer.from(canonicalIdentityMessage(action, fields), "utf8");
     return sign("sha256", msg, { key: this.privateKey(), dsaEncoding: "ieee-p1363" }).toString("base64url");
   }
 }

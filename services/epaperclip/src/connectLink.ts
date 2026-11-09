@@ -22,7 +22,7 @@ const MODES: readonly PublishMode[] = ["local", "cloudflare-self", "connect"];
 const KEY = "connect.link";
 const TOKEN = "connect.pairing.token";
 
-interface PairingRecord { id: string; startedAt: number; expiresAt: number; state: "pending" | "approved"; accountId?: string }
+interface PairingRecord { id: string; startedAt: number; expiresAt: number; state: "pending" | "approved" | "denied"; accountId?: string }
 interface DeviceRecord { deviceId: string; accountId: string; name: string; pairedAt: number }
 /** What Connect last said about this device's tunnel. The run token itself is never kept here: the root helper owns it. */
 export type TunnelResult = "ok" | "not_ready" | "no_entitlement" | "not_available" | "unreachable" | "invalid" | "helper_error" | "conflict";
@@ -34,7 +34,7 @@ export interface ConnectStatus {
   mode: PublishMode;
   paired: boolean;
   device?: DeviceRecord;
-  pairing?: { id: string; state: "pending" | "approved" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
   tunnel?: TunnelStatus;
 }
 export interface TunnelStatus {
@@ -151,8 +151,13 @@ export class ConnectLink {
     const id = this.identity.publicIdentity();
     const b = await this.call<{ pairingId: string; token: string; expiresAt: number }>("/api/v1/pairings", { publicKeyJwk: id.publicKeyJwk });
     pairingApprovalUrl(b.pairingId); // throws unless Connect returned a well-formed id
-    await this.call("/api/v1/pairings/" + b.pairingId + "/proof", { token: b.token, publicKeyJwk: id.publicKeyJwk, signature: this.identity.signChallenge(b.token) });
     this.state.setSecret(TOKEN, b.token);
+    try {
+      await this.call("/api/v1/pairings/" + b.pairingId + "/proof", { token: b.token, publicKeyJwk: id.publicKeyJwk, signature: this.identity.signChallenge(b.token) });
+    } catch (e) {
+      this.state.deleteSecret(TOKEN); // a challenge that was never proved cannot be used
+      throw e;
+    }
     this.save({ ...r, pairing: { id: b.pairingId, startedAt: this.now(), expiresAt: Number(b.expiresAt), state: "pending" } });
     return this.status();
   }
@@ -164,6 +169,11 @@ export class ConnectLink {
     if (this.now() > p.expiresAt) return this.status();
     const b = await this.call<{ state: string; accountId?: string | null }>("/api/v1/pairings/" + p.id + "/poll", { token });
     if (b.state === "approved" && typeof b.accountId === "string") this.save({ ...r, pairing: { ...p, state: "approved", accountId: b.accountId } });
+    else if (b.state === "denied" || b.state === "canceled" || b.state === "rejected") {
+      // The owner refused this machine (or the attempt was withdrawn). Say so now instead of showing "waiting" until expiry.
+      this.state.deleteSecret(TOKEN);
+      this.save({ ...r, pairing: { ...p, state: "denied" } });
+    }
     return this.status();
   }
 
