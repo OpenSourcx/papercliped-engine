@@ -163,7 +163,7 @@ Commit: `843d0f2`.
 | **Pin** | `services/epaperclip/src/pin.ts`, `apps/console/src/pages/pin*` | In-process assistant: a tool-calling loop with a fixed tool list (host state, vault read for admins, organizations, apps, approvals), SSE streaming, provider retries, and approval records. It is not a second orchestrator. |
 | **Jev** | `packages/task-router`, `packages/model-eval`, `services/epaperclip/src/task-router-*.ts` | Pure TypeScript packages: deterministic classifier, routing table, TypeSafe client, rules fallback, and a model-evaluation harness. Host feature routes own per-organization consent and persistence. |
 | **Papercliped website + MCP** | `/project/papercliped` @ `41bc270` | Separate repository (MCP server in `src/`, website in `web/`). The V2 “power of the Pin” site is already merged; this session used it as the product contract and did **not** change it. |
-| **Papercliped Connect** | `/project/papercliped-connect` @ `c5b5e0f` | Separate Node monorepo (`apps/`, `packages/`, `node --test`). The device side is integrated here; the Connect-side identity-link and OIDC issuer endpoints are still required (see §7). |
+| **Papercliped Connect** | `/project/papercliped-connect` @ `5e1d012` | Separate Node monorepo (`apps/`, `packages/`, `node --test`). Identity-link routes and the OIDC issuer are implemented and merged (`9ede4fb`), not deployed. The device side is integrated here. |
 
 ---
 
@@ -197,19 +197,32 @@ Commit: `843d0f2`.
 | Host-service esbuild bundle | **builds** (`dist/epaperclip.mjs`) |
 | Agent Containers host evidence | **real** (task logs and mount state above) |
 
-What these checks do **not** prove: a successful template build on the real host, `keyctl=1` acceptance by this host’s
-AppArmor, real Cloudflare/DNS operations, the Connect-side identity API, the OIDC issuer, TypeSafe’s live response shape,
-or browser/mobile behaviour. Those are tomorrow’s scenarios.
+What these checks do **not** prove: real Cloudflare/DNS operations, the deployed Connect identity/OIDC path, TypeSafe’s live
+response shape, model authentication and a first-task run on real hardware, or browser/mobile behaviour. Those remain the
+qualification work.
+
+**Real-host result already observed (2026-11-09, miah1).** The candidate was deployed to `pve` (`pinned-b09af44`, which
+contains PR #34) and Agent Containers scenario 1 passed: the amd64 template downloaded and unpacked correctly, the
+unprivileged container started, provisioning completed, the container converted to a template, setup reached **Ready**,
+and a re-run resumed idempotently. `keyctl=1` is only settable by `root@pam` on this host; setup now falls back to
+`nesting=1` when needed. Organization creation, a resource group, the CEO agent and the first issue also worked; readiness
+reported `credential_missing` / `agent_paused` honestly.
+
+Not yet exercised on real hardware: model authentication, the first-task execution, Pin, Jev, Worker Fabric, Cloudflare,
+non-admin permission checks, and TestSprite. Two later Agent Containers fixes (late template-flag poll, failure-streak
+reset) were pushed after that host run and have not been re-exercised.
 
 ---
 
 ## 7. Outstanding environmental blockers
 
-1. **No deployment to `pve` yet.** The host still runs `v1.0.0-rc32`; deploying restarts `epaperclip.service` and needs
-   explicit owner authorization. Until then the fix is verified only by tests.
-2. **Connect-side identity routes and the OIDC issuer do not exist in `papercliped-connect`.** The device side is built
-   and tested against a fake (`identityLinks.ts`, `identity-oidc.test.ts`); `/api/v1/devices/{id}/identity-links*` and the
-   issuer/JWKS/key rotation are required for a real “Sign in with Papercliped”.
+1. **Deployment is on `pinned-b09af44`, not current `main`.** Agent Containers reached Ready on the real host; the remaining
+   scenarios still need to run. Redeploy `81f29eb` (or the next candidate) only when a product change lands; it restarts
+   `epaperclip.service`.
+2. **Connect-side identity routes and the OIDC issuer exist and are merged, but are not deployed.** Device-side identity
+   links and “Sign in with Papercliped” are implemented against them (`papercliped-connect` main `5e1d012`, identity-link
+   commit `9ede4fb`; `identity-links.test.mjs`, `engine-contract.test.mjs`). The remaining gap is deployment and live
+   qualification, not missing code.
 3. **No console UI for identity links.** Host APIs and tests exist; the Access panel was not extended.
 4. **Self-managed Cloudflare live attach** was not exercised (no live token/zone). Provisioning code and tests are in
    place.
@@ -218,7 +231,8 @@ or browser/mobile behaviour. Those are tomorrow’s scenarios.
    `unknown` because the engine’s auth-signal needs agent-create permission. This never produces a false “Ready”.
 7. **Broker cleanup on resource-group deletion** is not implemented; the pool/mapping is removed, the broker group policy
    is not.
-8. **Template build on the real host** has not been run since the fix. CT 104 was already removed.
+8. **Model test credential** is not available to the qualification run; model authentication and the first real agent task
+   cannot be verified without one.
 
 ---
 
@@ -227,8 +241,9 @@ or browser/mobile behaviour. Those are tomorrow’s scenarios.
 ### Deploy the candidate (owner authorization required; restarts the service)
 
 ```sh
-# on pve, as root, after the branch is pushed
-EPC_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/main/deploy/from-source.sh)
+# on pve, as root; the built HEAD must equal the SHA
+SHA=81f29eb8ab950ef286c1d3c7bc6b9d9ee0be29f0
+curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/main/deploy/from-source.sh | EPC_COMMIT=$SHA bash
 systemctl status epaperclip --no-pager
 ```
 
@@ -252,8 +267,9 @@ the unit. It does not touch guests, storage or networking.
 5. **Jev.** With no TypeSafe key: confirm rules-fallback decisions are persisted and no network call is made. With a key
    and explicit organization consent: confirm only goal/files/expected-size are sent and a high-risk task escalates
    without being sent.
-6. **OAuth / identity.** Once Connect-side endpoints exist: pairing, authorization, link approval, “Sign in with
-   Papercliped”, unlink/revocation, and local Proxmox login as recovery. Verify no implicit ACL and session termination.
+6. **OAuth / identity.** Connect-side identity links and the OIDC issuer are merged (`5e1d012`, `9ede4fb`). Deploy them,
+   then exercise pairing, authorization, link approval, “Sign in with Papercliped”, unlink/revocation, and local Proxmox
+   login as recovery. Verify no implicit ACL and correct session termination.
 7. **Cloudflare modes.** Local-only, self-managed Cloudflare (token popup, permissions, tunnel/DNS, resume, teardown),
    and Connect managed mode; confirm the modes stay exclusive and local admin survives a Connect outage.
 8. **Pin.** Ask it to explain the host, propose a plan, inspect a failed container, and submit an approved operation;
@@ -277,8 +293,9 @@ the unit. It does not touch guests, storage or networking.
 - [x] Pin/Jev interoperability at the API level; no second orchestrator.
 - [x] Typechecks and unit/integration suites on the integrated branch.
 - [x] Recovered Worker Fabric cancellation fix and the worker-daemon de-flake integrated and tested.
-- [ ] Deployed to `pve` and qualified on real hardware — **tomorrow (Claude)**.
-- [ ] Connect-side identity/OIDC issuer — **external dependency**.
+- [x] Deployed to `pve`; Agent Containers reached **Ready** on real hardware (`pinned-b09af44`, 2026-11-09).
+- [ ] Remaining real-host scenarios: model auth + first task, Pin, Jev, Worker Fabric, Cloudflare, non-admin checks.
+- [ ] Connect identity/OIDC **deployed** and exercised on real infrastructure — merged (`5e1d012`, `9ede4fb`), not deployed.
 - [ ] TestSprite/browser/mobile campaign — **tomorrow (Claude)**.
 
 **This is not a production-ready declaration.** It is a complete, integrated candidate for independent verification.
