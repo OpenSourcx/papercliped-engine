@@ -151,7 +151,8 @@ export function StartCompany({ onClose }: { onClose: () => void }) {
   const body = step === "name" ? <NameStep c={ctx} /> : step === "ceo" ? <CeoStep c={ctx} /> : step === "model" ? <ModelStep c={ctx} /> : <TaskStep c={ctx} />;
 
   return createPortal(
-    <div className="fixed inset-0 z-(--z-fullscreen) bg-bg overflow-y-auto" role="region" aria-label="Start a company">
+    // Settings opened from a step shows over the wizard; the wizard steps aside, keeps its state, and comes back on close.
+    <div hidden={modals.settings !== null} className="fixed inset-0 z-(--z-fullscreen) bg-bg overflow-y-auto" role="region" aria-label="Start a company">
       <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
         <div className="flex items-center justify-between">
           <ol className="flex items-center gap-2" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
@@ -169,7 +170,7 @@ export function StartCompany({ onClose }: { onClose: () => void }) {
 
 function NameStep({ c }: { c: Ctx }) {
   const { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg } = c;
-  const containers = useQuery({ queryKey: ["start", "containers"], queryFn: host.agentContainers.get, retry: false });
+  const containers = useQuery({ queryKey: qk.agentContainers, queryFn: host.agentContainers.get, retry: false });
   const dupe = name.trim() && eng.data.orgs.some((o) => o.engine?.companyId !== draft.company?.id && o.name.toLowerCase() === name.trim().toLowerCase());
   // Say what is actually being waited on instead of offering a button that can only fail.
   const blocked = (() => {
@@ -199,7 +200,7 @@ function NameStep({ c }: { c: Ctx }) {
     <Screen title="What is the name of your organization?" next={{ label: "Continue", onClick: next, disabled: !name.trim() || !!dupe || !!blocked, loading: busy }} onBack={null}>
       {blocked && <Notice tone="warning">{blocked}</Notice>}
       {containers.data && containers.data.state !== "ready" && (
-        <Notice tone="warning" title="Agent containers aren't set up yet" action={containers.data.canManage ? <Button size="sm" onClick={() => modals.openSettings("agent-containers")}>Set up</Button> : undefined}>
+        <Notice tone="warning" title="Agent containers aren't set up yet" action={containers.data.canManage ? <Button size="sm" onClick={() => modals.selectSection("agent-containers")}>Set up</Button> : undefined}>
           Agents run in containers on this device. The organization can be created now, but its agents can't run until they are set up.
         </Notice>
       )}

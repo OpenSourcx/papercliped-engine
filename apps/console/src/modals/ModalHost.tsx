@@ -54,7 +54,7 @@ export function ModalHost() {
   useEffect(() => { if (m.settings === "advertising") setParams((p) => { const n = new URLSearchParams(p); n.set("settings", "access"); n.set("access", "remote"); return n; }, { replace: true }); }, [m.settings, setParams]);
   return (
     <>
-      {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.close} />}
+      {m.settings !== null && <SettingsModal sections={SECTIONS} active={m.settings} onSelect={m.selectSection} onClose={m.modal === "new-org" ? m.closeSettings : m.close} />}
       {m.modal === "adopt-worker" && <AdoptWorkerModal onClose={m.close} />}
       {m.modal === "use-worker" && <UseWorkerModal onClose={m.close} />}
       {m.modal === "new-automation" && <NewAutomationModal onClose={m.close} />}

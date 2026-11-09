@@ -8,6 +8,8 @@ import { useSearchParams } from "react-router-dom";
 export const settingsHref = (section = "general") => `?settings=${section}`;
 export const modalHref = (name: string) => `?modal=${name}`;
 
+const PARAMS = ["settings", "modal", "storage", "content", "kind", "upid", "id", "vmid", "vmids", "all", "volid", "type", "edit", "action", "item", "iso", "template", "ostype", "size"];
+
 export function useModals() {
   const [params, setParams] = useSearchParams();
   const settings = params.get("settings");
@@ -27,6 +29,8 @@ export function useModals() {
     openSettings: (section = "general") => update((p) => { p.set("settings", section); p.delete("modal"); }),
     selectSection: (section: string) => update((p) => p.set("settings", section), true),
     openModal: (name: string) => update((p) => { p.set("modal", name); }),
-    close: () => update((p) => { for (const k of ["settings", "modal", "storage", "content", "kind", "upid", "id", "vmid", "vmids", "all", "volid", "type", "edit", "action", "item", "iso", "template", "ostype", "size"]) p.delete(k); }),
+    close: () => update((p) => { for (const k of PARAMS) p.delete(k); }),
+    /** Closes settings but keeps the modal it was opened from (Start a company), so the person lands back where they were. */
+    closeSettings: () => update((p) => { for (const k of PARAMS) if (k !== "modal") p.delete(k); }),
   };
 }
