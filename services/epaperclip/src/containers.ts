@@ -1077,6 +1077,7 @@ export class AgentContainers {
         g = undefined;
       } else {
         this.log(job, "info", `Template ${vmid} already exists${st.templateArch ? ` (built for ${st.templateArch})` : ""}`);
+        this.save({ templateAttempts: 0, lastTemplateError: undefined }); // a usable template ends the failure streak
         return `Template ${vmid}`;
       }
     }
@@ -1193,7 +1194,12 @@ export class AgentContainers {
       const cfg = await pve.lxcConfig(node, vmid);
       if (Number(cfg.unprivileged) !== 1) throw new StepError("The template container isn't unprivileged; refusing to use it");
       await this.task(pve, await pve.convertToTemplate(node, "lxc", vmid), "Converting to a template");
-      const done = await pve.lxcConfig(node, vmid);
+      let done = await pve.lxcConfig(node, vmid);
+      // Observed on the physical host: the task had finished and the template flag was set, yet this first read missed it.
+      for (let i = 0; i < 10 && Number(done.template) !== 1; i++) {
+        await this.pace(1000);
+        done = await pve.lxcConfig(node, vmid);
+      }
       if (Number(done.template) !== 1) throw new StepError("Proxmox didn't mark the container as a template");
       this.log(job, "info", `Template ${vmid} is ready`);
       this.save({ templateAttempts: 0, lastTemplateError: undefined });
