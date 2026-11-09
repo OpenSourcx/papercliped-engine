@@ -170,11 +170,14 @@ const termproxyBodies: string[] = [];
 beforeEach(async () => {
   pve = fakePve();
   clock = 1_000_000;
-  staticDir = mkdtempSync(join(tmpdir(), "epc-"));
+  // A unique parent, so the "outside the console" file cannot collide with another user's /tmp on a shared host.
+  const webRoot = mkdtempSync(join(tmpdir(), "epc-web-"));
+  staticDir = join(webRoot, "static");
+  mkdirSync(staticDir);
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>ePaperclip</title>");
   mkdirSync(join(staticDir, "assets"));
   writeFileSync(join(staticDir, "assets", "app-abc.js"), "console.log(1)");
-  writeFileSync(join(staticDir, "..", "secret.txt"), "nope");
+  writeFileSync(join(webRoot, "secret.txt"), "nope");
   // A stand-in for Proxmox's vncwebsocket: checks the handshake, then echoes input frames as output.
   consoleSeen = [];
   fakeConsole = new WebSocketServer({ port: 0, host: "127.0.0.1" });
