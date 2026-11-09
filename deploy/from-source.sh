@@ -22,15 +22,34 @@ if [ "${#need[@]}" -gt 0 ]; then
 fi
 
 work="$(mktemp -d /var/tmp/epaperclip-build.XXXXXX)"; trap 'rm -rf "$work"' EXIT
-echo "epaperclip: fetching $REF"
+# EPC_COMMIT pins the build to one exact commit (40 hex characters). Use it for anything but a throwaway install: a branch
+# or tag name can move between review and deployment. The script itself should be fetched from the same commit:
+#   curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/<sha>/deploy/from-source.sh | EPC_COMMIT=<sha> bash
+COMMIT="${EPC_COMMIT:-}"
+if [ -n "$COMMIT" ]; then
+  [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "EPC_COMMIT must be a full 40-character lowercase commit SHA"
+  echo "epaperclip: fetching commit $COMMIT"
+else
+  echo "epaperclip: fetching $REF (not pinned to a commit; set EPC_COMMIT to pin)"
+fi
 # A private repository needs a read-only token: EPC_GITHUB_TOKEN. It is handed to git for this one command through its
 # environment (never on the command line, where any user on the host could read it with ps), and not kept.
-if [ -n "${EPC_GITHUB_TOKEN:-}" ]; then
-  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$EPC_GITHUB_TOKEN" | base64 -w0)" \
-    git clone --quiet --depth 1 --branch "$REF" -- "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+git_auth() {
+  if [ -n "${EPC_GITHUB_TOKEN:-}" ]; then
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$EPC_GITHUB_TOKEN" | base64 -w0)" git "$@"
+  else
+    git "$@"
+  fi
+}
+if [ -n "$COMMIT" ]; then
+  git init --quiet "$work/src" || die "couldn't create the build folder"
+  git -C "$work/src" remote add origin "$REPO"
+  (cd "$work/src" && git_auth fetch --quiet --depth 1 origin "$COMMIT" && git checkout --quiet --detach FETCH_HEAD) || die "couldn't fetch commit $COMMIT from $REPO"
+  [ "$(git -C "$work/src" rev-parse HEAD)" = "$COMMIT" ] || die "fetched source does not match commit $COMMIT"
 else
-  git clone --quiet --depth 1 --branch "$REF" -- "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
+  git_auth clone --quiet --depth 1 --branch "$REF" -- "$REPO" "$work/src" || die "couldn't fetch '$REF' from $REPO"
 fi
+echo "epaperclip: building source commit $(git -C "$work/src" rev-parse HEAD)"
 
 # Reuse the installer's pinned Node.js version and checksums, so there is one place to update them.
 eval "$(grep -E '^NODE_(VERSION|SHA256_(x64|arm64))=' "$work/src/deploy/install.sh")"
@@ -56,6 +75,5 @@ npm --prefix plugins/proxmox-sandbox ci --no-audit --no-fund --ignore-scripts >/
 npm --prefix plugins/proxmox-sandbox run build >/dev/null
 npm --prefix plugins/remote-worker ci --no-audit --no-fund --ignore-scripts >/dev/null
 npm --prefix plugins/remote-worker run build >/dev/null
-git describe --tags --always > VERSION 2>/dev/null || echo "$REF" > VERSION
-echo "$REF-$(git rev-parse --short HEAD)" > VERSION
+echo "$([ -n "$COMMIT" ] && echo pinned || echo "$REF")-$(git rev-parse --short HEAD)" > VERSION
 bash deploy/install.sh "$@"
