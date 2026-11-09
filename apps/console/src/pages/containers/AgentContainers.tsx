@@ -146,7 +146,7 @@ export function AgentContainers() {
         actions={status ? <Status kind={STATE_TEXT[status.state].kind} label={STATE_TEXT[status.state].label} /> : undefined}
       />
       {q.isPending && <div className="py-12 grid place-items-center text-ink-3" aria-busy="true"><Loader2 className="h-5 w-5 animate-spin" /></div>}
-      {q.error && <p role="alert" className="text-sm text-critical">{errorText(q.error)}</p>}
+      {q.error && !status && <p role="alert" className="text-sm text-critical flex flex-wrap items-center gap-3"><span>Couldn&apos;t read the agent container status: {errorText(q.error)}</span><Button size="sm" loading={q.isFetching} onClick={() => void q.refetch()}>Try again</Button></p>}
       {status && (
         <>
           {status.state !== "ready" && (

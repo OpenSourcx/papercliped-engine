@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Bot, Box, Check, CircleDollarSign, Circle, ListChecks, Vote } from "lucide-react";
 import { useEngine } from "../../../data/store.tsx";
 import { connectApi } from "../../../data/engine/connectApi.ts";
@@ -9,6 +9,7 @@ import { ISSUE_ICON, ISSUE_LABEL, agentStatusOf, isOpen } from "../../../data/en
 import { useActivity, useAgentContainers, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { ReadinessPill } from "./AgentReadiness.tsx";
+import { useModals } from "../../../modals/useModals.ts";
 import { suggestSize } from "../../../pin/brain.ts";
 import { formatBytes } from "../../../lib/storage.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
@@ -69,8 +70,10 @@ function ResourceGroupCard() {
 }
 
 /** A short, recoverable path from a newly created organization to its first useful agent run. */
-function GettingStartedCard({ base, device }: { base: string; device: string }) {
+function GettingStartedCard({ base }: { base: string }) {
   const { companyId, org } = useLiveOrg();
+  const navigate = useNavigate();
+  const modals = useModals();
   const engine = useEngine();
   const group = useResourceGroup(companyId);
   const containers = useAgentContainers();
@@ -100,10 +103,10 @@ function GettingStartedCard({ base, device }: { base: string; device: string }) 
       <p className="text-sm text-ink-2 mb-4">Prepare the resources, agent and model, then give the agent its first task.</p>
       <div className="space-y-3">
         <SetupStep done={resourceReady} title="Reserve this organization’s resources" body={g?.provisioning?.state === "failed" ? (g.provisioning.error ?? "The resource group needs repair.") : "A separate Proxmox pool keeps this organization’s agent containers within its limits."} action={!resourceReady ? <Button size="sm" loading={repair.isPending} onClick={createOrRepairGroup}>{g ? "Repair resources" : "Create resources"}</Button> : undefined} />
-        <SetupStep done={containersReady === true} title="Prepare the agent environment" body="Agents run in isolated containers on this device. This is set up once by a device administrator." action={containersReady === true ? undefined : <Link to={`/${device}/home?settings=agent-containers`}><Button size="sm">Set up containers</Button></Link>} />
-        <SetupStep done={hasAgent} title="Create an agent" body="Choose the agent’s role and runtime." action={!hasAgent ? <Link to={`${base}/agents?new=1`}><Button size="sm">Create agent</Button></Link> : undefined} />
-        <SetupStep done={modelReady} title="Connect a model account" body={accounts.error ? "Model account status could not be checked. Open Agent models to retry." : "Sign in with a supported provider or share an API key with this organization."} action={!modelReady ? <Link to={`${base}/connectors?section=models`}><Button size="sm">Connect a model</Button></Link> : undefined} />
-        <SetupStep done={hasTask} title="Give the agent its first task" body="Describe what done looks like. You can then watch its live run and review the result." action={!hasTask ? <Link to={`${base}/tasks?new=1`}><Button size="sm">Create task</Button></Link> : undefined} />
+        <SetupStep done={containersReady === true} title="Prepare the agent environment" body="Agents run in isolated containers on this device. This is set up once by a device administrator." action={containersReady === true ? undefined : <Button size="sm" onClick={() => modals.openSettings("agent-containers")}>Set up containers</Button>} />
+        <SetupStep done={hasAgent} title="Create an agent" body="Choose the agent’s role and runtime." action={!hasAgent ? <Button size="sm" onClick={() => navigate(`${base}/agents?new=1`)}>Create agent</Button> : undefined} />
+        <SetupStep done={modelReady} title="Connect a model account" body={accounts.error ? "Model account status could not be checked. Open Agent models to retry." : "Sign in with a supported provider or share an API key with this organization."} action={!modelReady ? <Button size="sm" onClick={() => navigate(`${base}/connectors?section=models`)}>Connect a model</Button> : undefined} />
+        <SetupStep done={hasTask} title="Give the agent its first task" body="Describe what done looks like. You can then watch its live run and review the result." action={!hasTask ? <Button size="sm" onClick={() => navigate(`${base}/tasks?new=1`)}>Create task</Button> : undefined} />
       </div>
       <ActionError error={repair.error} />
     </Card>
@@ -139,7 +142,7 @@ export function LiveDashboard() {
       />
 
       {dash.error && <Card className="mb-4"><LoadError error={dash.error} retry={() => void dash.refetch()} /></Card>}
-      <GettingStartedCard base={b} device={device} />
+      <GettingStartedCard base={b} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <Stat icon={<Bot className="h-4 w-4" />} value={d ? String(d.agents.active + d.agents.running + d.agents.paused + d.agents.error) : "–"} label={d ? `${d.agents.running} working · ${d.agents.paused} paused${d.agents.error ? ` · ${d.agents.error} with errors` : ""}` : "Agents"} to={`${b}/agents`} />
         <Stat icon={<ListChecks className="h-4 w-4" />} value={d ? String(d.tasks.open) : "–"} label={d ? `Open tasks · ${d.tasks.inProgress} in progress${d.tasks.blocked ? ` · ${d.tasks.blocked} blocked` : ""}` : "Open tasks"} to={`${b}/tasks`} />
