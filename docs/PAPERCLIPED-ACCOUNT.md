@@ -33,6 +33,16 @@ Hosted account ownership NEVER automatically creates Proxmox credentials, IAM ro
 - **Self-managed Cloudflare:** existing ePaperclip Publishing feature and device-owned Cloudflare token. Do not remove or automatically migrate it.
 - **Local-only:** Proxmox-backed console and MCP remain functional without Connect or any hosted subscription.
 
+## Identity links and Sign in with Papercliped (device side)
+
+Implemented in `services/epaperclip/src/identityLinks.ts`; see `docs/ACCESS-IDENTITY-LINK-CONTRACT.md`
+for the API, states and tests. It is independent of the three connection modes: a paired device can link
+local principals while in `local`, `cloudflare-self` or `connect`. A link grants no Proxmox permission;
+the account holder approves in Papercliped and the local principal confirms in their own session, with
+a node administrator approval where the contract requires one. `oidc/enable` creates only the agreed
+`papercliped` OpenID realm and a per-device client; the console refuses any `<id>@papercliped` ticket
+without an active federated link. The Connect-side routes and the real issuer remain to be built.
+
 ## Next integration work
 
 Build admin-only host APIs and functional Settings → Remote Access → Papercliped Connect panel after Connect's public pairing API, session validation, and trusted database credentials exist. UI refinement follows working authorization, not before.

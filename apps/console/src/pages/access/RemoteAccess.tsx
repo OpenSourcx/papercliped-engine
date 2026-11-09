@@ -64,8 +64,9 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
       {status.tunnel && <Notice tone={status.tunnel.state === "running" ? "good" : status.tunnel.state === "error" || status.tunnel.state === "unavailable" ? "warning" : "info"} title={status.tunnel.hostname ?? "Address"}>{status.tunnel.message}</Notice>}
       <p className="text-xs text-ink-3">Having a Papercliped account or subscription never gives anyone Proxmox administrator rights. Local sign-in keeps working if Connect is offline.</p>
       {removing ? <Notice tone="warning" title="Unlink this device?" action={<><Button onClick={() => setRemoving(false)}>Keep linked</Button><Button variant="danger" loading={unpair.isPending} onClick={() => unpair.mutate()}>Unlink</Button></>}>The public address stops working. This device is removed locally now and from Connect as soon as it can be reached.</Notice> : <Button variant="ghost" onClick={() => setRemoving(true)}>Unlink this device</Button>}
-    </> : !pairing || pairing.state === "expired" ? <>
+    </> : !pairing || pairing.state === "expired" || pairing.state === "denied" ? <>
       {pairing?.state === "expired" && <Notice tone="warning" title="That approval expired">Start again to get a new approval page.</Notice>}
+      {pairing?.state === "denied" && <Notice tone="warning" title="This machine was not approved">The account owner declined it, or the request was withdrawn. Start again if that was a mistake.</Notice>}
       <p className="text-compact text-ink-3">Link this device to your Papercliped account. You will sign in on Papercliped’s site, approve this device, then confirm the account here.</p>
       <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Link to Papercliped</Button>
     </> : <>

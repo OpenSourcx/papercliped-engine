@@ -73,6 +73,8 @@ export interface GrantRec {
   orgs: string[] | null;
   /** The ePaperclip API-token record (and Proxmox token `epc-<id>`) this grant acts through. */
   tokenId: string;
+  /** Set when consent happened in a session opened through a federated identity link; unlinking that link revokes it. */
+  link?: string;
   status: "pending" | "active";
   createdAt: number;
   expiresAt: number;
@@ -321,7 +323,7 @@ export class ConnectService {
   }
 
   /** Creates the grant for an approval and the one-time code. The Proxmox token and its ePaperclip record already exist. */
-  createGrant(p: { req: AuthRequest; userid: string; direct: boolean; orgs: string[] | null; tokenId: string }): { code: string; grant: GrantRec } {
+  createGrant(p: { req: AuthRequest; userid: string; direct: boolean; orgs: string[] | null; tokenId: string; link?: string }): { code: string; grant: GrantRec } {
     const t = this.o.now();
     const all = this.grants();
     // Approvals nobody finished are dropped; their Proxmox tokens are removed the next time the person is signed in.
@@ -331,6 +333,7 @@ export class ConnectService {
     const grant: GrantRec = {
       id, clientId: p.req.client.id, clientName: p.req.client.name, redirectHost: new URL(p.req.redirectUri).host, userid: p.userid, scope: p.req.scope,
       direct: p.req.scope === SCOPE_CONTROL && p.direct, orgs: p.orgs, tokenId: p.tokenId, status: "pending", createdAt: t, expiresAt: t + GRANT_TTL_MS, lastUsedAt: null, usedRefresh: [],
+      ...(p.link ? { link: p.link } : {}),
     };
     all[id] = grant;
     this.saveGrants(all);
@@ -551,6 +554,17 @@ export class ConnectService {
     this.saveGrants(all);
     this.audit(who, "oauth.revoke", `grant ${id}`, `${g.clientName} (${g.userid})${why ? `: ${why}` : ""}`);
     return g;
+  }
+
+  /** Ends every grant created through one federated identity link. Their Proxmox tokens are queued like a revoke. */
+  async revokeByLink(linkId: string): Promise<GrantRec[]> {
+    const revoked: GrantRec[] = [];
+    for (const g of Object.values(this.grants())) {
+      if (g.link !== linkId) continue;
+      const rec = await this.revoke(g.id, "system", "identity link revoked");
+      if (rec) revoked.push(rec);
+    }
+    return revoked;
   }
 
   /** Deletes queued Proxmox tokens of the signed-in person (and, for an administrator, of anyone). */

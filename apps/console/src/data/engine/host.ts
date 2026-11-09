@@ -194,7 +194,7 @@ export interface ConnectStatusView {
   mode: RemoteMode;
   paired: boolean;
   device?: { deviceId: string; accountId: string; name: string; pairedAt: number };
-  pairing?: { id: string; state: "pending" | "approved" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
   tunnel?: { state: string; message: string; hostname?: string };
 }
 
