@@ -264,7 +264,7 @@ function CeoStep({ c }: { c: Ctx }) {
     <Screen title="Create your first agent" subtitle="The CEO leads the organization: it plans the work and hires the rest of the team." onBack={() => patch({ step: "name" })} next={{ label: "Next", onClick: next, disabled: !draft.ceoName.trim(), loading: busy }}>
       <div role="radiogroup" aria-label="How to create the CEO" className="flex flex-col sm:flex-row gap-3">
         {choice("me", <UserPlus className="h-4 w-4" />, "Create it myself", "Name your first agent.")}
-        {choice("pin", <Sparkles className="h-4 w-4 text-accent" />, "Let Pin create it", pinReady ? "Pin drafts a name and a role from what the organization is for. You review it." : "Connect a model for Pin first (Settings → Agent models).", !pinReady)}
+        {choice("pin", <Sparkles className="h-4 w-4 text-accent" />, "Let Pin create it", pinReady ? "Pin drafts a name and a role from what the organization is for. You review it." : "Pin needs a model first: choose one on the Pin page. You can name the CEO yourself now.", !pinReady)}
       </div>
       {mode === "pin" && (
         <div className="space-y-3">

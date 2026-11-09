@@ -96,6 +96,19 @@ describe("the Agent containers screen", () => {
     expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ storage: "local", templateStorage: "local", bridge: "vmbr1" });
   });
 
+  it("offers to try again when the status can't be read", async () => {
+    let fail = true;
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string, init: RequestInit = {}) => (fail && new URL(input, "http://pve.lan").pathname === "/api/agent-containers" ? new Response(JSON.stringify({ error: "host unreachable" }), { status: 502 }) : real(input, init)));
+    wrap(<AgentContainers />);
+    const retry = await screen.findByRole("button", { name: "Try again" }, { timeout: 4000 });
+    expect(screen.getByRole("alert").textContent).toMatch(/Couldn.t read the agent container status/);
+    fail = false;
+    fireEvent.click(retry);
+    expect(await screen.findByText("step access")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
   it("shows what failed and offers to resume", async () => {
     status = baseStatus({ state: "error", steps: steps(["access", "key"]), error: "storage 'local-lvm' is full" });
     wrap(<AgentContainers />);

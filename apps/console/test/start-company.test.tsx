@@ -155,7 +155,7 @@ describe("start a company", () => {
     wrap();
     await throughName();
     expect((screen.getByRole("radio", { name: /Let Pin create it/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Connect a model for Pin first/)).toBeTruthy();
+    expect(screen.getByText(/Pin needs a model first: choose one on the Pin page/)).toBeTruthy();
   });
 
   it("starts the sign-in at once on the page, in the organization's container, for the provider chosen", async () => {
