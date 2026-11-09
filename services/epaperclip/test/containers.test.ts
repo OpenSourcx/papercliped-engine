@@ -328,19 +328,26 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
   });
 
-  it("an organization without a resource group uses the shared pool, and new agents follow on reconcile", async () => {
+  it("does not give an organization without a resource group a shared-pool environment", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);
-    expect((await runSetup(sam)).status).toBe("done");
-    expect([...eng.st.envs.values()][0].config.pool).toBe("epc-agents");
-    eng.st.agents.get(o.co)!.push({ id: "a2", name: "New", status: "idle", defaultEnvironmentId: null });
+    const done = await runSetup(sam);
+    expect(done.status).toBe("done");
+    // No shared epc-agents fallback: the organization has no pool of its own, so it gets no environment and says why.
+    expect([...eng.st.envs.values()]).toHaveLength(0);
+    expect(done.log.map((l: any) => l.text).join("\n")).toContain("no resource group yet");
+    // Creating its resource group afterwards gives it a dedicated pool and environment.
+    await send("PUT", `/api/resource-groups/${o.co}`, sam, { name: "Plain", cores: 2, memoryMb: 4096, diskGb: 16, maxGuests: 2 });
     await app.containers.reconcile();
-    expect(eng.st.agents.get(o.co)![1].defaultEnvironmentId).toBe([...eng.st.envs.values()][0].id);
+    const envs = [...eng.st.envs.values()];
+    expect(envs).toHaveLength(1);
+    expect(envs[0].config.pool).not.toBe("epc-agents");
+    expect(envs[0].metadata.companyId).toBe(o.co);
   });
 
   it("never gives Pin's own identity agent the organization's container environment, so it can never take a container", async () => {
     const sam = await admin();
-    const o = await org(sam, "Pinned", false);
+    const o = await org(sam, "Pinned", true);
     expect((await runSetup(sam)).status).toBe("done");
     state.setSetting("pin.appIdentities", { [o.co]: "pin-id" });
     eng.st.agents.get(o.co)!.push({ id: "pin-id", name: "Pin (host)", status: "paused", defaultEnvironmentId: null });
@@ -353,7 +360,7 @@ describe("agent containers setup", () => {
 
   it("puts agents on the direct command-line lane unless they chose one, and leaves other adapters alone", async () => {
     const sam = await admin();
-    const o = await org(sam, "Plain", false);
+    const o = await org(sam, "Plain", true);
     eng.st.agents.set(o.co, [
       { id: "c1", name: "Claude", status: "idle", adapterType: "claude_local", adapterConfig: { model: "x" }, defaultEnvironmentId: null },
       { id: "c2", name: "Chose ACP", status: "idle", adapterType: "codex_local", adapterConfig: { engine: "acp" }, defaultEnvironmentId: null },
@@ -370,7 +377,7 @@ describe("agent containers setup", () => {
 
   it("leaves an agent's deliberate non-local environment alone", async () => {
     const sam = await admin();
-    const o = await org(sam, "Plain", false);
+    const o = await org(sam, "Plain", true);
     eng.st.envs.set("some-ssh-env", { id: "some-ssh-env", name: "Their own", driver: "ssh", status: "active", config: {}, metadata: null });
     eng.st.agents.set(o.co, [{ id: "a9", name: "Custom", status: "idle", defaultEnvironmentId: "some-ssh-env" }]);
     expect((await runSetup(sam)).status).toBe("done");

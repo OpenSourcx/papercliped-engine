@@ -379,8 +379,8 @@ export class AgentContainers {
   private pools(): Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }> {
     return this.d.state.getSetting<Record<string, { pool: string; cores?: number; memoryMb?: number; maxGuests?: number }>>("resourceGroups") ?? {};
   }
-  private poolFor(companyId: string, p: Params) {
-    return this.pools()[companyId]?.pool ?? p.pool;
+  private poolFor(companyId: string): string {
+    return this.pools()[companyId]?.pool ?? "";
   }
   /** The node's architecture; templates for the other one cannot run here. */
   private arch(): HostArch | null {
@@ -636,6 +636,11 @@ export class AgentContainers {
   /** What an environment's config must contain. Secrets are referenced by Paperclip secret id, never by value. */
   private envConfig(companyId: string, p: Params, vmid: number | undefined, sec: OrgSecrets | undefined, size: Size): Record<string, unknown> | null {
     if (vmid === undefined || !sec) return null;
+    // An organization gets a container environment only for its own resource group's pool. There is deliberately no
+    // shared, unrestricted pool to fall back to: that would look like isolation while giving every organization the same
+    // boundary.
+    const pool = this.poolFor(companyId);
+    if (!pool) return null;
     const cfg: Record<string, unknown> = {
       provider: "proxmox",
       apiUrl: new URL(this.d.pveUrl).origin,
@@ -643,7 +648,7 @@ export class AgentContainers {
       apiTokenId: TOKEN_ID,
       apiTokenSecret: sec.tokenSecretId,
       template: String(vmid),
-      pool: this.poolFor(companyId, p),
+      pool,
       storage: p.storage,
       bridge: p.bridge,
       cores: size.cores,
@@ -1380,6 +1385,11 @@ export class AgentContainers {
   /** Makes sure the organization's secrets and environment exist and match, and its agents default to it. */
   private async ensureOrg(companyId: string, name: string, p: Params, job?: JobView): Promise<string[]> {
     const warnings: string[] = [];
+    // No resource group, no container environment. An organization uses only the Proxmox pool allocated to it; handing it
+    // the shared agent pool would present a shared boundary as an isolated one.
+    if (!this.pools()[companyId]) {
+      return [`${name}: no resource group yet, so its agents have no container environment. Create one in the organization's settings (Resources); ePaperclip then gives that pool the sandbox rights and points the organization's agents at it.`];
+    }
     const st = this.stored();
     const token = this.tokenSecret();
     const key = this.sshKey();
