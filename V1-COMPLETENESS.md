@@ -212,20 +212,28 @@ Not yet exercised on real hardware: model authentication, the first-task executi
 non-admin permission checks, and TestSprite. Two later Agent Containers fixes (late template-flag poll, failure-streak
 reset) were pushed after that host run and have not been re-exercised.
 
-**Final candidate deployed (2026-11-09).** `main` at `29d9362` was built and installed on `pve` as `pinned-29d9362`:
-service active, engine active, `GET /api/health` returns `{"ok":true}`, and the console serves. It includes the UI
-wayfinding fixes (#35, #37), the broker-skip decision (#38), the Agent Containers fixes (#34) and the test-fixture fix
-(#36). The Agent Containers template (CT 104), the qualification organization and pool were left in place; the
-containers were not re-run after this final deploy. The broker unit remains disabled and is now a skipped step, not a
-failed organization.
+**Final candidate deployed (2026-11-10).** `main` at `6171c8a` was built and installed on **pve** and the disposable
+**VM 9100** as `pinned-6171c8a`: services active, `GET /api/health` `{"ok":true}`, console serving. It includes the
+setup-persistence fix (#40), the template-ACL fix (#39), the broker-skip decision (#38), the UI wayfinding fixes
+(#35, #37), the Agent Containers fixes (#34) and the test-fixture fix (#36).
+
+Agent Containers is **Ready** on both hosts: pve has template CT 104 and 2 environments; VM 9100 (a clean PVE 8.4
+nested test host) built template CT 100, installed the provider, created its organization environment and enforced
+sandbox-only. A second browser on VM 9100 skips onboarding, confirming the setup is device-wide. The broker remains
+disabled and is a skipped step, not a failed organization. The Playwright harness and screenshots are in
+`/home/agent/epc-ui`; environment details are in `/project/claude-handoff/TEST-ENVIRONMENTS.md`.
+
+**Cloudflare:** `kpnsolute.com` is on Cloudflare and `local.kpnsolute.com` is free, but pve's stored token is invalid
+(`Zone: Read` missing), so no publication was created. A valid token is the only blocker for the `local.kpnsolute.com`
+test address.
 
 ---
 
 ## 7. Outstanding environmental blockers
 
-1. **The final candidate is deployed, but the remaining scenarios are not run.** Agent Containers reached Ready on the
-   real host under `b09af44`; `29d9362` is healthy but the flow needs a fresh pass. The broker is disabled; that is now
-   `skipped`, not `failed`.
+1. **The final candidate is deployed; the remaining scenarios are not run.** Agent Containers is Ready on real hosts
+   (pve and VM 9100); model auth/task, Pin, Jev, Worker Fabric, Cloudflare, non-admin checks and TestSprite remain. The
+   broker is disabled; that is now `skipped`, not `failed`.
 2. **Connect-side identity routes and the OIDC issuer exist and are merged, but are not deployed.** Device-side identity
    links and “Sign in with Papercliped” are implemented against them (`papercliped-connect` main `5e1d012`, identity-link
    commit `9ede4fb`; `identity-links.test.mjs`, `engine-contract.test.mjs`). The remaining gap is deployment and live
@@ -238,8 +246,10 @@ failed organization.
    `unknown` because the engine’s auth-signal needs agent-create permission. This never produces a false “Ready”.
 7. **Broker cleanup on resource-group deletion** is not implemented; the pool/mapping is removed, the broker group policy
    is not.
-8. **Model test credential** is not available to the qualification run; model authentication and the first real agent task
-   cannot be verified without one.
+8. **Model test credential / quota** is the blocker for model authentication and the first real agent task. pve Claude
+   and Codex are usage-limited until 2026-11-12; miah2's Claude account works.
+9. **Cloudflare token is invalid.** pve's `publisher.cloudflare.apiToken` fails with `Zone: Read` missing, so
+   `local.kpnsolute.com` was not created. A token with `Zone:Read`, `DNS:Edit`, `Cloudflare Tunnel:Edit` is required.
 
 ---
 
@@ -249,7 +259,7 @@ failed organization.
 
 ```sh
 # on pve, as root; the built HEAD must equal the SHA
-SHA=29d9362486d640592f51bc27834eb50482348eff
+SHA=6171c8ab5b3cb0b548805279aad9c5c8bfc46e4c
 curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/main/deploy/from-source.sh | EPC_COMMIT=$SHA bash
 systemctl status epaperclip --no-pager
 ```
@@ -300,7 +310,7 @@ the unit. It does not touch guests, storage or networking.
 - [x] Pin/Jev interoperability at the API level; no second orchestrator.
 - [x] Typechecks and unit/integration suites on the integrated branch.
 - [x] Recovered Worker Fabric cancellation fix and the worker-daemon de-flake integrated and tested.
-- [x] Deployed to `pve`; Agent Containers reached **Ready** on real hardware (`pinned-b09af44`, 2026-11-09). Final candidate `pinned-29d9362` is deployed and healthy.
+- [x] Deployed to `pve` and VM 9100; Agent Containers reached **Ready** on real hardware (`pinned-6171c8a`, 2026-11-10). Setup persistence and the template ACL are verified.
 - [ ] Remaining real-host scenarios: model auth + first task, Pin, Jev, Worker Fabric, Cloudflare, non-admin checks.
 - [ ] Connect identity/OIDC **deployed** and exercised on real infrastructure — merged (`5e1d012`, `9ede4fb`), not deployed.
 - [ ] TestSprite/browser/mobile campaign — **tomorrow (Claude)**.
