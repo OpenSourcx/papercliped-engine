@@ -28,5 +28,10 @@ describe("agents being set up", () => {
     expect(r.summary).toMatch(/being verified/);
     expect(r.summary).toMatch(/No model account/);
     expect(r.summary).not.toMatch(/resumed/);
+    expect(r.settingUp).toBe(true);
+  });
+  it("uses the host service's own agent_setup_pending text when it sends one", () => {
+    const r = evaluateAgentReadiness({ agent: { status: "paused", adapterType: "claude_local", lifecycleState: "verifying", readiness: { ready: false, issues: [{ code: "agent_setup_pending", detail: "The engine is still verifying this agent." }] } }, adapter: ok, model: ok, environment: ok });
+    expect(r.summary).toMatch(/^Still setting up\. The engine is still verifying/);
   });
 });

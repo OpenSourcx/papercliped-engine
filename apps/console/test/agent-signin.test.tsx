@@ -69,6 +69,16 @@ describe("agent sign-in", () => {
     await waitFor(() => expect(sent("POST", `${A}/setup-token-login-sessions`)).toHaveLength(2));
   });
 
+  it("shows the 409 quota_full message and a link to the organization's machines", async () => {
+    handlers[`POST ${A}/setup-token-login-sessions`] = () => json({ error: "The organization's resource group epc-acme is full: machines (3 of 3 in use). Stop or remove a machine in the pool, or raise the limits.", code: "quota_full" }, 409);
+    wrap();
+    await screen.findByText("Acme");
+    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" })[0]);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/machines \(3 of 3 in use\)/);
+    expect(screen.getByText(/Stop or remove a machine in the organization's resource group/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
   it("signs in with a device code (Codex): opens the page, shows the code, finishes when the engine says so", async () => {
     let polls = 0;
     handlers[`POST ${A}/adapters/codex_local/login-sessions`] = () => ({ sessionId: "s1", environmentId: "e1", status: "starting", expiresAt: null, failure: null, prompt: null });
