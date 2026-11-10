@@ -28,7 +28,12 @@ export const ENGINE_AGENT_STATUS: Record<string, [StatusKind, string]> = {
   error: ["critical", "Error"],
   terminated: ["off", "Terminated"],
 };
-export const agentStatusOf = (s: string): [StatusKind, string] => ENGINE_AGENT_STATUS[s] ?? ["idle", s];
+/** A person's pause and the engine's own setup checks both read "paused"; the lifecycle tells them apart. */
+const SETUP_LABEL: Record<string, string> = { preparing: "Preparing", verifying: "Verifying", resuming: "Starting" };
+export const agentStatusOf = (s: string, lifecycleState?: unknown): [StatusKind, string] => {
+  const setup = typeof lifecycleState === "string" ? SETUP_LABEL[lifecycleState] : undefined;
+  return setup ? ["warning", setup] : ENGINE_AGENT_STATUS[s] ?? ["idle", s];
+};
 
 /**
  * An agent's status answers whether it is available; a heartbeat run answers

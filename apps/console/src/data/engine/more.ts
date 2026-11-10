@@ -72,7 +72,10 @@ export const useChats = (companyId: Id, enabled: boolean) =>
 /** The saved agent chats of several organizations at once (PinView's list), sharing the cache with useChats. */
 export function useChatsOf(companyIds: string[]) {
   const ready = useEngineReady();
-  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.chats(id), queryFn: () => engine.chat.list(id), enabled: ready, retry: false, refetchInterval: 30_000 })) });
+  // Ask the engine whether chat is on before listing: with chat off every list is a 404, which the rail would repeat every 30 seconds.
+  const settings = useChatSettings();
+  const on = ready && !settings.isPending && settings.data?.enableAgentChat !== false;
+  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.chats(id), queryFn: () => engine.chat.list(id), enabled: on, retry: false, refetchInterval: 30_000 })) });
 }
 
 export function useChatWrites(companyId: string) {
