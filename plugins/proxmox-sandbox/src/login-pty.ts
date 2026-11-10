@@ -25,5 +25,5 @@ export function loginCommandLine(key: unknown, sessionHome: unknown): string {
   if (typeof sessionHome !== "string" || !HOME.test(sessionHome)) throw new Error("The login's working folder isn't in the expected form.");
   const c = COMMANDS[key];
   const home = shellQuote(sessionHome);
-  return `sh -c ${shellQuote(`umask 077; mkdir -p ${home} && cd ${home} && export TERM=xterm-256color ${c.env}=${home} && exec ${c.run}`)}`;
+  return `sh -c ${shellQuote(`umask 077; mkdir -p ${home} && cd ${home} && export TERM=xterm-256color PATH=/usr/local/bin:$PATH ${c.env}=${home} && exec ${c.run}`)}`;
 }

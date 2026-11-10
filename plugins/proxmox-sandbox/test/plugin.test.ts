@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PluginContext, PluginEnvironmentLease } from "@paperclipai/plugin-sdk";
 import { createProxmoxSandboxPlugin, buildTags, sanitizeTag } from "../src/plugin.js";
+import { nodeHttpsTransport } from "../src/proxmox-api.js";
 import { validateSshPrivateKey } from "../src/config.js";
 import { derivePublicKey } from "../src/ssh-keys.js";
 import { buildExecScript } from "../src/ssh.js";
@@ -272,6 +273,38 @@ describe("acquire", () => {
     const mkdir = shell.calls.at(-1)!;
     expect(mkdir.acceptNewHostKey).toBeFalsy();
     expect(mkdir.target.knownHosts).toMatch(/fake|FakeHostKey/);
+  });
+
+  it("gives slow Proxmox calls the environment's timeout, not the client's 30s default", async () => {
+    const seen: number[] = [];
+    const p = createProxmoxSandboxPlugin({
+      ssh: shell.runner,
+      sleep: noSleep,
+      killGraceSeconds: 0,
+      transport: (req) => {
+        seen.push(req.timeoutMs);
+        return nodeHttpsTransport(req);
+      },
+    });
+    const lease = await p.definition.onEnvironmentAcquireLease!({ ...base, config: config({ timeoutMs: 120_000 }), runId: "run-slow" });
+    expect(lease.providerLeaseId).toBe("pve/101");
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((t) => t === 120_000)).toBe(true);
+  });
+
+  it("returns the caller's expiry so the engine can bound a login sandbox", async () => {
+    const at = new Date(Date.now() + 15 * 60_000).toISOString();
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: config(), runId: "run-expiry", requestedExpiresAt: at });
+    expect(lease.expiresAt).toBe(at);
+    expect(lease.metadata).toMatchObject({ expiresAt: at });
+
+    const resumed = await hooks.onEnvironmentResumeLease!({ ...base, config: config(), providerLeaseId: lease.providerLeaseId!, leaseMetadata: lease.metadata });
+    expect(resumed.expiresAt).toBe(at);
+  });
+
+  it("returns no expiry when the caller's deadline is not a future time", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: config(), runId: "run-expired", requestedExpiresAt: "2000-01-01T00:00:00.000Z" });
+    expect(lease.expiresAt).toBeNull();
   });
 
   it("creates from a CT template volid with the derived public key", async () => {

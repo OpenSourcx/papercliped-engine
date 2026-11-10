@@ -228,6 +228,9 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
       tokenSecret: config.apiTokenSecret!,
       caCert: config.caCert,
       allowInsecureTls: config.allowInsecureTls,
+      // A full clone of a template on dir storage can take minutes; the per-request timeout must not cut the
+      // environment's own deadline short at the client default.
+      requestTimeoutMs: config.timeoutMs,
       transport: deps.transport,
       sleep,
     });
@@ -336,6 +339,19 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     }
   }
 
+  /**
+   * A caller's absolute deadline, when it is a real future time. A provider that
+   * returns this in the lease lets Paperclip's durable lease reaper stop the
+   * sandbox even if this worker dies. An unusable value stays null: the server then
+   * refuses the lease rather than promising a bound the provider cannot keep.
+   */
+  function leaseExpiry(value: unknown): string | null {
+    const raw = str(value);
+    if (!raw) return null;
+    const at = Date.parse(raw);
+    return Number.isFinite(at) && at > Date.now() ? new Date(at).toISOString() : null;
+  }
+
   /** Brings a started container to a usable lease: address, SSH, workspace. */
   async function readyLease(input: {
     api: ProxmoxClient;
@@ -345,6 +361,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     requestedCwd: string | null;
     knownHosts: string | null;
     resumed: boolean;
+    expiresAt?: string | null;
   }): Promise<PluginEnvironmentLease> {
     const { api, config, ref, deadline } = input;
     const ip = await discoverIp(api, ref, deadline);
@@ -355,11 +372,13 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     await runChecked(target, mkdirScript(remoteCwd), "create the workspace");
     return {
       providerLeaseId: `${ref.node}/${ref.vmid}`,
+      expiresAt: input.expiresAt ?? null,
       metadata: {
         provider: PROVIDER_KEY,
         node: ref.node,
         vmid: ref.vmid,
         ip,
+        expiresAt: input.expiresAt ?? null,
         remoteCwd,
         shellCommand: remote.shellCommand,
         sshUser: config.sshUser,
@@ -731,6 +750,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
           requestedCwd: str(params.requestedCwd),
           knownHosts: null,
           resumed: false,
+          expiresAt: leaseExpiry(params.requestedExpiresAt),
         });
         log("info", "Proxmox container ready", { node: ref.node, vmid, ip: lease.metadata?.ip });
         return lease;
@@ -764,6 +784,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         requestedCwd: str(params.leaseMetadata?.remoteCwd),
         knownHosts: str(params.leaseMetadata?.knownHosts),
         resumed: true,
+        expiresAt: leaseExpiry(params.leaseMetadata?.expiresAt),
       });
     },
 

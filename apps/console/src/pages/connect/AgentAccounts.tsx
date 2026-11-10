@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { connectApi, type LoginView } from "../../data/engine/connectApi.ts";
-import { errorText } from "../../data/engine/queries.ts";
+import { errorText, useAgents } from "../../data/engine/queries.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, EmptyState, Field, Input, Notice, SectionTitle, Spinner, Status } from "../../ui/primitives.tsx";
+import { Button, Card, EmptyState, Field, Input, Notice, SectionTitle, Select, Spinner, Status } from "../../ui/primitives.tsx";
 
 /**
  * An organization's AI accounts for its agents (docs/CONNECTORS.md): the accounts the engine already holds, signing in
@@ -63,20 +63,30 @@ export function AgentAccounts({ companyId, orgName }: { companyId: string; orgNa
           <p className="text-xs text-ink-3 mt-3">Only the organization's owners and admins can do this. The engine accepts Anthropic, OpenAI, OpenRouter and xAI keys for agents.</p>
         </Card>
       </div>
-      {signIn && <SignInModal companyId={companyId} provider={signIn} onClose={() => { setSignIn(null); void qc.invalidateQueries({ queryKey: ["connect", "org-ai", companyId] }); }} />}
+      {signIn && <SignInModal companyId={companyId} orgName={orgName} provider={signIn} onClose={() => { setSignIn(null); void qc.invalidateQueries({ queryKey: ["connect", "org-ai", companyId] }); }} />}
     </>
   );
 }
 
-function SignInModal({ companyId, provider, onClose }: { companyId: string; provider: "anthropic" | "openai"; onClose: () => void }) {
-  const label = provider === "anthropic" ? "Claude" : "ChatGPT (Codex)";
+function SignInModal({ companyId, orgName, provider, onClose }: { companyId: string; orgName: string; provider: "anthropic" | "openai"; onClose: () => void }) {
+  const label = provider === "anthropic" ? "Claude" : "ChatGPT";
+  const [ownership, setOwnership] = useState<"personal" | "shared">("personal");
+  const [allAgents, setAllAgents] = useState(true);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const agents = useAgents(companyId);
   const [login, setLogin] = useState<LoginView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const stop = useRef(false);
+  const canStart = ownership === "personal" || allAgents || chosen.length > 0;
 
   const start = useMutation({
-    mutationFn: () => connectApi.startLogin(companyId, { provider }),
+    mutationFn: () => connectApi.startLogin(companyId, {
+      provider,
+      ownership,
+      allAgents: ownership === "shared" ? allAgents : false,
+      agentIds: ownership === "shared" && !allAgents ? chosen : [],
+    }),
     onSuccess: (r) => { setLogin(r.login); setError(null); },
     onError: (e) => setError(errorText(e)),
   });
@@ -101,9 +111,38 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
   const signinAt = httpUrl(login?.verificationUrl);
   return (
     <Modal size="md" icon={<LogIn className="h-5 w-5" />} title={`Sign in with ${label}`} subtitle="The sign-in runs inside the agent container, not on this device." onClose={cancel}
-      footer={login?.done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={cancel}>Cancel</Button>{!login && <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Start sign-in</Button>}</>}>
+      footer={login?.done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={cancel}>Cancel</Button>{!login && <Button variant="primary" loading={start.isPending} disabled={!canStart} onClick={() => start.mutate()}>Start sign-in</Button>}</>}>
       <div className="space-y-4">
-        {!login && <p className="text-compact text-ink-2">You'll get a web address and, for some sign-ins, a short code. Open the address in your own browser, sign in to {label}, and approve. This page notices when it's done. Nothing about your password or login is shown here.</p>}
+        {!login && (
+          <div className="space-y-4">
+            <Field label="Who can use it" hint="A personal account comes with you. A shared account belongs to the organization, and only an owner or admin can share it.">
+              <Select value={ownership} onChange={(e) => setOwnership(e.target.value as "personal" | "shared")}>
+                <option value="personal">Only me — comes with me</option>
+                <option value="shared">Everyone in {orgName}</option>
+              </Select>
+            </Field>
+            {ownership === "shared" && (
+              <div className="space-y-2 rounded-lg border border-line p-3">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allAgents} onChange={(e) => setAllAgents(e.target.checked)} /> All agents</label>
+                {!allAgents && (
+                  <div className="max-h-40 divide-y divide-line overflow-auto rounded border border-line">
+                    {agents.isPending && <p className="px-3 py-2 text-sm text-ink-3">Loading agents…</p>}
+                    {agents.error && <p className="px-3 py-2 text-sm text-critical">{errorText(agents.error)}</p>}
+                    {(agents.data ?? []).map((a) => (
+                      <label key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        <input type="checkbox" checked={chosen.includes(a.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, a.id] : chosen.filter((id) => id !== a.id))} />
+                        <span className="truncate">{a.name}</span>
+                      </label>
+                    ))}
+                    {agents.data && agents.data.length === 0 && <p className="px-3 py-2 text-sm text-ink-3">No agents yet. Share with all agents instead.</p>}
+                  </div>
+                )}
+                {!allAgents && chosen.length === 0 && <p className="text-xs text-ink-3">Pick at least one agent.</p>}
+              </div>
+            )}
+            <p className="text-compact text-ink-2">You'll get a web address and, for some sign-ins, a short code. Open the address in your own browser, sign in to {label}, and approve. This page notices when it's done. Nothing about your password or login is shown here.</p>
+          </div>
+        )}
         {login && !login.done && !login.failed && (
           <div className="space-y-3" aria-live="polite">
             {!signinAt && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for the container" />Starting the sign-in in the container…</div>}
@@ -118,7 +157,7 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
             {login.message && <p className="text-xs text-ink-3">{login.message}</p>}
           </div>
         )}
-        {login?.done && <Notice tone="good" title="Signed in">{label} is connected. The agents can use it from their next run.</Notice>}
+        {login?.done && <Notice tone="good" title="Signed in">{ownership === "personal" ? `${label} is connected to your account in ${orgName}. Your runs use it by default.` : `${label} is connected for ${orgName}. ${allAgents ? "All agents" : "The agents you chose"} can use it from their next run.`}</Notice>}
         {login?.failed && <Notice tone="critical" title="The sign-in didn't finish">{login.message ?? `It ended as ${login.status}.`} You can start again.</Notice>}
         {error && <p role="alert" className="text-compact text-critical">{error}</p>}
       </div>

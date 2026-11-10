@@ -465,13 +465,13 @@ export class EngineGateway {
   }
 
   /** A JSON call to the engine as this person, renewing their engine session once on 401. */
-  async userCall(s: Session, method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
+  async userCall(s: Session, method: string, path: string, body?: unknown, opts: { timeoutMs?: number } = {}): Promise<{ status: number; data: unknown }> {
     try {
       let login = await this.loginFor(s);
-      let r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: 20_000 });
+      let r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: opts.timeoutMs ?? 20_000 });
       if (r.status === 401) {
         login = await this.reauth(s, login);
-        r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: 20_000 });
+        r = await this.send(method, path, { cookie: login.cookie, json: body, timeoutMs: opts.timeoutMs ?? 20_000 });
       }
       this.absorb(login, r.headers["set-cookie"]);
       return { status: r.status, data: json(r.text) };
@@ -480,8 +480,8 @@ export class EngineGateway {
     }
   }
 
-  async userJson<T>(s: Session, method: string, path: string, body?: unknown): Promise<T> {
-    const r = await this.userCall(s, method, path, body);
+  async userJson<T>(s: Session, method: string, path: string, body?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+    const r = await this.userCall(s, method, path, body, opts);
     if (r.status >= 200 && r.status < 300) return r.data as T;
     const msg = (r.data as { error?: string } | null)?.error;
     if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
