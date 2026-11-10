@@ -345,6 +345,18 @@ describe("agent containers setup", () => {
     expect(envs[0].metadata.companyId).toBe(o.co);
   });
 
+  it("stays ready with an organization that has no resource group, so other organizations' new agents still get their environment", async () => {
+    const sam = await admin();
+    const grouped = await org(sam, "Grouped", true);
+    await org(sam, "Ungrouped", false);
+    expect((await runSetup(sam)).status).toBe("done");
+    expect((await status(sam)).state).toBe("ready");
+    eng.st.agents.get(grouped.co)!.push({ id: "late", name: "Hired later", status: "idle", defaultEnvironmentId: null });
+    await app.containers.reconcile();
+    const env = [...eng.st.envs.values()].find((e) => e.metadata.companyId === grouped.co);
+    expect(eng.st.agents.get(grouped.co)!.find((a: any) => a.id === "late").defaultEnvironmentId).toBe(env.id);
+  });
+
   it("never gives Pin's own identity agent the organization's container environment, so it can never take a container", async () => {
     const sam = await admin();
     const o = await org(sam, "Pinned", true);
