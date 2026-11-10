@@ -9,7 +9,10 @@ let up: Awaited<ReturnType<typeof fakeCompat>>;
 beforeEach(async () => {
   up = await fakeCompat();
   h = await startConnectApp({ providers: (u, i) => fetch(u, i) });
-  h.eng.st.envs.set("env1", { id: "env1", name: "Northwind containers", driver: "sandbox", status: "active", metadata: { epaperclip: "agent-containers" } });
+  // The engine's instance admin sees every organization's environments. Put another org's first: the route must
+  // still pick the one that belongs to the organization in the URL.
+  h.eng.st.envs.set("env9", { id: "env9", name: "Another org's containers", driver: "sandbox", status: "active", metadata: { epaperclip: "agent-containers", companyId: "co_2" } });
+  h.eng.st.envs.set("env1", { id: "env1", name: "Northwind containers", driver: "sandbox", status: "active", metadata: { epaperclip: "agent-containers", companyId: "co_1" } });
 });
 afterEach(async () => {
   await h.closeAll();

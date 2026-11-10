@@ -226,8 +226,8 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       if (!limiter.take(companyId)) throw new E(429, "rate_limited", "Too many sign-in attempts. Wait a few minutes.");
       for (const [id, t] of tracked) if (ctx.now() - t.at > 24 * 3600_000) tracked.delete(id);
       // The organization's container environment: where the login runs. Never the host.
-      const envs = await gw.userJson<{ id: string; driver?: string; status?: string; metadata?: { epaperclip?: string } | null }[]>(s, "GET", `/api/companies/${enc(companyId)}/environments`);
-      const env = (Array.isArray(envs) ? envs : []).find((e) => e?.driver === "sandbox" && e.status !== "archived" && e.metadata?.epaperclip === "agent-containers");
+      const envs = await gw.userJson<{ id: string; driver?: string; status?: string; metadata?: { epaperclip?: string; companyId?: string } | null }[]>(s, "GET", `/api/companies/${enc(companyId)}/environments`);
+      const env = (Array.isArray(envs) ? envs : []).find((e) => e?.driver === "sandbox" && e.status !== "archived" && e.metadata?.epaperclip === "agent-containers" && e.metadata?.companyId === companyId);
       if (!env) throw new E(409, "no_environment", "This organization has no agent container environment yet. Set up agent containers first (Settings, Agent containers).");
       const aiConnection = { provider: spec.provider, method: "subscription", name, ownership, allAgents: true };
       const path = flow === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions` : `/api/companies/${enc(companyId)}/adapters/${spec.adapter}/login-sessions`;
