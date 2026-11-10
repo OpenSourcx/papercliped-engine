@@ -30,6 +30,8 @@ interface Engine {
   liveError: string | null;
   /** False until the first live answer arrives, so pages can wait instead of reporting "not found". */
   ready: boolean;
+  /** False until the device's setup has been read from the host (or is known to be absent). */
+  setupReady: boolean;
   /** Storage, templates, uploads and tasks: Proxmox live, or the in-browser stand-in for the demo. */
   backend: Backend;
   /** Follows a Proxmox task until it ends, then tells you through Pin. Bumps contentVersion so lists refresh. */
@@ -116,6 +118,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
   const { session } = useSession();
   const live = session.mode === "live";
   const [setup, setSetup] = useState<SetupState | null>(() => readJson<SetupState | null>("epc.setup", null));
+  const [setupReady, setSetupReady] = useState(!live);
   const [data, setData] = useState<EngineData>(() => {
     if (live) return liveData();
     const saved = readJson<EngineData | null>("epc.data", null);
@@ -197,6 +200,25 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
     };
   }, [live, refreshTick]);
   useEffect(() => (setup ? writeJson("epc.setup", setup) : removeKey("epc.setup")), [setup]);
+  // First-run setup belongs to the device, not one browser. Read it from the host; migrate an existing browser-local
+  // setup once, so the owner does not repeat onboarding after this upgrade.
+  useEffect(() => {
+    if (!live) { setSetupReady(true); return; }
+    let alive = true;
+    api.setup().then(
+      (server) => {
+        if (!alive) return;
+        if (server) { setSetup(server); writeJson("epc.setup", server); }
+        else {
+          const local = readJson<SetupState | null>("epc.setup", null);
+          if (local) void api.saveSetup(local).catch(() => {});
+        }
+        setSetupReady(true);
+      },
+      () => { if (alive) setSetupReady(true); },
+    );
+    return () => { alive = false; };
+  }, [live]);
 
   // Demo: live-looking metrics, a gentle random walk like the host's own graphs.
   useEffect(() => {
@@ -212,8 +234,10 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
   }, [live]);
 
   const completeSetup = useCallback<Engine["completeSetup"]>((s, firstOrg) => {
-    setSetup({ ...s, completedAt: new Date().toISOString() });
-    if (live) return;
+    const next = { ...s, completedAt: new Date().toISOString() };
+    setSetup(next);
+    setSetupReady(true);
+    if (live) { void api.saveSetup(next).catch(() => {}); return; }
     setHost(demoHost(s.deviceName));
     const d = demoData(firstOrg);
     d.users[0] = { ...d.users[0], name: s.ownerName || "You" };
@@ -326,6 +350,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
         return { ok: true, vmid };
       },
       setup,
+      setupReady,
       data: view,
       host,
       completeSetup,
@@ -494,7 +519,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
       updateSession: (id, patch) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)) } })),
       revokeSession: (id) => setData((d) => ({ ...d, apps: { ...d.apps, sessions: d.apps.sessions.filter((x) => x.id !== id) } })),
     }),
-    [live, liveError, guests, setup, data, view, host, completeSetup, backend, watchTask, running, contentVersion, queryClient],
+    [live, liveError, guests, setup, setupReady, data, view, host, completeSetup, backend, watchTask, running, contentVersion, queryClient],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

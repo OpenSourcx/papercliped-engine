@@ -1,4 +1,5 @@
 import type { ClusterResource, NodeStatus, RrdCf, RrdPoint, RrdTimeframe } from "@papercliped-engine/proxmox-client";
+import type { SetupState } from "./types.ts";
 import { nodeHeaders } from "../lib/selectedNode.ts";
 
 /**
@@ -406,6 +407,9 @@ export const api = {
   banner: () => request<{ text: string }>("GET", "/api/login/banner").then((r) => r.text, () => ""),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
   me: () => request<{ user: LiveUser }>("GET", "/api/me").then((r) => r.user),
+  /** The device-wide first-run setup, stored on the host so every browser sees the same console. */
+  setup: () => request<{ setup: SetupState | null }>("GET", "/api/setup").then((r) => r.setup),
+  saveSetup: (s: SetupState) => request<{ setup: SetupState }>("POST", "/api/setup", s).then((r) => r.setup),
   host: () => request<LiveHost>("GET", "/api/host"),
   stats: (target: { kind: "node" } | { kind: "guest"; vmid: number }, timeframe: RrdTimeframe, cf: RrdCf) =>
     request<{ points: RrdPoint[] }>("GET", `/api/stats/${target.kind === "node" ? "node" : `guests/${target.vmid}`}?timeframe=${timeframe}&cf=${cf}`).then((r) => r.points),
