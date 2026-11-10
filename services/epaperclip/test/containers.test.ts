@@ -233,6 +233,19 @@ describe("agent containers setup", () => {
     expect((await status(sam)).state).toBe("ready");
   });
 
+  it("re-enables a provider that failed to activate instead of installing it again", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    // On a busy host the worker can miss the engine's initialize timeout; the plugin is then in "error".
+    Object.assign(eng.st.plugins[0], { status: "error", lastError: 'Activation failed: RPC call "initialize" timed out after 15000ms' });
+    expect((await status(sam)).state).not.toBe("ready");
+    expect((await runSetup(sam)).status).toBe("done");
+    expect(eng.st.plugins).toHaveLength(1);
+    expect(eng.st.plugins[0].status).toBe("ready");
+    expect((await status(sam)).state).toBe("ready");
+  });
+
   it("resumes after a failure, with Proxmox's own words, and leaves no half-made container", async () => {
     const sam = await admin();
     await org(sam, "Northwind");

@@ -1387,7 +1387,8 @@ export class AgentContainers {
       this.log(job, "info", "The provider is already installed and ready");
       return "Already installed";
     }
-    if (pl && pl.status === "disabled") {
+    // The engine re-enables a provider that is disabled, failed to activate (error) or awaits an upgrade; installing it again is refused.
+    if (pl && (pl.status === "disabled" || pl.status === "error" || pl.status === "upgrade_pending")) {
       pl = await this.eng("POST", `/api/plugins/${encodeURIComponent(pl.id)}/enable`, {});
     }
     if (!pl || pl.status !== "ready") {
