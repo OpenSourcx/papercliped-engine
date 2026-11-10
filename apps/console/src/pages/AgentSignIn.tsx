@@ -6,6 +6,7 @@ import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { useModals } from "../modals/useModals.ts";
 import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
+import { signInFailureHelp } from "../data/engine/signInHelp.ts";
 import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Select, Spinner } from "../ui/primitives.tsx";
@@ -202,7 +203,12 @@ function SignInBody({ s, name, org }: { s: SignInState; name: string; org: strin
   const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
   return (
     <div className="space-y-4" aria-live="polite">
-      {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+      {error && (
+        <Notice tone="critical" title="The sign-in couldn't start" action={<Button size="sm" onClick={s.restart}>Try again</Button>}>
+          <p>{error}</p>
+          <p className="mt-1.5 text-ink-3">{signInFailureHelp(error)}</p>
+        </Notice>
+      )}
       {done && <Notice tone="good" title="Signed in">{org}'s agents can use this {name} account. It's kept as a secret; nobody can read it back.</Notice>}
       {ended && <Notice tone="critical" title={session?.status === "timed_out" ? "That took too long" : "The sign-in didn't finish"}>{session?.failure?.message ?? "Close this and try again."}</Notice>}
       {!done && !ended && !error && !prompt && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Starting a sign-in in the container…</p>}

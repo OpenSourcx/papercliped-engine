@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { connectApi, type LoginView } from "../../data/engine/connectApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
+import { signInFailureHelp } from "../../data/engine/signInHelp.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, EmptyState, Field, Input, Notice, SectionTitle, Spinner, Status } from "../../ui/primitives.tsx";
@@ -120,7 +121,7 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
         )}
         {login?.done && <Notice tone="good" title="Signed in">{label} is connected. The agents can use it from their next run.</Notice>}
         {login?.failed && <Notice tone="critical" title="The sign-in didn't finish">{login.message ?? `It ended as ${login.status}.`} You can start again.</Notice>}
-        {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+        {error && <Notice tone="critical" title="The sign-in couldn't start"><p>{error}</p><p className="mt-1.5 text-ink-3">{signInFailureHelp(error)} Choose Start sign-in to try again.</p></Notice>}
       </div>
     </Modal>
   );
