@@ -24,6 +24,8 @@ export interface ReadinessAgent {
   adapterConfig?: Record<string, unknown> | null;
   runtimeConfig?: Record<string, unknown> | null;
   defaultEnvironmentId?: string | null;
+  /** The engine's own setup state: preparing, verifying, ready, pausing, paused, resuming, terminating... */
+  lifecycleState?: string | null;
 }
 
 export interface ReadinessEnvironment {
@@ -52,6 +54,7 @@ export interface ReadinessIssue {
     | "environment_inactive"
     | "agent_terminated"
     | "agent_pending_approval"
+    | "agent_setup_pending"
     | "agent_paused";
   detail: string;
 }
@@ -89,6 +92,8 @@ const ALL_CREDENTIAL_KEYS = [...new Set(Object.values(CREDENTIAL_ENV_KEYS).flat(
 const NON_SANDBOX_ADAPTERS = new Set(["http", "process"]);
 
 const TERMINAL = new Set(["terminated", "pending_approval", "paused"]);
+/** Lifecycle states in which the engine itself is still setting the agent up (it retries on its own, about once a minute on failure). */
+const SETTING_UP = new Set(["preparing", "verifying", "resuming"]);
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -166,7 +171,10 @@ export function evaluateAgentReadiness(
   else if ((env.status ?? "active") !== "active") issues.push({ code: "environment_inactive", detail: `The agent's sandbox is ${env.status ?? "unknown"}.` });
   else environmentOk = true;
 
-  if (status === "terminated") issues.push({ code: "agent_terminated", detail: "The agent was terminated." });
+  // The engine reports "paused" as the status of an agent whose setup is still running; that is not a pause someone chose.
+  const settingUp = typeof agent.lifecycleState === "string" && SETTING_UP.has(agent.lifecycleState);
+  if (settingUp) issues.push({ code: "agent_setup_pending", detail: `The engine is still ${agent.lifecycleState === "preparing" ? "preparing" : agent.lifecycleState === "resuming" ? "resuming" : "verifying"} this agent. It tries its test run in the organization's container again by itself until a model credential and a running container environment exist; there is nothing to approve or restart.` });
+  else if (status === "terminated") issues.push({ code: "agent_terminated", detail: "The agent was terminated." });
   else if (status === "pending_approval") issues.push({ code: "agent_pending_approval", detail: "The agent is waiting for approval." });
   else if (status === "paused") issues.push({ code: "agent_paused", detail: "The agent is paused." });
 
@@ -176,7 +184,7 @@ export function evaluateAgentReadiness(
     companyId,
     name: agent.name,
     status,
-    ready: configured && !TERMINAL.has(status),
+    ready: configured && !TERMINAL.has(status) && !settingUp,
     configured,
     adapter: { type, ok: adapterOk },
     credential,

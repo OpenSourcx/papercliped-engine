@@ -13,6 +13,20 @@ describe("the engine client", () => {
     for (const [name, path] of Object.entries(ENGINE_PATHS_UNDOCUMENTED)) expect(spec.paths[path], `${name}: ${path}`).toBeUndefined();
   });
 
+  it("retries an agent's setup, and reads, edits and removes a project or goal by id", async () => {
+    const seen: string[] = [];
+    const c = createEngineClient({ fetch: async (url, init) => { seen.push(`${init?.method} ${url}`); return new Response("{}", { status: 200 }); } });
+    await c.agents.retryLifecycle("a1");
+    await c.agents.clearError("a1");
+    await c.projects.get("p1");
+    await c.projects.update("p1", { name: "n" });
+    await c.projects.remove("p1");
+    await c.goals.get("g1");
+    await c.goals.update("g1", { status: "achieved" });
+    await c.goals.remove("g1");
+    expect(seen).toEqual(["POST /engine/api/agents/a1/lifecycle/retry", "POST /engine/api/agents/a1/clear-error", "GET /engine/api/projects/p1", "PATCH /engine/api/projects/p1", "DELETE /engine/api/projects/p1", "GET /engine/api/goals/g1", "PATCH /engine/api/goals/g1", "DELETE /engine/api/goals/g1"]);
+  });
+
   it("calls the routines, inbox, chat and settings routes with the bodies Paperclip's validators accept", async () => {
     const seen: { method?: string; url: string; body: unknown }[] = [];
     const c = createEngineClient({ fetch: async (url, init) => { seen.push({ method: init?.method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined }); return new Response("{}", { status: 200 }); } });
