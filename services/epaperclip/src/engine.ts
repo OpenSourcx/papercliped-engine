@@ -166,6 +166,13 @@ export interface ForwardHooks {
   after?: (method: string, path: string, status: number) => void;
 }
 
+/** The engine's own words for a server error, when it gave some. Its generic "Internal server error" says nothing, and anything token-shaped is dropped. */
+export function engineFailure(status: number, msg: unknown): HttpError {
+  const text = typeof msg === "string" ? msg.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  const usable = text && !/^internal server error\.?$/i.test(text) && !/(sk-[\w-]{8,}|bearer\s+\S+|eyJ[\w-]{10,}|(token|secret|password|key)\s*[=:]\s*\S+)/i.test(text);
+  return new HttpError(502, "engine_error", usable ? `The engine answered ${status}: ${text}` : `The engine answered ${status}`);
+}
+
 export class EngineGateway {
   readonly url: URL;
   readonly publicUrl: string;
@@ -487,7 +494,7 @@ export class EngineGateway {
     if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
     if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
     if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
-    throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+    throw engineFailure(r.status, msg);
   }
 
   /** Turns an engine answer into data or a clear HttpError. */
@@ -497,7 +504,7 @@ export class EngineGateway {
     if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
     if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
     if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
-    throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+    throw engineFailure(r.status, msg);
   }
 
   /**

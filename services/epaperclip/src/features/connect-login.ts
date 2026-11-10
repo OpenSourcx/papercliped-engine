@@ -6,6 +6,7 @@ import { appendAudit } from "./access-tokens.ts";
 import { connectionsOf } from "./connect-connections.ts";
 import { RateWindow, cleanText } from "./connect-util.ts";
 import type { FeatureCtx } from "./index.ts";
+import { explainOrgQuota } from "../org-quota.ts";
 
 /**
  * Agents' model access, per organization (docs/CONNECTORS.md):
@@ -231,7 +232,12 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       if (!env) throw new E(409, "no_environment", "This organization has no agent container environment yet. Set up agent containers first (Settings, Agent containers).");
       const aiConnection = { provider: spec.provider, method: "subscription", name, ownership, allAgents: true };
       const path = flow === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions` : `/api/companies/${enc(companyId)}/adapters/${spec.adapter}/login-sessions`;
-      const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) });
+      const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) }).catch(async (e) => {
+        // The engine answers a failed container start with a bare 500 on this route. The host can say what is full.
+        if (!(e instanceof HttpError) || e.status < 500) throw e;
+        const why = await ctx.asUser((pve) => explainOrgQuota(ctx.state, pve, companyId)).catch(() => null);
+        throw why ? new E(409, "quota_full", why) : e;
+      });
       const view = sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" });
       if (!view.id || !SESSION.test(view.id)) throw new E(502, "engine_error", "The engine started a sign-in but didn't say which. Check the engine.");
       tracked.set(view.id, { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now() });
