@@ -160,7 +160,6 @@ export const ENGINE_PATHS = {
   agentPause: "/api/agents/{id}/pause",
   agentResume: "/api/agents/{id}/resume",
   agentTerminate: "/api/agents/{id}/terminate",
-  agentLifecycleRetry: "/api/agents/{id}/lifecycle/retry",
   issues: "/api/companies/{companyId}/issues",
   issue: "/api/issues/{id}",
   issueComments: "/api/issues/{id}/comments",
@@ -433,8 +432,6 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       pause: (id: string) => call<Agent>("POST", P.agentPause, { id }, {}),
       resume: (id: string) => call<Agent>("POST", P.agentResume, { id }, {}),
       terminate: (id: string) => call<Agent>("POST", P.agentTerminate, { id }, {}),
-      /** Asks the engine to run the setup check again for an agent that is still preparing or verifying. */
-      retryLifecycle: (id: string) => call<Agent>("POST", P.agentLifecycleRetry, { id }, {}),
       runs: (companyId: string, agentId?: string, limit = 20) => call<HeartbeatRun[]>("GET", P.heartbeatRuns, { companyId }, undefined, { agentId, limit }),
     },
     issues: {
