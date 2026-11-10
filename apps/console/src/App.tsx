@@ -58,7 +58,10 @@ function Root() {
 }
 
 function SetupGate() {
-  const { setup } = useEngine();
+  const { setup, setupReady } = useEngine();
+  // Wait for the device's setup before deciding: without this a browser with no local copy flashes onboarding even
+  // when this device was already set up.
+  if (!setupReady) return <div className="grid min-h-dvh place-items-center text-sm text-ink-3" aria-busy="true">Loading…</div>;
   return setup ? <Navigate to={`/${setup.deviceName}/home`} replace /> : <Onboarding />;
 }
 

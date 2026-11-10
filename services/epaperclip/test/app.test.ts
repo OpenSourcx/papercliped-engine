@@ -247,6 +247,31 @@ async function signIn(username = "sam", realm = "pve") {
   return sessionCookie(r);
 }
 
+describe("device setup", () => {
+  const setup = { ownerName: "Sam", deviceName: "northwind", pinMode: "assistant", aiProvider: null, pinAccess: { system: true, orgs: true, connectors: true, docs: true }, completedAt: "2026-11-10T00:00:00.000Z" };
+
+  it("is stored on the device, so a second session reads the same setup", async () => {
+    const sam = await signIn();
+    expect(await (await fetch(base + "/api/setup", { headers: { Cookie: sam } })).json()).toEqual({ setup: null });
+    const r = await post("/api/setup", setup, { Cookie: sam });
+    expect(r.status).toBe(200);
+    expect((await r.json()).setup).toMatchObject({ deviceName: "northwind" });
+    const other = await signIn();
+    const read = await fetch(base + "/api/setup", { headers: { Cookie: other } });
+    expect((await read.json()).setup.deviceName).toBe("northwind");
+  });
+
+  it("only a Proxmox administrator can set it", async () => {
+    const lee = await signIn("lee");
+    expect((await post("/api/setup", setup, { Cookie: lee })).status).toBe(403);
+  });
+
+  it("refuses an invalid console name", async () => {
+    const sam = await signIn();
+    expect((await post("/api/setup", { ...setup, deviceName: "Not A Slug" }, { Cookie: sam })).status).toBe(400);
+  });
+});
+
 describe("sign-in through Proxmox", () => {
   it("lists realms for the login screen", async () => {
     const r = await fetch(base + "/api/realms");

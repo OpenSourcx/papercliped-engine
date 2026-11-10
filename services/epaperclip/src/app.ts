@@ -388,6 +388,33 @@ export function tfaMethods(ticket: string): TfaMethods {
 export const brokerOptionalUnavailable = (e: unknown): boolean =>
   e instanceof HttpError && (e.code === "broker_not_configured" || e.code === "broker_unavailable");
 
+/** The device-wide first-run choices. Stored on the host so a second browser does not repeat onboarding. */
+export interface DeviceSetup {
+  ownerName: string;
+  deviceName: string;
+  pinMode: "assistant" | "agent";
+  aiProvider: string | null;
+  pinAccess: { system: boolean; orgs: boolean; connectors: boolean; docs: boolean };
+  completedAt: string;
+}
+
+export function parseDeviceSetup(b: Record<string, unknown>): DeviceSetup {
+  const text = (v: unknown, field: string, max: number): string => {
+    if (typeof v !== "string" || !v.trim() || v.trim().length > max) throw new HttpError(400, "bad_request", `${field} must be a non-empty string of at most ${max} characters`);
+    return v.trim();
+  };
+  const bool = (v: unknown): boolean => v === true;
+  const ownerName = text(b.ownerName, "ownerName", 100);
+  const deviceName = text(b.deviceName, "deviceName", 50);
+  if (!/^[a-z0-9][a-z0-9-]{0,49}$/.test(deviceName)) throw new HttpError(400, "bad_request", "deviceName must be a lowercase slug (letters, numbers, single hyphens)");
+  if (b.pinMode !== "assistant" && b.pinMode !== "agent") throw new HttpError(400, "bad_request", "pinMode must be 'assistant' or 'agent'");
+  const aiProvider = b.aiProvider === null || b.aiProvider === undefined ? null : text(b.aiProvider, "aiProvider", 80);
+  const access = (b.pinAccess ?? {}) as Record<string, unknown>;
+  if (typeof b.pinAccess !== "object" || b.pinAccess === null || Array.isArray(b.pinAccess)) throw new HttpError(400, "bad_request", "pinAccess must be an object");
+  const completedAt = typeof b.completedAt === "string" && !Number.isNaN(Date.parse(b.completedAt)) ? new Date(b.completedAt).toISOString() : new Date().toISOString();
+  return { ownerName, deviceName, pinMode: b.pinMode, aiProvider, pinAccess: { system: bool(access.system), orgs: bool(access.orgs), connectors: bool(access.connectors), docs: bool(access.docs) }, completedAt };
+}
+
 export function createApp(d: AppDeps) {
   const now = d.now ?? Date.now;
   // Over HTTPS the session cookie carries the __Host- prefix: browsers then refuse to take it from a sibling domain or over
@@ -787,6 +814,22 @@ export function createApp(d: AppDeps) {
       const s = requireSession(req);
       const [name, realm] = s.username.split("@");
       return sendJson(res, 200, { user: { username: s.username, name, realm, node: d.pve.node }, ...(s.apiToken ? { via: "token", readOnly: s.apiToken.readOnly } : {}) });
+    }
+
+    // ---- This device's console setup (owner name, console address, Pin mode). Device-wide, so a second browser
+    // does not repeat first-run onboarding. Reading is available to a signed-in user; changing it is an admin action.
+    if (method === "GET" && path === "/api/setup") {
+      requireSession(req);
+      return sendJson(res, 200, { setup: state.getSetting<DeviceSetup>("setup") ?? null });
+    }
+    if (method === "POST" && path === "/api/setup") {
+      requireSameSite(req);
+      const setup = parseDeviceSetup(await readJson(req));
+      await asUser(req, res, async (pve) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only Proxmox administrators can finish this device's setup");
+      });
+      state.setSetting("setup", setup);
+      return sendJson(res, 200, { setup });
     }
 
     // ---- The engine, connectors and Pin.
