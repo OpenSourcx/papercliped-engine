@@ -39,6 +39,8 @@ export interface AgentReadiness {
   summary: string;
   checks: ReadinessCheck[];
   source: "backend" | "derived";
+  /** The engine is still preparing or verifying the agent (it reads "paused"); not a stop anyone chose. */
+  settingUp?: boolean;
 }
 
 /** An unknown/missing signal is not a negative: do not claim an agent can run when we could not check it. */
@@ -100,7 +102,9 @@ export function evaluateAgentReadiness(input: {
   if (setup) {
     const blockers = checks.filter((c) => c.state === "blocked").map((c) => c.detail);
     const failed = lifecycleError(input.agent);
-    return { state: "blocked", summary: failed ? `${setupSummary(setup, blockers)} The engine reported: ${failed}` : setupSummary(setup, blockers), checks, source };
+    // The host service words this itself (issue agent_setup_pending); prefer its text over the derived one.
+    const base = backend?.reasons.length ? `Still setting up. ${backend.reasons.join(" ")}` : setupSummary(setup, blockers);
+    return { state: "blocked", summary: failed ? `${base} The engine reported: ${failed}` : base, checks, source, settingUp: true };
   }
 
   // A lifecycle stop says more than any readiness signal, and stays true even if the engine has not
