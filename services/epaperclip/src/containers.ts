@@ -551,7 +551,9 @@ export class AgentContainers {
         const e = envs.find((x) => this.ours(x) === c.id);
         if (e) environments.push({ companyId: c.id, environmentId: e.id, ok: e.status === "active" && this.envMatches(e, c.id, p, st.templateVmid) });
       }
-      const missingEnv = cos.filter((c) => !environments.some((e) => e.companyId === c.id && e.ok));
+      // Only organizations with a resource group get an environment (ensureOrg). One without a group is not a gap; counting it
+      // kept the whole feature out of "ready", and reconcile (new agents' environments) stopped for every other organization.
+      const missingEnv = cos.filter((c) => this.pools()[c.id] && !environments.some((e) => e.companyId === c.id && e.ok));
       set("environments", missingEnv.length === 0, cos.length === 0 ? "No organizations yet; each gets one when it's created" : missingEnv.length ? `Needed for: ${missingEnv.map((c) => c.name).slice(0, 3).join(", ")}` : undefined);
       const ex = await this.eng<Record<string, unknown>>("GET", "/api/instance/settings/experimental");
       set("enforce", ex.enableManagedSandboxOnly === true, ex.enableManagedSandboxOnly === true ? undefined : "The engine would still run agents on the host");
