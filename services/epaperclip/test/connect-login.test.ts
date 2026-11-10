@@ -73,6 +73,25 @@ describe("signing an organization's agents in with a subscription", () => {
     expect((await h.call("POST", `/api/connect/orgs/co_1/login/${s.id}/cancel`, { cookie: h.sam }, {})).status).toBe(200);
   });
 
+  it("says which resource limit is full when the engine answers a bare 500 to a sign-in start", async () => {
+    h.overlay.loginMode.startStatus = 500;
+    // Not full (no group): the engine's failure stays a failure, with no invented cause.
+    const plain = await start({ provider: "anthropic" });
+    expect(plain.status).toBe(502);
+    expect((await j(plain)).code).toBe("engine_error");
+    // Two machines in the pool (the template does not count) and the group allows two.
+    h.state.setSetting("resourceGroups", { co_1: { pool: "epc-co1", maxGuests: 2, cores: 16 } });
+    const full = await start({ provider: "anthropic" });
+    expect(full.status).toBe(409);
+    const body = await j(full);
+    expect(body.code).toBe("quota_full");
+    expect(body.error).toMatch(/machines \(2 of 2 in use\)/);
+    expect(body.error).not.toMatch(/CPU/);
+    // Room left: back to the plain failure.
+    h.state.setSetting("resourceGroups", { co_1: { pool: "epc-co1", maxGuests: 3, cores: 16 } });
+    expect((await start({ provider: "anthropic" })).status).toBe(502);
+  });
+
   it("is for organization owners and admins, own sessions only, and validates the request", async () => {
     expect((await start({ provider: "openai" }, h.lee)).status).toBe(403); // lee is an operator
     expect((await start({ provider: "gemini" })).status).toBe(400);
