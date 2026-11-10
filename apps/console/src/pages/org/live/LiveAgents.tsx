@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bot, Pause, Play, Plus, Zap } from "lucide-react";
+import { ArrowLeft, Ban, Bot, Pause, Play, Plus, Zap } from "lucide-react";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
@@ -10,6 +10,7 @@ import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
+import { useConfirm } from "../../../ui/Confirm.tsx";
 import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
@@ -156,6 +157,7 @@ export function LiveAgentDetail() {
   const runs = useRuns(companyId, agentId);
   const names = useNames(companyId);
   const act = useAgentAction(companyId);
+  const terminate = useConfirm();
   const canRun = useAgentsCanRun();
   const a = agent.data;
   const readiness = useAgentReadiness(companyId, a ? [a] : []);
@@ -184,10 +186,12 @@ export function LiveAgentDetail() {
                 ) : (
                   <Button onClick={() => act.mutate({ id: a.id, action: "pause" })} disabled={act.isPending || a.status === "terminated" || a.status === "pending_approval"}><Pause className="h-4 w-4" />Pause</Button>
                 )}
+                {a.status !== "terminated" && <Button variant="danger" onClick={() => terminate.ask({ title: `Terminate ${a.name}?`, body: "The agent stops for good and can't be brought back. Its tasks, comments and history stay.", label: "Terminate", danger: true, run: () => act.mutateAsync({ id: a.id, action: "terminate" }).catch(() => {}) })} disabled={act.isPending}><Ban className="h-4 w-4" />Terminate</Button>}
                 <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={!canRun || act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"} title={canRun ? undefined : "Agents can't run until agent containers are set up"}><Zap className="h-4 w-4" />Wake up</Button>
               </>
             }
           />
+          {terminate.dialog}
           <ActionError error={act.error} />
           {act.isSuccess && act.variables?.action === "wakeup" && <p className="text-compact text-ink-3 mb-3">Asked {a.name} to run now.</p>}
           <Tabs value={tab} onChange={setTab} className="mb-4" tabs={[{ id: "overview", label: "Overview" }, { id: "runs", label: "Runs" }, { id: "configuration", label: "Configuration" }, { id: "instructions", label: "Instructions" }, { id: "skills", label: "Skills" }, { id: "budget", label: "Budget" }]} />

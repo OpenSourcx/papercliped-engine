@@ -215,7 +215,7 @@ export function useCreateAgent(companyId: string) {
 export function useAgentAction(companyId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "pause" | "resume" | "wakeup" }) => (action === "wakeup" ? engine.agents.wakeup(id) : action === "pause" ? engine.agents.pause(id) : engine.agents.resume(id)),
+    mutationFn: ({ id, action }: { id: string; action: "pause" | "resume" | "wakeup" | "terminate" }) => (action === "wakeup" ? engine.agents.wakeup(id) : action === "pause" ? engine.agents.pause(id) : action === "terminate" ? engine.agents.terminate(id) : engine.agents.resume(id)),
     onSuccess: (_r, v) => {
       void qc.invalidateQueries({ queryKey: qk.agents(companyId) });
       void qc.invalidateQueries({ queryKey: qk.agent(companyId, v.id) });

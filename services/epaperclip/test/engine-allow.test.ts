@@ -15,6 +15,7 @@ describe("the /engine/api allow-list", () => {
     expect(enginePath("/engine/api/Companies/c1/Issues/")).toBe("/api/Companies/c1/Issues/");
     expect(enginePath("/engine/api/cli-auth/me")).toBe("/api/cli-auth/me");
     expect(enginePath("/engine/api/agents/a%2D1/pause")).toBe("/api/agents/a%2D1/pause");
+    expect(enginePath("/engine/api/agents/a1/terminate")).toBe("/api/agents/a1/terminate");
   });
 
   it("closes everything else, including engine areas that were never listed", () => {
