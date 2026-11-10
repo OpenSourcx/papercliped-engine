@@ -1203,7 +1203,10 @@ export class AgentContainers {
       if (Number(done.template) !== 1) throw new StepError("Proxmox didn't mark the container as a template");
       this.log(job, "info", `Template ${vmid} is ready`);
       this.save({ templateAttempts: 0, lastTemplateError: undefined });
-      // The token may clone it now that it exists.
+      // Proxmox's cluster-resource view can lag the conversion task by a moment. Grant the template's own right
+      // directly, then let stepGrant verify everything (and add anything else that is missing). Without this, setup
+      // finished with the template built but `/vms/<id>` still missing, leaving the UI "Partly set up".
+      for (const who of ["user", "token"] as const) await this.setAcl(pve, `/vms/${vmid}`, "EPCSandboxTemplate", who);
       await this.stepGrant(job, pve, p);
       return `Template ${vmid}`;
     } catch (e) {

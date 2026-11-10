@@ -362,6 +362,7 @@ export function fakePve() {
     features: undefined as string | undefined,
     startFailsWithFeatures: false,
     corruptOnce: false,
+    hideTemplateOnce: false,
     version: "9.0.3",
     fileSizes: new Map<string, number>(),
     /** The template catalog (a test can list both architectures, as a real synced host did). */
@@ -512,7 +513,13 @@ export function fakePve() {
       return ok(String(nextVmid));
     }
     if (path === "/cluster/resources" && u.searchParams.get("type") === "vm") {
-      return ok([{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, ...[...guests].map(([vmid, g]) => ({ id: `lxc/${vmid}`, type: "lxc", vmid, node: "pve", name: g.hostname, status: g.status, tags: g.tags, template: g.template ?? 0 }))]);
+      const list = [{ id: "lxc/101", type: "lxc", vmid: 101, node: "pve", name: "web", status: "running" }, ...[...guests].map(([vmid, g]) => ({ id: `lxc/${vmid}`, type: "lxc", vmid, node: "pve", name: g.hostname, status: g.status, tags: g.tags, template: g.template ?? 0 }))];
+      // Simulate Proxmox's cluster view lagging a conversion: hide the template for one call after it exists.
+      if (host.hideTemplateOnce && [...guests.values()].some((g) => g.template === 1)) {
+        host.hideTemplateOnce = false;
+        return ok(list.filter((x) => !("template" in x) || x.template !== 1));
+      }
+      return ok(list);
     }
     if (path === "/nodes/pve/lxc" && req.method === "POST") {
       if (!admin) return deny;
