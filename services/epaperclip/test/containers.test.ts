@@ -499,6 +499,18 @@ describe("keeping agents off the host", () => {
     expect(pve.tokenSecrets).toHaveLength(1);
   });
 
+  it("grants the template's own ACL even when Proxmox's cluster view lags the conversion", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    pve.host.hideTemplateOnce = true;
+    const done = await runSetup(sam);
+    expect(done.status).toBe("done");
+    const acl = pve.acl.filter((a) => a.path === "/vms/9000" && a.roleid === "EPCSandboxTemplate").map((a) => a.ugid).sort();
+    expect(acl).toEqual([TOKEN_ID, SANDBOX_USER].sort());
+    const s = await status(sam);
+    expect(s.state).toBe("ready");
+  });
+
   it("applies a storage change without rebuilding the template", async () => {
     const sam = await admin();
     const { co } = await org(sam, "Northwind");
