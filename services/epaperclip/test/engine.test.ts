@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppAccessManager } from "../src/app-access.ts";
 import { createApp } from "../src/app.ts";
-import { EngineGateway, enginePath, managedEmail, mergeCookies, SERVICE_EMAIL } from "../src/engine.ts";
+import { EngineGateway, engineFailure, enginePath, managedEmail, mergeCookies, SERVICE_EMAIL } from "../src/engine.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
 import { fakeEngine, fakePve, until, wsOpen } from "./fakes.ts";
@@ -447,5 +447,16 @@ describe("permission-safe app finish routing", () => {
       expect(crossSite.status).toBe(403);
       expect(save).toHaveBeenCalledTimes(3);
     } finally { save.mockRestore(); }
+  });
+});
+
+describe("engineFailure", () => {
+  it("passes on the engine's reason, but not its generic text or anything secret-shaped", () => {
+    expect(engineFailure(500, "Sandbox provider failed: image missing").message).toBe("The engine answered 500: Sandbox provider failed: image missing");
+    expect(engineFailure(500, "Internal server error").message).toBe("The engine answered 500");
+    expect(engineFailure(500, undefined).message).toBe("The engine answered 500");
+    expect(engineFailure(502, "bad key sk-ant-api03-ABCDEFGHIJKL").message).toBe("The engine answered 502");
+    expect(engineFailure(500, "Authorization: Bearer abc.def").message).toBe("The engine answered 502".replace("502", "500"));
+    expect(engineFailure(500, "x".repeat(900)).message.length).toBeLessThan(340);
   });
 });

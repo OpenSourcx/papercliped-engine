@@ -7,6 +7,7 @@ import { appendAudit } from "./access-tokens.ts";
 import { connectionsOf } from "./connect-connections.ts";
 import { RateWindow, cleanText } from "./connect-util.ts";
 import type { FeatureCtx } from "./index.ts";
+import { explainOrgQuota } from "../org-quota.ts";
 
 /**
  * Agents' model access, per organization (docs/CONNECTORS.md):
@@ -324,6 +325,9 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
           audit(ctx, "connection.login.start", `${spec.provider} -> ${companyId}`, flow);
         } catch (e) {
           attempt.status = "failed";
+          // The engine answers a failed container start with a bare 500 on this route. The host can say what is full.
+          const why = e instanceof HttpError && e.status >= 500 ? await ctx.asUser((pve) => explainOrgQuota(ctx.state, pve, companyId)).catch(() => null) : null;
+          if (why) { attempt.message = why; return; }
           attempt.message = e instanceof HttpError ? e.message : redact(cleanText(e instanceof Error ? e.message : "", 200)) ?? "The sign-in could not start.";
           // A timeout or a start without an id may have left a live session behind. An answer from the engine (a refusal)
           // means it holds nothing for us.
