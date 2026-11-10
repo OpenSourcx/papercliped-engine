@@ -214,7 +214,8 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       for (const k of Object.keys(b)) if (!["provider", "name", "ownership", "flow"].includes(k)) throw new E(400, "bad_request", `Unknown field ${cleanText(k, 30)}`);
       const spec = typeof b.provider === "string" ? ADAPTERS[b.provider] : undefined;
       if (!spec) throw new E(400, "bad_request", "Subscription sign-in is available for anthropic (Claude) and openai (Codex).");
-      const flow = b.flow === undefined ? "device" : b.flow;
+      // The engine has no device login for Claude (claude_local); its sign-in is the setup-token flow.
+      const flow = b.flow === undefined ? (spec.provider === "anthropic" ? "setup-token" : "device") : b.flow;
       if (flow !== "device" && flow !== "setup-token") throw new E(400, "bad_request", "flow is device or setup-token");
       if (flow === "setup-token" && spec.provider !== "anthropic") throw new E(400, "bad_request", "setup-token is for Claude");
       const ownership = b.ownership === undefined ? "shared" : b.ownership;
@@ -230,7 +231,7 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       if (!env) throw new E(409, "no_environment", "This organization has no agent container environment yet. Set up agent containers first (Settings, Agent containers).");
       const aiConnection = { provider: spec.provider, method: "subscription", name, ownership, allAgents: true };
       const path = flow === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions` : `/api/companies/${enc(companyId)}/adapters/${spec.adapter}/login-sessions`;
-      const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id });
+      const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) });
       const view = sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" });
       if (!view.id || !SESSION.test(view.id)) throw new E(502, "engine_error", "The engine started a sign-in but didn't say which. Check the engine.");
       tracked.set(view.id, { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now() });
