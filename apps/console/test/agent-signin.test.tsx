@@ -31,7 +31,8 @@ beforeEach(() => {
     const call: Call = { method: init.method ?? "GET", path: url.pathname, body: init.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(call);
     const h = handlers[`${call.method} ${call.path}`];
-    return h ? json(h(call)) : json({ error: "Not found" }, 404);
+    const r = h ? h(call) : undefined;
+    return r instanceof Response ? r : r !== undefined ? json(r) : json({ error: "Not found" }, 404);
   });
   vi.spyOn(window, "open").mockReturnValue(null);
 });
@@ -53,6 +54,19 @@ describe("agent sign-in", () => {
     expect(screen.getByText(/Gemini has no account sign-in/)).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /Use an API key/ })).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: /Sign in/ })).toHaveLength(3);
+  });
+
+  it("explains a failed start (full container quota) with what to do, and lets the person try again", async () => {
+    let tries = 0;
+    handlers[`POST ${A}/setup-token-login-sessions`] = () => (++tries === 1 ? json({ error: "Internal server error" }, 500) : { sessionId: "s9", environmentId: "e1", status: "starting", expiresAt: null, failure: null, prompt: null });
+    handlers[`GET ${A}/setup-token-login-sessions/s9`] = () => ({ sessionId: "s9", environmentId: "e1", status: "waiting_for_user", expiresAt: null, failure: null });
+    wrap();
+    await screen.findByText("Acme");
+    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" })[0]);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Internal server error/);
+    expect(screen.getByText(/resource group has no room for one more agent container/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(sent("POST", `${A}/setup-token-login-sessions`)).toHaveLength(2));
   });
 
   it("signs in with a device code (Codex): opens the page, shows the code, finishes when the engine says so", async () => {
