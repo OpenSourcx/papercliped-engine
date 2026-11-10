@@ -203,7 +203,7 @@ export interface ConnectApp extends Awaited<ReturnType<typeof buildApp>> {
   closeAll(): Promise<void>;
 }
 
-export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string> } = {}): Promise<ConnectApp> {
+export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string>; pveExtra?: (base: Transport) => Transport } = {}): Promise<ConnectApp> {
   const eng = await fakeEngine();
   const overlay = await overlayEngine(eng);
   const installDir = mkdtempSync(join(tmpdir(), "epc-conn-inst-"));
@@ -219,7 +219,7 @@ export async function startConnectApp(o: { staticDir?: string | null; providers?
     if (path === "/cluster/status" && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: [{ type: "node", name: "pve", online: 1, local: 1, ip: "10.0.0.2" }] }) });
     return base(req);
   };
-  const app = await buildApp({ engine: { url: overlay.url, publicUrl: eng.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras, market: o.market, fetchText: o.fetchText });
+  const app = await buildApp({ engine: { url: overlay.url, publicUrl: eng.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: o.pveExtra ? (b) => o.pveExtra!(extras(b)) : extras, market: o.market, fetchText: o.fetchText });
   const sam = await app.signIn("sam");
   await until(() => eng.st.admins.size >= 1);
   const lee = await app.signIn("lee");
