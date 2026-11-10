@@ -126,6 +126,10 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/(?:adapters\/[\w-]+\/login-sessions|setup-token-login-sessions)(?:\/([\w-]+))?(\/prompt|\/code|\/cancel)?$/))) {
       if (!inCompany(m[1])) return send(403, { error: "Not a member" });
       if (req.method === "POST" && !m[2]) {
+        // Like the engine: a strict start schema per route (setup-token requires adapterType; the device route has none).
+        const b = body();
+        if (p.includes("setup-token-login-sessions") ? b.adapterType !== "claude_local" : "adapterType" in b) return send(400, { error: "The login start request is invalid." });
+        if (p.includes("/adapters/claude_local/login-sessions")) return send(400, { error: 'Adapter "claude_local" does not support a device login.' });
         const id = `ls${logins.size + 1}`;
         logins.set(id, { id, polls: 0, body: body() });
         return send(201, { id, status: "starting" });

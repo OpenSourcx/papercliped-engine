@@ -60,6 +60,8 @@ describe("signing an organization's agents in with a subscription", () => {
   it("supports Claude's setup-token flow, including the code from the browser, never echoed back", async () => {
     const s = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
     expect(s).toMatchObject({ adapter: "claude_local", flow: "setup-token" });
+    // Claude with no flow picks setup-token, the only Claude sign-in the engine has.
+    expect((await j(await start({ provider: "anthropic" }))).login).toMatchObject({ adapter: "claude_local", flow: "setup-token" });
     const code = "AbC123-browser-code";
     const r = await h.call("POST", `/api/connect/orgs/co_1/login/${s.id}/code`, { cookie: h.sam }, { browserCode: code });
     expect(r.status).toBe(200);

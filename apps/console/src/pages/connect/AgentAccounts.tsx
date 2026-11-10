@@ -71,13 +71,12 @@ export function AgentAccounts({ companyId, orgName }: { companyId: string; orgNa
 function SignInModal({ companyId, provider, onClose }: { companyId: string; provider: "anthropic" | "openai"; onClose: () => void }) {
   const label = provider === "anthropic" ? "Claude" : "ChatGPT (Codex)";
   const [login, setLogin] = useState<LoginView | null>(null);
-  const [flow, setFlow] = useState<"device" | "setup-token">("device");
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const stop = useRef(false);
 
   const start = useMutation({
-    mutationFn: () => connectApi.startLogin(companyId, { provider, flow }),
+    mutationFn: () => connectApi.startLogin(companyId, { provider }),
     onSuccess: (r) => { setLogin(r.login); setError(null); },
     onError: (e) => setError(errorText(e)),
   });
@@ -104,14 +103,6 @@ function SignInModal({ companyId, provider, onClose }: { companyId: string; prov
     <Modal size="md" icon={<LogIn className="h-5 w-5" />} title={`Sign in with ${label}`} subtitle="The sign-in runs inside the agent container, not on this device." onClose={cancel}
       footer={login?.done ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button variant="ghost" onClick={cancel}>Cancel</Button>{!login && <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Start sign-in</Button>}</>}>
       <div className="space-y-4">
-        {!login && provider === "anthropic" && (
-          <Field label="Method">
-            <div className="flex gap-2">
-              <Button size="sm" variant={flow === "device" ? "primary" : "secondary"} onClick={() => setFlow("device")}>Device sign-in</Button>
-              <Button size="sm" variant={flow === "setup-token" ? "primary" : "secondary"} onClick={() => setFlow("setup-token")}>Setup token</Button>
-            </div>
-          </Field>
-        )}
         {!login && <p className="text-compact text-ink-2">You'll get a web address and, for some sign-ins, a short code. Open the address in your own browser, sign in to {label}, and approve. This page notices when it's done. Nothing about your password or login is shown here.</p>}
         {login && !login.done && !login.failed && (
           <div className="space-y-3" aria-live="polite">
