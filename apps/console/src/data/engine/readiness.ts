@@ -2,6 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Agent } from "@papercliped-engine/engine-client";
 import { connectApi } from "./connectApi.ts";
 import { vaultApi } from "./vaultApi.ts";
+import { lifecycleError, setupState, setupSummary } from "./lifecycle.ts";
 import { engine, useAdapters, useAgentContainers, useAgentReadiness as useBackendAgentReadiness, useSandboxAdapters } from "./queries.ts";
 
 /**
@@ -80,7 +81,7 @@ const LIFECYCLE_BLOCK: Record<string, string> = {
 };
 
 export function evaluateAgentReadiness(input: {
-  agent: Pick<Agent, "status" | "adapterType"> & { errorReason?: string | null; readiness?: unknown };
+  agent: Pick<Agent, "status" | "adapterType"> & { errorReason?: string | null; readiness?: unknown; lifecycleState?: unknown; lifecycleError?: unknown };
   adapter: Signal;
   model: Signal;
   environment: Signal;
@@ -93,6 +94,14 @@ export function evaluateAgentReadiness(input: {
     { id: "environment", label: "Sandbox environment", ...input.environment },
   ];
   const lifecycle = LIFECYCLE_BLOCK[input.agent.status];
+
+  // Preparing or verifying shows up as "paused", but nobody paused it and Resume is refused: say what it waits for.
+  const setup = setupState(input.agent);
+  if (setup) {
+    const blockers = checks.filter((c) => c.state === "blocked").map((c) => c.detail);
+    const failed = lifecycleError(input.agent);
+    return { state: "blocked", summary: failed ? `${setupSummary(setup, blockers)} The engine reported: ${failed}` : setupSummary(setup, blockers), checks, source };
+  }
 
   // A lifecycle stop says more than any readiness signal, and stays true even if the engine has not
   // learned about it yet. An agent error carries the engine's own reason.

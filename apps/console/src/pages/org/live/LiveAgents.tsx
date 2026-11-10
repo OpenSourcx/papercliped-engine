@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ban, Bot, Pause, Play, Plus, Zap } from "lucide-react";
+import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Zap } from "lucide-react";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
 import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
+import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { useConfirm } from "../../../ui/Confirm.tsx";
-import { Avatar, Button, Card, EmptyState, Input, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -39,7 +40,7 @@ export function LiveAgents() {
       {agents.data && list.length === 0 && <Card><EmptyState icon={<Bot className="h-5 w-5" />} title="No agents yet" body="Create an agent, give it a role, and assign it tasks." action={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} /></Card>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {list.map((a) => {
-          const [kind, label] = agentStatusOf(a.status);
+          const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
           const latest = latestRunStatusOf(latestByAgent.get(a.id));
           const ready = readiness.get(a.id);
           return (
@@ -166,7 +167,9 @@ export function LiveAgentDetail() {
   type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
   const setTab = (t: AgentTab) => setParams((p) => { const n = new URLSearchParams(p); if (t === "overview") n.delete("tab"); else n.set("tab", t); return n; }, { replace: true });
-  const [kind, label] = a ? agentStatusOf(a.status) : ["idle" as const, ""];
+  const [kind, label] = a ? agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState) : ["idle" as const, ""];
+  const settingUp = a ? setupState(a) : null;
+  const blockers = (current?.checks ?? []).filter((c) => c.state === "blocked");
   const latestRun = runs.data?.[0] ?? null;
   const latestRunStatus = latestRunStatusOf(latestRun);
   return (
@@ -181,7 +184,9 @@ export function LiveAgentDetail() {
             subtitle={<><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
             actions={
               <>
-                {a.status === "paused" ? (
+                {settingUp ? (
+                  <Button onClick={() => act.mutate({ id: a.id, action: "retry" })} loading={act.isPending && act.variables?.action === "retry"} disabled={act.isPending}><RefreshCw className="h-4 w-4" />Check again</Button>
+                ) : a.status === "paused" ? (
                   <Button onClick={() => act.mutate({ id: a.id, action: "resume" })} disabled={act.isPending}><Play className="h-4 w-4" />Resume</Button>
                 ) : (
                   <Button onClick={() => act.mutate({ id: a.id, action: "pause" })} disabled={act.isPending || a.status === "terminated" || a.status === "pending_approval"}><Pause className="h-4 w-4" />Pause</Button>
@@ -192,7 +197,20 @@ export function LiveAgentDetail() {
             }
           />
           {terminate.dialog}
+          {settingUp && (
+            <Notice tone="warning" title={settingUp === "preparing" ? "This agent is being prepared" : settingUp === "verifying" ? "This agent is being verified" : "This agent is starting again"} className="mb-3">
+              <p>The engine shows it as paused while it checks that the agent can run. Nobody paused it, and Resume does nothing until the checks pass. It starts by itself once they do.</p>
+              {blockers.length > 0 ? (
+                <>
+                  <p className="mt-2">What it is waiting on:</p>
+                  <ul className="list-disc pl-5 mt-1 space-y-0.5">{blockers.map((c) => <li key={c.id}><span className="font-medium">{c.label}.</span> {c.detail}{c.id === "model" && <> <Link to={`${b}/connectors`} className="text-accent">Connect a model account</Link>.</>}{c.id === "environment" && <> <Link to={`${b}/machines`} className="text-accent">See the organization's containers</Link>.</>}</li>)}</ul>
+                </>
+              ) : <p className="mt-2">Nothing is reported missing. Choose Check again to run the checks now.</p>}
+              {lifecycleError(a) && <p className="mt-2 text-critical">The engine reported: {lifecycleError(a)}</p>}
+            </Notice>
+          )}
           <ActionError error={act.error} />
+          {act.isSuccess && act.variables?.action === "retry" && <p className="text-compact text-ink-3 mb-3">Asked the engine to check {a.name} again.</p>}
           {act.isSuccess && act.variables?.action === "wakeup" && <p className="text-compact text-ink-3 mb-3">Asked {a.name} to run now.</p>}
           <Tabs value={tab} onChange={setTab} className="mb-4" tabs={[{ id: "overview", label: "Overview" }, { id: "runs", label: "Runs" }, { id: "configuration", label: "Configuration" }, { id: "instructions", label: "Instructions" }, { id: "skills", label: "Skills" }, { id: "budget", label: "Budget" }]} />
           {tab === "runs" && <AgentRunsTab agent={a} />}

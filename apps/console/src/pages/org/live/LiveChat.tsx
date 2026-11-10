@@ -78,7 +78,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   const [error, setError] = useState<unknown>(null);
   const end = useRef<HTMLDivElement>(null);
   const messages = conversationId ? comments.data ?? [] : [];
-  const [kind, label] = agentStatusOf(agent.status);
+  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState);
   const containers = useAgentContainers();
   const runs = useRuns(conversationId ? companyId : null, agent.id);
   const act = useAgentAction(companyId);
