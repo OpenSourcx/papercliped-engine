@@ -159,6 +159,7 @@ export const ENGINE_PATHS = {
   agentWakeup: "/api/agents/{id}/wakeup",
   agentPause: "/api/agents/{id}/pause",
   agentResume: "/api/agents/{id}/resume",
+  agentTerminate: "/api/agents/{id}/terminate",
   issues: "/api/companies/{companyId}/issues",
   issue: "/api/issues/{id}",
   issueComments: "/api/issues/{id}/comments",
@@ -430,6 +431,7 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       wakeup: (id: string, reason?: string) => call<unknown>("POST", P.agentWakeup, { id }, { source: "on_demand", triggerDetail: "manual", ...(reason ? { reason } : {}) }),
       pause: (id: string) => call<Agent>("POST", P.agentPause, { id }, {}),
       resume: (id: string) => call<Agent>("POST", P.agentResume, { id }, {}),
+      terminate: (id: string) => call<Agent>("POST", P.agentTerminate, { id }, {}),
       runs: (companyId: string, agentId?: string, limit = 20) => call<HeartbeatRun[]>("GET", P.heartbeatRuns, { companyId }, undefined, { agentId, limit }),
     },
     issues: {

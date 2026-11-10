@@ -39,6 +39,7 @@ export const ENGINE_ALLOWED: readonly string[] = [
   "/api/agents/{id}/wakeup",
   "/api/agents/{id}/pause",
   "/api/agents/{id}/resume",
+  "/api/agents/{id}/terminate",
   "/api/companies/{companyId}/issues",
   "/api/issues/{id}",
   "/api/issues/{id}/comments",
