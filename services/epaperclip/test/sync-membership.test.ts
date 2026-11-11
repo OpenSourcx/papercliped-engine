@@ -206,3 +206,70 @@ describe("ERR-SYNC-003: organization create is one host-side call that completes
     expect(pve.pools.has("epc-fabrikam")).toBe(false);
   });
 });
+
+const poolAcls = (pool: string) => pve.acl.filter((a) => a.path === `/pool/${pool}`);
+const drift = async (cookie: string) => ((await (await send("GET", "/api/iac/drift", cookie)).json()) as any).items as any[];
+
+describe("ERR-SYNC-005 and 009: pool ACLs are reconciled against engine members", () => {
+  it("reports missing and stale pool ACLs and a group-less organization, and repairs them", async () => {
+    const { sam, co, pool } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "operator" });
+    expect(await drift(sam)).toEqual([]);
+    pve.acl.splice(pve.acl.findIndex((a) => a.ugid === "kai@pve" && a.path === `/pool/${pool}`), 1);
+    pve.acl.push({ path: `/pool/${pool}`, ugid: "lee@pve", type: "user", roleid: "PVEAuditor", propagate: 1 });
+    const bare = (await (await send("POST", "/engine/api/companies", sam, { name: "Bare" })).json()) as any;
+    const items = await drift(sam);
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "missing-acl", userid: "kai@pve", role: "PVEVMUser", companyId: co }),
+        expect.objectContaining({ kind: "stale-acl", userid: "lee@pve", role: "PVEAuditor", companyId: co }),
+        expect.objectContaining({ kind: "missing-group", companyId: bare.id }),
+      ]),
+    );
+    // Safe repair adds what is missing and leaves hand-made grants alone.
+    const fixed = (await (await send("POST", "/api/iac/drift/repair", sam, {})).json()) as any;
+    expect(fixed.repaired).toBeGreaterThanOrEqual(1);
+    expect(poolAcls(pool).some((a) => a.ugid === "kai@pve" && a.roleid === "PVEVMUser")).toBe(true);
+    expect(poolAcls(pool).some((a) => a.ugid === "lee@pve")).toBe(true);
+    await send("POST", "/api/iac/drift/repair", sam, { removeStale: true });
+    expect(poolAcls(pool).some((a) => a.ugid === "lee@pve")).toBe(false);
+    expect((await drift(sam)).map((i) => i.kind)).toEqual(["missing-group"]);
+  });
+
+  it("is for Proxmox administrators only", async () => {
+    await setup();
+    pve.users["lee@pve"].admin = false;
+    const lee = await signIn("lee");
+    expect((await send("GET", "/api/iac/drift", lee)).status).toBe(403);
+    expect((await send("POST", "/api/iac/drift/repair", lee, {})).status).toBe(403);
+  });
+});
+
+describe("ERR-SYNC-004: archiving an organization cleans up its Proxmox side", () => {
+  it("removes the pool, its ACLs and the stored group when the organization is archived", async () => {
+    const { sam, co, pool } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "operator" });
+    expect(poolAcls(pool).length).toBeGreaterThan(0);
+    expect((await send("DELETE", `/engine/api/companies/${co}`, sam)).status).toBe(200);
+    await until(() => !groups()[co]);
+    expect(groups()[co]).toBeUndefined();
+    expect(pve.pools.has(pool)).toBe(false);
+    expect(poolAcls(pool)).toEqual([]);
+  });
+
+  it("keeps a pool that still holds machines, and reports it as an orphan group until they are gone", async () => {
+    const { sam, co, pool } = await setup();
+    pve.pools.get(pool)!.members.push({ vmid: 105, type: "lxc" });
+    eng.st.archivedCompanies.add(co); // archived behind the host's back
+    const found = await drift(sam);
+    expect(found).toEqual([expect.objectContaining({ kind: "orphan-group", companyId: co, pool, repair: "cleanup" })]);
+    await send("POST", "/api/iac/drift/repair", sam, {});
+    expect(pve.pools.has(pool)).toBe(true);
+    expect(groups()[co]).toBeTruthy();
+    pve.pools.get(pool)!.members.length = 0;
+    await send("POST", "/api/iac/drift/repair", sam, {});
+    expect(pve.pools.has(pool)).toBe(false);
+    expect(groups()[co]).toBeUndefined();
+    expect(await drift(sam)).toEqual([]);
+  });
+});

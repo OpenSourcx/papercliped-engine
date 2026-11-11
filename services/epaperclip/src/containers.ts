@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { diagnoseLxc, redactLines, summarizeDiagnosis, ProxmoxError, type LxcDiagnoseInput, type LxcDiagnosis, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
+import { activity } from "./activity.ts";
 import type { EngineGateway } from "./engine.ts";
 import { HttpError } from "./http.ts";
 import type { StateStore } from "./state.ts";
@@ -1645,13 +1646,20 @@ export class AgentContainers {
       this.actor = actor;
       try {
         const p = this.params();
+        const status: Record<string, { name: string; at: number; errors: string[] }> = {};
         for (const c of await this.companies()) {
+          let errors: string[];
           try {
-            out.push(...(await this.ensureOrg(c.id, c.name, p)));
+            errors = await this.ensureOrg(c.id, c.name, p);
           } catch (e) {
-            out.push(`${c.name}: ${errText(e)}`);
+            errors = [`${c.name}: ${errText(e)}`];
           }
+          out.push(...errors);
+          status[c.id] = { name: c.name, at: Date.now(), errors };
+          for (const m of errors) activity.warn("engine", "org.sync", m, { companyId: c.id });
         }
+        // Kept per organization so the console can show why one is out of step, instead of the errors vanishing with the tick.
+        this.d.state.setSetting("orgSyncStatus", status);
       } catch (e) {
         out.push(errText(e));
       } finally {

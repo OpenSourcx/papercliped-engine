@@ -575,6 +575,15 @@ export function createApp(d: AppDeps) {
     await broker.replace(next);
   };
 
+  const removeBrokerGroup = async (companyId: string) => {
+    if (!broker) return;
+    const current = await broker.overview();
+    const id = brokerGroupName(companyId);
+    if (!(id in current.groups)) return;
+    const { [id]: _gone, ...next } = current.groups;
+    await broker.replace(next);
+  };
+
   const needEngine = (): EngineGateway => {
     if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
     return gateway;
@@ -1051,6 +1060,26 @@ export function createApp(d: AppDeps) {
         audit(req, "user.delete", userid);
         return sendJson(res, 200, done);
       }
+    }
+    if (path === "/api/iac/drift" && method === "GET") {
+      return sendJson(res, 200, await asUser(req, res, async (pve, s) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only a Proxmox administrator can compare the engine with Proxmox");
+        return { items: await iac.drift(pve, s), sync: state.getSetting<Record<string, unknown>>("orgSyncStatus") ?? {} };
+      }));
+    }
+    if (path === "/api/iac/drift/repair" && method === "POST") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const out = await asUser(req, res, async (pve, s) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only a Proxmox administrator can repair drift");
+        return iac.repair(pve, s, { removeStale: b.removeStale === true }, async (companyId) => {
+          const g = (state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {})[companyId];
+          if (g) await provisionGroup(req, res, s, companyId, { name: g.name, cores: g.cores, memoryMb: g.memoryMb, diskGb: g.diskGb, maxGuests: g.maxGuests });
+        });
+      });
+      for (const r of out.results) if (r.kind === "orphan-group" && r.done) await removeBrokerGroup(r.companyId).catch(() => {});
+      audit(req, "org-drift.repair", undefined, `${out.repaired} repaired${b.removeStale === true ? ", stale grants removed" : ""}`);
+      return sendJson(res, 200, out);
     }
     const iacJoin = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/join$/);
     if (iacJoin && method === "POST") {
@@ -2360,6 +2389,13 @@ export function createApp(d: AppDeps) {
       // New agents default to their organization's container environment right away.
       after: (m, p, status) => {
         if (status >= 200 && status < 300 && m === "POST" && /^\/api\/companies(\/[^/]+\/agent(s|-hires))?(\/|\?|$)/i.test(p)) void containers.reconcile((am, ap, ab) => needEngine().userJson(s, am, ap, ab)).catch(() => {});
+        // Archiving an organization: clean up its Proxmox side as the person who archived it (their ticket may lack the rights; the drift repair finishes it).
+        const archived = status >= 200 && status < 300 ? (m === "DELETE" ? p.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/?$/) : m === "POST" ? p.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/archive\/?$/) : null) : null;
+        if (archived) void clientFor(s).then(async (pve) => {
+          const r = await iac.cleanupGroup(pve, archived[1]!);
+          if (r.removed) await removeBrokerGroup(archived[1]!).catch(() => {});
+          else activity.warn("host", "org.cleanup", r.kept ?? "Cleanup incomplete", { companyId: archived[1]! });
+        }).catch((e: Error) => activity.warn("host", "org.cleanup", `Couldn't clean up the Proxmox side of an archived organization: ${e.message}`, { companyId: archived[1]! }));
       },
     });
   };

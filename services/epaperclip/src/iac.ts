@@ -178,6 +178,18 @@ export function validateSpec(spec: Record<string, unknown>, creating: boolean): 
   return out;
 }
 
+export interface DriftItem {
+  kind: "missing-acl" | "stale-acl" | "missing-group" | "orphan-group" | "failed-provisioning";
+  companyId: string;
+  org: string;
+  pool?: string;
+  userid?: string;
+  role?: string;
+  detail: string;
+  /** What a repair does about it; null when it needs a person's decision. */
+  repair: "grant" | "revoke" | "cleanup" | "reprovision" | null;
+}
+
 export class Iac {
   private readonly gateway: EngineGateway | null;
   private readonly state: StateStore;
@@ -462,6 +474,100 @@ export class Iac {
       await this.applyPoolRole(pve, u, pool, m.membershipRole as OrgRole, acls).catch((e: Error) => warnings.push(`${u}: ${e.message}`));
     }
     return warnings;
+  }
+
+  /**
+   * Compares the engine with Proxmox, per organization: members against their roles on the organization's pool,
+   * organizations against resource groups. Reads only.
+   */
+  async drift(pve: ProxmoxClient, caller: Session): Promise<DriftItem[]> {
+    const g = this.gateway;
+    if (!g) return [];
+    const companies = await this.engine<{ id: string; name: string; status?: string }[]>(caller, "GET", "/api/companies");
+    const byId = new Map(companies.map((c) => [c.id, c]));
+    const pools = this.pools();
+    const acls = await this.acls(pve);
+    const names = g.accountsByEngineId();
+    const items: DriftItem[] = [];
+    for (const c of companies) {
+      if (c.status === "archived") continue;
+      const group = pools[c.id];
+      if (!group) {
+        items.push({ kind: "missing-group", companyId: c.id, org: c.name, detail: `${c.name} has no resource group, so it has no Proxmox pool. Create one in its Resources settings.`, repair: null });
+        continue;
+      }
+      if (group.provisioning?.state === "failed") items.push({ kind: "failed-provisioning", companyId: c.id, org: c.name, pool: group.pool, detail: `Setting up ${c.name}'s pool didn't finish: ${group.provisioning.error ?? "a step failed"}`, repair: "reprovision" });
+      const roster = await this.members(caller, c.id).catch(() => null);
+      if (!roster) continue;
+      const path = `/pool/${group.pool}`;
+      const have = acls.filter((a) => a.path === path && a.type === "user" && MANAGED_POOL_ROLES.has(a.roleid));
+      const want = new Map<string, Set<string>>();
+      for (const m of roster) {
+        const u = m.principalType === "user" && m.status === "active" ? names.get(m.principalId) : undefined;
+        if (u && ORG_ROLES.has(m.membershipRole as OrgRole)) want.set(u, new Set(ORG_POOL_ROLES[m.membershipRole as OrgRole]));
+      }
+      for (const [u, roles] of want)
+        for (const r of roles)
+          if (!have.some((a) => a.ugid === u && a.roleid === r)) items.push({ kind: "missing-acl", companyId: c.id, org: c.name, pool: group.pool, userid: u, role: r, detail: `${u} is a member of ${c.name} but doesn't have ${r} on ${group.pool}`, repair: "grant" });
+      for (const a of have)
+        if (!want.get(a.ugid)?.has(a.roleid)) items.push({ kind: "stale-acl", companyId: c.id, org: c.name, pool: group.pool, userid: a.ugid, role: a.roleid, detail: `${a.ugid} has ${a.roleid} on ${group.pool} but no matching membership in ${c.name}`, repair: "revoke" });
+    }
+    for (const [id, group] of Object.entries(pools)) {
+      const c = byId.get(id);
+      if (!c || c.status === "archived") items.push({ kind: "orphan-group", companyId: id, org: c?.name ?? group.name ?? id, pool: group.pool, detail: `${c?.name ?? group.name ?? id} is ${c ? "archived" : "gone"} in the engine, but its pool ${group.pool} is still in Proxmox`, repair: "cleanup" });
+    }
+    return items;
+  }
+
+  /**
+   * Repairs what drift() finds. Missing grants are added, orphan groups cleaned up and failed provisioning retried;
+   * grants nobody is entitled to are removed only when asked (they may be hand-made).
+   */
+  async repair(pve: ProxmoxClient, caller: Session, opts: { removeStale?: boolean }, reprovision?: (companyId: string) => Promise<void>) {
+    const results: { kind: DriftItem["kind"]; companyId: string; userid?: string; done: boolean; note?: string }[] = [];
+    for (const it of await this.drift(pve, caller)) {
+      if (!it.repair || (it.repair === "revoke" && !opts.removeStale)) continue;
+      try {
+        let note: string | undefined;
+        let done = true;
+        if (it.repair === "grant" || it.repair === "revoke") await this.setAcl(pve, it.userid!, `/pool/${it.pool}`, [it.role!], it.repair === "revoke");
+        else if (it.repair === "cleanup") {
+          const r = await this.cleanupGroup(pve, it.companyId);
+          done = r.removed;
+          note = r.kept;
+        } else if (reprovision) await reprovision(it.companyId);
+        else done = false;
+        results.push({ kind: it.kind, companyId: it.companyId, ...(it.userid ? { userid: it.userid } : {}), done, ...(note ? { note } : {}) });
+      } catch (e) {
+        results.push({ kind: it.kind, companyId: it.companyId, ...(it.userid ? { userid: it.userid } : {}), done: false, note: (e as Error).message });
+      }
+    }
+    return { repaired: results.filter((r) => r.done).length, results };
+  }
+
+  /**
+   * Removes an organization's Proxmox side: every ACL on its pool (people and the sandbox user and token), the empty
+   * pool, the stored resource group, and unresolved-removal notes. A pool that still holds machines is left entirely
+   * alone (and its group stays), because deleting rights under running agents would strand them.
+   */
+  async cleanupGroup(pve: ProxmoxClient, companyId: string): Promise<{ removed: boolean; kept?: string }> {
+    const group = this.pools()[companyId];
+    if (!group) return { removed: true };
+    const info = await pve.call<{ members?: unknown[] }>("GET", `/pools/${encodeURIComponent(group.pool)}`).catch((e: unknown) => ((e as { status?: number })?.status === 404 ? null : Promise.reject(e)));
+    if (info && (info.members ?? []).length) return { removed: false, kept: `Pool ${group.pool} still holds ${info.members!.length} machine${info.members!.length === 1 ? "" : "s"}; remove or move them, then clean up again` };
+    const path = `/pool/${group.pool}`;
+    for (const a of (await this.acls(pve)).filter((x) => x.path === path)) {
+      const who = a.type === "token" ? "tokens" : a.type === "group" ? "groups" : "users";
+      await pve.call("PUT", "/access/acl", { path, roles: a.roleid, [who]: a.ugid, propagate: 1, delete: 1 });
+    }
+    if (info) await pve.call("DELETE", `/pools/${encodeURIComponent(group.pool)}`);
+    const rest = { ...this.pools() };
+    delete rest[companyId];
+    this.state.setSetting("resourceGroups", rest);
+    const unresolved = { ...(this.state.getSetting<Record<string, unknown>>("iac.unresolved") ?? {}) };
+    for (const k of Object.keys(unresolved)) if (k.endsWith(`|${companyId}`)) delete unresolved[k];
+    this.state.setSetting("iac.unresolved", unresolved);
+    return { removed: true };
   }
 
   async createUser(pve: ProxmoxClient, caller: Session, callerIsNodeAdmin: boolean, spec: UserSpec) {
