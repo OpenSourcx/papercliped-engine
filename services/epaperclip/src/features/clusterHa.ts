@@ -20,7 +20,7 @@ interface Probe<T> {
   denied: boolean;
 }
 /** A standalone host answers the HA calls with a 500 that says there is no cluster; that is "not available here", not a failure. */
-const noCluster = (e: unknown): boolean => e instanceof ProxmoxError && e.status === 500 && /corosync|no such cluster|not (part of )?a cluster|cluster not ready|no quorum/i.test(e.detail ?? "");
+const noCluster = (e: unknown): boolean => e instanceof ProxmoxError && e.status >= 500 && (!e.detail || /corosync|no such cluster|not (part of )?a cluster|cluster not ready|no quorum|ha.?manager|does not exist|no such file/i.test(e.detail));
 async function probe<T>(p: Promise<T>): Promise<Probe<T>> {
   try {
     return { data: await p, supported: true, denied: false };
