@@ -6,12 +6,14 @@ export interface Capabilities {
   hostname: string;
   cpu: { model: string; cores: number };
   memMb: number;
-  gpu: { present: boolean; name?: string; kind?: "jetson" | "nvidia" | "other" };
+  gpu: { present: boolean; name?: string; kind?: "jetson" | "nvidia" | "other"; vramMb?: number };
   storage: { path: string; totalGb: number; freeGb: number }[];
   tools: Record<string, string>;
   inference: { runtime: "ollama"; url: string; models: { name: string; sizeMb?: number }[]; maxContext?: number } | null;
   networks: { provider: "tailscale" | "lan" | "other"; address: string }[];
   workspaceRoot: string;
+  /** Who the person chose to execute setup steps: Pin through the helper, or themselves with Pin guiding. */
+  setupMode?: "pin" | "self";
 }
 
 export interface Heartbeat {
@@ -37,6 +39,7 @@ export type Request =
   | { id: string; op: "exec"; args: { command: string; args?: string[]; cwd: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number; owner: string } }
   | { id: string; op: "cancel"; args: { target: string; owner?: string } }
   | { id: string; op: "caps.refresh"; args: Record<string, never> }
+  | { id: string; op: "inference.install"; args: { action: "ollama" | "pull"; model?: string } }
   | { id: string; op: "hello.ok"; args: { workerId: string; name: string; hbMs: number } }
   | { id: string; op: "revoked"; args: Record<string, never> };
 

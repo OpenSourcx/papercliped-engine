@@ -18,6 +18,7 @@ const usage = `usage: epaperclip <command>
   status               version, whether both services run and answer, where the data is
   rollback             go back to the previous version
   uninstall [--purge]  remove it (keeps data and settings; --purge removes those too)
+  worker ...           run the worker CLI on this machine (requires the epaperclip-worker package)
 
 Run as root in the Proxmox host's shell, for example: sudo npx epaperclip install
 Guide: https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/INSTALL.md`;
@@ -28,6 +29,14 @@ if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") { console.log(us
 if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   try { console.log(JSON.parse(readFileSync(join(payload, "epaperclip.manifest.json"), "utf8")).version); } catch { console.log("unknown"); }
   process.exit(0);
+}
+
+// The worker is a separate package and runs on a machine that is not the Proxmox host, so dispatch it before the
+// pveversion/root checks that only apply to the host install.
+if (cmd === "worker" || cmd === "--worker") {
+  const r = spawnSync("epaperclip-worker", rest, { stdio: "inherit" });
+  if (r.error) fail("the worker CLI isn't installed. Add it with: npm install -g epaperclip-worker (or use the worker tarball)");
+  process.exit(r.status ?? 1);
 }
 
 const flags = { install: [], status: ["--status"], rollback: ["--rollback"], uninstall: ["--uninstall"] }[cmd];

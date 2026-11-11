@@ -1,0 +1,4 @@
+# Filled from packages/worker-daemon/dist by scripts/prepack.mjs when the package is packed.
+worker/
+LICENSE
+*.tgz

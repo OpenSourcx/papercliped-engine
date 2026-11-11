@@ -40,6 +40,8 @@ beforeEach(() => {
   pve.taskFailures.clear();
   pve.nextVmid = 101;
   pve.racesOnNextId = 0;
+  pve.storageTypes.set("local", "dir");
+  pve.storageTypes.set("local-lvm", "dir");
   pve.addTemplate(9000);
   home = mkdtempSync(path.join(tmpdir(), "pve-test-home-"));
   shell = createLocalShell(home);
@@ -274,6 +276,29 @@ describe("acquire", () => {
     const mkdir = shell.calls.at(-1)!;
     expect(mkdir.acceptNewHostKey).toBeFalsy();
     expect(mkdir.target.knownHosts).toMatch(/fake|FakeHostKey/);
+  });
+
+  it("uses a linked clone when the template storage supports it, and records the mode", async () => {
+    pve.storageTypes.set("local-lvm", "lvmthin");
+    const lease = await acquire();
+    const clone = pve.find("POST", "/lxc/9000/clone")[0]!;
+    expect(clone.form).toMatchObject({ newid: "101", full: "0" });
+    expect(clone.form.storage).toBeUndefined();
+    expect(lease.metadata).toMatchObject({ cloneMode: "linked" });
+  });
+
+  it("uses a full clone when the source CT is not marked as a template", async () => {
+    pve.storageTypes.set("local-lvm", "lvmthin");
+    pve.containers.get(9000)!.config.template = 0;
+    const lease = await acquire();
+    const clone = pve.find("POST", "/lxc/9000/clone")[0]!;
+    expect(clone.form).toMatchObject({ newid: "101", full: "1", storage: "local-lvm" });
+    expect(lease.metadata).toMatchObject({ cloneMode: "full" });
+  });
+
+  it("fails clearly when linked clones are requested on dir storage", async () => {
+    await expect(acquire({ cloneMode: "linked" })).rejects.toThrow(/does not support linked container clones/);
+    expect(pve.find("POST", "/lxc/9000/clone")).toHaveLength(0);
   });
 
   it("gives slow Proxmox calls the environment's timeout, not the client's 30s default", async () => {
@@ -560,6 +585,18 @@ describe("release, stop and destroy", () => {
     expect(receipt).toEqual({ providerLeaseId: "pve/101", state: "destroyed" });
     expect(pve.find("POST", "/lxc/101/status/shutdown")[0]!.form).toMatchObject({ forceStop: "1" });
     expect(pve.find("DELETE", "/lxc/101")[0]!.query).toEqual({ purge: "1", "destroy-unreferenced-disks": "1" });
+    expect(pve.containers.has(101)).toBe(false);
+  });
+
+  it("repairs a cleanup sweep that arrives with an empty config by using the lease metadata", async () => {
+    const lease = await acquire();
+    const receipt = await hooks.onEnvironmentDestroyLease!({
+      ...base,
+      config: {},
+      providerLeaseId: lease.providerLeaseId!,
+      leaseMetadata: { ...config(), ...lease.metadata },
+    });
+    expect(receipt).toEqual({ providerLeaseId: "pve/101", state: "destroyed" });
     expect(pve.containers.has(101)).toBe(false);
   });
 

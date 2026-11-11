@@ -36,6 +36,8 @@ export interface ProxmoxDriverConfig {
   pool: string | null;
   storage: string | null;
   bridge: string;
+  /** `auto` asks the host's storage type: linked where Proxmox supports it, full otherwise. */
+  cloneMode: "auto" | "linked" | "full";
   cores: number;
   memoryMb: number;
   /** Root disk size. For clones it is a minimum: the disk is grown, never shrunk. */
@@ -158,6 +160,7 @@ export function parseConfig(raw: Record<string, unknown>): ProxmoxDriverConfig {
     pool: str(raw.pool),
     storage: str(raw.storage),
     bridge: str(raw.bridge) ?? DEFAULT_BRIDGE,
+    cloneMode: raw.cloneMode === "linked" || raw.cloneMode === "full" ? raw.cloneMode : "auto",
     cores: int(raw.cores, DEFAULT_CORES),
     memoryMb: int(raw.memoryMb, DEFAULT_MEMORY_MB),
     diskGb: optionalInt(raw.diskGb),

@@ -296,6 +296,18 @@ export interface StorageFacts {
 }
 
 const BLOCK_TYPES = new Set(["lvm", "lvmthin", "zfspool", "zfs", "rbd", "iscsi", "iscsidirect"]);
+/** Proxmox storage types that can linked-clone a container template (not thick LVM, dir, NFS or CIFS). */
+const LINKED_CLONE_STORAGE_TYPES = new Set(["lvmthin", "zfspool", "btrfs", "rbd"]);
+
+/** Storage-class policy, exported so the host's portability choices are testable without a Proxmox API. */
+export function acquisitionTimeoutForStorage(type: string | undefined): number {
+  return type && LINKED_CLONE_STORAGE_TYPES.has(type) ? 240_000 : 900_000;
+}
+
+/** Slow/unknown storage reuses a stopped sandbox; linked-clone storage can afford a fresh one. */
+export function reuseLeaseForStorage(type: string | undefined): boolean {
+  return !type || !LINKED_CLONE_STORAGE_TYPES.has(type);
+}
 const NETWORK_TYPES = new Set(["nfs", "cifs", "glusterfs", "cephfs"]);
 /** Filesystems that cannot hold an unprivileged container's root: no ownership/xattrs for uid 100000+, or no POSIX modes. */
 const UNSUITABLE_FS = new Set(["ntfs", "ntfs3", "exfat", "vfat", "msdos", "fuseblk", "fat"]);
@@ -678,6 +690,20 @@ export class AgentContainers {
     return Object.entries(want).every(([k, v]) => have[k] === v);
   }
 
+  /** How long a sandbox acquisition may take on this storage class. Linked-clone storage is fast; dir/HDD is not. */
+  private providerTimeout(storage: string): number {
+    return acquisitionTimeoutForStorage(this.stored().storageFacts?.[storage]?.type);
+  }
+
+  /**
+   * Reuse a stopped sandbox on slow storage instead of paying a full clone on every run. On linked-clone
+   * storage a fresh clone is cheap, so it stays fresh. Paperclip's reusable lease releases by stopping,
+   * and the next acquire resumes it.
+   */
+  private shouldReuseLease(storage: string): boolean {
+    return reuseLeaseForStorage(this.stored().storageFacts?.[storage]?.type);
+  }
+
   /**
    * Container size for an organization: an equal share of its resource group's limits (one per allowed guest), capped by
    * the chosen size. A container the size of the whole limit would leave no room for a second one, such as a sign-in
@@ -715,7 +741,10 @@ export class AgentContainers {
       unprivileged: true,
       sshPrivateKey: sec.keySecretId,
       sshUser: AGENT_USER,
-      reuseLease: false,
+      reuseLease: this.shouldReuseLease(p.storage),
+      // A dir/HDD clone can take minutes; a thin/SSD clone does not. The provider uses this both as its
+      // acquisition budget and as the per-request timeout, so it must follow the storage class.
+      timeoutMs: this.providerTimeout(p.storage),
     };
     // The organization's resource group is an aggregate limit over everything in its pool; the provider enforces it when it allocates.
     const group = this.pools()[companyId];
@@ -855,7 +884,15 @@ export class AgentContainers {
       const picked = pickBridge((await pve.network(this.d.node).catch(() => ({ interfaces: [] as Net[] }))).interfaces, undefined, this.hostAddress());
       if (picked) over.bridge = picked;
     }
-    const params = this.params(over);
+    // Ask the host what it can actually offer before falling back to any default. A host without
+    // `local-lvm` or `vmbr0` must not be handed a setting that does not exist.
+    const offered = await this.options(pve, before ?? null).catch(() => null);
+    const params = this.params({
+      ...over,
+      storage: over.storage ?? offered?.suggested.storage ?? undefined,
+      templateStorage: over.templateStorage ?? offered?.suggested.templateStorage ?? undefined,
+      bridge: over.bridge ?? offered?.suggested.bridge ?? undefined,
+    });
     this.accept = acceptLanBridge;
     this.force = force;
     // A changed host setting invalidates the grants/environment checks, so it is never a resume.

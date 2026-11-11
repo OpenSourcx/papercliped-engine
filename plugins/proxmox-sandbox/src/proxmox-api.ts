@@ -236,7 +236,7 @@ export class ProxmoxClient {
   }
 
   storageStatus(node: string, storage: string) {
-    return this.request<{ active?: number | boolean; enabled?: number | boolean; content?: string; avail?: number }>(
+    return this.request<{ type?: string; active?: number | boolean; enabled?: number | boolean; content?: string; avail?: number }>(
       "GET",
       `/nodes/${seg(node)}/storage/${seg(storage)}/status`,
     );

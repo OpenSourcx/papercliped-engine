@@ -36,6 +36,7 @@ ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
                            start or stop an ePaperclip service (default: all)
   ${B}device logs${R} [console|engine|cloudflared] [--lines N] [--follow]
                            read ePaperclip service logs (default: console)
+  ${B}worker${R} [setup|recommend|...] run the worker CLI on this machine (worker install required)
   ${B}device publish status${R} show the local Cloudflare publishing helper state
 
 Proxmox's own interface on :8006 is never touched.
@@ -134,6 +135,14 @@ case "$cmd" in
   version) tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null && echo || die "not installed" ;;
   rollback) need_root rollback; exec bash "$INSTALLER" --rollback ;;
   uninstall) need_root uninstall; if [ "${1:-}" = "--purge" ]; then exec bash "$INSTALLER" --purge; else exec bash "$INSTALLER" --uninstall; fi ;;
+  worker|--worker)
+    if command -v epaperclip-worker >/dev/null 2>&1; then exec epaperclip-worker "$@"; fi
+    if [ -x "$PREFIX/worker/epaperclip-worker.mjs" ]; then
+      [ -x "$PREFIX/node/bin/node" ] || die "the worker needs the bundled Node.js at $PREFIX/node/bin/node"
+      exec "$PREFIX/node/bin/node" "$PREFIX/worker/epaperclip-worker.mjs" "$@"
+    fi
+    die "the worker CLI isn't installed here. Install the worker tarball first (deploy/worker/install.sh), then run: epaperclip worker setup"
+    ;;
   device) device "$@" ;;
   update)
     need_root update
