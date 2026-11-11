@@ -25,7 +25,7 @@ function DemoOrgDashboard() {
   return (
     <PageFrame width="6xl">
       <PageHeader
-        eyebrow={<Link to={`/${device}/home`} className="hover:text-ink">{device}</Link>}
+        eyebrow={<Link to={`/${device}/home`} className="tap-link hover:text-ink">{device}</Link>}
         title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
         subtitle={<>{working ? <Status kind="working" label={`${working} of ${org.agents.length} agents working`} /> : <Status kind="idle" label="Idle" />}{org.createdBy === "pin" && <Chip tone="accent" className="ml-2"><Sparkles className="h-3 w-3" />Created by Pin</Chip>}</>}
       />

@@ -66,6 +66,8 @@ export class FakeProxmox {
   nextVmid = 101;
   /** How many upcoming nextid answers are immediately taken by "another client". */
   racesOnNextId = 0;
+  /** Deletes refused as locked before one goes through (a clone still running). */
+  lockedDeletes = 0;
   /** Exit status and log for the next task of a kind ("clone", "create", "start", ...). */
   readonly taskFailures = new Map<string, { exitstatus: string; log: string[]; leaveBehind?: boolean }>();
   /** Address given to the next started container. */
@@ -108,6 +110,7 @@ export class FakeProxmox {
   addContainer(vmid: number, init: Partial<FakeContainer> & { config?: Record<string, unknown> }): FakeContainer {
     const container: FakeContainer = {
       vmid,
+      pool: init.pool,
       status: init.status ?? "running",
       config: { hostname: `ct-${vmid}`, unprivileged: 1, ...(init.config ?? {}) },
       ip: init.ip ?? "10.10.0.77",
@@ -317,6 +320,7 @@ export class FakeProxmox {
       }));
     }
     if (method === "DELETE" && sub === "") {
+      if (this.lockedDeletes > 0) { this.lockedDeletes -= 1; return this.fail(res, 500, `CT ${vmid} is locked (clone)`); }
       if (ct.status === "running" && query.force !== "1") return this.fail(res, 500, `CT ${vmid} is running - destroy failed`);
       return this.reply(res, this.task("vzdestroy", vmid, () => this.containers.delete(vmid)));
     }

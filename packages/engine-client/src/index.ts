@@ -160,11 +160,15 @@ export const ENGINE_PATHS = {
   agentPause: "/api/agents/{id}/pause",
   agentResume: "/api/agents/{id}/resume",
   agentTerminate: "/api/agents/{id}/terminate",
+  agentLifecycleRetry: "/api/agents/{id}/lifecycle/retry",
+  agentClearError: "/api/agents/{id}/clear-error",
   issues: "/api/companies/{companyId}/issues",
   issue: "/api/issues/{id}",
   issueComments: "/api/issues/{id}/comments",
   goals: "/api/companies/{companyId}/goals",
+  goal: "/api/goals/{id}",
   projects: "/api/companies/{companyId}/projects",
+  project: "/api/projects/{id}",
   approvals: "/api/companies/{companyId}/approvals",
   approve: "/api/approvals/{id}/approve",
   reject: "/api/approvals/{id}/reject",
@@ -395,7 +399,8 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     health: () => call<{ status: string; bootstrapStatus?: string; deploymentMode?: string }>("GET", P.health),
     me: () => call<BoardAccess>("GET", P.me),
     companies: {
-      list: () => call<Company[]>("GET", P.companies),
+      /** scope=accessible: only the organizations the caller can enter (an instance admin otherwise lists every one). */
+      list: (query?: { scope?: "accessible" }) => call<Company[]>("GET", P.companies, {}, undefined, query),
       get: (companyId: string) => call<Company>("GET", P.company, { companyId }),
       create: (body: CreateCompanyBody) => call<Company>("POST", P.companies, {}, body),
       update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">> & { status?: "active" | "paused" | "archived"; requireBoardApprovalForNewAgents?: boolean }) => call<Company>("PATCH", P.company, { companyId }, body),
@@ -432,6 +437,9 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       pause: (id: string) => call<Agent>("POST", P.agentPause, { id }, {}),
       resume: (id: string) => call<Agent>("POST", P.agentResume, { id }, {}),
       terminate: (id: string) => call<Agent>("POST", P.agentTerminate, { id }, {}),
+      /** Asks the engine to try an agent's setup (verification) again now instead of at its next scheduled retry. */
+      retryLifecycle: (id: string) => call<Agent>("POST", P.agentLifecycleRetry, { id }, {}),
+      clearError: (id: string) => call<Agent>("POST", P.agentClearError, { id }, {}),
       runs: (companyId: string, agentId?: string, limit = 20) => call<HeartbeatRun[]>("GET", P.heartbeatRuns, { companyId }, undefined, { agentId, limit }),
     },
     issues: {
@@ -445,10 +453,16 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     goals: {
       list: (companyId: string) => call<Goal[]>("GET", P.goals, { companyId }),
       create: (companyId: string, body: CreateGoalBody) => call<Goal>("POST", P.goals, { companyId }, body),
+      get: (id: string) => call<Goal>("GET", P.goal, { id }),
+      update: (id: string, body: Partial<CreateGoalBody>) => call<Goal>("PATCH", P.goal, { id }, body),
+      remove: (id: string) => call<unknown>("DELETE", P.goal, { id }),
     },
     projects: {
       list: (companyId: string) => call<Project[]>("GET", P.projects, { companyId }),
       create: (companyId: string, body: CreateProjectBody) => call<Project>("POST", P.projects, { companyId }, body),
+      get: (id: string) => call<Project>("GET", P.project, { id }),
+      update: (id: string, body: Partial<CreateProjectBody>) => call<Project>("PATCH", P.project, { id }, body),
+      remove: (id: string) => call<unknown>("DELETE", P.project, { id }),
     },
     approvals: {
       list: (companyId: string, status?: string) => call<Approval[]>("GET", P.approvals, { companyId }, undefined, { status }),

@@ -1,6 +1,6 @@
 import { HttpError } from "../http.ts";
 import { bad, confirmed, guarded, noExtra, query, resolveNode, seg, soft, str, type Deps, type Route } from "./nodeCommon.ts";
-import { CRITICAL_SERVICES, packageName, packageVersion, SERVICE_ACTIONS, SERVICES, subscriptionKey, timezone } from "./nodeValidate.ts";
+import { CRITICAL_SERVICES, UNSTOPPABLE_SERVICES, packageName, packageVersion, SERVICE_ACTIONS, SERVICES, subscriptionKey, timezone } from "./nodeValidate.ts";
 
 /** Node system: services, time, logs, power, subscription, updates and repositories. */
 
@@ -64,7 +64,7 @@ export function systemRoutes(d: Deps): Route[] {
         const out = await c.asUser(async (pve) => {
           const node = await resolveNode(c, pve);
           const list = await pve.call<{ service: string; name?: string; desc?: string; state?: string; "active-state"?: string; "unit-state"?: string }[]>("GET", `/nodes/${seg(node)}/services`);
-          return { node, services: list.map((s) => ({ service: s.service, name: s.name ?? s.service, description: s.desc ?? "", state: s.state ?? "unknown", activeState: s["active-state"] ?? null, unitState: s["unit-state"] ?? null, canControl: (SERVICES as readonly string[]).includes(s.service) })).sort((a, b) => a.name.localeCompare(b.name)) };
+          return { node, services: list.map((s) => ({ service: s.service, name: s.name ?? s.service, description: s.desc ?? "", state: s.state ?? "unknown", activeState: s["active-state"] ?? null, unitState: s["unit-state"] ?? null, canControl: (SERVICES as readonly string[]).includes(s.service), canStop: !UNSTOPPABLE_SERVICES.has(s.service) })).sort((a, b) => a.name.localeCompare(b.name)) };
         });
         c.json(200, out);
       },
@@ -80,6 +80,7 @@ export function systemRoutes(d: Deps): Route[] {
         if (!(SERVICE_ACTIONS as readonly string[]).includes(action)) bad("An action is start, stop, restart or reload");
         const body = await c.readJson();
         noExtra(body, ["node", "confirm"]);
+        if (action === "stop" && UNSTOPPABLE_SERVICES.has(service)) bad(`${service} can't be stopped from here: Proxmox needs it to serve this console and the cluster. Restart it instead.`);
         // Stopping (or restarting) a service the node and cluster depend on needs the name typed.
         if (CRITICAL_SERVICES.has(service) && (action === "stop" || (action === "restart" && (service === "pve-cluster" || service === "corosync")))) confirmed(body, service, `${action} of ${service}`);
         const task = await c.asUser(async (pve) => pve.call<string>("POST", `/nodes/${seg(await resolveNode(c, pve, body))}/services/${seg(service)}/${action}`));

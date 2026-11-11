@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PluginContext, PluginEnvironmentLease } from "@paperclipai/plugin-sdk";
+import { readEnvironmentCreationCleanupError } from "@paperclipai/plugin-sdk";
 import { createProxmoxSandboxPlugin, buildTags, sanitizeTag } from "../src/plugin.js";
 import { nodeHttpsTransport } from "../src/proxmox-api.js";
 import { validateSshPrivateKey } from "../src/config.js";
@@ -70,7 +71,7 @@ describe("manifest", () => {
   it("declares the proxmox sandbox driver", () => {
     expect(manifest.id).toBe("epaperclip.proxmox-sandbox-provider");
     expect(manifest.apiVersion).toBe(1);
-    expect(manifest.capabilities).toEqual(["environment.drivers.register"]);
+    expect(manifest.capabilities).toEqual(["environment.drivers.register", "plugin.state.read", "plugin.state.write"]);
     const driver = manifest.environmentDrivers![0]!;
     expect(driver).toMatchObject({ driverKey: "proxmox", kind: "sandbox_provider", supportsLoginPty: true, sandboxCapabilities: { reusableLeases: true } });
     const props = (driver.configSchema as { properties: Record<string, Record<string, unknown>> }).properties;
@@ -78,7 +79,7 @@ describe("manifest", () => {
     expect(props.sshPrivateKey!.format).toBe("secret-ref");
     expect(props.unprivileged!.default).toBe(true);
     expect(props.allowInsecureTls!.default).toBe(false);
-    expect(props.bridge!.default).toBe("vmbr0");
+    expect(props.bridge!.default).toBe("vmbr1");
     expect(props.storage!["x-paperclip-advanced"]).toBe(true);
   });
 });
@@ -87,7 +88,7 @@ describe("validate", () => {
   it("accepts a complete config and normalises it", async () => {
     const result = await hooks.onEnvironmentValidateConfig!({ driverKey: "proxmox", config: config({ apiUrl: `${pve.url}/api2/json`, namePrefix: " My Agents! " }) });
     expect(result.ok).toBe(true);
-    expect(result.normalizedConfig).toMatchObject({ apiUrl: pve.url, namePrefix: "my-agents", unprivileged: true, bridge: "vmbr0", sshUser: "root" });
+    expect(result.normalizedConfig).toMatchObject({ apiUrl: pve.url, namePrefix: "my-agents", unprivileged: true, bridge: "vmbr1", sshUser: "root" });
     expect(result.warnings!.join(" ")).toMatch(/trust on first use/);
   });
 
@@ -261,8 +262,8 @@ describe("acquire", () => {
     expect(update.form).toMatchObject({
       cores: "4",
       memory: "4096",
-      net0: "name=eth0,bridge=vmbr0,ip=dhcp",
-      tags: "epaperclip;company-company-1;run-run_abc-123",
+      net0: "name=eth0,bridge=vmbr1,ip=dhcp",
+      tags: "epaperclip;company-company-1;run-run_abc-123;provisioning",
     });
     expect(pve.find("PUT", "/lxc/101/resize")[0]!.form).toMatchObject({ disk: "rootfs", size: "20G" });
     expect(pve.find("POST", "/lxc/101/status/start")).toHaveLength(1);
@@ -342,8 +343,8 @@ describe("acquire", () => {
       pool: "epaperclip",
       rootfs: "local-lvm:12",
       unprivileged: "1",
-      net0: "name=eth0,bridge=vmbr0,ip=dhcp",
-      tags: "epaperclip;company-company-1;run-run-1",
+      net0: "name=eth0,bridge=vmbr1,ip=dhcp",
+      tags: "epaperclip;company-company-1;run-run-1;provisioning",
     });
     expect(create.form["ssh-public-keys"]).toBe(`${derivePublicKey(key)} epaperclip-proxmox-sandbox`);
   });
@@ -362,6 +363,19 @@ describe("acquire", () => {
     await expect(acquire()).rejects.toThrow(/out of space/);
     expect(pve.containers.has(101)).toBe(false);
     expect(pve.find("DELETE", "/lxc/101")).toHaveLength(1);
+  });
+
+  it("hands a half-made container it can't delete yet to the engine's cleanup, which then removes it", async () => {
+    pve.taskFailures.set("vzclone", { exitstatus: "clone timed out", log: [], leaveBehind: true });
+    pve.lockedDeletes = 1;
+    const error = await acquire().catch((e: unknown) => e);
+    const cleanup = readEnvironmentCreationCleanupError(error);
+    expect(cleanup).toMatchObject({ providerLeaseId: "pve_101", companyId: "company-1", runId: "run-1" });
+    expect(pve.containers.has(101)).toBe(true);
+    // The engine's retry: the container never got its company tags, but it is recognised as this failed creation.
+    const receipt = await hooks.onEnvironmentDestroyLease!({ ...base, config: config(), providerLeaseId: cleanup!.providerLeaseId, leaseMetadata: { failedCreateCleanup: cleanup } });
+    expect(receipt).toMatchObject({ state: "destroyed" });
+    expect(pve.containers.has(101)).toBe(false);
   });
 
   it("deletes the new container when it never becomes reachable", async () => {

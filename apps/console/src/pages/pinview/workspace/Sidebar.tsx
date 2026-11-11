@@ -16,7 +16,7 @@ export interface SideRow extends ConversationItem { status?: "working" | "waitin
 export interface SideGroup { id: string; label: string; rows: SideRow[]; actions?: MenuEntry[]; limit?: number; empty?: string }
 
 function NavItem({ icon, label, onClick, to, badge, active }: { icon: ReactNode; label: string; onClick?: () => void; to?: string; badge?: ReactNode; active?: boolean }) {
-  const cls = cn("transition-control w-full flex items-center gap-3 rounded-lg px-2.5 h-9 text-sm text-left", active ? "bg-surface-3 text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink");
+  const cls = cn("transition-control w-full flex items-center gap-3 rounded-lg px-2.5 h-9 pointer-coarse:h-11 text-sm text-left", active ? "bg-surface-3 text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink");
   const body = <><span aria-hidden className="w-4 flex justify-center text-ink-2">{icon}</span><span className="flex-1 truncate">{label}</span>{badge}</>;
   return to ? <Link to={to} className={cls}>{body}</Link> : <button type="button" onClick={onClick} aria-pressed={active} className={cls}>{body}</button>;
 }
@@ -75,11 +75,11 @@ export function Sidebar({ groups, activeKey, onPick, rowMenu, renaming, onRename
   return (
     <nav aria-label="Conversations" className="flex flex-col min-h-0 h-full">
       <div className="h-11 shrink-0 flex items-center gap-0.5 px-2">
-        <button type="button" aria-label="Hide the sidebar (Ctrl+B)" title="Hide the sidebar (Ctrl+B)" onClick={onCollapse} className="transition-control h-8 w-8 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><PanelLeft className="h-4 w-4" /></button>
-        <button type="button" aria-label="Back" title="Back" disabled={!back.can} onClick={back.go} className="transition-control h-8 w-8 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-        <button type="button" aria-label="Forward" title="Forward" disabled={!forward.can} onClick={forward.go} className="transition-control h-8 w-8 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+        <button type="button" aria-label="Hide the sidebar (Ctrl+B)" title="Hide the sidebar (Ctrl+B)" onClick={onCollapse} className="transition-control h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><PanelLeft className="h-4 w-4" /></button>
+        <button type="button" aria-label="Back" title="Back" disabled={!back.can} onClick={back.go} className="transition-control h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+        <button type="button" aria-label="Forward" title="Forward" disabled={!forward.can} onClick={forward.go} className="transition-control h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
         <span className="flex-1" />
-        <Link to={`/${device}/home`} aria-label="Back to the console" title="Back to the console" className="transition-control h-8 w-8 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><ArrowLeft className="h-4 w-4" /></Link>
+        <Link to={`/${device}/home`} aria-label="Back to the console" title="Back to the console" className="transition-control h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 rounded-md flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"><ArrowLeft className="h-4 w-4" /></Link>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pb-2">
         <div className="space-y-0.5 pb-3">

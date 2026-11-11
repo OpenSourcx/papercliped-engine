@@ -26,7 +26,7 @@ export function MachinePermissions({ vmid, name }: { vmid: number; name: string 
         <>
           {!p.visible && <Notice>Your account can't list access entries. Ask an administrator, or sign in with an account that can.</Notice>}
           <Card className="p-5">
-            <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setAdd(true)} disabled={!p.canModify} title={p.canModify ? undefined : "Your account can't change who may use this machine (it needs Permissions.Modify)"}><Plus className="h-3.5 w-3.5" />Grant access</Button>}>On this machine</SectionTitle>
+            <SectionTitle action={<Button size="sm" variant="ghost" onClick={() => setAdd(true)} disabled={!p.canModify} disabledReason={p.canModify ? undefined : "Your account can't change who may use this machine (it needs Permissions.Modify)"}><Plus className="h-3.5 w-3.5" />Grant access</Button>}>On this machine</SectionTitle>
             {p.entries.length === 0 ? <p className="text-sm text-ink-3">Nothing is set on this machine itself. People get access from the device or its resource group.</p> : (
               <div className="divide-y divide-line">
                 {p.entries.map((e) => (

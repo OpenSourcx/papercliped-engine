@@ -4,6 +4,7 @@ import { api, ApiError, type LiveUser, type Realm, type TfaMethods } from "../da
 import { answerChallenge, webauthnAvailable } from "../pages/access/webauthn.ts";
 import { cn } from "../lib/storage.ts";
 import { PinOrb } from "../pin/PinOrb.tsx";
+import { PinField } from "../ui/PinField.tsx";
 import { controlClass, Select } from "../ui/primitives.tsx";
 
 const inputCls = cn(controlClass, "h-12 px-4 text-body rounded-xl");
@@ -130,6 +131,8 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
   return (
     <div className="min-h-dvh relative flex flex-col items-center px-5">
       <div className="absolute inset-0 hero-glow opacity-60 pointer-events-none" aria-hidden />
+      {/* Decorative only; the middle stays clear so it never sits behind the form. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none [mask-image:linear-gradient(to_right,black,transparent_28%,transparent_72%,black)]" aria-hidden><PinField /></div>
       <main className="relative w-full max-w-[400px] pt-[14vh] pb-16 fade-in">
         <div className="flex justify-center mb-8"><PinOrb size={56} /></div>
         <h1 className="text-display font-semibold tracking-tight text-center">{challenge ? "Two-step sign-in" : "Sign in to ePaperclip"}</h1>
@@ -162,7 +165,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
               </div>
             )}
             <FormError text={error} />
-            <button type="submit" disabled={busy || blocked || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
+            <button type="submit" disabled={busy || blocked || !username.trim() || !password} title={!busy && (blocked ? "Read the notice and tick the box to continue" : !username.trim() || !password ? "Enter your username and password" : undefined) || undefined} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
             </button>
             {openidRealms.length > 0 && (

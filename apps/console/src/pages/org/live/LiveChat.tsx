@@ -9,7 +9,7 @@ import { agentStatusOf } from "../../../data/engine/labels.tsx";
 import { useAgentAction, useAgentContainers, useAgents, useComments, useMe, useRuns } from "../../../data/engine/queries.ts";
 import { useEngine } from "../../../data/store.tsx";
 import { settingsHref } from "../../../modals/useModals.ts";
-import { useChats, useChatWrites } from "../../../data/engine/more.ts";
+import { useChats, useChatSettings, useChatWrites } from "../../../data/engine/more.ts";
 import { Avatar, Button, Card, EmptyState, Notice, PageFrame, PageHeader, Spinner, Status, Textarea } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -22,7 +22,8 @@ export function LiveChat() {
   const chats = useChats(companyId, true);
   const w = useChatWrites(companyId);
   const [selected, setSelected] = useState<string | null>(null);
-  const disabled = chatDisabled(chats.error);
+  const settings = useChatSettings();
+  const disabled = chatDisabled(chats.error) || (settings.isSuccess && settings.data.enableAgentChat !== true);
   const canRun = useAgentsCanRun();
   const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
   const byAgent = new Map((chats.data ?? []).map((c) => [c.conversationAgentId, c]));
@@ -34,7 +35,7 @@ export function LiveChat() {
       <PageFrame width="3xl">
         <PageHeader title="Chat" subtitle="Talk with your agents in threads." />
         <Card className="p-6">
-          <EmptyState icon={<MessageCircle className="h-5 w-5" />} title="Chat is switched off" body="Agent chat is an experimental setting of the engine, so it's off until an administrator turns it on." action={me.data?.isInstanceAdmin ? <Button variant="primary" loading={w.enable.isPending} onClick={() => w.enable.mutate(undefined, { onSuccess: () => void chats.refetch() })}>Turn on chat</Button> : <span className="text-compact text-ink-3">Ask a Proxmox administrator to turn it on.</span>} />
+          <EmptyState icon={<MessageCircle className="h-5 w-5" />} title="Chat is switched off" body="Agent chat is an experimental setting of the engine, so it's off until an administrator turns it on." action={me.data?.isInstanceAdmin ? <Button variant="primary" loading={w.enable.isPending} onClick={() => w.enable.mutate(undefined, { onSuccess: () => void settings.refetch().then(() => chats.refetch()) })}>Turn on chat</Button> : <span className="text-compact text-ink-3">Ask a Proxmox administrator to turn it on.</span>} />
           <ActionError error={w.enable.error} />
         </Card>
       </PageFrame>
@@ -46,7 +47,7 @@ export function LiveChat() {
       <PageHeader title="Chat" subtitle={`Ask ${org.name}'s agents questions or give them work. Replies arrive here as they write them.`} />
       <div className="grid md:grid-cols-[16rem_1fr] gap-4">
         <Card className="divide-y divide-line h-fit">
-          {(agents.isPending || chats.isPending) && <Loading />}
+          {(agents.isPending || settings.isPending || (chats.isPending && chats.fetchStatus !== "idle")) && <Loading />}
           {chats.error && <LoadError error={chats.error} retry={() => void chats.refetch()} />}
           {agents.data && list.length === 0 && <p className="px-4 py-4 text-sm text-ink-3">Create an agent to chat with.</p>}
           {list.map((a) => {
@@ -78,7 +79,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   const [error, setError] = useState<unknown>(null);
   const end = useRef<HTMLDivElement>(null);
   const messages = conversationId ? comments.data ?? [] : [];
-  const [kind, label] = agentStatusOf(agent.status);
+  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState);
   const containers = useAgentContainers();
   const runs = useRuns(conversationId ? companyId : null, agent.id);
   const act = useAgentAction(companyId);

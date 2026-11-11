@@ -69,8 +69,8 @@ describe("signing an organization's agents in with a subscription", () => {
     const done = await j(await h.call("GET", "/api/connect/orgs/co_1/login/ls1", { cookie: h.sam }));
     expect(done.login).toMatchObject({ status: "completed", done: true });
     expect(JSON.stringify(done)).not.toContain("SECRETSECRET");
-    // Finished: the session is forgotten.
-    expect((await h.call("GET", "/api/connect/orgs/co_1/login/ls1", { cookie: h.sam })).status).toBe(404);
+    // Finished: the outcome is remembered for 15 minutes (ERR-OAU-007), not answered with a 404.
+    expect((await j(await h.call("GET", "/api/connect/orgs/co_1/login/ls1", { cookie: h.sam }))).login).toMatchObject({ status: "completed", done: true });
     const audit = JSON.stringify(await j(await h.call("GET", "/api/access/audit", { cookie: h.sam })));
     expect(audit).toContain("connection.login.start");
     expect(audit).not.toContain("SECRETSECRET");
@@ -109,6 +109,27 @@ describe("signing an organization's agents in with a subscription", () => {
     expect((await h.call("POST", `/api/connect/orgs/co_1/login/${s.id}/cancel`, { cookie: h.sam }, {})).status).toBe(200);
   });
 
+  it("says which resource limit is full when the engine answers a bare 500 to a sign-in start", async () => {
+    h.overlay.loginMode.startStatus = 500;
+    // Not full (no group): the engine's failure stays a failure, with no invented cause.
+    const plain = await start({ provider: "anthropic" });
+    expect(plain.status).toBe(202);
+    const failedPlain = await settle((await j(plain)).login.id);
+    expect(failedPlain.failed).toBe(true);
+    expect(failedPlain.message).not.toMatch(/resource group/);
+    // Two machines in the pool (the template does not count) and the group allows two.
+    h.state.setSetting("resourceGroups", { co_1: { pool: "epc-co1", maxGuests: 2, cores: 16 } });
+    const full = await settle((await j(await start({ provider: "anthropic" }))).login.id);
+    expect(full.failed).toBe(true);
+    expect(full.message).toMatch(/machines \(2 of 2 in use\)/);
+    expect(full.message).not.toMatch(/CPU/);
+    // Room left: back to the plain failure.
+    h.state.setSetting("resourceGroups", { co_1: { pool: "epc-co1", maxGuests: 3, cores: 16 } });
+    const room = await settle((await j(await start({ provider: "anthropic" }))).login.id);
+    expect(room.failed).toBe(true);
+    expect(room.message).not.toMatch(/resource group/);
+  });
+
   it("is for organization owners and admins, own sessions only, and validates the request", async () => {
     expect((await start({ provider: "openai" }, h.lee)).status).toBe(403); // lee is an operator
     expect((await start({ provider: "gemini" })).status).toBe(400);
@@ -138,6 +159,45 @@ describe("signing an organization's agents in with a subscription", () => {
     // The only things this service does are HTTP calls to the engine as the person.
     const src = readFileSync(join(__dirname, "../src/features/connect-login.ts"), "utf8");
     expect(src).not.toMatch(/child_process|spawn\(|exec\(|execFile|node-pty/);
+  });
+});
+
+describe("never abandoning an engine sign-in (ERR-OAU-005, ERR-OAU-007)", () => {
+  const until = async (f: () => boolean) => {
+    for (let i = 0; i < 200 && !f(); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(f()).toBe(true);
+  };
+
+  it("cancels in the engine a session whose start was cancelled while the container was still starting", async () => {
+    let release!: () => void;
+    h.overlay.loginCtl.gate = new Promise<void>((r) => (release = r));
+    const pending = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    expect((await h.call("POST", `/api/connect/orgs/co_1/login/${pending.id}/cancel`, { cookie: h.sam }, {})).status).toBe(200);
+    release();
+    await until(() => h.overlay.loginCtl.cancels.includes("ls1"));
+    // The slot is free: a new start works and is tracked normally.
+    h.overlay.loginCtl.gate = null;
+    const again = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    expect(await settle(again.id)).toMatchObject({ id: "ls2" });
+  });
+
+  it("adopts and cancels the engine's active session when the start's answer was lost", async () => {
+    h.overlay.loginCtl.dropStart = true;
+    const pending = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    expect((await settle(pending.id)).failed).toBe(true);
+    await until(() => h.overlay.loginCtl.cancels.includes("ls1"));
+  });
+
+  it("keeps the end of a sign-in after the engine has purged it", async () => {
+    const pending = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    const s1 = await settle(pending.id);
+    let last: any;
+    for (let i = 0; i < 5 && !last?.done; i++) last = (await j(await h.call("GET", `/api/connect/orgs/co_1/login/${s1.id}`, { cookie: h.sam }))).login;
+    expect(last.done).toBe(true);
+    h.overlay.logins.delete(s1.id); // the engine's 60 s retention ended
+    const late = await h.call("GET", `/api/connect/orgs/co_1/login/${s1.id}`, { cookie: h.sam });
+    expect(late.status).toBe(200);
+    expect((await j(late)).login).toMatchObject({ id: s1.id, done: true });
   });
 });
 

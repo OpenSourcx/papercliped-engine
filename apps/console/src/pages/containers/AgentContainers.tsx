@@ -19,6 +19,7 @@ const STATE_TEXT: Record<ContainersStatus["state"], { kind: "good" | "warning" |
   ready: { kind: "good", label: "Ready" },
   partial: { kind: "warning", label: "Partly set up" },
   error: { kind: "critical", label: "Needs attention" },
+  needs_repair: { kind: "critical", label: "Needs repair" },
   not_set_up: { kind: "off", label: "Not set up" },
 };
 
@@ -156,6 +157,7 @@ export function AgentContainers() {
             </div>
           )}
           {status.error && <p role="alert" className="mb-3 text-compact text-critical">{status.error}</p>}
+          {status.repair && <p role="alert" className="mb-3 text-compact text-critical">{status.repair.reason}</p>}
           {canManage && status.diagnosis && !(j?.diagnosis) && <Diagnosis d={status.diagnosis} />}
           <Card className="divide-y divide-line">
             {status.steps.length === 0 && <p className="px-5 py-4 text-sm text-ink-2">Only Proxmox administrators can see the steps.</p>}

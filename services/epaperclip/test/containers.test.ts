@@ -4,8 +4,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { activity } from "../src/activity.ts";
 import { createApp } from "../src/app.ts";
-import { acquisitionTimeoutForStorage, newestDebian, reuseLeaseForStorage, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE } from "../src/containers.ts";
+import { acquisitionTimeoutForStorage, newestDebian, reuseLeaseForStorage, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE, LAN_BRIDGE_PHRASE } from "../src/containers.ts";
 import { generateSshKey } from "../src/containers-ssh.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
@@ -155,7 +156,7 @@ describe("agent containers setup", () => {
     expect(eng.st.envs.size).toBe(1);
     const env = [...eng.st.envs.values()][0];
     expect(env).toMatchObject({ driver: "sandbox", metadata: { epaperclip: "agent-containers", companyId: co } });
-    expect(env.config).toMatchObject({ provider: "proxmox", node: "pve", apiTokenId: TOKEN_ID, template: "9000", pool, storage: "local-lvm", bridge: "vmbr0", unprivileged: true, sshUser: "agent", cores: 2, memoryMb: 4096, diskGb: 16 });
+    expect(env.config).toMatchObject({ provider: "proxmox", node: "pve", apiTokenId: TOKEN_ID, template: "9000", pool, storage: "local-lvm", bridge: "vmbr0", unprivileged: true, sshUser: "agent", cores: 1, memoryMb: 2048, diskGb: 16 }); // a 4-guest group: one guest's share
     expect(eng.st.secrets.has(env.config.apiTokenSecret)).toBe(true);
     expect(eng.st.secrets.has(env.config.sshPrivateKey)).toBe(true);
     expect(eng.st.envBodies.join()).not.toContain(pve.tokenSecrets[0]);
@@ -230,6 +231,19 @@ describe("agent containers setup", () => {
     const before = { tokens: tokenPosts(), guests: pve.guests.size, envs: eng.st.envs.size, secrets: eng.st.secrets.size, plugins: eng.st.plugins.length, scripts: ssh.st.scripts.length, key: state.getSecret("agentContainers.sshKey") };
     expect((await runSetup(sam)).status).toBe("done");
     expect({ tokens: tokenPosts(), guests: pve.guests.size, envs: eng.st.envs.size, secrets: eng.st.secrets.size, plugins: eng.st.plugins.length, scripts: ssh.st.scripts.length, key: state.getSecret("agentContainers.sshKey") }).toEqual(before);
+    expect((await status(sam)).state).toBe("ready");
+  });
+
+  it("re-enables a provider that failed to activate instead of installing it again", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    // On a busy host the worker can miss the engine's initialize timeout; the plugin is then in "error".
+    Object.assign(eng.st.plugins[0], { status: "error", lastError: 'Activation failed: RPC call "initialize" timed out after 15000ms' });
+    expect((await status(sam)).state).not.toBe("ready");
+    expect((await runSetup(sam)).status).toBe("done");
+    expect(eng.st.plugins).toHaveLength(1);
+    expect(eng.st.plugins[0].status).toBe("ready");
     expect((await status(sam)).state).toBe("ready");
   });
 
@@ -323,9 +337,24 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === first.co).config.pool).toBe(first.pool);
     // Resizing is followed.
     await send("PUT", `/api/resource-groups/${second.co}`, sam, { name: "Lumen", cores: 1, memoryMb: 2048, diskGb: 10, maxGuests: 2 });
-    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 2048, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
+    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 1024, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
     // An organization without a resource group has no aggregate limit.
     expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
+  });
+
+  it("records each organization's sync errors and logs them instead of dropping them (ERR-SYNC-010)", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    // An organization the service account is not a member of: adding it needs a signed-in actor, which the 60 s tick doesn't have.
+    eng.company("co_ghost", "Ghost", {});
+    state.setSetting("resourceGroups", { ...state.getSetting<Record<string, unknown>>("resourceGroups"), co_ghost: { name: "Ghost", pool: "epc-ghost", cores: 1, memoryMb: 512, diskGb: 5, maxGuests: 1, updatedAt: 0, updatedBy: "x" } });
+    const out = await app.containers.reconcile();
+    expect(out.join(" ")).toMatch(/Ghost/);
+    const status = state.getSetting<Record<string, { name: string; at: number; errors: string[] }>>("orgSyncStatus")!;
+    expect(status.co_ghost.errors[0]).toMatch(/service account isn't a member/);
+    expect(Object.values(status).find((x) => x.name === "Northwind")!.errors).toEqual([]);
+    expect(activity.list({ event: "org.sync" }).some((e) => /Ghost/.test(e.message))).toBe(true);
   });
 
   it("does not give an organization without a resource group a shared-pool environment", async () => {
@@ -574,6 +603,136 @@ describe("pieces", () => {
 
 void vi;
 
+describe("the sandbox bridge is never the management bridge by default (ERR-SEC-001, ERR-SEC-005)", () => {
+  const lan = [{ iface: "vmbr0", type: "bridge", address: "192.168.1.10", cidr: "192.168.1.10/24", gateway: "192.168.1.1" }, { iface: "vmbr1", type: "bridge" }, { iface: "eth0", type: "eth" }];
+
+  it("suggests an isolated bridge and defaults to it", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    expect((await status(sam)).options.suggested.bridge).toBe("vmbr1");
+    await org(sam, "Northwind");
+    const job = await runSetup(sam, {});
+    expect(job.status, JSON.stringify(job.log.slice(-3))).toBe("done");
+    expect((await status(sam)).params.bridge).toBe("vmbr1");
+  });
+
+  it("refuses the bridge that carries the host's address without the typed acknowledgement", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    const refused = await runSetup(sam, { bridge: "vmbr0" });
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("management");
+    expect(refused.error).toContain(LAN_BRIDGE_PHRASE);
+    expect(pve.roles.size).toBe(0);
+    const wrong = await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: "yes" });
+    expect(wrong.status).toBe("failed");
+    const ok = await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: LAN_BRIDGE_PHRASE });
+    expect(ok.status, JSON.stringify(ok.log.slice(-3))).toBe("done");
+  });
+
+  it("refuses vmbr0 when it carries the address, even when it is the only bridge", async () => {
+    const sam = await admin();
+    pve.host.network = [lan[0]];
+    const refused = await runSetup(sam, {});
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("management");
+  });
+
+  it("revokes EPCSandboxNetwork on bridges no longer wanted", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    await org(sam, "Northwind");
+    expect((await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: LAN_BRIDGE_PHRASE })).status).toBe("done");
+    const net = (who: string) => pve.acl.filter((a) => a.ugid === who && a.roleid === "EPCSandboxNetwork").map((a) => a.path);
+    expect(net(TOKEN_ID)).toEqual(["/sdn/zones/localnetwork/vmbr0"]);
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { bridge: "vmbr1" });
+    expect(moved.status).toBeLessThan(300);
+    for (let i = 0; i < 400; i++) {
+      const j = (await send("GET", `/api/agent-containers/jobs/${moved.json.jobId}`, sam)).json;
+      if (j.status !== "running") { expect(j.status, JSON.stringify(j.log.slice(-3))).toBe("done"); break; }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(net(TOKEN_ID)).toEqual(["/sdn/zones/localnetwork/vmbr1"]);
+    expect(net(SANDBOX_USER)).toEqual(["/sdn/zones/localnetwork/vmbr1"]);
+  });
+});
+
+describe("a pending sandbox cleanup blocks the environment (ERR-CTR-002)", () => {
+  const settle = async (sam: string, jobId: string) => {
+    let j: any;
+    for (let i = 0; i < 400; i++) {
+      j = (await send("GET", `/api/agent-containers/jobs/${jobId}`, sam)).json;
+      if (j.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return j;
+  };
+
+  it("reports needs_repair with the reason, not a generic error, and no repair route is offered", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    eng.st.pendingCleanup.push({ providerLeaseId: "pve/105", failureReason: "CT 105 is locked (backup)" });
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { size: { cores: 2, memoryMb: 1024, diskGb: 16 } });
+    const job = await settle(sam, moved.json.jobId);
+    expect(job.status).toBe("failed");
+    const s = await status(sam);
+    expect(s.state).toBe("needs_repair");
+    expect(s.repair).toMatchObject({ kind: "pending_cleanup", action: null });
+    expect(s.repair.reason).toContain("105");
+    expect(s.repair.reason).toContain("locked");
+    expect(s.error).toContain("cleanup is pending");
+    expect(co).toBeTruthy();
+  });
+
+  it("sends only the fields that changed, and no config at all when only the status differs", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    const env = [...eng.st.envs.values()][0];
+    eng.st.envPatches.length = 0;
+    // Someone paused the environment: only the status needs to change, which a pending cleanup must not block.
+    env.status = "paused";
+    eng.st.pendingCleanup.push({ providerLeaseId: "pve/105", failureReason: null });
+    const step = await send("POST", "/api/agent-containers/steps/environments", sam, {});
+    expect(step.status).toBeLessThan(300);
+    expect((await settle(sam, step.json.jobId)).status).toBe("done");
+    expect(eng.st.envPatches).toEqual([{ status: "active" }]);
+    // A real change sends just that key.
+    eng.st.pendingCleanup.length = 0;
+    eng.st.envPatches.length = 0;
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { size: { cores: 2, memoryMb: 1024, diskGb: 16 } });
+    expect((await settle(sam, moved.json.jobId)).status).toBe("done");
+    expect(eng.st.envPatches.length).toBe(1);
+    expect(Object.keys((eng.st.envPatches[0] as any).config)).toEqual(["memoryMb"]);
+    expect(co).toBeTruthy();
+  });
+});
+
+describe("the provider's worker is awaited (ERR-CTR-006)", () => {
+  it("re-enables a plugin in error and waits until its worker answers before the environments", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    eng.st.plugins.push({ id: "pl_9", pluginKey: "epaperclip.proxmox-sandbox-provider", status: "error", lastError: "crashed", packageName: "x" });
+    eng.st.workerDownPolls = 3;
+    const job = await runSetup(sam);
+    expect(job.status, JSON.stringify(job.log.slice(-3))).toBe("done");
+    expect(eng.st.plugins[0].status).toBe("ready");
+    expect(eng.st.workerProbes).toBe(4);
+  });
+
+  it("gives up after a bounded wait and says the worker isn't running", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    eng.st.plugins.push({ id: "pl_9", pluginKey: "epaperclip.proxmox-sandbox-provider", status: "disabled", lastError: null, packageName: "x" });
+    eng.st.workerDownPolls = 10_000;
+    const job = await runSetup(sam);
+    expect(job.status).toBe("failed");
+    expect(job.error).toContain("worker");
+    expect(eng.st.workerProbes).toBeLessThanOrEqual(40);
+    expect(job.steps.find((x: any) => x.id === "environments").state).not.toBe("done");
+  });
+});
 
 describe("storage portability policy", () => {
   it("gives linked-clone storage a short budget and fresh clones, and slow/unknown storage reusable leases", () => {
@@ -589,3 +748,4 @@ describe("storage portability policy", () => {
     expect(reuseLeaseForStorage(undefined)).toBe(true);
   });
 });
+

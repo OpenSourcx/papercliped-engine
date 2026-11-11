@@ -90,7 +90,7 @@ export const dcApi = {
 
   sdn: () => call<SdnOverview>("GET", "/api/node/sdn"),
   sdnPreview: (node?: string | null) => call<{ node: string; denied: boolean; error: string | null; preview: string | null }>("GET", withNode("/api/node/sdn/preview", node)),
-  sdnApply: () => call<{ task: string }>("POST", "/api/node/sdn/apply", {}),
+  sdnApply: () => call<{ task: string }>("POST", "/api/node/sdn/apply", { confirm: "apply" }),
   sdnRollback: () => call<{ ok: true }>("POST", "/api/node/sdn/rollback", { confirm: "rollback" }),
   sdnCreate: (kind: SdnKind, id: string, type: string, values: Values) => call<{ ok: true }>("POST", `/api/node/sdn/${kind}`, { id, type, values }),
   sdnUpdate: (kind: SdnKind, id: string, values: Values, digest: string | null) => call<{ ok: true }>("PUT", `/api/node/sdn/${kind}/${enc(id)}`, { values, digest: digest ?? undefined }),

@@ -86,7 +86,7 @@ export function useNodeName() {
 export function TasksLink({ type, label = "Tasks" }: { type?: string; label?: string }) {
   const { setup } = useEngine();
   return (
-    <Link to={`/${setup?.deviceName ?? "pve"}/tasks/all${type ? `?type=${encodeURIComponent(type)}` : ""}`} className="transition-control inline-flex items-center gap-2 h-10 px-3 rounded-lg text-compact text-ink-2 hover:text-ink hover:bg-surface-2">
+    <Link to={`/${setup?.deviceName ?? "pve"}/tasks/all${type ? `?type=${encodeURIComponent(type)}` : ""}`} className="transition-control inline-flex items-center gap-2 h-10 pointer-coarse:h-11 px-3 rounded-lg text-compact text-ink-2 hover:text-ink hover:bg-surface-2">
       <ListChecks className="h-4 w-4" aria-hidden />{label}
     </Link>
   );

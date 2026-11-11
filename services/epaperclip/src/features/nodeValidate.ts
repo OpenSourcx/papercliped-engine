@@ -30,6 +30,8 @@ export const packageVersion = (v: unknown): string => (typeof v === "string" && 
 /** Services Proxmox lets you start, stop, restart or reload (its own list; anything else is refused before it gets there). */
 export const SERVICES = ["chrony", "corosync", "cron", "ksmtuned", "lxcfs", "postfix", "proxmox-firewall", "pve-cluster", "pve-firewall", "pve-ha-crm", "pve-ha-lrm", "pve-lxc-syscalld", "pvedaemon", "pvefw-logger", "pveproxy", "pvescheduler", "pvestatd", "qmeventd", "spiceproxy", "sshd", "syslog", "systemd-journald", "systemd-timesyncd"] as const;
 /** Stopping any of these can cut this node off from its cluster, its sessions or the people running it. */
+/** Proxmox refuses to stop these (the API and the cluster filesystem run through them), so the host says no up front (ERR-PVE-005). */
+export const UNSTOPPABLE_SERVICES = new Set(["pveproxy", "pvedaemon", "pve-cluster"]);
 export const CRITICAL_SERVICES = new Set(["pve-cluster", "corosync", "pvedaemon", "pveproxy", "sshd", "pve-ha-lrm", "pve-ha-crm", "pvescheduler", "pvestatd", "lxcfs"]);
 export const SERVICE_ACTIONS = ["start", "stop", "restart", "reload"] as const;
 

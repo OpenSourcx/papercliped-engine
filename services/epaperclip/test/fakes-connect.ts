@@ -34,7 +34,9 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   const plugins = new Map<string, Json>([["pl-preexisting", { id: "pl-preexisting", pluginKey: "legacy.thing", status: "ready", packageName: "legacy-thing", version: "0.1.0" }]]);
   const pluginCalls: { method: string; url: string; body: Json }[] = [];
   const aiConnections: Json[] = [];
-  const loginMode = { raw: null as null | ((id: string, polls: number) => Json) };
+  /** Test controls: hold the start open, drop its connection after creating the session, and what the engine was told to cancel. */
+  const loginCtl = { gate: null as null | Promise<void>, dropStart: false, cancels: [] as string[] };
+  const loginMode = { raw: null as null | ((id: string, polls: number) => Json), startStatus: null as null | number };
   const server: Server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -123,6 +125,10 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       }
       return send(200, { connections: aiConnections });
     }
+    if ((m = p.match(/^\/api\/companies\/([\w-]+)\/setup-token-login-sessions\/active$/)) && req.method === "GET") {
+      const live = [...logins.values()].filter((l) => !loginCtl.cancels.includes(l.id as string));
+      return live.length ? send(200, { id: live[live.length - 1].id, status: "starting" }) : send(404, { error: "No such session" });
+    }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/(?:adapters\/[\w-]+\/login-sessions|setup-token-login-sessions)(?:\/([\w-]+))?(\/prompt|\/code|\/cancel)?$/))) {
       if (!inCompany(m[1])) return send(403, { error: "Not a member" });
       if (req.method === "POST" && !m[2]) {
@@ -130,13 +136,17 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
         const b = body();
         if (p.includes("setup-token-login-sessions") ? b.adapterType !== "claude_local" : "adapterType" in b) return send(400, { error: "The login start request is invalid." });
         if (p.includes("/adapters/claude_local/login-sessions")) return send(400, { error: 'Adapter "claude_local" does not support a device login.' });
+        if (loginCtl.gate) await loginCtl.gate;
+        // Like the engine on a secret-touching route: a provider failure is a bare 500.
+        if (loginMode.startStatus) return send(loginMode.startStatus, { error: "Internal server error" });
         const id = `ls${logins.size + 1}`;
         logins.set(id, { id, polls: 0, body: body() });
+        if (loginCtl.dropStart) return void res.destroy();
         return send(201, { id, status: "starting" });
       }
       const l = logins.get(m[2] ?? "");
       if (!l) return send(404, { error: "No such session" });
-      if (m[3] === "/cancel") return send(200, { ok: true });
+      if (m[3] === "/cancel") return loginCtl.cancels.push(l.id as string), send(200, { ok: true });
       if (m[3] === "/code") return send(200, { id: l.id, status: "completed", echoed: body().browserCode });
       l.polls++;
       if (loginMode.raw) return send(200, loginMode.raw(l.id, l.polls));
@@ -177,7 +187,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, issues, agents, approvals, seen, logins, adapters, adapterCalls, plugins, pluginCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+  return { url, issues, agents, approvals, seen, logins, loginCtl, adapters, adapterCalls, plugins, pluginCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 export const pkce = () => {
@@ -201,7 +211,7 @@ export interface ConnectApp extends Awaited<ReturnType<typeof buildApp>> {
   closeAll(): Promise<void>;
 }
 
-export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string> } = {}): Promise<ConnectApp> {
+export async function startConnectApp(o: { staticDir?: string | null; providers?: (url: string, init: RequestInit) => Promise<Response>; market?: { url?: string; keys: TrustedKey[] }; fetchText?: (url: string) => Promise<string>; pveExtra?: (base: Transport) => Transport } = {}): Promise<ConnectApp> {
   const eng = await fakeEngine();
   const overlay = await overlayEngine(eng);
   const installDir = mkdtempSync(join(tmpdir(), "epc-conn-inst-"));
@@ -213,10 +223,11 @@ export async function startConnectApp(o: { staticDir?: string | null; providers?
     const path = u.pathname.replace("/api2/json", "");
     const cfg = path.match(/^\/nodes\/pve\/(lxc|qemu)\/(\d+)\/config$/);
     if (cfg && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: { cores: 2, memory: 2048, hostname: "web", password: "hunter2", "ssh-public-keys": "ssh-rsa AAA" } }) });
+    if (path === "/pools/epc-co1" && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: { members: [{ type: "lxc", vmid: 301, maxcpu: 2, maxmem: 4 * 1024 ** 3 }, { type: "lxc", vmid: 302, maxcpu: 2, maxmem: 4 * 1024 ** 3 }, { type: "lxc", vmid: 300, template: 1, maxcpu: 2, maxmem: 4 * 1024 ** 3 }, { type: "storage", storage: "local" }] } }) });
     if (path === "/cluster/status" && req.method === "GET") return Promise.resolve({ status: 200, body: JSON.stringify({ data: [{ type: "node", name: "pve", online: 1, local: 1, ip: "10.0.0.2" }] }) });
     return base(req);
   };
-  const app = await buildApp({ engine: { url: overlay.url, publicUrl: eng.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: extras, market: o.market, fetchText: o.fetchText });
+  const app = await buildApp({ engine: { url: overlay.url, publicUrl: eng.url, installDir, sleep: async () => {} }, staticDir: o.staticDir, providers: o.providers, pveTransport: o.pveExtra ? (b) => o.pveExtra!(extras(b)) : extras, market: o.market, fetchText: o.fetchText });
   const sam = await app.signIn("sam");
   await until(() => eng.st.admins.size >= 1);
   const lee = await app.signIn("lee");

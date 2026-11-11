@@ -62,7 +62,7 @@ export function Machines() {
       {list.length === 0 ? (
         <Card><EmptyState icon={<Box className="h-5 w-5" />} title={q || filter !== "all" ? "No machines match" : "No machines here"} body={q || filter !== "all" ? "Try a different search or filter." : org ? `${org.name}'s agents start containers in its resource group when they work.` : "Create a machine to get started."} action={!q && filter === "all" && !org ? <Button variant="primary" onClick={() => nav("?modal=new-machine")}><Plus className="h-4 w-4" />New machine</Button> : undefined} /></Card>
       ) : (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {list.map((g) => {
             const owner = data.orgs.find((o) => o.slug === g.org);
             return (

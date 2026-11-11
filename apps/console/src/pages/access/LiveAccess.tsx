@@ -5,6 +5,7 @@ import { access } from "../../data/engine/access.ts";
 import { GroupsTab, MemberPicker } from "./GroupsTab.tsx";
 import { AuditTab } from "./AuditTab.tsx";
 import { ExplorerTab } from "./ExplorerTab.tsx";
+import { OrgAccess } from "./OrgAccess.tsx";
 import { PeopleToolsTab } from "./PeopleToolsTab.tsx";
 import { PolicyTab } from "./PolicyTab.tsx";
 import { PlanView } from "./ChangePreview.tsx";
@@ -286,6 +287,7 @@ function UsersTab() {
         <>
           {!data.canManageUsers && <p className="text-compact text-ink-3 mb-4 flex items-center gap-2"><Lock className="h-4 w-4" />Your Proxmox account can't manage users, so this list is read-only.</p>}
           <Warnings items={[...data.warnings, ...notes]} />
+          <OrgAccess overview={data} />
           {data.users.length === 0 ? (
             <EmptyState icon={<ShieldCheck className="h-5 w-5" />} title="No users" body="Proxmox didn't list any users for your account." />
           ) : (

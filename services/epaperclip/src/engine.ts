@@ -27,6 +27,9 @@ import type { StateStore } from "./state.ts";
  * kept in memory per Proxmox user (they last a week) and shared by that user's browser sessions.
  */
 
+/** How long a cached "is an engine instance admin" answer is trusted before the engine is asked again. */
+const ADMIN_RECHECK_MS = 10 * 60_000;
+
 export const MANAGED_DOMAIN = "epaperclip.invalid";
 export const SERVICE_EMAIL = `system@${MANAGED_DOMAIN}`;
 
@@ -164,6 +167,13 @@ const closeCode = (code: number, fromEngine: boolean) => (code === 1000 || (code
 export interface ForwardHooks {
   inspect?: (method: string, path: string, body: Buffer | null) => void;
   after?: (method: string, path: string, status: number) => void;
+}
+
+/** The engine's own words for a server error, when it gave some. Its generic "Internal server error" says nothing, and anything token-shaped is dropped. */
+export function engineFailure(status: number, msg: unknown): HttpError {
+  const text = typeof msg === "string" ? msg.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  const usable = text && !/^internal server error\.?$/i.test(text) && !/(sk-[\w-]{8,}|bearer\s+\S+|eyJ[\w-]{10,}|(token|secret|password|key)\s*[=:]\s*\S+)/i.test(text);
+  return new HttpError(502, "engine_error", usable ? `The engine answered ${status}: ${text}` : `The engine answered ${status}`);
 }
 
 export class EngineGateway {
@@ -433,15 +443,39 @@ export class EngineGateway {
    */
   async syncAdmin(s: Session, nodeAdmin: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
     await this.loginFor(s);
-    return this.syncAdminUser(s.username, nodeAdmin);
+    // The cached flag is only trusted for ten minutes: after that, ask the engine, so an engine-side change is repaired.
+    const checked = this.state.getSetting<Record<string, number>>("engine.adminsCheckedAt") ?? {};
+    const believed = Boolean((this.state.getSetting<Record<string, boolean>>("engine.admins") ?? {})[s.username]);
+    let actual: boolean | undefined;
+    if (believed === nodeAdmin && this.now() - (checked[s.username] ?? 0) > ADMIN_RECHECK_MS) actual = (await this.me(s).catch(() => null))?.isInstanceAdmin;
+    return this.syncAdminUser(s.username, nodeAdmin, actual);
+  }
+
+  /** Forgets a deleted Proxmox user's engine session and administrator flag (their account and vault secret stay, so a user created again under the same name gets the same account back). */
+  forgetUser(username: string) {
+    this.logins.delete(username);
+    this.loginFlights.delete(username);
+    const admins = { ...(this.state.getSetting<Record<string, boolean>>("engine.admins") ?? {}) };
+    if (username in admins) {
+      delete admins[username];
+      this.state.setSetting("engine.admins", admins);
+    }
   }
 
   /** The same, for any Proxmox user (access control calls it when an administrator changes someone's device role). */
-  async syncAdminUser(username: string, nodeAdmin: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
+  async syncAdminUser(username: string, nodeAdmin: boolean, actual?: boolean): Promise<"promoted" | "demoted" | "unchanged" | "unavailable"> {
     const userId = await this.accountId(username).catch(() => null);
     if (!userId) return "unavailable";
     const admins = this.state.getSetting<Record<string, boolean>>("engine.admins") ?? {};
-    if (Boolean(admins[username]) === nodeAdmin) return "unchanged";
+    // `actual` is what the engine itself says (when it was asked); it replaces the cached belief.
+    if (actual !== undefined) {
+      this.state.setSetting("engine.adminsCheckedAt", { ...(this.state.getSetting<Record<string, number>>("engine.adminsCheckedAt") ?? {}), [username]: this.now() });
+      admins[username] = actual;
+    }
+    if (Boolean(admins[username]) === nodeAdmin) {
+      if (actual !== undefined) this.state.setSetting("engine.admins", admins);
+      return "unchanged";
+    }
     let svc = await this.serviceSession();
     if (!svc) return "unavailable";
     const path = `/api/admin/users/${encodeURIComponent(userId)}/${nodeAdmin ? "promote" : "demote"}-instance-admin`;
@@ -453,6 +487,7 @@ export class EngineGateway {
     }
     if (r.status < 200 || r.status >= 300) throw new HttpError(502, "engine_error", `The engine refused to ${nodeAdmin ? "make" : "remove"} ${username} ${nodeAdmin ? "an" : "as"} administrator (${r.status}).`);
     this.state.setSetting("engine.admins", { ...admins, [username]: nodeAdmin });
+    this.state.setSetting("engine.adminsCheckedAt", { ...(this.state.getSetting<Record<string, number>>("engine.adminsCheckedAt") ?? {}), [username]: this.now() });
     return nodeAdmin ? "promoted" : "demoted";
   }
 
@@ -487,7 +522,7 @@ export class EngineGateway {
     if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
     if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
     if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
-    throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+    throw engineFailure(r.status, msg);
   }
 
   /** Turns an engine answer into data or a clear HttpError. */
@@ -497,7 +532,7 @@ export class EngineGateway {
     if (r.status === 403) throw new HttpError(403, "forbidden", msg ?? "The engine says you don't have access to this");
     if (r.status === 404) throw new HttpError(404, "not_found", msg ?? "Not found in the engine");
     if (r.status === 400 || r.status === 409 || r.status === 422) throw new HttpError(r.status, "engine_rejected", msg ?? `The engine refused this (${r.status})`);
-    throw new HttpError(502, "engine_error", `The engine answered ${r.status}`);
+    throw engineFailure(r.status, msg);
   }
 
   /**

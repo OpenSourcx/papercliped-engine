@@ -12,6 +12,9 @@ export function realNetInfo(customUrl: string | null): NetInfo {
     }
   };
   const interfaces: NetInfo["interfaces"] = [];
-  for (const [name, list] of Object.entries(networkInterfaces())) for (const a of list ?? []) if (!a.internal) interfaces.push({ name, address: a.address, family: a.family as "IPv4" | "IPv6" });
+  // A hardened unit (no netlink) makes os.networkInterfaces() throw ERR_SYSTEM_ERROR; that is "no addresses known", not a failed request (ERR-CON-003).
+  let nics: ReturnType<typeof networkInterfaces> = {};
+  try { nics = networkInterfaces(); } catch { /* none */ }
+  for (const [name, list] of Object.entries(nics)) for (const a of list ?? []) if (!a.internal) interfaces.push({ name, address: a.address, family: a.family as "IPv4" | "IPv6" });
   return { tailscaleStatus: run(["status", "--json"]), tailscaleIp: run(["ip", "-4"])?.split("\n")[0]?.trim() || null, interfaces, customUrl };
 }

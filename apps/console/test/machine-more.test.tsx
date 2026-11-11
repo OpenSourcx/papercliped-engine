@@ -312,6 +312,12 @@ describe("power, console, snapshots, clone and delete", () => {
     expect(go.disabled).toBe(false);
   });
 
+  it("the machines grid is one shrinkable column on a phone, so the page never scrolls sideways (ERR-CON-004)", () => {
+    const { container } = page("/pve/machines", <Machines />, "/pve/machines");
+    const grid = container.querySelector(".grid.gap-4");
+    expect(grid?.className).toContain("grid-cols-1");
+  });
+
   it("the machines list filters by kind and tag", async () => {
     page("/pve/machines", <Machines />, "/pve/machines");
     type(screen.getByLabelText("Show kind of machine"), "lxc");

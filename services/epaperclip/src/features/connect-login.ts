@@ -7,6 +7,7 @@ import { appendAudit } from "./access-tokens.ts";
 import { connectionsOf } from "./connect-connections.ts";
 import { RateWindow, cleanText } from "./connect-util.ts";
 import type { FeatureCtx } from "./index.ts";
+import { explainOrgQuota } from "../org-quota.ts";
 
 /**
  * Agents' model access, per organization (docs/CONNECTORS.md):
@@ -139,7 +140,11 @@ interface Tracked {
   provider: string;
   flow: LoginView["flow"];
   at: number;
+  /** What the person last saw once the sign-in ended; the engine forgets a finished session after a minute. */
+  final?: { view: LoginView; at: number };
 }
+/** How long the host keeps the end of a sign-in it tracked (the engine keeps it 60 s). */
+const FINAL_MS = 15 * 60_000;
 // Sign-ins in progress and start limits, per host service (found through its state store).
 /**
  * A start that is still waiting for the engine. The engine clones and boots a sandbox before it answers, which can
@@ -154,6 +159,8 @@ interface Pending {
   flow: LoginView["flow"];
   at: number;
   status: "starting" | "started" | "failed";
+  /** The person cancelled before the engine answered; the session it starts must be cancelled, not abandoned. */
+  cancelled?: boolean;
   login?: LoginView;
   message?: string;
 }
@@ -283,7 +290,7 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       const limiter = startLimit.get(s.username) ?? new RateWindow(5, 10 * 60_000, ctx.now);
       startLimit.set(s.username, limiter);
       if (!limiter.take(companyId)) throw new E(429, "rate_limited", "Too many sign-in attempts. Wait a few minutes.");
-      for (const [id, t] of tracked) if (ctx.now() - t.at > 24 * 3600_000) tracked.delete(id);
+      for (const [id, t] of tracked) if (t.final ? ctx.now() - t.final.at > FINAL_MS : ctx.now() - t.at > 24 * 3600_000) tracked.delete(id);
       // The organization's container environment: where the login runs. Never the host.
       const envs = await gw.userJson<{ id: string; driver?: string; status?: string; metadata?: { epaperclip?: string; companyId?: string } | null }[]>(s, "GET", `/api/companies/${enc(companyId)}/environments`);
       const env = (Array.isArray(envs) ? envs : []).find((e) => e?.driver === "sandbox" && e.status !== "archived" && e.metadata?.epaperclip === "agent-containers" && e.metadata?.companyId === companyId);
@@ -296,18 +303,34 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       for (const [id, p] of pending) if (ctx.now() - p.at > 30 * 60_000) pending.delete(id);
       // The engine clones and boots a sandbox before it answers (minutes on dir storage). Do that in the background
       // so a browser or proxy with a shorter request timeout still gets the attempt and can poll it.
+      // A session the host stops tracking is cancelled in the engine (or adopted through GET .../active and then cancelled);
+      // the engine allows one per owner, so an orphan would make every retry a 429 until its 5-minute timer ends.
+      const cancelInEngine = (id: string) => gw.userJson<unknown>(s, "POST", `${root(flow, spec.adapter)}/${enc(id)}/cancel`, {}).then(() => undefined, () => undefined);
+      const root = (f: LoginView["flow"], adapter: string) => (f === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions` : `/api/companies/${enc(companyId)}/adapters/${adapter}/login-sessions`);
+      const adoptAndCancel = async () => {
+        if (flow !== "setup-token") return;
+        const raw = await gw.userJson<unknown>(s, "GET", `${root(flow, spec.adapter)}/active`).catch(() => null);
+        const id = raw ? sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" }).id : "";
+        if (id && SESSION.test(id) && !tracked.has(id)) await cancelInEngine(id);
+      };
       void (async () => {
         try {
           const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) }, { timeoutMs: 360_000 });
           const view = sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" });
           if (!view.id || !SESSION.test(view.id)) throw new Error("The engine started a sign-in but didn't say which. Check the engine.");
+          if (attempt.cancelled) return void (await cancelInEngine(view.id));
           tracked.set(view.id, { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now() });
           attempt.login = view;
           attempt.status = "started";
           audit(ctx, "connection.login.start", `${spec.provider} -> ${companyId}`, flow);
         } catch (e) {
           attempt.status = "failed";
-          attempt.message = e instanceof HttpError ? e.message : redact(cleanText(e instanceof Error ? e.message : "", 200)) ?? "The sign-in could not start.";
+          // The engine answers a failed container start with a bare 500 on this route. The host can say what is full.
+          const why = e instanceof HttpError && e.status >= 500 ? await ctx.asUser((pve) => explainOrgQuota(ctx.state, pve, companyId)).catch(() => null) : null;
+          attempt.message = why ?? (e instanceof HttpError ? e.message : redact(cleanText(e instanceof Error ? e.message : "", 200)) ?? "The sign-in could not start.");
+          // A timeout or a start without an id may have left a live session behind. An answer from the engine (a refusal)
+          // means it holds nothing for us.
+          if (!(e instanceof HttpError) || e.status === 503) await adoptAndCancel();
         }
       })();
       return ctx.json(202, { login: pendingView(pid, attempt) }), true;
@@ -322,6 +345,7 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       }
       if (attempt.status === "starting" || !attempt.login) {
         if (ctx.method === "POST" && m[4] === "cancel") {
+          attempt.cancelled = true;
           pending.delete(m[3]!);
           return ctx.json(200, { ok: true }), true;
         }
@@ -333,6 +357,12 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
     }
     const t = m[3] ? tracked.get(m[3]) : undefined;
     if (!t || t.user !== s.username || t.companyId !== companyId) throw new E(404, "not_found", "No such sign-in. Start again.");
+    if (t.final && ctx.now() - t.final.at > FINAL_MS) {
+      tracked.delete(m[3]!);
+      throw new E(404, "not_found", "No such sign-in. Start again.");
+    }
+    // The end of a sign-in is remembered, so a console that polls after the engine has purged it still sees the outcome.
+    if (t.final && ctx.method === "GET" && !m[4]) return ctx.json(200, { login: t.final.view }), true;
     const base = t.flow === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions/${enc(m[3]!)}` : `/api/companies/${enc(companyId)}/adapters/${t.adapter}/login-sessions/${enc(m[3]!)}`;
     const seen = (raw: unknown) => sanitizeLogin(raw, { adapter: t.adapter, provider: t.provider, flow: t.flow, fallbackId: m[3]! });
     if (ctx.method === "GET" && !m[4]) {
@@ -344,7 +374,7 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
         const p = seen(raw);
         view = { ...view, verificationUrl: p.verificationUrl, userCode: p.userCode ?? view.userCode, message: p.message ?? view.message };
       }
-      if (view.done || view.failed) tracked.delete(m[3]!);
+      if (view.done || view.failed) t.final = { view, at: ctx.now() };
       if (view.done) audit(ctx, "connection.login.done", `${t.provider} -> ${companyId}`);
       return ctx.json(200, { login: view }), true;
     }

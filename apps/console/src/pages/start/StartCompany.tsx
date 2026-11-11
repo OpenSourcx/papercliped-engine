@@ -19,6 +19,7 @@ import { Avatar, Button, Chip, Field, IconButton, Input, Notice, Spinner } from 
 import { textareaClass } from "../org/live/common.tsx";
 import { ApiKeyModal, HARNESSES, InlineSignIn, type Harness } from "../AgentSignIn.tsx";
 import { BrandMark } from "../../ui/BrandMark.tsx";
+import { PinFieldPanel } from "../../ui/PinField.tsx";
 import { SizeChoice } from "./SizeChoice.tsx";
 
 /**
@@ -153,6 +154,7 @@ export function StartCompany({ onClose }: { onClose: () => void }) {
   return createPortal(
     // Settings opened from a step shows over the wizard; the wizard steps aside, keeps its state, and comes back on close.
     <div hidden={modals.settings !== null} className="fixed inset-0 z-(--z-fullscreen) bg-bg overflow-y-auto" role="region" aria-label="Start a company">
+      <PinFieldPanel />
       <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
         <div className="flex items-center justify-between">
           <ol className="flex items-center gap-2" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
@@ -197,7 +199,7 @@ function NameStep({ c }: { c: Ctx }) {
     }
   };
   return (
-    <Screen title="What is the name of your organization?" next={{ label: "Continue", onClick: next, disabled: !name.trim() || !!dupe || !!blocked, loading: busy }} onBack={null}>
+    <Screen title="What is the name of your organization?" next={{ label: "Continue", onClick: next, disabled: !name.trim() || !!dupe || !!blocked, reason: blocked ?? (!name.trim() ? "Enter a name for the organization to continue." : dupe ? "An organization with that name already exists. Choose another name." : undefined), loading: busy }} onBack={null}>
       {blocked && <Notice tone="warning">{blocked}</Notice>}
       {containers.data && containers.data.state !== "ready" && (
         <Notice tone="warning" title="Agent containers aren't set up yet" action={containers.data.canManage ? <Button size="sm" onClick={() => modals.selectSection("agent-containers")}>Set up</Button> : undefined}>
@@ -208,7 +210,7 @@ function NameStep({ c }: { c: Ctx }) {
         <Input id="org-name" autoFocus size="lg" disabled={!!draft.company} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void next()} placeholder="e.g. Northwind Labs" />
       </Field>
       <Field label="What is it for? (optional)" htmlFor="org-mission" hint="It becomes the organization's mission, its first goal.">
-        <textarea id="org-mission" rows={3} value={draft.mission} onChange={(e) => patch({ mission: e.target.value })} className={textareaClass} placeholder="Build the best invoicing tool for small studios" />
+        <textarea id="org-mission" rows={3} value={draft.mission} onChange={(e) => patch({ mission: e.target.value })} className={textareaClass} placeholder="e.g. Build the best invoicing tool for small studios" />
       </Field>
       <SizeChoice device={device} host={eng.host} suggested={suggested} pinDecides={pinDecides} onPinDecides={setPinDecides} size={size} onSize={setSize} />
       {error && <p role="alert" className="text-compact text-critical">{error}</p>}
@@ -262,7 +264,7 @@ function CeoStep({ c }: { c: Ctx }) {
     </button>
   );
   return (
-    <Screen title="Create your first agent" subtitle="The CEO leads the organization: it plans the work and hires the rest of the team." onBack={() => patch({ step: "name" })} next={{ label: "Next", onClick: next, disabled: !draft.ceoName.trim(), loading: busy }}>
+    <Screen title="Create your first agent" subtitle="The CEO leads the organization: it plans the work and hires the rest of the team." onBack={() => patch({ step: "name" })} next={{ label: "Next", onClick: next, disabled: !draft.ceoName.trim(), reason: "Give the agent a name to continue. The grey text in the field is only an example.", loading: busy }}>
       <div role="radiogroup" aria-label="How to create the CEO" className="flex flex-col sm:flex-row gap-3">
         {choice("me", <UserPlus className="h-4 w-4" />, "Create it myself", "Name your first agent.")}
         {choice("pin", <Sparkles className="h-4 w-4 text-accent" />, "Let Pin create it", pinReady ? "Pin drafts a name and a role from what the organization is for. You review it." : "Pin needs a model first: choose one on the Pin page. You can name the CEO yourself now.", !pinReady)}
@@ -275,8 +277,8 @@ function CeoStep({ c }: { c: Ctx }) {
       )}
       {(mode === "me" || draft.ceoName) && (
         <>
-          <Field label="Agent name" htmlFor="ceo-name"><Input id="ceo-name" size="lg" autoFocus={mode === "me"} value={draft.ceoName} onChange={(e) => patch({ ceoName: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void next()} placeholder="e.g. Chief of staff" /></Field>
-          <Field label="Role (optional)" htmlFor="ceo-title" hint="What it is called in the organization chart."><Input id="ceo-title" value={draft.ceoTitle} onChange={(e) => patch({ ceoTitle: e.target.value })} placeholder="Chief of staff" /></Field>
+          <Field label="Agent name" htmlFor="ceo-name"><Input id="ceo-name" size="lg" autoFocus={mode === "me"} value={draft.ceoName} onChange={(e) => patch({ ceoName: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void next()} placeholder="e.g. Ada" /></Field>
+          <Field label="Role (optional)" htmlFor="ceo-title" hint="Optional. Shown under the name in the organization chart."><Input id="ceo-title" value={draft.ceoTitle} onChange={(e) => patch({ ceoTitle: e.target.value })} placeholder="e.g. Chief of staff" /></Field>
         </>
       )}
       {warning && <Notice tone="warning">{warning}</Notice>}
@@ -431,10 +433,10 @@ function TaskStep({ c }: { c: Ctx }) {
     return null;
   };
   return (
-    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. It waits for the agent until its model and container are ready." onBack={() => patch({ step: "model" })} next={{ label: "Create task", onClick: () => void launch(true), disabled: !text.trim(), loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
+    <Screen title={`What should ${draft.ceoName || "your CEO"} do first?`} subtitle="The first line is the task's title; the rest is the brief. It waits for the agent until its model and container are ready." onBack={() => patch({ step: "model" })} next={{ label: "Create task", onClick: () => void launch(true), disabled: !text.trim(), reason: "Write the first task to create it, or choose Skip for now.", loading: busy }} secondary={{ label: "Skip for now", onClick: () => void launch(false) }} avatar={draft.ceoName}>
       {readinessNotice()}
       <Field label="First task" htmlFor="first-task">
-        <textarea id="first-task" autoFocus rows={5} value={text} onChange={(e) => patch({ firstTask: e.target.value })} className={textareaClass} placeholder={"Plan the first week\nPropose a plan and the team we need."} />
+        <textarea id="first-task" autoFocus rows={5} value={text} onChange={(e) => patch({ firstTask: e.target.value })} className={textareaClass} placeholder={"e.g. Plan the first week\nPropose a plan and the team we need."} />
       </Field>
       {error && <p role="alert" className="text-compact text-critical">{error}</p>}
     </Screen>
@@ -443,7 +445,7 @@ function TaskStep({ c }: { c: Ctx }) {
 
 
 
-function Screen({ title, subtitle, children, onBack, next, secondary, avatar }: { title: string; subtitle?: string; children: ReactNode; onBack: (() => void) | null; next: { label: string; onClick: () => void; disabled?: boolean; loading?: boolean; variant?: "primary" | "secondary" }; secondary?: { label: string; onClick: () => void }; avatar?: string }) {
+function Screen({ title, subtitle, children, onBack, next, secondary, avatar }: { title: string; subtitle?: string; children: ReactNode; onBack: (() => void) | null; next: { label: string; onClick: () => void; disabled?: boolean; /** Shown under the buttons and as the disabled button's tooltip while it is disabled. */ reason?: string; loading?: boolean; variant?: "primary" | "secondary" }; secondary?: { label: string; onClick: () => void }; avatar?: string }) {
   return (
     <div className="mt-14 flex flex-col gap-5">
       {avatar ? <div className="flex flex-col items-center gap-2"><Avatar name={avatar} hue={hue(avatar)} size={64} /><span className="text-compact font-medium">{avatar}</span></div> : null}
@@ -452,13 +454,14 @@ function Screen({ title, subtitle, children, onBack, next, secondary, avatar }: 
         {subtitle && <p className="text-body text-ink-3 mt-2 text-pretty">{subtitle}</p>}
       </div>
       <div className="flex flex-col gap-4">{children}</div>
-      <div className="flex items-center justify-between gap-3 pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         {onBack ? <Button variant="ghost" disabled={next.loading} onClick={onBack}><ArrowLeft className="h-4 w-4" />Back</Button> : <span />}
         <div className="flex items-center gap-2">
           {secondary && <Button variant="ghost" disabled={next.loading} onClick={secondary.onClick}>{secondary.label}</Button>}
-          <Button variant={next.variant ?? "primary"} onClick={next.onClick} disabled={next.disabled} loading={next.loading}>{next.label}<ArrowRight className="h-4 w-4" /></Button>
+          <Button variant={next.variant ?? "primary"} onClick={next.onClick} disabled={next.disabled} disabledReason={next.reason} aria-describedby={next.disabled && next.reason ? "step-reason" : undefined} loading={next.loading}>{next.label}<ArrowRight className="h-4 w-4" /></Button>
         </div>
       </div>
+      {next.disabled && next.reason && !next.loading && <p id="step-reason" role="status" className="text-compact text-ink-2 text-right text-pretty -mt-3">{next.reason}</p>}
     </div>
   );
 }

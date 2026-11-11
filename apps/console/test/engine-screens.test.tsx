@@ -31,12 +31,21 @@ describe("chat", () => {
   it("says it is switched off, and lets an administrator turn it on", async () => {
     let on = false;
     state.routes["GET /engine/api/companies/c1/chats"] = () => (on ? [200, []] : [404, { error: "Agent Chat is disabled" }]);
+    state.routes["GET /engine/api/instance/settings/experimental"] = () => [200, { enableAgentChat: on }];
     state.routes["PATCH /engine/api/instance/settings/experimental"] = () => { on = true; return [200, { enableAgentChat: true }]; };
     renderOrg("/pve/acme/chat");
     expect(await screen.findByText("Chat is switched off")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Turn on chat" }));
     await waitFor(() => expect(callsTo("PATCH", "/engine/api/instance/settings/experimental")[0]?.body).toEqual({ enableAgentChat: true }));
     expect(await screen.findByText("Pick an agent")).toBeTruthy();
+  });
+
+  it("does not list chats while the engine setting is off (LiveChat), and shows the switched-off page", async () => {
+    state.routes["GET /engine/api/instance/settings/experimental"] = () => [200, { enableAgentChat: false }];
+    state.routes["GET /engine/api/companies/c1/chats"] = () => [200, []];
+    renderOrg("/pve/acme/chat");
+    expect(await screen.findByText("Chat is switched off")).toBeTruthy();
+    expect(callsTo("GET", "/engine/api/companies/c1/chats")).toHaveLength(0);
   });
 
   it("opens the conversation on the first message and sends it with a request id", async () => {

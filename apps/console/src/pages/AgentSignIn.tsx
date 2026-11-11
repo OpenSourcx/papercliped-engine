@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Check, ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { LOGIN_ADAPTERS, type LoginAdapter, type LoginSession } from "@papercliped-engine/engine-client";
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { useModals } from "../modals/useModals.ts";
 import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
+import { failureCode, signInFailureHelp } from "../data/engine/signInHelp.ts";
 import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
 import { Button, Card, Chip, Field, Input, Notice, PageFrame, PageHeader, Select, Spinner } from "../ui/primitives.tsx";
@@ -113,12 +115,19 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
         <p className="text-compact text-ink-3 mt-0.5 text-pretty">{h.how}</p>
       </div>
       <Button size="sm" variant="ghost" onClick={onKey}><KeyRound className="h-4 w-4" />Use an API key</Button>
-      {adapter && <Button size="sm" disabled={!environmentId} title={environmentId ? undefined : "This organization has no agent container yet"} onClick={() => onSignIn(adapter)}>{signed ? "Sign in again" : "Sign in"}</Button>}
+      {adapter && <Button size="sm" disabled={!environmentId} disabledReason={environmentId ? undefined : "This organization has no agent container yet"} onClick={() => onSignIn(adapter)}>{signed ? "Sign in again" : "Sign in"}</Button>}
     </div>
   );
 }
 
 const SPIN_MS = 2000;
+
+/** Where the organization's machines are listed, so a full resource group has a way forward. */
+function useMachinesHref(companyId: string): string | undefined {
+  const { data, setup } = useEngine() as { data?: { orgs?: { slug: string; engine?: { companyId: string } }[] }; setup?: { deviceName?: string } };
+  const o = data?.orgs?.find((x) => x.engine?.companyId === companyId);
+  return o ? `/${setup?.deviceName ?? "pve"}/${o.slug}/machines` : undefined;
+}
 
 type SignInState = ReturnType<typeof useSignInSession>;
 
@@ -134,6 +143,7 @@ function useSignInSession({ companyId, adapter, environmentId, onDone }: { compa
   const [address, setAddress] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [done, setDone] = useState(false);
   const live = useRef<{ id: string | null; over: boolean }>({ id: null, over: false });
@@ -144,6 +154,8 @@ function useSignInSession({ companyId, adapter, environmentId, onDone }: { compa
     setAddress(null);
     setCode("");
     setError(null);
+    setErrorCode(null);
+    setErrorCode(null);
     setSubmitted(false);
     setDone(false);
     live.current = { id: null, over: false };
@@ -172,7 +184,7 @@ function useSignInSession({ companyId, adapter, environmentId, onDone }: { compa
           if (cur.status === "failed" || cur.status === "timed_out" || cur.status === "cancelled") { run.over = true; return; }
         }
       } catch (e) {
-        if (!stopped) setError(errorText(e));
+        if (!stopped) { setError(errorText(e)); setErrorCode(failureCode(e)); }
       }
     })();
     return () => {
@@ -186,23 +198,31 @@ function useSignInSession({ companyId, adapter, environmentId, onDone }: { compa
   const submit = async () => {
     if (!session) return;
     setError(null);
+    setErrorCode(null);
     try {
       await engine.agentAuth.claudeCode(companyId, session.sessionId, code.trim());
       setSubmitted(true);
     } catch (e) {
       setError(errorText(e));
+      setErrorCode(failureCode(e));
     }
   };
-  return { claude, session, code, setCode, error, submitted, done, ended, prompt, submit, restart: () => setAttempt((n) => n + 1) };
+  return { claude, session, code, setCode, error, errorCode, submitted, done, ended, prompt, submit, restart: () => setAttempt((n) => n + 1) };
 }
 
 /** What a sign-in shows: the steps while it runs, then "Signed in" or why it didn't finish. Shared by the dialog and the wizard. */
-function SignInBody({ s, name, org }: { s: SignInState; name: string; org: string }) {
-  const { claude, session, error, done, ended, prompt, code, setCode, submitted, submit } = s;
+function SignInBody({ s, name, org, machinesHref }: { s: SignInState; name: string; org: string; machinesHref?: string }) {
+  const { claude, session, error, errorCode, done, ended, prompt, code, setCode, submitted, submit } = s;
   const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
   return (
     <div className="space-y-4" aria-live="polite">
-      {error && <p role="alert" className="text-compact text-critical">{error}</p>}
+      {error && (
+        <Notice tone="critical" title="The sign-in couldn't start" action={<Button size="sm" onClick={s.restart}>Try again</Button>}>
+          <p>{error}</p>
+          <p className="mt-1.5 text-ink-3">{signInFailureHelp(error, errorCode)}</p>
+          {machinesHref && <p className="mt-1.5"><Link to={machinesHref} className="text-accent">See {org}'s machines</Link></p>}
+        </Notice>
+      )}
       {done && <Notice tone="good" title="Signed in">{org}'s agents can use this {name} account. It's kept as a secret; nobody can read it back.</Notice>}
       {ended && <Notice tone="critical" title={session?.status === "timed_out" ? "That took too long" : "The sign-in didn't finish"}>{session?.failure?.message ?? "Close this and try again."}</Notice>}
       {!done && !ended && !error && !prompt && <p className="text-compact text-ink-2 flex items-center gap-2"><Spinner />Starting a sign-in in the container…</p>}
@@ -232,10 +252,11 @@ function SignInBody({ s, name, org }: { s: SignInState; name: string; org: strin
 export function SignInModal({ companyId, org, adapter, environmentId, onClose, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onClose: () => void; onDone?: () => void }) {
   const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
   const s = useSignInSession({ companyId, adapter, environmentId, onDone });
+  const machinesHref = useMachinesHref(companyId);
   return (
     <Modal title={`Sign in to ${name}`} subtitle={`For the agents in ${org}.`} icon={<LogIn className="h-5 w-5" />} onClose={onClose} size="sm"
       footer={<Button variant={s.done ? "primary" : "ghost"} onClick={onClose}>{s.done ? "Done" : "Cancel"}</Button>}>
-      <SignInBody s={s} name={name} org={org} />
+      <SignInBody s={s} name={name} org={org} machinesHref={machinesHref} />
     </Modal>
   );
 }
@@ -244,9 +265,10 @@ export function SignInModal({ companyId, org, adapter, environmentId, onClose, o
 export function InlineSignIn({ companyId, org, adapter, environmentId, onDone }: { companyId: string; org: string; adapter: LoginAdapter; environmentId: string; onDone?: () => void }) {
   const name = HARNESSES.find((h) => h.adapter === adapter)!.name;
   const s = useSignInSession({ companyId, adapter, environmentId, onDone });
+  const machinesHref = useMachinesHref(companyId);
   return (
     <div className="rounded-xl border border-line bg-surface-2 p-4 space-y-3" data-testid="inline-sign-in">
-      <SignInBody s={s} name={name} org={org} />
+      <SignInBody s={s} name={name} org={org} machinesHref={machinesHref} />
       {!s.done && <button type="button" onClick={s.restart} className="text-compact text-ink-3 underline underline-offset-2 hover:text-ink transition-control">Start sign-in again</button>}
     </div>
   );

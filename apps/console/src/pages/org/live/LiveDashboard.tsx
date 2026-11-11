@@ -136,7 +136,7 @@ export function LiveDashboard() {
   return (
     <PageFrame width="6xl">
       <PageHeader
-        eyebrow={<Link to={`/${device}/home`} className="hover:text-ink">{device}</Link>}
+        eyebrow={<Link to={`/${device}/home`} className="tap-link hover:text-ink">{device}</Link>}
         title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
         subtitle={<>{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-compact ml-3 font-mono">{org.engine?.prefix}</span></>}
       />
@@ -175,7 +175,7 @@ export function LiveDashboard() {
             <div className="divide-y divide-line">
               {live.length === 0 && <p className="text-sm text-ink-3 py-2">No agents yet. <Link className="text-accent hover:underline" to={`${b}/agents?new=1`}>Create one</Link>.</p>}
               {live.slice(0, 6).map((a) => {
-                const [kind, label] = agentStatusOf(a.status);
+                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
                 return (
                   <Link key={a.id} to={`${b}/agents/${a.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-2/40 -mx-2 px-2 rounded-md">
                     <Avatar name={a.name} hue={org.hue + 40} size={32} />

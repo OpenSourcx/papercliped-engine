@@ -63,6 +63,7 @@ describe("services", () => {
     handlers["GET /api/node/services"] = () => ({ node: "pve", services: [
       { service: "chrony", name: "chrony", description: "time", state: "running", activeState: "active", unitState: "enabled", canControl: true },
       { service: "sshd", name: "sshd", description: "ssh", state: "running", activeState: "active", unitState: "enabled", canControl: true },
+      { service: "pveproxy", name: "pveproxy", description: "api", state: "running", activeState: "active", unitState: "enabled", canControl: true, canStop: false },
       { service: "postfix", name: "postfix", description: "mail", state: "dead", activeState: "inactive", unitState: "enabled", canControl: true },
     ] });
     handlers["POST /api/node/services/chrony/restart"] = () => ({ task: "UPID:pve:1:1:1:srvrestart::sam@pve:" });
@@ -76,6 +77,13 @@ describe("services", () => {
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Restart" }));
     await waitFor(() => expect(posted("POST", "/api/node/services/chrony/restart")).toHaveLength(1));
     expect(await screen.findByText(/Restart sent to chrony/)).toBeTruthy();
+  });
+
+  it("disables Stop, with a reason, for a service Proxmox will not let you stop (ERR-PVE-005)", async () => {
+    wrap(<ServicesPage />);
+    const stop = (await screen.findByLabelText("Stop pveproxy")) as HTMLButtonElement;
+    expect(stop.disabled).toBe(true);
+    expect(stop.title).toMatch(/only be restarted/);
   });
 
   it("makes you type the name before stopping a service the device depends on", async () => {

@@ -65,7 +65,7 @@ function ServicesBody() {
                             {!up && <Button size="sm" onClick={() => go(s, "start")} disabled={run.isPending} aria-label={`Start ${s.service}`}><Play className="h-4 w-4" />Start</Button>}
                             {up && <Button size="sm" onClick={() => go(s, "restart")} disabled={run.isPending} aria-label={`Restart ${s.service}`}><RotateCw className="h-4 w-4" />Restart</Button>}
                             {up && <Button size="sm" onClick={() => go(s, "reload")} disabled={run.isPending} aria-label={`Reload ${s.service}`}><RefreshCw className="h-4 w-4" />Reload</Button>}
-                            {up && <Button size="sm" variant="danger" onClick={() => go(s, "stop")} disabled={run.isPending} aria-label={`Stop ${s.service}`}><Square className="h-4 w-4" />Stop</Button>}
+                            {up && <Button size="sm" variant="danger" onClick={() => go(s, "stop")} disabled={run.isPending || s.canStop === false} title={s.canStop === false ? "Proxmox needs this service to serve the console and the cluster, so it can only be restarted" : undefined} aria-label={`Stop ${s.service}`}><Square className="h-4 w-4" />Stop</Button>}
                           </div>
                         ) : <span className="text-xs text-ink-3">Managed by Proxmox</span>}
                       </td>

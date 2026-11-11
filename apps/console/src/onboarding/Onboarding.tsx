@@ -7,6 +7,7 @@ import type { PinMode, SetupState } from "../data/types.ts";
 import { cn, slugify } from "../lib/storage.ts";
 import { PinOrb } from "../pin/PinIsland.tsx";
 import { Toggle, controlClass } from "../ui/primitives.tsx";
+import { PinFieldPanel } from "../ui/PinField.tsx";
 
 const STEPS = 5;
 
@@ -18,6 +19,7 @@ function Shell({ step, title, subtitle, children, onBack }: { step: number; titl
   return (
     <div className="min-h-dvh relative flex flex-col items-center px-5">
       <div className="absolute inset-0 hero-glow opacity-60 pointer-events-none" aria-hidden />
+      <PinFieldPanel />
       <div className="relative w-full max-w-[480px] pt-[14vh] pb-16">
         <div className="flex items-center justify-center gap-1.5 mb-10" aria-label={`Step ${at + 1} of ${total}`}>
           {Array.from({ length: total }, (_, i) => (
@@ -39,11 +41,14 @@ function Shell({ step, title, subtitle, children, onBack }: { step: number; titl
   );
 }
 
-function Continue({ disabled, label = "Continue" }: { disabled?: boolean; label?: string }) {
+function Continue({ disabled, label = "Continue", reason }: { disabled?: boolean; label?: string; reason?: string }) {
   return (
-    <button type="submit" disabled={disabled} className="h-11 px-6 rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
-      {label} <ArrowRight className="h-4 w-4" />
-    </button>
+    <div className="flex flex-col items-end gap-2">
+      <button type="submit" aria-disabled={disabled || undefined} title={disabled ? reason : undefined} aria-describedby={disabled && reason ? "continue-reason" : undefined} onClick={(e) => disabled && e.preventDefault()} className={cn("h-11 px-6 rounded-full font-medium text-body inline-flex items-center gap-2 transition-control", disabled ? "bg-surface-3 text-ink-2 border border-dashed border-line-strong cursor-not-allowed" : "bg-primary text-primary-ink shadow-raised active:scale-98")}>
+        {label} <ArrowRight className="h-4 w-4" />
+      </button>
+      {disabled && reason && <p id="continue-reason" role="status" className="text-compact text-ink-2 text-right text-pretty">{reason}</p>}
+    </div>
   );
 }
 
@@ -116,9 +121,9 @@ export function Onboarding() {
           <Field label="Name" hint={orgErr ? <span className="text-critical">{orgErr}</span> : null}>
             <input autoFocus value={org} onChange={(e) => { setOrg(e.target.value); setSkipOrg(false); }} placeholder="e.g. Northwind Labs" className={inputCls} />
           </Field>
-          <div className="flex items-center justify-between mt-6">
-            <button type="button" onClick={() => { setSkipOrg(true); setOrg(""); next(); }} className="text-sm text-ink-3 hover:text-ink-2">Skip, Pin can set one up later</button>
-            <Continue disabled={!org.trim() || !!orgErr} />
+          <div className="flex items-start justify-between gap-3 mt-6">
+            <button type="button" onClick={() => { setSkipOrg(true); setOrg(""); next(); }} className="text-sm text-ink-2 underline underline-offset-4 hover:text-ink text-left">Skip, Pin can set one up later</button>
+            <Continue disabled={!org.trim() || !!orgErr} reason={orgErr ?? "Enter a name for your organization, or skip this step."} />
           </div>
         </form>
       </Shell>
@@ -129,8 +134,8 @@ export function Onboarding() {
     return (
       <Shell step={1} onBack={back} title="What should Pin call you?" subtitle="Pin is your copilot for this machine. It greets you, keeps an eye on things, and does the work you hand it.">
         <form onSubmit={next}>
-          <Field label="Your name"><input autoFocus value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="e.g. Jeremiah" className={inputCls} /></Field>
-          <div className="flex justify-end mt-6"><Continue disabled={!owner.trim()} /></div>
+          <Field label="Your name"><input autoFocus value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="e.g. Alex" className={inputCls} /></Field>
+          <div className="flex justify-end mt-6"><Continue disabled={!owner.trim()} reason="Enter a name for Pin to call you. The grey text is only an example." /></div>
         </form>
       </Shell>
     );
@@ -171,7 +176,7 @@ export function Onboarding() {
           </div>
           <p className="text-xs text-ink-3 mt-3">{provider ? "You'll finish signing in from Settings → Agent sign-in once the console opens." : "No account yet? Pin can still run quick actions, but it can't chat until you connect one."}</p>
           <div className="flex items-center justify-between mt-6">
-            <button type="button" onClick={() => { setProvider(null); next(); }} className="text-sm text-ink-3 hover:text-ink-2">Do this later</button>
+            <button type="button" onClick={() => { setProvider(null); next(); }} className="text-sm text-ink-2 underline underline-offset-4 hover:text-ink">Do this later</button>
             <Continue />
           </div>
         </form>
@@ -203,7 +208,7 @@ export function Onboarding() {
             </div>
           </Field>
         </div>
-        <div className="flex justify-end mt-4"><Continue disabled={!deviceSlug} label="Meet Pin" /></div>
+        <div className="flex justify-end mt-4"><Continue disabled={!deviceSlug} label="Meet Pin" reason="Use at least one letter or number in the console name." /></div>
       </form>
     </Shell>
   );

@@ -98,7 +98,7 @@ export interface AgentReadinessAnswer {
 }
 
 /** Agent containers: agents run in unprivileged Proxmox containers, set up once by a Proxmox administrator. */
-export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
+export type ContainersState = "not_set_up" | "partial" | "ready" | "error" | "needs_repair";
 export interface ContainersStep { id: string; label: string; done: boolean; detail?: string }
 export interface ContainersParams { storage: string; templateStorage: string; bridge: string; pool: string; size: { cores: number; memoryMb: number; diskGb: number } }
 /** What Proxmox could say about a storage, and whether it can hold unprivileged container disks. */
@@ -121,6 +121,8 @@ export interface ContainersStorageFacts {
 export interface ContainersDiagnosis { id: string; step: string; title: string; plain: string; fix: string[]; evidence: string[]; confidence: "matched" | "generic" }
 export interface ContainersStatus {
   state: ContainersState;
+  /** Set with state needs_repair: a stuck sandbox cleanup the engine must finish; no host route resolves it. */
+  repair?: { kind: string; reason: string; action: null };
   steps: ContainersStep[];
   pluginInstalled: boolean;
   environments: { companyId: string; environmentId: string; ok: boolean }[];
@@ -271,7 +273,20 @@ export interface IacOverview {
   realms: { realm: string; type: string; comment?: string; default?: number }[];
   groups: { groupid: string; comment?: string }[];
   canManageUsers: boolean;
+  /** The caller is a Proxmox administrator (so an engine instance admin, who can join any organization on this device). */
+  admin?: boolean;
   warnings: string[];
+}
+
+export interface OrgDriftItem {
+  kind: "missing-acl" | "stale-acl" | "missing-group" | "orphan-group" | "failed-provisioning";
+  companyId: string;
+  org: string;
+  pool?: string;
+  userid?: string;
+  role?: string;
+  detail: string;
+  repair: "grant" | "revoke" | "cleanup" | "reprovision" | null;
 }
 
 export interface IacUserSpec {
@@ -300,5 +315,9 @@ export const iac = {
   deleteUser: (userid: string) => call<IacResult>("DELETE", `/api/iac/users/${enc(userid)}`),
   setPassword: (userid: string, password: string, confirmationPassword: string) => call<{ ok: true }>("PUT", `/api/iac/users/${enc(userid)}/password`, { password, confirmationPassword }),
   setOrgRole: (companyId: string, userid: string, role: OrgRole) => call<{ ok: true }>("PUT", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`, { role }),
+  /** A Proxmox administrator gives themselves (or userid) a role in an organization on this device. */
+  joinOrg: (companyId: string, opts: { userid?: string; role?: OrgRole } = {}) => call<{ ok: true; userid: string; role: OrgRole; joined: boolean }>("POST", `/api/iac/orgs/${enc(companyId)}/join`, opts),
+  drift: () => call<{ items: OrgDriftItem[]; sync: Record<string, { name: string; at: number; errors: string[] }> }>("GET", "/api/iac/drift"),
+  repairDrift: (removeStale = false) => call<{ repaired: number; results: { kind: string; companyId: string; done: boolean; note?: string }[] }>("POST", "/api/iac/drift/repair", { removeStale }),
   removeFromOrg: (companyId: string, userid: string) => call<{ ok: true }>("DELETE", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`),
 };

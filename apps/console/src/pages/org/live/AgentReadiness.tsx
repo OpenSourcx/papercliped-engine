@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, CircleHelp, CircleX } from "lucide-react";
+import { AlertTriangle, Check, CircleHelp, CircleX, Loader2 } from "lucide-react";
 import type { AgentReadiness as Readiness } from "../../../data/engine/readiness.ts";
 import { Chip } from "../../../ui/primitives.tsx";
 import { cn } from "../../../lib/storage.ts";
@@ -10,6 +10,7 @@ const TONE = { ok: "text-good", blocked: "text-critical", unknown: "text-warning
 export function ReadinessPill({ readiness }: { readiness: Readiness | undefined }) {
   if (!readiness) return null;
   if (readiness.state === "ready") return <Chip tone="good"><Check className="h-3 w-3" />Ready to run</Chip>;
+  if (readiness.settingUp) return <Chip tone="warning"><Loader2 className="h-3 w-3" />Still setting up</Chip>;
   if (readiness.state === "blocked") return <Chip tone="warning"><AlertTriangle className="h-3 w-3" />Can't run yet</Chip>;
   return <Chip><CircleHelp className="h-3 w-3" />Readiness unknown</Chip>;
 }
