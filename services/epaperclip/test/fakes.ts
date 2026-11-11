@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -222,7 +222,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       companies.set(id, { name: body.name ?? "Org", members: new Map([[uid, "owner"]]) });
       return json(res, 201, { id, name: body.name, status: "active" });
     }
-    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => st.admins.has(uid!) || c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: "active" })));
+    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => st.admins.has(uid!) || c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: st.archivedCompanies.has(id) ? "archived" : "active" })));
     // Membership: list, change role, archive; invitations with a role, accepted by the invitee.
     const mem = p.match(/^\/api\/companies\/([\w-]+)\/(members|invites)(?:\/([\w.-]+)(\/archive)?)?$/);
     if (mem) {
@@ -264,6 +264,13 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       companies.get(inv.companyId)!.members.set(uid, inv.role);
       st.archived.delete(`${inv.companyId}|${uid}`);
       return json(res, 202, { status: "approved", requestType: "human" });
+    }
+    const archiveCo = p.match(/^\/api\/companies\/([\w-]+)$/);
+    if (archiveCo && req.method === "DELETE") {
+      if (!companies.has(archiveCo[1])) return json(res, 404, { error: "Company not found" });
+      if (!st.admins.has(uid!) && companies.get(archiveCo[1])!.members.get(uid!) !== "owner") return json(res, 403, { error: "Permission denied" });
+      st.archivedCompanies.add(archiveCo[1]);
+      return json(res, 200, { id: archiveCo[1], status: "archived" });
     }
     const co = p.match(/^\/api\/companies\/([\w-]+)(\/(agents|issues|approvals))?$/);
     if (co) {

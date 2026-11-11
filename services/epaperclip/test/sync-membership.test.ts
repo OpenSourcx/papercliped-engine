@@ -169,3 +169,40 @@ describe("ERR-SYNC-008: deleting a user also drops their engine session", () => 
     expect(eng.st.signIns).toBeGreaterThan(before);
   });
 });
+
+const spec = { name: "Fabrikam", cores: 2, memoryMb: 4096, diskGb: 32, maxGuests: 2 };
+const groups = () => state.getSetting<Record<string, any>>("resourceGroups") ?? {};
+
+describe("ERR-SYNC-003: organization create is one host-side call that completes or rolls back", () => {
+  it("creates the engine organization and its pool together", async () => {
+    const { sam } = await setup();
+    const r = await send("POST", "/api/orgs", sam, spec);
+    expect(r.status).toBe(200);
+    const out = (await r.json()) as any;
+    expect(out.company).toMatchObject({ name: "Fabrikam" });
+    expect(out.group).toMatchObject({ companyId: out.company.id, pool: "epc-fabrikam" });
+    expect(pve.pools.has("epc-fabrikam")).toBe(true);
+    expect(groups()[out.company.id]).toBeTruthy();
+    expect(eng.st.archivedCompanies.has(out.company.id)).toBe(false);
+  });
+
+  it("archives the organization again when the pool can't be made", async () => {
+    const { sam } = await setup();
+    pve.failures.add("pool");
+    const r = await send("POST", "/api/orgs", sam, spec);
+    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(((await r.json()) as any).error).toMatch(/rolled back/i);
+    const created = [...eng.st.archivedCompanies];
+    expect(created).toHaveLength(1);
+    expect(groups()[created[0]]).toBeUndefined();
+  });
+
+  it("makes no pool when the engine refuses the organization", async () => {
+    await setup();
+    pve.users["lee@pve"].admin = false;
+    const lee = await signIn("lee");
+    const r = await send("POST", "/api/orgs", lee, spec);
+    expect(r.status).toBe(403);
+    expect(pve.pools.has("epc-fabrikam")).toBe(false);
+  });
+});
