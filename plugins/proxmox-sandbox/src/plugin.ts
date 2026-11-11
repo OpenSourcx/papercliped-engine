@@ -214,8 +214,10 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
    * from the lease id. A container must stay removable even after the rest of
    * the environment config has changed or become invalid.
    */
-  function cleanupConfig(raw: Record<string, unknown>): ProxmoxDriverConfig {
-    const config = parseConfig(raw);
+  function cleanupConfig(raw: Record<string, unknown>, leaseMetadata?: Record<string, unknown> | null): ProxmoxDriverConfig {
+    // A cleanup sweep can arrive with an empty driver config; the durable lease metadata still carries the
+    // immutable API settings the sandbox was created with. Use it rather than failing the cleanup forever.
+    const config = parseConfig({ ...(leaseMetadata ?? {}), ...(raw ?? {}) });
     const apiErrors = checkConfig(config).errors.filter((e) => /^(apiUrl|apiTokenId|apiTokenSecret|timeoutMs)/.test(e));
     if (apiErrors.length > 0) throw new Error(`Invalid Proxmox API settings: ${apiErrors.join(" ")}`);
     return config;
@@ -584,7 +586,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
   async function stopLease(params: PluginEnvironmentReleaseLeaseParams): Promise<PluginEnvironmentTerminationReceipt> {
     const ref = parseLeaseId(params.providerLeaseId);
     if (!ref) throw new Error(`Not a Proxmox lease id: ${String(params.providerLeaseId)}`);
-    const config = cleanupConfig(params.config);
+    const config = cleanupConfig(params.config, params.leaseMetadata);
     const api = client(config);
     const deadline = Date.now() + config.timeoutMs;
     let ctConfig: Record<string, unknown>;
@@ -609,7 +611,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     const ref = parseLeaseId(params.providerLeaseId);
     if (!params.providerLeaseId) return;
     if (!ref) throw new Error(`Not a Proxmox lease id: ${params.providerLeaseId}`);
-    const config = cleanupConfig(params.config);
+    const config = cleanupConfig(params.config, params.leaseMetadata);
     const api = client(config);
     await destroyContainer(api, ref, params.companyId, params.cancelActiveWork === true, Date.now() + config.timeoutMs);
     return { providerLeaseId: params.providerLeaseId, state: "destroyed" };

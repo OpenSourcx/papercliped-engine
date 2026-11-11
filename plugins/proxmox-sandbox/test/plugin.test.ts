@@ -574,6 +574,18 @@ describe("release, stop and destroy", () => {
     expect(pve.containers.has(101)).toBe(false);
   });
 
+  it("repairs a cleanup sweep that arrives with an empty config by using the lease metadata", async () => {
+    const lease = await acquire();
+    const receipt = await hooks.onEnvironmentDestroyLease!({
+      ...base,
+      config: {},
+      providerLeaseId: lease.providerLeaseId!,
+      leaseMetadata: { ...config(), ...lease.metadata },
+    });
+    expect(receipt).toEqual({ providerLeaseId: "pve/101", state: "destroyed" });
+    expect(pve.containers.has(101)).toBe(false);
+  });
+
   it("keeps the container running on release when leases are reused", async () => {
     const lease = await acquire({ reuseLease: true });
     pve.requests.length = 0;
