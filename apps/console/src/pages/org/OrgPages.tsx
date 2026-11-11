@@ -226,7 +226,7 @@ function DemoAgents() {
         const a = org.agents.find((x) => x.id === open);
         return (
           <PageFrame width="6xl">
-            <PageHeader title="Agents" subtitle={`${org.agents.filter((x) => x.status === "working").length} of ${org.agents.length} working.`} actions={<Button variant="primary" disabled title="Hiring from the console arrives with the ePaperclip fork; agents can request hires in Decisions"><Plus className="h-4 w-4" />Hire agent</Button>} />
+            <PageHeader title="Agents" subtitle={`${org.agents.filter((x) => x.status === "working").length} of ${org.agents.length} working.`} actions={<Button variant="primary" disabled disabledReason="Hiring from the console arrives with the ePaperclip fork; agents can request hires in Decisions"><Plus className="h-4 w-4" />Hire agent</Button>} />
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
               {org.agents.map((x) => {
                 const [kind, label] = AGENT[x.status];

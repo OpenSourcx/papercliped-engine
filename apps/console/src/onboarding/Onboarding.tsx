@@ -122,7 +122,7 @@ export function Onboarding() {
             <input autoFocus value={org} onChange={(e) => { setOrg(e.target.value); setSkipOrg(false); }} placeholder="e.g. Northwind Labs" className={inputCls} />
           </Field>
           <div className="flex items-start justify-between gap-3 mt-6">
-            <button type="button" onClick={() => { setSkipOrg(true); setOrg(""); next(); }} className="text-sm text-ink-3 hover:text-ink-2">Skip, Pin can set one up later</button>
+            <button type="button" onClick={() => { setSkipOrg(true); setOrg(""); next(); }} className="text-sm text-ink-2 underline underline-offset-4 hover:text-ink text-left">Skip, Pin can set one up later</button>
             <Continue disabled={!org.trim() || !!orgErr} reason={orgErr ?? "Enter a name for your organization, or skip this step."} />
           </div>
         </form>
@@ -176,7 +176,7 @@ export function Onboarding() {
           </div>
           <p className="text-xs text-ink-3 mt-3">{provider ? "You'll finish signing in from Settings → Agent sign-in once the console opens." : "No account yet? Pin can still run quick actions, but it can't chat until you connect one."}</p>
           <div className="flex items-center justify-between mt-6">
-            <button type="button" onClick={() => { setProvider(null); next(); }} className="text-sm text-ink-3 hover:text-ink-2">Do this later</button>
+            <button type="button" onClick={() => { setProvider(null); next(); }} className="text-sm text-ink-2 underline underline-offset-4 hover:text-ink">Do this later</button>
             <Continue />
           </div>
         </form>

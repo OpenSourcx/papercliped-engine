@@ -19,7 +19,7 @@ export function BulkBar({ ids, names, nodes, onDone, onClear }: { ids: number[];
       <Button size="sm" onClick={() => setAction("start")}><Play className="h-3.5 w-3.5" />Start</Button>
       <Button size="sm" onClick={() => setAction("shutdown")}><Power className="h-3.5 w-3.5" />Shut down</Button>
       <Button size="sm" onClick={() => setAction("suspend")}><Pause className="h-3.5 w-3.5" />Suspend</Button>
-      <Button size="sm" onClick={() => setAction("migrate")} disabled={nodes.length < 2} title={nodes.length < 2 ? "Needs a cluster with another node" : undefined}><Route className="h-3.5 w-3.5" />Migrate</Button>
+      <Button size="sm" onClick={() => setAction("migrate")} disabled={nodes.length < 2} disabledReason={nodes.length < 2 ? "Needs a cluster with another node" : undefined}><Route className="h-3.5 w-3.5" />Migrate</Button>
       <Button size="sm" variant="ghost" onClick={onClear}>Clear</Button>
       {action && <BulkModal action={action} ids={ids} names={names} nodes={nodes} onClose={() => setAction(null)} onDone={() => { setAction(null); onDone(); }} />}
     </div>

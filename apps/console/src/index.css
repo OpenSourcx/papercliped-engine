@@ -304,6 +304,15 @@ body {
       font-size: max(1rem, 16px);
     }
   }
+  /* Stand-alone links that sit beside a heading or in a toolbar are targets too; inline links in prose are exempt (WCAG 2.5.8). */
+  @media (pointer: coarse) {
+    .section-action a,
+    .tap-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: var(--touch-target);
+    }
+  }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   summary {

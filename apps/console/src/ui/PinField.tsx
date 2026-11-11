@@ -14,7 +14,7 @@ import { cn } from "../lib/storage.ts";
  */
 export const PIN_FIELD_FPS = 24;
 export const PIN_FIELD_HIDE_AT = 375;
-const PINS = 20;
+const PINS = 24;
 const WORKERS = 3;
 const SLOTS = PINS + WORKERS;
 const FRAME_MS = 1000 / PIN_FIELD_FPS;
@@ -39,7 +39,7 @@ export const makeField = (seed = 7): Field => {
     f.rot[i] = worker ? 0 : rnd() * Math.PI * 2;
     f.spin[i] = worker ? 0 : (rnd() - 0.5) * 0.02;
     f.phase[i] = rnd() * Math.PI * 2;
-    f.size[i] = worker ? 9 : 7 + rnd() * 10;
+    f.size[i] = worker ? 12 : 10 + rnd() * 14;
   }
   return f;
 };

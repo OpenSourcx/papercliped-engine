@@ -94,7 +94,7 @@ export function LiveOrgSettings() {
           <Card className="p-5 border-critical/30">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-48"><div className="text-sm font-medium">Archive this organization</div><div className="text-xs text-ink-3">Agents stop and it leaves the sidebar. Nothing is deleted.</div></div>
-              <Button variant="danger" disabled={!canManage} title={canManage ? undefined : "Only an owner or administrator can archive an organization"} onClick={() => { setTyped(""); setArchiving(true); }}><Archive className="h-4 w-4" />Archive organization</Button>
+              <Button variant="danger" disabled={!canManage} disabledReason={canManage ? undefined : "Only an owner or administrator can archive an organization"} onClick={() => { setTyped(""); setArchiving(true); }}><Archive className="h-4 w-4" />Archive organization</Button>
             </div>
           </Card>
         </>

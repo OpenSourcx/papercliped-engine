@@ -59,8 +59,28 @@ export function BackupTable({ files, showMachine = true }: { files: BackupFile[]
   const engine = useEngine();
   const nav = useNavigate();
   const device = engine.setup?.deviceName ?? "pve";
+  const restore = (f: BackupFile) => nav(`?${new URLSearchParams({ ...Object.fromEntries(q()), modal: "restore", storage: f.storage, volid: f.volid }).toString()}`);
   return (
-    <table className="w-full text-compact min-w-[620px]">
+    <>
+    {/* Phones: one card per backup, so nothing has to scroll sideways. */}
+    <ul className="md:hidden divide-y divide-line" aria-label="Backups">
+      {files.map((f) => {
+        const g = engine.data.guests.find((x) => x.vmid === f.vmid);
+        return (
+          <li key={f.volid} className="px-4 py-3 flex flex-col gap-1.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                {showMachine && <div className="font-medium truncate">{g ? <Link to={`/${device}/machines/${g.vmid}`} className="hover:underline">{g.name}</Link> : <span className="text-ink-2">Removed machine</span>} <span className="text-ink-3 tabular-nums font-normal">#{f.vmid}</span></div>}
+                <div className="text-ink-2 tabular-nums" title={f.volid}>{when(f.at)}</div>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => restore(f)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button>
+            </div>
+            <div className="text-xs text-ink-3 tabular-nums">{f.storage} · {f.size !== null ? formatBytes(f.size) : "size unknown"}{f.notes ? ` · ${f.notes}` : ""}</div>
+          </li>
+        );
+      })}
+    </ul>
+    <table className="hidden md:table w-full text-compact min-w-[620px]">
       <thead>
         <tr className="border-b border-line text-ink-3 text-left">
           <th className="font-normal px-4 h-10">Taken</th>
@@ -82,13 +102,14 @@ export function BackupTable({ files, showMachine = true }: { files: BackupFile[]
               <td className="px-3 text-right tabular-nums">{f.size !== null ? formatBytes(f.size) : "—"}</td>
               <td className="px-3 text-ink-2 truncate max-w-[220px]">{f.notes ?? ""}</td>
               <td className="px-3 whitespace-nowrap text-right">
-                <Button size="sm" variant="ghost" onClick={() => nav(`?${new URLSearchParams({ ...Object.fromEntries(q()), modal: "restore", storage: f.storage, volid: f.volid }).toString()}`)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button>
+                <Button size="sm" variant="ghost" onClick={() => restore(f)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button>
               </td>
             </tr>
           );
         })}
       </tbody>
     </table>
+    </>
   );
 }
 

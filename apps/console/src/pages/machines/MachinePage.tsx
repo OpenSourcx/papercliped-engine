@@ -161,11 +161,11 @@ export function MachinePage() {
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Power and console for ${g.name}`}>
           {running ? (
-            <Button onClick={() => ask({ title: `Shut down ${g.name}?`, body: "It is asked to shut down cleanly, like pressing the power button. Anything using it stops being reachable until you start it again.", label: "Shut down", danger: true, run: () => act("shutdown") })} disabled={!!lock || acting} title={lock} loading={acting}><Power className="h-4 w-4" />Shut down</Button>
+            <Button onClick={() => ask({ title: `Shut down ${g.name}?`, body: "It is asked to shut down cleanly, like pressing the power button. Anything using it stops being reachable until you start it again.", label: "Shut down", danger: true, run: () => act("shutdown") })} disabled={!!lock || acting} disabledReason={lock} loading={acting}><Power className="h-4 w-4" />Shut down</Button>
           ) : (
-            <Button variant="primary" onClick={() => act("start")} disabled={!!lock || acting} title={lock} loading={acting}><Play className="h-4 w-4" />Start</Button>
+            <Button variant="primary" onClick={() => act("start")} disabled={!!lock || acting} disabledReason={lock} loading={acting}><Play className="h-4 w-4" />Start</Button>
           )}
-          <Button onClick={() => setTab("console")} disabled={!running} title={running ? undefined : "Start it to open its console"}><SquareTerminal className="h-4 w-4" />Console</Button>
+          <Button onClick={() => setTab("console")} disabled={!running} disabledReason={running ? undefined : "Start it to open its console"}><SquareTerminal className="h-4 w-4" />Console</Button>
           {!g.template && <Button variant="ghost" onClick={() => setPowerOpts(true)} aria-label="Power options" title="Power options: pause, hibernate, reset, timeouts"><Pause className="h-4 w-4" /></Button>}
         </div>
       </div>
@@ -229,7 +229,7 @@ export function MachinePage() {
             )}
             </>
           ) : (
-            <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} title={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
+            <Card className="p-8 text-center"><p className="text-ink-2">{g.name} is stopped. Start it to open its console.</p><div className="mt-4 flex justify-center"><Button variant="primary" disabled={!!lock} disabledReason={lock} onClick={() => power("start")}><Play className="h-4 w-4" />Start {g.name}</Button></div></Card>
           )}
           <p className="text-xs text-ink-3 mt-2">{live ? "Opened through Proxmox as your account (it needs VM.Console)." : "Demo shell. On a device, this is the machine's real console through Proxmox."}</p>
         </div>

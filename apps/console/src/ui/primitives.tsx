@@ -76,7 +76,7 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
   return (
     <div className="flex items-center justify-between gap-3 mb-3 min-h-8">
       <h2 className="text-compact font-semibold uppercase tracking-label text-ink-3">{children}</h2>
-      {action}
+      {action && <div className="section-action">{action}</div>}
     </div>
   );
 }
@@ -304,4 +304,29 @@ export function Kbd({ children }: { children: ReactNode }) {
 /** A label tied to a control without wrapping it, for rows where the control sits on the far side. */
 export function useFieldId(prefix = "f") {
   return `${prefix}-${useId()}`;
+}
+
+/**
+ * The phone layout of a wide table: one card per row, a title with its actions, then label and value pairs. Pair it
+ * with `hidden md:table` on the table itself, so nothing has to scroll sideways at 375 px (ERR-CON-004).
+ */
+export interface RowCard { key: string; title: ReactNode; actions?: ReactNode; fields: [string, ReactNode][]; onOpen?: () => void }
+export function RowCards({ rows, label }: { rows: RowCard[]; label: string }) {
+  return (
+    <ul className="md:hidden divide-y divide-line" aria-label={label}>
+      {rows.map((r) => (
+        <li key={r.key} className={cn("px-4 py-3", r.onOpen && "cursor-pointer active:bg-surface-2/60")} onClick={r.onOpen}>
+          <div className="flex items-center justify-between gap-3 min-h-8">
+            <div className="min-w-0 font-medium">{r.title}</div>
+            {r.actions && <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>{r.actions}</div>}
+          </div>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-compact">
+            {r.fields.map(([k, v]) => (
+              <div key={k} className="contents"><dt className="text-ink-3">{k}</dt><dd className="min-w-0 text-ink-2 break-words">{v}</dd></div>
+            ))}
+          </dl>
+        </li>
+      ))}
+    </ul>
+  );
 }
