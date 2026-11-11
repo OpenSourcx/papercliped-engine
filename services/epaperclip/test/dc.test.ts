@@ -410,7 +410,8 @@ describe("SDN", () => {
   it("previews, applies and rolls back (rollback needs the word typed)", async () => {
     const sam = await signIn("sam");
     expect((await send(sam, "GET", "/api/node/sdn/preview")).json.preview).toMatch(/\+ vnet web/);
-    const a = await send(sam, "POST", "/api/node/sdn/apply", {});
+    expect((await send(sam, "POST", "/api/node/sdn/apply", {})).status).toBe(400);
+    const a = await send(sam, "POST", "/api/node/sdn/apply", { confirm: "apply" });
     expect(a.status).toBe(202);
     expect(a.json.task).toMatch(/^UPID:/);
     expect((await send(sam, "POST", "/api/node/sdn/rollback", {})).status).toBe(400);
@@ -460,7 +461,7 @@ describe("SDN", () => {
 
   it("answers an account without SDN permission with a clear 403", async () => {
     const lee = await signIn("lee");
-    expect((await send(lee, "POST", "/api/node/sdn/apply", {})).status).toBe(403);
+    expect((await send(lee, "POST", "/api/node/sdn/apply", { confirm: "apply" })).status).toBe(403);
   });
 });
 

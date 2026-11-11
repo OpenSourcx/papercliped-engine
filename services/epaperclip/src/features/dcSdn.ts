@@ -282,7 +282,8 @@ export function sdnRoutes(_d: Deps): Route[] {
       re: /^\/api\/node\/sdn\/apply$/,
       run: async (c) => {
         c.sameSite();
-        await c.readJson();
+        // Applying reloads the network on every node, so it needs an explicit confirm like rollback does (ERR-PVE-004).
+        confirmed(await c.readJson(), "apply", "applying the staged SDN changes to every node");
         const task = await c.asUser((pve) => pve.call<string>("PUT", "/cluster/sdn"));
         c.json(202, { task });
       },

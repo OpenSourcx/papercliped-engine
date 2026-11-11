@@ -53,7 +53,7 @@ const nodeBody = <T extends object>(node: string | null | undefined, b: T) => (n
 // ---- Shapes the host service answers with
 
 export interface NodeInfo { node: string; online: boolean; cpu: number | null; maxcpu: number | null; mem: number | null; maxmem: number | null; uptime: number | null }
-export interface ServiceInfo { service: string; name: string; description: string; state: string; activeState: string | null; unitState: string | null; canControl: boolean }
+export interface ServiceInfo { service: string; name: string; description: string; state: string; activeState: string | null; unitState: string | null; canControl: boolean; canStop?: boolean }
 export interface PowerInfo { node: string; local: boolean; thisService: string; running: { vmid: number; name: string; type: string }[]; runningUnknown: boolean; wakeOnLan: "configured" | "not set"; others: { node: string; online: boolean }[] }
 export interface SubscriptionInfo { node: string; status: string; level: string | null; productName: string | null; message: string | null; serverId: string | null; sockets: number | null; nextDueDate: string | null; registered: string | null; checkedAt: number | null; url: string | null; keyLast4: string | null }
 export interface UpdatePackage { package: string; title: string; description: string; oldVersion: string | null; version: string; origin: string; priority: string; section: string; arch: string }
