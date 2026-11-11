@@ -269,7 +269,7 @@ export function Updates() {
                 <div className="font-medium">{u.title}</div>
                 <p className="text-sm text-ink-2 mt-1">{u.body}</p>
                 <div className="mt-4 flex gap-2">
-                  <Button variant="primary" disabled title="Applying updates arrives with the host broker"><Download className="h-4 w-4" />Snapshot and update</Button>
+                  <Button variant="primary" disabled disabledReason="Applying updates arrives with the host broker"><Download className="h-4 w-4" />Snapshot and update</Button>
                   <Button variant="ghost" onClick={() => pin.send("What's in the update?")}>Ask Pin about it</Button>
                 </div>
               </Card>

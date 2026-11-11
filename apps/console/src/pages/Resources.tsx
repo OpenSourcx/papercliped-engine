@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, Box, Database, Grid3x3, HardDrive, Monitor, Search, Server } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
 import { cn, formatBytes, formatUptime } from "../lib/storage.ts";
-import { Card, Input, PageFrame, PageHeader, Segmented, Status } from "../ui/primitives.tsx";
+import { Card, Input, PageFrame, PageHeader, RowCards, Segmented, Status } from "../ui/primitives.tsx";
 import { Tag } from "../ui/Tag.tsx";
 
 type Kind = "node" | "rootfs" | "qemu" | "lxc" | "storage" | "zone";
@@ -97,7 +97,21 @@ export function Resources() {
         <Segmented value={kind} onChange={setKind} options={[{ value: "all", label: "All" }, { value: "machines", label: "Machines" }, { value: "node", label: "Node" }, { value: "storage", label: "Storage" }]} />
       </div>
       <Card className="overflow-x-auto edge-fade-x">
-        <table className="w-full text-compact min-w-[880px]">
+        <RowCards label="Resources" rows={rows.map((r) => ({
+          key: r.key,
+          title: <span className="inline-flex items-center gap-2"><span className="text-ink-3">{ICON[r.kind]}</span>{r.name}{r.detail && <span className="text-ink-3 tabular-nums font-normal">{r.detail}</span>}</span>,
+          onOpen: r.to ? () => nav(r.to!) : undefined,
+          fields: [
+            ["Type", KIND[r.kind]],
+            ["Disk", pct(r.disk)],
+            ["Memory", pct(r.mem)],
+            ["CPU", r.cpu === null ? "—" : `${pct(r.cpu)}${r.kind !== "node" ? "" : ` of ${host.cpus}`}`],
+            ["Uptime", r.uptime === null ? "—" : formatUptime(r.uptime)],
+            ...(r.tags.length ? [["Tags", <span className="flex flex-wrap gap-1">{r.tags.map((t) => <Tag key={t} name={t} />)}</span>] as [string, ReactNode]] : []),
+          ],
+        }))} />
+        {rows.length === 0 && <p className="md:hidden px-3 py-8 text-center text-ink-3 text-compact">Nothing matches.</p>}
+        <table className="hidden md:table w-full text-compact min-w-[880px]">
           <thead>
             <tr className="border-b border-line text-ink-3 text-left">
               {COLS.map((c) => (

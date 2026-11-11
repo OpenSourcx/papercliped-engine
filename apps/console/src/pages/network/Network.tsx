@@ -1,5 +1,5 @@
 import { useConfirm } from "../../ui/Confirm.tsx";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Cable, Check, GitMerge, Loader2, Network as NetIcon, Pencil, Plus, RotateCcw, Split, Trash2 } from "lucide-react";
 import { ApiError, type IfaceSpec, type NetIface, type SdnState } from "../../data/api.ts";
@@ -7,7 +7,7 @@ import { useEngine } from "../../data/store.tsx";
 import { cn } from "../../lib/storage.ts";
 import { usePinActions } from "../../pin/PinContext.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Button, Card, Chip, Input, PageFrame, PageHeader, Segmented, Status, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, Input, PageFrame, PageHeader, RowCards, Segmented, Status, Toggle, selectClass, Select } from "../../ui/primitives.tsx";
 
 const TYPE_LABEL: Record<string, string> = { bridge: "Linux bridge", eth: "Network card", bond: "Bond", vlan: "VLAN", OVSBridge: "OVS bridge", OVSPort: "OVS port", OVSIntPort: "OVS port", alias: "Alias", unknown: "Other" };
 const q = () => new URLSearchParams(window.location.search);
@@ -108,7 +108,24 @@ function InterfacesView() {
         {data === null && !error ? (
           <div className="p-8 text-center text-ink-3 text-sm"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Reading the network…</div>
         ) : (
-          <table className="w-full text-compact min-w-[820px]">
+          <>
+          <RowCards label="Network interfaces" rows={(data?.interfaces ?? []).map((i) => {
+            const editable = i.type === "bridge" || i.type === "bond" || i.type === "vlan";
+            return {
+              key: i.iface,
+              title: <span className="inline-flex items-center gap-2 font-mono"><span className="text-ink-3">{i.type === "eth" ? <Cable className="h-4 w-4" /> : <NetIcon className="h-4 w-4" />}</span>{i.iface}</span>,
+              actions: <>{editable && <Button size="sm" variant="ghost" onClick={() => nav(`?modal=iface&edit=${encodeURIComponent(i.iface)}`)}><Pencil className="h-3.5 w-3.5" />Edit</Button>}{i.type !== "eth" && <button onClick={() => setRemoving(i)} aria-label={`Delete ${i.iface}`} className="h-8 w-8 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-critical hover:bg-critical/10"><Trash2 className="h-4 w-4" /></button>}</>,
+              fields: [
+                ["Type", <>{TYPE_LABEL[i.type] ?? i.type}{i.vlanAware && <Chip className="ml-2">VLAN aware</Chip>}</>],
+                ["Active", i.active ? <Status kind="good" label="Yes" /> : <Status kind="off" label={i.autostart ? "Pending" : "No"} />],
+                ["Address", <span className="font-mono text-xs">{i.cidr ?? "—"}</span>],
+                ["Gateway", <span className="font-mono text-xs">{i.gateway ?? "—"}</span>],
+                ["Ports", <span className="font-mono text-xs">{[...i.ports, ...i.slaves].join(" ") || (i.vlanRaw ? `${i.vlanRaw} · tag ${i.vlanId}` : "—")}</span>],
+                ...(i.comments ? [["Comment", i.comments] as [string, ReactNode]] : []),
+              ],
+            };
+          })} />
+          <table className="hidden md:table w-full text-compact min-w-[820px]">
             <thead>
               <tr className="border-b border-line text-ink-3 text-left">
                 <th className="font-normal px-4 h-10">Name</th>
@@ -142,6 +159,7 @@ function InterfacesView() {
               })}
             </tbody>
           </table>
+          </>
         )}
       </Card>
       <p className="text-xs text-ink-3 mt-3">Organization machines join a bridge with the firewall on. A VLAN-aware bridge lets each machine's network device pick a VLAN tag, keeping organizations off the management network.</p>

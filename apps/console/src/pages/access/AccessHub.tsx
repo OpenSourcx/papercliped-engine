@@ -11,7 +11,7 @@ export function AccessHub() {
   const tab: AccessTab = params.get("access") === "remote" ? "remote" : "people";
   const select = (v: AccessTab) => setParams((p) => { const n = new URLSearchParams(p); n.set("access", v); return n; }, { replace: true });
   return <>
-    <PageFrame width="6xl"><div className="mb-4"><Segmented value={tab} onChange={select} label="Access sections" options={[{ value: "people", label: "People and permissions" }, { value: "remote", label: "Remote access" }]} /></div></PageFrame>
-    {tab === "people" ? <Access /> : <PageFrame width="4xl"><PageHeader title="Remote access" subtitle="Local only, your own Cloudflare account, or Papercliped Connect. Machine-wide, managed only by device administrators." /><RemoteAccess /></PageFrame>}
+    <PageFrame width="6xl" className="pb-0!"><div className="mb-4"><Segmented value={tab} onChange={select} label="Access sections" options={[{ value: "people", label: "People and permissions" }, { value: "remote", label: "Remote access" }]} /></div></PageFrame>
+    {tab === "people" ? <div className="[&>div]:pt-6! [&>div]:sm:pt-6!"><Access /></div> : <PageFrame width="4xl" className="pt-6! sm:pt-6!"><PageHeader title="Remote access" subtitle="Local only, your own Cloudflare account, or Papercliped Connect. Machine-wide, managed only by device administrators." /><RemoteAccess /></PageFrame>}
   </>;
 }

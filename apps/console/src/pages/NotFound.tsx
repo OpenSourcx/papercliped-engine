@@ -15,7 +15,7 @@ export function NotFound({ title = "We couldn't find that page", body }: { title
           icon={<SearchX className="h-5 w-5" />}
           title={title}
           body={body ?? `Nothing lives at ${pathname}. Check the address, or go back to the start.`}
-          action={<Link to={`/${device}/home`}><Button variant="primary">Go to Home</Button></Link>}
+          action={<Link to={`/${device}/home`} className="inline-flex"><Button variant="primary">Go to Home</Button></Link>}
         />
       </Card>
     </PageFrame>

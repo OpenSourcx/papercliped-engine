@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Activity, Eraser, HardDrive, Layers, Plus, Trash2 } from "lucide-react";
 import { useDisksApi, type DiskStorageKind, type PhysDisk, type ZfsDetail, type ZfsNode } from "../../data/engine/disks.ts";
 import { useEngine } from "../../data/store.tsx";
 import { Modal } from "../../ui/Modal.tsx";
 import { BarMeter } from "../../ui/meters.tsx";
 import { formatBytes } from "../../lib/storage.ts";
-import { Button, Card, Chip, EmptyState, Notice, PageFrame, PageHeader, Status, Tabs, type StatusKind } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Notice, PageFrame, PageHeader, RowCards, Status, Tabs, type StatusKind } from "../../ui/primitives.tsx";
 import { CreateOnDisk } from "./CreateOnDisk.tsx";
 import { ConfirmTypeModal, Loading, diskSize, useLoad } from "./common.tsx";
 
@@ -53,7 +53,28 @@ function DiskList({ disks, error, reload }: { disks: PhysDisk[] | null; error: s
   return (
     <>
       <Card className="overflow-x-auto edge-fade-x">
-        <table className="w-full text-compact min-w-[860px]">
+        <RowCards label="Disks" rows={disks.map((d) => {
+          const h = healthStatus(d.health);
+          return {
+            key: d.devpath,
+            title: <span className="font-mono">{d.name}</span>,
+            actions: <>
+              <Button size="sm" variant="ghost" onClick={() => setSmart(d)}><Activity className="h-3.5 w-3.5" />SMART</Button>
+              {!d.gpt && !d.inUseReason && <Button size="sm" variant="ghost" onClick={() => setAction({ disk: d, what: "init" })}><Layers className="h-3.5 w-3.5" />Initialize</Button>}
+              <Button size="sm" variant="ghost" onClick={() => setAction({ disk: d, what: "wipe" })} aria-label={`Wipe ${d.name}`}><Eraser className="h-3.5 w-3.5" />Wipe</Button>
+            </>,
+            fields: [
+              ["Type", <Chip>{typeLabel(d.type)}</Chip>],
+              ["Size", <span className="tabular-nums">{diskSize(d.sizeBytes)}</span>],
+              ["Model", [d.vendor, d.model].filter(Boolean).join(" ") || "—"],
+              ...(d.serial ? [["Serial", <span className="font-mono text-xs">{d.serial}</span>] as [string, ReactNode]] : []),
+              ["Used by", d.usedBy ? <Chip tone={d.inUseReason ? "accent" : "neutral"}>{d.usedBy}</Chip> : "Unused"],
+              ["Wear", d.wearoutPct === null ? "—" : `${d.wearoutPct}% life left`],
+              ["Health", <Status kind={h.kind} label={h.label} />],
+            ],
+          };
+        })} />
+        <table className="hidden md:table w-full text-compact min-w-[860px]">
           <thead>
             <tr className="border-b border-line text-ink-3 text-left">
               <th className="font-normal px-4 h-10">Disk</th>

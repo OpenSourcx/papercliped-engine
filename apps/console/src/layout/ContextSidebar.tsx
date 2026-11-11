@@ -18,7 +18,7 @@ import { NodeSwitcher } from "../pages/node/common.tsx";
 
 function Item({ to, icon, children, count, end, muted }: { to: string; icon: ReactNode; children: ReactNode; count?: number | string; end?: boolean; muted?: boolean }) {
   return (
-    <NavLink to={to} end={end} className={({ isActive }) => cn("group flex items-center gap-2 h-8 px-2 rounded-md text-sm transition-colors", isActive ? "bg-surface-3 text-ink" : muted ? "text-ink-3 hover:text-ink-2 hover:bg-surface-2" : "text-ink-2 hover:text-ink hover:bg-surface-2")}>
+    <NavLink to={to} end={end} className={({ isActive }) => cn("group flex items-center gap-2 h-8 pointer-coarse:h-11 px-2 rounded-md text-sm transition-colors", isActive ? "bg-surface-3 text-ink" : muted ? "text-ink-3 hover:text-ink-2 hover:bg-surface-2" : "text-ink-2 hover:text-ink hover:bg-surface-2")}>
       <span className="text-ink-3 shrink-0">{icon}</span>
       <span className="flex-1 truncate">{children}</span>
       {count !== undefined && count !== 0 && <span className="text-micro tabular-nums text-ink-3">{count}</span>}
@@ -73,7 +73,7 @@ function DeviceSidebar() {
           <Item to={`/${d}/resources`} icon={<ListTree className="h-4 w-4" />}>Resources</Item>
           <Item to={`/${d}/automations`} icon={<Workflow className="h-4 w-4" />} count={data.rules.filter((r) => r.enabled).length}>Automations</Item>
         </div>
-        <Section id="sec-machines" label="Machines" action={<Link to={`/${d}/machines`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+        <Section id="sec-machines" label="Machines" action={<Link to={`/${d}/machines`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {data.guests.map((g) => <Item key={g.vmid} to={`/${d}/machines/${g.vmid}`} icon={<MachineIcon g={g} />} muted={g.status !== "running"} count={g.vmid}>{g.name}</Item>)}
         </Section>
         <Section id="sec-host" label="Host">
@@ -154,11 +154,11 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
           <Item to={`${b}/goals`} icon={<Target className="h-4 w-4" />}>Goals</Item>
           <Item to={`${b}/workspaces`} icon={<GitBranch className="h-4 w-4" />}>Workspaces</Item>
         </Section>
-        <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+        <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {machines.length === 0 && <p className="px-2 text-xs text-ink-3 py-1">None running</p>}
           {machines.map((g) => <Item key={g.vmid} to={`${b}/machines/${g.vmid}`} icon={<MachineIcon g={g} />} muted={g.status !== "running"}>{g.name}</Item>)}
         </Section>
-        <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+        <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {org.agents.length === 0 && <Link to={`${b}/agents?new=1`} className="block px-2 text-xs text-ink-3 hover:text-ink py-1">No agents yet · create one</Link>}
           {org.agents.map((a) => (
             <Item key={a.id} to={`${b}/agents/${a.id}`} icon={<span className="relative inline-flex"><Users className="h-4 w-4" />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status}>
@@ -209,11 +209,11 @@ function DemoOrgSidebar({ org }: { org: Org }) {
           <Item to={`${b}/artifacts`} icon={<Package className="h-4 w-4" />}>Artifacts</Item>
           <Item to={`${b}/workspaces`} icon={<GitBranch className="h-4 w-4" />}>Workspaces</Item>
         </Section>
-        <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+        <Section id="sec-machines" label="Machines" action={<Link to={`${b}/machines`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {machines.length === 0 && <p className="px-2 text-xs text-ink-3 py-1">None running</p>}
           {machines.map((g) => <Item key={g.vmid} to={`${b}/machines/${g.vmid}`} icon={<MachineIcon g={g} />} muted={g.status !== "running"}>{g.name.replace(`${org.slug}-`, "")}</Item>)}
         </Section>
-        <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
+        <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {org.agents.map((a) => (
             <Item key={a.id} to={`${b}/agents`} icon={<span className="relative inline-flex"><Users className="h-4 w-4" />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status === "working" ? "working" : a.status}>
               {a.name}

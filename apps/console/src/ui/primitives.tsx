@@ -1,7 +1,8 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { AlertTriangle, CheckCircle2, CircleDashed, CirclePause, Info, Loader2, XCircle } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { useInModal } from "./Modal.tsx";
+import { PinField } from "./PinField.tsx";
 
 /*
  * ePaperclip's primitives: one component per job (see apps/console/DESIGN.md, "Component inventory"). Every value here
@@ -11,21 +12,29 @@ import { useInModal } from "./Modal.tsx";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
-const buttonBase = "transition-control inline-flex items-center justify-center gap-2 font-medium select-none whitespace-nowrap active:scale-98 disabled:opacity-45 disabled:pointer-events-none";
+const buttonBase = "transition-control inline-flex items-center justify-center gap-2 font-medium select-none whitespace-nowrap active:scale-98 disabled:opacity-45 disabled:pointer-events-none aria-disabled:opacity-45 aria-disabled:cursor-not-allowed";
 const buttonSize: Record<Size, string> = {
   sm: "h-8 px-3 text-compact rounded-md",
   md: "h-10 px-4 text-sm rounded-lg",
   lg: "h-11 px-6 text-body rounded-full",
 };
 const buttonVariant: Record<Variant, string> = {
-  primary: "bg-primary text-primary-ink shadow-raised hover:opacity-90",
+  // A disabled primary is flat, outlined and dashed: it can never be mistaken for the filled, enabled one.
+  primary: "bg-primary text-primary-ink shadow-raised hover:opacity-90 disabled:bg-surface-3 disabled:text-ink-2 disabled:shadow-none disabled:border disabled:border-dashed disabled:border-line-strong disabled:opacity-100! aria-disabled:bg-surface-3 aria-disabled:text-ink-2 aria-disabled:shadow-none aria-disabled:border aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:opacity-100! aria-disabled:hover:opacity-100!",
   secondary: "bg-surface-2 text-ink border border-line hover:bg-surface-3 hover:border-line-strong",
   ghost: "text-ink-2 hover:text-ink hover:bg-surface-2",
   danger: "bg-critical/12 text-critical border border-critical/30 hover:bg-critical/20",
 };
 
 /** Buttons name the action ("Create machine", not "Submit"). One primary per view. */
-export function Button({ variant = "secondary", size = "md", loading, className, children, disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean }) {
+export function Button({ variant = "secondary", size = "md", loading, className, children, disabled, disabledReason, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean; /** Why the button can't be used right now. Keeps it focusable (aria-disabled) with the reason as its tooltip. */ disabledReason?: string }) {
+  if (disabled && disabledReason && !loading) {
+    return (
+      <button {...rest} type={rest.type ?? "button"} aria-disabled="true" title={disabledReason} onClick={(e) => e.preventDefault()} className={cn(buttonBase, buttonSize[size], buttonVariant[variant], className)}>
+        {children}
+      </button>
+    );
+  }
   return (
     <button {...rest} disabled={disabled || loading} aria-busy={loading || undefined} className={cn(buttonBase, buttonSize[size], buttonVariant[variant], className)}>
       {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
@@ -67,7 +76,7 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
   return (
     <div className="flex items-center justify-between gap-3 mb-3 min-h-8">
       <h2 className="text-compact font-semibold uppercase tracking-label text-ink-3">{children}</h2>
-      {action}
+      {action && <div className="section-action">{action}</div>}
     </div>
   );
 }
@@ -96,7 +105,7 @@ export function PageHeader({ title, subtitle, actions, eyebrow }: { title: React
 /* ── Forms ─────────────────────────────────────────────────────────────────────────── */
 
 /** The one recipe for text fields, selects and text areas: same height, fill, border and focus ring. */
-export const controlClass = "transition-control w-full rounded-lg bg-surface-2 border border-line text-sm text-ink placeholder:text-ink-3 outline-none hover:border-line-strong focus:border-line-strong focus-visible:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50";
+export const controlClass = "transition-control w-full rounded-lg bg-surface-2 border border-line text-sm text-ink placeholder:text-ink-3 placeholder:italic outline-none hover:border-line-strong focus:border-line-strong focus-visible:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50";
 export const selectClass = cn(controlClass, "h-10 px-3");
 
 /** A labelled field: the label, the control, then a hint or an error that says what to do. */
@@ -250,7 +259,8 @@ export function Chip({ children, tone = "neutral", className }: { children: Reac
 /** Empty states say what this is for and what to do first. */
 export function EmptyState({ icon, title, body, action }: { icon: ReactNode; title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center text-center py-14 px-6">
+    <div className="relative isolate overflow-hidden flex flex-col items-center text-center py-14 px-6">
+      <PinField className="-z-10 opacity-70 [mask-image:radial-gradient(closest-side,transparent_30%,black)]" />
       <div className="h-11 w-11 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-2 mb-4">{icon}</div>
       <div className="font-medium text-balance">{title}</div>
       <p className="text-ink-3 text-sm mt-1 max-w-sm text-pretty">{body}</p>
@@ -294,4 +304,45 @@ export function Kbd({ children }: { children: ReactNode }) {
 /** A label tied to a control without wrapping it, for rows where the control sits on the far side. */
 export function useFieldId(prefix = "f") {
   return `${prefix}-${useId()}`;
+}
+
+/**
+ * The phone layout of a wide table: one card per row, a title with its actions, then label and value pairs. Pair it
+ * with `hidden md:table` on the table itself, so nothing has to scroll sideways at 375 px (ERR-CON-004).
+ */
+/** True below the md breakpoint (768 px). The phone card lists render only there, so a desktop page never holds the same rows twice. */
+export function usePhone() {
+  const query = "(max-width: 767px)";
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setPhone(mq.matches);
+    on();
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  return phone;
+}
+
+export interface RowCard { key: string; title: ReactNode; actions?: ReactNode; fields: [string, ReactNode][]; onOpen?: () => void }
+export function RowCards({ rows, label }: { rows: RowCard[]; label: string }) {
+  if (!usePhone()) return null;
+  return (
+    <ul className="md:hidden divide-y divide-line" aria-label={label}>
+      {rows.map((r) => (
+        <li key={r.key} className={cn("px-4 py-3", r.onOpen && "cursor-pointer active:bg-surface-2/60")} onClick={r.onOpen}>
+          <div className="flex items-center justify-between gap-3 min-h-8">
+            <div className="min-w-0 font-medium">{r.title}</div>
+            {r.actions && <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>{r.actions}</div>}
+          </div>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-compact">
+            {r.fields.map(([k, v]) => (
+              <div key={k} className="contents"><dt className="text-ink-3">{k}</dt><dd className="min-w-0 text-ink-2 break-words">{v}</dd></div>
+            ))}
+          </dl>
+        </li>
+      ))}
+    </ul>
+  );
 }

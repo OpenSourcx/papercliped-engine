@@ -115,7 +115,7 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
         <p className="text-compact text-ink-3 mt-0.5 text-pretty">{h.how}</p>
       </div>
       <Button size="sm" variant="ghost" onClick={onKey}><KeyRound className="h-4 w-4" />Use an API key</Button>
-      {adapter && <Button size="sm" disabled={!environmentId} title={environmentId ? undefined : "This organization has no agent container yet"} onClick={() => onSignIn(adapter)}>{signed ? "Sign in again" : "Sign in"}</Button>}
+      {adapter && <Button size="sm" disabled={!environmentId} disabledReason={environmentId ? undefined : "This organization has no agent container yet"} onClick={() => onSignIn(adapter)}>{signed ? "Sign in again" : "Sign in"}</Button>}
     </div>
   );
 }

@@ -130,7 +130,7 @@ function DemoAccess() {
       <PageHeader
         title="Access control"
         subtitle="Integrated Access Control keeps ePaperclip and Proxmox in step: every user here is also a real Proxmox user, and the policies you set apply in both."
-        actions={<Button variant="primary" disabled title="Invites arrive with the access-control backend"><UserPlus className="h-4 w-4" />Invite user</Button>}
+        actions={<Button variant="primary" disabled disabledReason="Invites arrive with the access-control backend"><UserPlus className="h-4 w-4" />Invite user</Button>}
       />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <Segmented value={tab} onChange={setTab} options={[{ value: "users", label: `Users (${data.users.length})` }, { value: "policies", label: `Policies (${data.policies.length})` }]} />

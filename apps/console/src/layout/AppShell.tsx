@@ -125,7 +125,7 @@ function Rail({ expanded, onNavigate }: { expanded?: boolean; onNavigate?: () =>
         modals.settings !== null && modals.settings !== "apps",
         updates ? <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-critical text-on-status text-micro font-bold flex items-center justify-center border-3 border-bg tabular-nums" aria-label={`${updates} update`}>{updates}</span> : undefined,
       )}
-      <Link to={settingsHref("general")} onClick={onNavigate} className={cn("group block mt-1", expanded && "px-3")} aria-label={`${setup?.ownerName || "You"}: account, settings and sign out`}>
+      <Link to={settingsHref("general")} onClick={onNavigate} className={cn("group block mt-1 pointer-coarse:min-h-11", expanded && "px-3")} aria-label={`${setup?.ownerName || "You"}: account, settings and sign out`}>
         <UserChip name={setup?.ownerName || "You"} expanded={expanded} />
       </Link>
       <span className="sr-only">{loc.pathname}</span>

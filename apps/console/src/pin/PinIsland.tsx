@@ -199,7 +199,7 @@ export function PinIsland() {
     <>
       <div
         ref={wrap}
-        className={cn("fixed inset-x-0 top-2 z-(--z-island) flex justify-center px-2 pointer-events-none transition-opacity duration-(--duration-base)", modalOpen && !pin.confirm && "opacity-0")}
+        className={cn("fixed inset-x-0 md:left-78 top-2 z-(--z-island) flex justify-center px-2 pointer-events-none transition-opacity duration-(--duration-base)", modalOpen && !pin.confirm && "opacity-0")}
         inert={modalOpen && !pin.confirm ? true : undefined}
       >
         <div

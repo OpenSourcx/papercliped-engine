@@ -281,3 +281,40 @@ describe("start a company", () => {
     expect(screen.getByText("What is the name of your organization?")).toBeTruthy();
   });
 });
+
+describe("wizard disabled reasons", () => {
+  it("shows why Next is unavailable on the agent step, keeps it focusable, and enables it once a name is typed", async () => {
+    wrap();
+    await throughName();
+    const btn = () => screen.getByRole("button", { name: "Next" }) as HTMLButtonElement;
+    expect(btn().getAttribute("aria-disabled")).toBe("true");
+    expect(btn().title).toMatch(/name/i);
+    expect(screen.getByText(/only an example/)).toBeTruthy();
+    fireEvent.click(btn());
+    expect(sent("POST", "/engine/api/companies/c1/onboarding-seed")).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Ada" } });
+    expect(btn().getAttribute("aria-disabled")).toBeNull();
+    expect(btn().className).toContain("bg-primary");
+    expect(screen.queryByText(/only an example/)).toBeNull();
+  });
+
+  it("uses placeholders that read as examples, not values", async () => {
+    wrap();
+    await throughName();
+    const name = screen.getByLabelText("Agent name") as HTMLInputElement;
+    const role = screen.getByLabelText("Role (optional)") as HTMLInputElement;
+    expect(name.value).toBe("");
+    expect(role.value).toBe("");
+    expect(name.placeholder).toMatch(/^e\.g\. /);
+    expect(role.placeholder).toMatch(/^e\.g\. /);
+    expect(name.placeholder).not.toBe(role.placeholder);
+    expect(role.className).toContain("placeholder:italic");
+  });
+
+  it("says why Continue is unavailable on the name step", async () => {
+    wrap();
+    const btn = (await screen.findByRole("button", { name: "Continue" })) as HTMLButtonElement;
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText(/Enter a name for the organization/)).toBeTruthy();
+  });
+});

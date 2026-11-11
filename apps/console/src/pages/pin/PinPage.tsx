@@ -87,7 +87,7 @@ export function PinPage() {
               {mode === "agent" ? "Agent mode: does the work for you, as much as you allow." : "Assistant mode: asks before it changes anything."} Watching {device} · {activeRules} automation{activeRules === 1 ? "" : "s"} on{last ? ` · last ${LOG_LABEL[last.kind].toLowerCase()} ${ago(last.at)}` : ""}
             </p>
             <button type="button" onClick={() => setTab("settings")} className="transition-control mt-2 inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink">
-              <Cpu className="h-3.5 w-3.5" />{pin.settings?.provider ? <>Thinks with <span className="text-ink-2 font-medium">{pin.providerName}</span>{pin.settings.model && <> · <span className="font-mono text-ink-2">{pin.settings.model}</span></>}</> : "No model provider yet. Choose one in Settings."}
+              <Cpu className="h-3.5 w-3.5 shrink-0" /><span className="text-left">{pin.settings?.provider ? <>Thinks with <span className="text-ink-2 font-medium">{pin.providerName}</span>{pin.settings.model && <> · <span className="font-mono text-ink-2">{pin.settings.model}</span></>}</> : "No model provider yet. Choose one in Settings."}</span>
             </button>
           </div>
           <div className="flex flex-col gap-3 items-start">
@@ -136,7 +136,7 @@ export function PinPage() {
               ))}
             </Card>
             <Card className="p-5">
-              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Agent models</h2><Link to="?settings=agent-models" className="text-compact text-ink-3 hover:text-ink">Manage</Link></div>
+              <div className="flex items-center justify-between mb-3"><h2 className="font-medium">Agent models</h2><Link to="?settings=agent-models" className="tap-link text-compact text-ink-3 hover:text-ink">Manage</Link></div>
               {engine.live ? (
                 hostConnectors.length === 0 ? (
                   <p className="text-compact text-ink-3">No connectors yet.</p>

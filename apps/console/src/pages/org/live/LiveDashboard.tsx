@@ -136,7 +136,7 @@ export function LiveDashboard() {
   return (
     <PageFrame width="6xl">
       <PageHeader
-        eyebrow={<Link to={`/${device}/home`} className="hover:text-ink">{device}</Link>}
+        eyebrow={<Link to={`/${device}/home`} className="tap-link hover:text-ink">{device}</Link>}
         title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
         subtitle={<>{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-compact ml-3 font-mono">{org.engine?.prefix}</span></>}
       />
