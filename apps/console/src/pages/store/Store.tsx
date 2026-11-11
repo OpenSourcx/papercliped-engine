@@ -27,6 +27,7 @@ function Tile({ id, name, size = 44 }: { id: string; name: string; size?: number
 }
 
 function StatusChip({ it }: { it: StoreItem }) {
+  if (it.plugin?.planned) return <Chip>Planned</Chip>;
   if (it.kind === "adapter") return it.status === "installed" ? <Chip tone="accent"><Check className="h-3 w-3 mr-1" />Enabled</Chip> : <Chip>Built in</Chip>;
   if (it.status === "installed") return <Chip tone="accent"><Check className="h-3 w-3 mr-1" />Installed</Chip>;
   if (it.status === "update") return <Chip tone="warning">Update available</Chip>;
@@ -149,6 +150,8 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
   const installed = it.status === "installed" || it.status === "update";
   // A device switches adapters on in the engine: a built-in one with the switch, a signed-catalog one by installing its package.
   const liveAdapter = engine.live && plugin?.kind === "adapter";
+  // Connectors and skills only have a browser-local demo state; on a device, or when nothing implements them, Install is off rather than faked (ERR-STORE-002/003).
+  const notYet = !!plugin && (!!plugin.planned || (engine.live && plugin.kind !== "adapter"));
   const qc = useQueryClient();
   const setAdapter = async (on: boolean) => {
     if (!plugin) return;
@@ -178,7 +181,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          {plugin && (it.status === "installed" ? <Button variant="danger" loading={busy} onClick={() => ask({ title: `${plugin.kind === "adapter" ? "Disable" : "Remove"} ${it.name}?`, body: plugin.kind === "adapter" ? "Agents that use it stop being able to run with it until you enable it again." : "It is uninstalled, and anything that relies on it stops working until you install it again.", label: plugin.kind === "adapter" ? "Disable" : "Remove", danger: true, run: () => (liveAdapter ? setAdapter(false) : engine.uninstallPlugin(plugin.id, plugin)) })}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" loading={busy} onClick={() => (liveAdapter ? setAdapter(true) : engine.installPlugin(plugin.id, plugin))}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
+          {plugin && (it.status === "installed" ? <Button variant="danger" loading={busy} disabled={notYet} title={notYet ? "Not available yet" : undefined} onClick={() => ask({ title: `${plugin.kind === "adapter" ? "Disable" : "Remove"} ${it.name}?`, body: plugin.kind === "adapter" ? "Agents that use it stop being able to run with it until you enable it again." : "It is uninstalled, and anything that relies on it stops working until you install it again.", label: plugin.kind === "adapter" ? "Disable" : "Remove", danger: true, run: () => (liveAdapter ? setAdapter(false) : engine.uninstallPlugin(plugin.id, plugin)) })}><Trash2 className="h-4 w-4" />{plugin.kind === "adapter" ? "Disable" : "Remove"}</Button> : <Button variant="primary" loading={busy} disabled={notYet} title={notYet ? "Not available yet" : undefined} onClick={() => (liveAdapter ? setAdapter(true) : engine.installPlugin(plugin.id, plugin))}><Download className="h-4 w-4" />{plugin.kind === "adapter" ? "Enable" : "Install"}</Button>)}
           {it.kind === "manual" && it.lib?.kind === "manual" && (
             <>
               <Button onClick={() => nav("?modal=upload&content=iso", { replace: true })}><FileUp className="h-4 w-4" />Upload ISO</Button>
@@ -200,8 +203,9 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {it.lib?.kind === "manual" && <p className="text-compact text-ink-3">{it.lib.note}</p>}
         {it.kind === "template" && it.template?.infopage && <p className="text-compact text-ink-3">A container system from Proxmox's template list.</p>}
         {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-compact text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
-        {plugin && plugin.kind === "connector" && <p className="text-compact text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
-        {plugin && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{liveAdapter ? (plugin.version !== undefined ? "From the signed catalog. It is installed by the engine after this device checked that the npm package is exactly the one the catalog was signed for." : "Built into Paperclip and verified against its adapter list, so there is nothing to download. Enabling it switches it on in the engine.") : plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device. Your choice is saved now." : "Pin can use this once the Pin runtime is on this device. Your choice is saved now."}</p>}
+        {notYet && <p className="text-compact text-ink-3">Not available yet. {plugin.planned ? "This is planned; nothing on this device implements it." : "Installing from the Store is not connected to this device yet."}</p>}
+        {plugin && !notYet && plugin.kind === "connector" && <p className="text-compact text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
+        {plugin && !notYet && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{liveAdapter ? (plugin.version !== undefined ? "From the signed catalog. It is installed by the engine after this device checked that the npm package is exactly the one the catalog was signed for." : "Built into Paperclip and verified against its adapter list, so there is nothing to download. Enabling it switches it on in the engine.") : plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device. Your choice is saved now." : "Pin can use this once the Pin runtime is on this device. Your choice is saved now."}</p>}
         {needsStorage && installable && (
           storages.length ? (
             <label className="block"><span className="block text-compact text-ink-2 mb-2">Install to</span>
