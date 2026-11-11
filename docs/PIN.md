@@ -141,6 +141,7 @@ Pin's conversations are kept on the device, per person, sealed like Notes. In th
 | `GET /api/pin/memory` | SOUL.md, MEMORY.md and their revision |
 | `PUT /api/pin/memory/soul`, `/memory` | save; a stale `baseRev` is refused with 409 |
 | `GET /api/pin/memory/history`, `POST /api/pin/memory/restore` | earlier versions, put one back |
+| `POST /api/pin/memory/remember` `{ text }` | saves one line the person typed themselves (the composer's `#`), through the same store as the `remember` tool; answers `{ ok, message, line, rev }`, where `rev` is the revision to restore to undo it. The tool's own gate (`memoryAsked`) is unchanged and still applies only to the model |
 
 SOUL.md and MEMORY.md are added to Pin's instructions, capped, and can never change its rules. Pin writes MEMORY.md itself only when your message asks it to ("remember this", "forget that"): the `remember` and `forget` tools are refused otherwise, whatever a page or document tells the model. Each save is a revision, so Pin's edits can be undone like yours. Revisions follow Paperclip's agent instruction files (versioned, with a conflict when the base is stale).
 

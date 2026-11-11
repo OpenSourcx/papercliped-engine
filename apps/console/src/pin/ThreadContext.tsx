@@ -16,6 +16,10 @@ export interface ThreadApi {
   resolveTool: (id: string, patch: Pick<ToolState, "resolved" | "note">) => void;
   /** Who the person is talking to, for the composer's label ("Pin" by default). */
   name?: string;
+  /** Starts a new chat from the composer's "/new". Pin provides it; a conversation that has only one chat doesn't. */
+  newChat?: () => void;
+  /** True when this is an organization's agent chat. The line under the composer then reads Pin's settings, so it can't change them. */
+  agentChat?: boolean;
 }
 
 const Ctx = createContext<ThreadApi | null>(null);

@@ -1,3 +1,4 @@
+import type { RememberResult } from "../../pin/composer/memory.ts";
 import { NodeApiError } from "./nodeApi.ts";
 
 /** Pin's saved chats, SOUL.md and MEMORY.md on the device (services/epaperclip/src/features/pin-library.ts, docs/PIN.md). */
@@ -55,6 +56,8 @@ export const pinLibrary = {
   remove: (id: string) => req<{ ok: true }>("DELETE", `/api/pin/chats/${enc(id)}`),
   memory: () => req<MemoryView>("GET", "/api/pin/memory"),
   save: (file: MemoryFile, text: string, baseRev?: number) => req<MemoryView>("PUT", `/api/pin/memory/${file}`, { text, ...(baseRev === undefined ? {} : { baseRev }) }),
+  /** Saves one line the person typed themselves (the composer's "#"), and returns the revision to undo to. */
+  remember: (text: string) => req<RememberResult>("POST", "/api/pin/memory/remember", { text }),
   history: () => req<{ revisions: Revision[] }>("GET", "/api/pin/memory/history"),
   restore: (rev: number) => req<MemoryView>("POST", "/api/pin/memory/restore", { rev }),
 };

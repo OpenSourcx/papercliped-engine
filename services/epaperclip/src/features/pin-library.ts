@@ -15,10 +15,11 @@ import { LibraryError, libraryFor, type MemoryFile } from "./pin-store.ts";
  *   PUT    /api/pin/memory/soul|memory  save (a stale baseRev is refused with 409)
  *   GET    /api/pin/memory/history      earlier versions (without their text)
  *   POST   /api/pin/memory/restore      put an earlier version back
+ *   POST   /api/pin/memory/remember     save one line the person typed themselves (the composer's "#")
  */
 
 const CHAT = /^\/api\/pin\/chats(?:\/([0-9a-f]{16}))?$/;
-const MEMORY = /^\/api\/pin\/memory(?:\/(soul|memory|history|restore))?$/;
+const MEMORY = /^\/api\/pin\/memory(?:\/(soul|memory|history|restore|remember))?$/;
 
 export async function libraryRoutes(ctx: FeatureCtx): Promise<boolean> {
   const chat = CHAT.exec(ctx.path);
@@ -67,6 +68,20 @@ export async function libraryRoutes(ctx: FeatureCtx): Promise<boolean> {
     ctx.sameSite();
     const b = await ctx.readJson(64 * 1024);
     if (which === "restore") return ctx.json(200, lib.restore(user, b.rev)), true;
+    if (which === "remember") {
+      // A line the person typed themselves (the composer's "#"): their own words, so no gate. The revision before the
+      // save comes back with it so the console can undo through the ordinary restore route.
+      if (method !== "POST") throw new HttpError(405, "method", "Method not allowed");
+      if (typeof b.text !== "string") throw new HttpError(400, "bad_request", "text must be a string.");
+      // Nothing typed (or only spaces) is nothing to keep; say that rather than let the store's length check answer.
+      if (!b.text.trim()) throw new HttpError(400, "nothing_typed", "Type what to remember after the #.");
+      const before = lib.view(user);
+      const r = lib.remember(user, b.text);
+      if (!r.ok) throw new HttpError(400, "not_saved", r.message);
+      const after = lib.view(user);
+      const saved = r.message.startsWith("Already in") ? null : after.memory.trim().split("\n").pop() ?? null;
+      return ctx.json(200, { ok: true, message: r.message, line: saved, rev: before.rev }), true;
+    }
     const baseRev = b.baseRev === undefined ? undefined : Number(b.baseRev);
     if (baseRev !== undefined && !Number.isInteger(baseRev)) throw new HttpError(400, "bad_request", "baseRev must be a whole number.");
     return ctx.json(200, lib.setFile(user, which as MemoryFile, b.text, { baseRev })), true;
