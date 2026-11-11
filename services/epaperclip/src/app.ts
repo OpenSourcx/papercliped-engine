@@ -1016,6 +1016,17 @@ export function createApp(d: AppDeps) {
         return sendJson(res, 200, done);
       }
     }
+    const iacJoin = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/join$/);
+    if (iacJoin && method === "POST") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const done = await asUser(req, res, async (pve, s) => {
+        const userid = typeof b.userid === "string" && b.userid ? b.userid : s.username;
+        return iac.joinOrg(pve, s, await isNodeAdmin(pve), iacJoin[1], userid, (b.role as OrgRole | undefined) ?? "admin");
+      });
+      audit(req, "org-membership.grant", done.userid, `${iacJoin[1]}: ${done.role}${done.joined ? "" : " (already a member)"}`);
+      return sendJson(res, 200, { ok: true, ...done });
+    }
     const iacMember = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/members\/([^/]{3,100})$/);
     if (iacMember && (method === "PUT" || method === "DELETE")) {
       requireSameSite(req);

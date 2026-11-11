@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -230,6 +230,8 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       if (!c) return json(res, 404, { error: "Company not found" });
       const manager = st.admins.has(uid!) || ["owner", "admin"].includes(c.members.get(uid!) ?? "");
       if (mem[2] === "members" && req.method === "GET" && !mem[3]) {
+        // The real engine (authz.ts assertCompanyAccess) gives instance admins no company access without a membership.
+        if (st.strictMembers && !c.members.has(uid)) return json(res, 403, { error: "User does not have access to this company" });
         if (!manager && !c.members.has(uid)) return json(res, 403, { error: "Not a member" });
         const list = [...c.members].map(([id, role]) => ({ id: `m.${mem[1]}.${id}`, principalType: "user", principalId: id, membershipRole: role, status: "active" }));
         const gone = [...st.archived].filter((k) => k.startsWith(`${mem[1]}|`)).map((k) => ({ id: `m.${mem[1]}.${k.split("|")[1]}`, principalType: "user", principalId: k.split("|")[1], membershipRole: "viewer", status: "archived" }));
@@ -612,7 +614,7 @@ export function fakePve() {
     if (pool && req.method === "DELETE") return admin ? (pools.delete(pool[1]), ok(null)) : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles, failLogs, host };
+  return { users, transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles, failLogs, host };
 }
 
 /**

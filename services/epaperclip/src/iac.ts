@@ -339,7 +339,8 @@ export class Iac {
   private async engineSetRole(caller: Session, companyId: string, userid: string, role: OrgRole) {
     const g = this.gateway!;
     const id = await g.accountId(userid);
-    const m = (await this.members(caller, companyId)).find((x) => x.principalType === "user" && x.principalId === id);
+    // A Proxmox administrator who is not a member cannot read the roster (the engine gives instance admins no company access); treat that as "no membership yet" and invite.
+    const m = (await this.members(caller, companyId).catch((e) => (e instanceof HttpError && e.status === 403 ? [] : Promise.reject(e)))).find((x) => x.principalType === "user" && x.principalId === id);
     if (m && m.status === "active") {
       if (m.membershipRole !== role) await this.engine(caller, "PATCH", `/api/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(m.id)}`, { membershipRole: role });
       return;
@@ -370,6 +371,25 @@ export class Iac {
     if (role === null) await this.engineRemove(caller, companyId, userid);
     else await this.engineSetRole(caller, companyId, userid, role);
     if (role === null && userid !== caller.username) this.sessions.destroyUser(userid);
+  }
+
+  /**
+   * A Proxmox administrator is an engine instance admin but, upstream, that is no membership, so they can list an
+   * organization they cannot open. This lets an administrator give themselves (or another Proxmox user) a role in an
+   * organization on this host: Proxmox ACLs on its pool and an engine membership, like any other role change.
+   */
+  async joinOrg(pve: ProxmoxClient, caller: Session, callerIsNodeAdmin: boolean, companyId: string, userid: string, role: OrgRole = "admin"): Promise<{ userid: string; role: OrgRole; joined: boolean }> {
+    if (!callerIsNodeAdmin) throw new HttpError(403, "forbidden", "Only a Proxmox administrator can give someone access to an organization they aren't in");
+    if (!USERID.test(userid)) throw new HttpError(400, "bad_request", "Invalid user id");
+    if (!ORG_ROLES.has(role)) throw new HttpError(400, "bad_request", "role is owner, admin, operator or viewer");
+    const g = this.gateway;
+    if (!g) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
+    await pve.call("GET", `/access/users/${encodeURIComponent(userid)}`).catch(() => Promise.reject(new HttpError(404, "not_found", `${userid} isn't a Proxmox user on this host`)));
+    const id = await g.accountId(userid);
+    const roster = await this.members(caller, companyId).catch((e) => (e instanceof HttpError && e.status === 403 ? [] : Promise.reject(e)));
+    const had = roster.find((x) => x.principalType === "user" && x.principalId === id && x.status === "active");
+    await this.setOrgRole(pve, caller, true, companyId, userid, role);
+    return { userid, role, joined: !had };
   }
 
   /** A new pool for an organization: give its current members their roles on it in Proxmox. */
