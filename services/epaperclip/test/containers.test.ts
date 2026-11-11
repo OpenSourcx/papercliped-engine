@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.ts";
-import { newestDebian, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE } from "../src/containers.ts";
+import { newestDebian, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE, LAN_BRIDGE_PHRASE } from "../src/containers.ts";
 import { generateSshKey } from "../src/containers-ssh.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
@@ -586,3 +586,57 @@ describe("pieces", () => {
 });
 
 void vi;
+
+describe("the sandbox bridge is never the management bridge by default (ERR-SEC-001, ERR-SEC-005)", () => {
+  const lan = [{ iface: "vmbr0", type: "bridge", address: "192.168.1.10", cidr: "192.168.1.10/24", gateway: "192.168.1.1" }, { iface: "vmbr1", type: "bridge" }, { iface: "eth0", type: "eth" }];
+
+  it("suggests an isolated bridge and defaults to it", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    expect((await status(sam)).options.suggested.bridge).toBe("vmbr1");
+    await org(sam, "Northwind");
+    const job = await runSetup(sam, {});
+    expect(job.status, JSON.stringify(job.log.slice(-3))).toBe("done");
+    expect((await status(sam)).params.bridge).toBe("vmbr1");
+  });
+
+  it("refuses the bridge that carries the host's address without the typed acknowledgement", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    const refused = await runSetup(sam, { bridge: "vmbr0" });
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("management");
+    expect(refused.error).toContain(LAN_BRIDGE_PHRASE);
+    expect(pve.roles.size).toBe(0);
+    const wrong = await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: "yes" });
+    expect(wrong.status).toBe("failed");
+    const ok = await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: LAN_BRIDGE_PHRASE });
+    expect(ok.status, JSON.stringify(ok.log.slice(-3))).toBe("done");
+  });
+
+  it("refuses vmbr0 when it carries the address, even when it is the only bridge", async () => {
+    const sam = await admin();
+    pve.host.network = [lan[0]];
+    const refused = await runSetup(sam, {});
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("management");
+  });
+
+  it("revokes EPCSandboxNetwork on bridges no longer wanted", async () => {
+    const sam = await admin();
+    pve.host.network = lan;
+    await org(sam, "Northwind");
+    expect((await runSetup(sam, { bridge: "vmbr0", acceptLanBridge: LAN_BRIDGE_PHRASE })).status).toBe("done");
+    const net = (who: string) => pve.acl.filter((a) => a.ugid === who && a.roleid === "EPCSandboxNetwork").map((a) => a.path);
+    expect(net(TOKEN_ID)).toEqual(["/sdn/zones/localnetwork/vmbr0"]);
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { bridge: "vmbr1" });
+    expect(moved.status).toBeLessThan(300);
+    for (let i = 0; i < 400; i++) {
+      const j = (await send("GET", `/api/agent-containers/jobs/${moved.json.jobId}`, sam)).json;
+      if (j.status !== "running") { expect(j.status, JSON.stringify(j.log.slice(-3))).toBe("done"); break; }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(net(TOKEN_ID)).toEqual(["/sdn/zones/localnetwork/vmbr1"]);
+    expect(net(SANDBOX_USER)).toEqual(["/sdn/zones/localnetwork/vmbr1"]);
+  });
+});

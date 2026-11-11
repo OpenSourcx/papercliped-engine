@@ -367,6 +367,8 @@ export function fakePve() {
     /** `GET /storage/<id>` for a dir storage, and what `/disks/directory` says about it. */
     storageConfig: { storage: "local", type: "dir", path: "/var/lib/vz", content: "vztmpl,rootdir,iso" } as Record<string, unknown>,
     directories: [] as { path?: string; type?: string; options?: string }[],
+    /** The node's network interfaces (a test can put the management address on a bridge). */
+    network: [{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }] as Record<string, unknown>[],
   };
   const catalog = ["debian-12-standard_12.7-1_amd64.tar.zst", "debian-12-standard_12.12-1_amd64.tar.zst", "debian-13-standard_13.1-2_amd64.tar.zst", "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"];
   let nextVmid = 9000;
@@ -481,7 +483,7 @@ export function fakePve() {
       }
     }
     if (path === "/nodes/pve/storage") return ok([{ storage: "local", type: "dir", active: 1, enabled: 1 }, { storage: "local-lvm", type: "lvmthin", active: 1, enabled: 1 }].filter((x) => (u.searchParams.get("content") === "vztmpl" ? x.storage === "local" : true)));
-    if (path === "/nodes/pve/network") return ok([{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }]);
+    if (path === "/nodes/pve/network") return ok(host.network);
     if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok((host.catalog ?? catalog).map((template) => ({ template, type: "lxc", section: "system" })));
     if (path === "/nodes/pve/aplinfo" && req.method === "POST") {
       if (!admin) return deny;
