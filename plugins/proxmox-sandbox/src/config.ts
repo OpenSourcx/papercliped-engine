@@ -9,7 +9,7 @@
  */
 
 export const DEFAULT_API_URL = "https://127.0.0.1:8006";
-export const DEFAULT_BRIDGE = "vmbr0";
+export const DEFAULT_BRIDGE = "vmbr1";
 export const DEFAULT_SSH_USER = "root";
 export const DEFAULT_SSH_PORT = 22;
 export const DEFAULT_NAME_PREFIX = "epaperclip";

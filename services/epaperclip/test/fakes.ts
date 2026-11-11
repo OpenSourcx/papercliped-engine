@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -103,6 +103,15 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       st.plugins.push(rec);
       return json(res, 200, rec);
     }
+    const probe = p.match(/^\/api\/plugins\/([\w-]+)\/config\/test$/);
+    if (probe && req.method === "POST") {
+      st.workerProbes++;
+      if (st.workerDownPolls > 0) {
+        st.workerDownPolls--;
+        return json(res, 502, { code: "WORKER_UNAVAILABLE", error: "Plugin worker is not running" });
+      }
+      return json(res, 200, { valid: true });
+    }
     const plug = p.match(/^\/api\/plugins\/([\w-]+)(\/enable)?$/);
     if (plug) {
       const rec = st.plugins.find((x) => x.id === plug[1]);
@@ -171,6 +180,8 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       st.envs.set(env.id, env);
       return json(res, 201, env);
     }
+    const envLeases = p.match(/^\/api\/environments\/([\w-]+)\/leases$/);
+    if (envLeases && req.method === "GET") return json(res, 200, st.pendingCleanup.map((l, i) => ({ id: `lease${i}`, environmentId: envLeases[1], status: "pending_cleanup", ...l })));
     const envOne = p.match(/^\/api\/environments\/([\w-]+)$/);
     if (envOne) {
       const env = st.envs.get(envOne[1]);
@@ -178,6 +189,9 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       if (!isAdmin) return json(res, 403, { error: "Instance admin required" });
       if (req.method === "PATCH") {
         const bd = b() as { config?: Record<string, unknown>; status?: string };
+        st.envPatches.push(bd);
+        // Like the engine: any config change is refused while a sandbox cleanup lease is unresolved.
+        if (bd.config && st.pendingCleanup.length) return json(res, 409, { error: "Cannot change the driver or provider config while a sandbox cleanup is pending. Wait for the cleanup sweep to destroy the orphan sandbox, then retry.", code: "environment_pending_sandbox_cleanup" });
         if (bd.config) env.config = { ...env.config, ...bd.config };
         if (bd.status) env.status = bd.status;
         return json(res, 200, env);
@@ -367,6 +381,8 @@ export function fakePve() {
     /** `GET /storage/<id>` for a dir storage, and what `/disks/directory` says about it. */
     storageConfig: { storage: "local", type: "dir", path: "/var/lib/vz", content: "vztmpl,rootdir,iso" } as Record<string, unknown>,
     directories: [] as { path?: string; type?: string; options?: string }[],
+    /** The node's network interfaces (a test can put the management address on a bridge). */
+    network: [{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }] as Record<string, unknown>[],
   };
   const catalog = ["debian-12-standard_12.7-1_amd64.tar.zst", "debian-12-standard_12.12-1_amd64.tar.zst", "debian-13-standard_13.1-2_amd64.tar.zst", "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"];
   let nextVmid = 9000;
@@ -481,7 +497,7 @@ export function fakePve() {
       }
     }
     if (path === "/nodes/pve/storage") return ok([{ storage: "local", type: "dir", active: 1, enabled: 1 }, { storage: "local-lvm", type: "lvmthin", active: 1, enabled: 1 }].filter((x) => (u.searchParams.get("content") === "vztmpl" ? x.storage === "local" : true)));
-    if (path === "/nodes/pve/network") return ok([{ iface: "vmbr0", type: "bridge" }, { iface: "eth0", type: "eth" }]);
+    if (path === "/nodes/pve/network") return ok(host.network);
     if (path === "/nodes/pve/aplinfo" && req.method === "GET") return ok((host.catalog ?? catalog).map((template) => ({ template, type: "lxc", section: "system" })));
     if (path === "/nodes/pve/aplinfo" && req.method === "POST") {
       if (!admin) return deny;

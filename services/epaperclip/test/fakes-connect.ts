@@ -34,6 +34,8 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   const plugins = new Map<string, Json>([["pl-preexisting", { id: "pl-preexisting", pluginKey: "legacy.thing", status: "ready", packageName: "legacy-thing", version: "0.1.0" }]]);
   const pluginCalls: { method: string; url: string; body: Json }[] = [];
   const aiConnections: Json[] = [];
+  /** Test controls: hold the start open, drop its connection after creating the session, and what the engine was told to cancel. */
+  const loginCtl = { gate: null as null | Promise<void>, dropStart: false, cancels: [] as string[] };
   const loginMode = { raw: null as null | ((id: string, polls: number) => Json) };
   const server: Server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -123,6 +125,10 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
       }
       return send(200, { connections: aiConnections });
     }
+    if ((m = p.match(/^\/api\/companies\/([\w-]+)\/setup-token-login-sessions\/active$/)) && req.method === "GET") {
+      const live = [...logins.values()].filter((l) => !loginCtl.cancels.includes(l.id as string));
+      return live.length ? send(200, { id: live[live.length - 1].id, status: "starting" }) : send(404, { error: "No such session" });
+    }
     if ((m = p.match(/^\/api\/companies\/([\w-]+)\/(?:adapters\/[\w-]+\/login-sessions|setup-token-login-sessions)(?:\/([\w-]+))?(\/prompt|\/code|\/cancel)?$/))) {
       if (!inCompany(m[1])) return send(403, { error: "Not a member" });
       if (req.method === "POST" && !m[2]) {
@@ -130,13 +136,15 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
         const b = body();
         if (p.includes("setup-token-login-sessions") ? b.adapterType !== "claude_local" : "adapterType" in b) return send(400, { error: "The login start request is invalid." });
         if (p.includes("/adapters/claude_local/login-sessions")) return send(400, { error: 'Adapter "claude_local" does not support a device login.' });
+        if (loginCtl.gate) await loginCtl.gate;
         const id = `ls${logins.size + 1}`;
         logins.set(id, { id, polls: 0, body: body() });
+        if (loginCtl.dropStart) return void res.destroy();
         return send(201, { id, status: "starting" });
       }
       const l = logins.get(m[2] ?? "");
       if (!l) return send(404, { error: "No such session" });
-      if (m[3] === "/cancel") return send(200, { ok: true });
+      if (m[3] === "/cancel") return loginCtl.cancels.push(l.id as string), send(200, { ok: true });
       if (m[3] === "/code") return send(200, { id: l.id, status: "completed", echoed: body().browserCode });
       l.polls++;
       if (loginMode.raw) return send(200, loginMode.raw(l.id, l.polls));
@@ -177,7 +185,7 @@ export async function overlayEngine(eng: Awaited<ReturnType<typeof fakeEngine>>)
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { url, issues, agents, approvals, seen, logins, adapters, adapterCalls, plugins, pluginCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+  return { url, issues, agents, approvals, seen, logins, loginCtl, adapters, adapterCalls, plugins, pluginCalls, aiConnections, loginMode, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 export const pkce = () => {

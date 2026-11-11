@@ -40,7 +40,7 @@ export const ROLES: Record<string, string[]> = {
   EPCSandboxNode: ["Sys.Audit"],
 };
 
-export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
+export type ContainersState = "not_set_up" | "partial" | "ready" | "error" | "needs_repair";
 export type StepId = "check" | "access" | "key" | "template" | "grant" | "plugin" | "environments" | "enforce";
 const STEPS: { id: StepId; label: string }[] = [
   { id: "access", label: "Create the sandbox user, role and API token in Proxmox" },
@@ -58,6 +58,8 @@ export interface Size {
   memoryMb: number;
   diskGb: number;
 }
+/** What a setup request may carry: the host settings plus the typed acknowledgement for the management bridge. */
+export type SetupInput = Partial<Params> & { acceptLanBridge?: string };
 export interface Params {
   storage: string;
   templateStorage: string;
@@ -87,6 +89,8 @@ interface Stored {
   secrets?: Record<string, OrgSecrets>;
   /** What Proxmox reported about the chosen storages on the last check. */
   storageFacts?: Record<string, StorageFacts>;
+  /** The management bridge the owner knowingly accepted by typing the warning; accepting it once covers later runs on that bridge. */
+  lanBridgeAccepted?: string;
   createdBy?: string;
   createdAt?: number;
   lastJob?: JobView;
@@ -104,6 +108,8 @@ export interface JobView {
   steps: { id: StepId | "teardown"; label: string; state: StepState; detail?: string }[];
   log: { t: number; level: "info" | "warn" | "error"; text: string }[];
   error?: string;
+  /** Set when the engine refused the environment change because a sandbox cleanup lease is pending or capped (ERR-CTR-002). */
+  needsRepair?: string;
   /** Why the failed Proxmox task failed, when it was one: the matched cause, the exact fix and the (redacted) log lines it rests on. */
   diagnosis?: LxcDiagnosis & { step: string };
 }
@@ -131,6 +137,15 @@ interface EngineEnv {
 }
 
 class StepError extends Error {}
+/** The engine refuses any environment config change while a sandbox cleanup lease is unresolved. */
+class PendingCleanupError extends StepError {
+  readonly reason: string;
+  constructor(message: string, reason: string) {
+    super(message);
+    this.reason = reason;
+  }
+}
+const PENDING_CLEANUP = /sandbox cleanup is pending/i;
 /** A failed Proxmox task with the diagnosis made from its log; `input` lets a later probe refine it. */
 class DiagError extends StepError {
   readonly diagnosis: LxcDiagnosis;
@@ -177,14 +192,30 @@ const intIn = (v: unknown, lo: number, hi: number, what: string): number => {
   if (typeof v !== "number" || !Number.isInteger(v) || v < lo || v > hi) throw new HttpError(400, "bad_request", `${what} must be a whole number from ${lo} to ${hi}`);
   return v;
 };
+/** What the owner types to put agent containers on the bridge that carries the host's own address (ERR-SEC-001). */
+export const LAN_BRIDGE_PHRASE = "agents can reach my LAN";
+/** The isolated bridge setup prefers, and the one the host's management address is never expected on. */
+const ISOLATED_BRIDGE = "vmbr1";
+type Net = { iface: string; type: string; address?: string; cidr?: string; gateway?: string };
+/** A bridge that carries an address and the default route, or the address ePaperclip reaches Proxmox on: the management/LAN bridge. */
+const isManagement = (i: Net, host: string): boolean => Boolean((i.address || i.cidr) && (i.gateway || (i.address ?? i.cidr?.split("/")[0]) === host));
+/** The bridge to start from: a saved one that is still valid, else vmbr1, else any bridge that is not the management one, else the first. */
+const pickBridge = (net: Net[], saved: string | undefined, host: string): string | null => {
+  const bridges = net.filter((i) => /bridge/i.test(i.type));
+  const names = bridges.map((i) => i.iface);
+  const lan = new Set(bridges.filter((i) => isManagement(i, host)).map((i) => i.iface));
+  if (saved && names.includes(saved) && !lan.has(saved)) return saved;
+  return names.includes(ISOLATED_BRIDGE) ? ISOLATED_BRIDGE : names.find((n) => !lan.has(n)) ?? (saved && names.includes(saved) ? saved : names[0] ?? null);
+};
+
 export const DEFAULT_SIZE: Size = { cores: 2, memoryMb: 4096, diskGb: 16 };
 const TEMPLATE_DISK_GB = 8;
 
 /** Strict parse of the setup request. Anything not recognised is refused. */
-export function parseSetup(b: Record<string, unknown>): Partial<Params> & { size?: Size } {
-  const known = new Set(["storage", "bridge", "pool", "templateStorage", "size", "force"]);
+export function parseSetup(b: Record<string, unknown>): Partial<Params> & { size?: Size; acceptLanBridge?: string } {
+  const known = new Set(["storage", "bridge", "pool", "templateStorage", "size", "force", "acceptLanBridge"]);
   for (const k of Object.keys(b)) if (!known.has(k)) throw new HttpError(400, "bad_request", `Unknown setting ${k.slice(0, 40)}`);
-  const out: Partial<Params> & { size?: Size } = {};
+  const out: Partial<Params> & { size?: Size; acceptLanBridge?: string } = {};
   const text = (k: string, re: RegExp, what: string) => {
     if (b[k] === undefined || b[k] === "") return undefined;
     if (typeof b[k] !== "string" || !re.test(b[k] as string)) throw new HttpError(400, "bad_request", `${what} doesn't look right`);
@@ -194,6 +225,10 @@ export function parseSetup(b: Record<string, unknown>): Partial<Params> & { size
   out.templateStorage = text("templateStorage", STORAGE_RE, "The template storage");
   out.bridge = text("bridge", BRIDGE_RE, "The bridge");
   out.pool = text("pool", POOL_RE, "The pool");
+  if (b.acceptLanBridge !== undefined) {
+    if (typeof b.acceptLanBridge !== "string" || b.acceptLanBridge.length > 100) throw new HttpError(400, "bad_request", "acceptLanBridge doesn't look right");
+    out.acceptLanBridge = b.acceptLanBridge;
+  }
   if (b.size !== undefined) {
     const s = b.size as Record<string, unknown> | null;
     if (!s || typeof s !== "object" || Array.isArray(s)) throw new HttpError(400, "bad_request", "size must be an object");
@@ -342,6 +377,8 @@ export class AgentContainers {
   private actor: EngineActor | null = null;
   /** Set by an explicit "try the template again": allows a rebuild after repeated failures. */
   private force = false;
+  /** The typed acknowledgement of a request in progress. Never kept after the job. */
+  private accept: string | undefined;
 
   constructor(d: ContainersDeps) {
     this.d = d;
@@ -567,6 +604,9 @@ export class AgentContainers {
     let state: ContainersState = done === steps.length ? "ready" : core === 0 ? "not_set_up" : "partial";
     if (state !== "ready" && (checkError || (st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.finishedAt !== undefined))) state = "error";
     if (state === "not_set_up" && checkError) state = "error";
+    const failedJob = st.lastJob?.kind === "setup" && st.lastJob.status === "failed" ? st.lastJob : undefined;
+    // A capped cleanup lease is not something setup can retry its way out of; say so instead of a generic error.
+    if (state !== "ready" && failedJob?.needsRepair) state = "needs_repair";
     if (this.stored().lastState !== state) this.save({ lastState: state });
     return {
       ...base,
@@ -580,18 +620,19 @@ export class AgentContainers {
       templateAttempts: st.templateAttempts ?? 0,
       arch: this.arch(),
       grantMissing: grantGaps.map((g) => ({ path: g.path, role: g.role, who: g.who, why: g.why, lacking: g.lacking })),
+      ...(state === "needs_repair" && failedJob?.needsRepair ? { repair: { kind: "pending_cleanup", reason: failedJob.needsRepair, action: null } } : {}),
       ...(state !== "ready" && st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.diagnosis ? { diagnosis: st.lastJob.diagnosis } : {}),
       params: st.params ?? null,
       options: await this.options(pve, st.params ?? null),
-      ...(checkError ? { error: checkError } : state === "error" && st.lastJob?.error ? { error: st.lastJob.error } : {}),
+      ...(checkError ? { error: checkError } : (state === "error" || state === "needs_repair") && st.lastJob?.error ? { error: st.lastJob.error } : {}),
     };
   }
 
   /**
    * What this node can actually offer for the three host choices, and the pick to start from. The form shows these as
    * lists, so nobody has to know that their default "local-lvm" isn't on this host. A saved choice that is still valid
-   * stays; otherwise: local-lvm or local-zfs when present for disks, "local" for templates, vmbr0 for the bridge, then
-   * whatever comes first.
+   * stays; otherwise: local-lvm or local-zfs when present for disks, "local" for templates, then
+   * whatever comes first. The bridge is never the one that carries the host's own address while another exists: vmbr1 first.
    */
   private async options(pve: ProxmoxClient, saved: Params | null) {
     try {
@@ -605,10 +646,18 @@ export class AgentContainers {
         storages,
         templateStorages,
         bridges,
-        suggested: { storage: pick(storages, saved?.storage, ["local-lvm", "local-zfs"]), templateStorage: pick(templateStorages, saved?.templateStorage, ["local"]), bridge: pick(bridges, saved?.bridge, ["vmbr0"]) },
+        suggested: { storage: pick(storages, saved?.storage, ["local-lvm", "local-zfs"]), templateStorage: pick(templateStorages, saved?.templateStorage, ["local"]), bridge: pickBridge(net.interfaces, saved?.bridge, this.hostAddress()) },
       };
     } catch {
       return null;
+    }
+  }
+
+  private hostAddress(): string {
+    try {
+      return new URL(this.d.pveUrl).hostname;
+    } catch {
+      return "";
     }
   }
 
@@ -682,7 +731,7 @@ export class AgentContainers {
   }
 
   /** Starts a setup job (or returns the one already running). Checks that need no Proxmox call happen first. */
-  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null, force = false): Promise<{ jobId: string; alreadyRunning: boolean }> {
+  async startSetup(getPve: () => Promise<ProxmoxClient>, who: string, over: SetupInput, actor: EngineActor | null = null, force = false): Promise<{ jobId: string; alreadyRunning: boolean }> {
     if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
     await this.assertEngineReady();
     const job = this.newJob("setup", who, JOB_STEPS);
@@ -727,8 +776,9 @@ export class AgentContainers {
    * same way the full setup does, saves the choice, then re-grants the token's rights on the new storage and updates every
    * organization's environment. A change to the template storage takes effect the next time the template is built.
    */
-  async startSettings(getPve: () => Promise<ProxmoxClient>, who: string, over: Partial<Params>, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
+  async startSettings(getPve: () => Promise<ProxmoxClient>, who: string, given: SetupInput, actor: EngineActor | null = null): Promise<{ jobId: string; alreadyRunning: boolean }> {
     if (this.job?.status === "running") return { jobId: this.job.id, alreadyRunning: true };
+    const { acceptLanBridge, ...over } = given;
     if (!this.stored().params) throw new HttpError(409, "not_set_up", "Run the full setup once first so the host settings are known");
     if (!Object.keys(over).length) throw new HttpError(400, "bad_request", "Nothing to change");
     await this.assertEngineReady();
@@ -739,6 +789,7 @@ export class AgentContainers {
     ]);
     this.job = job;
     this.actor = actor;
+    this.accept = acceptLanBridge;
     const merged = this.params(over);
     void (async () => {
       const pve = await getPve();
@@ -771,6 +822,7 @@ export class AgentContainers {
     job.status = "failed";
     job.error = msg;
     if (e instanceof DiagError) job.diagnosis = { ...e.diagnosis, step: e.what };
+    if (e instanceof PendingCleanupError) job.needsRepair = e.reason;
     job.finishedAt = this.now();
     this.log(job, "error", msg);
     this.finish(job);
@@ -780,6 +832,7 @@ export class AgentContainers {
     this.scrub = new Set();
     this.actor = null;
     this.force = false;
+    this.accept = undefined;
     this.save({ lastJob: { ...job, log: job.log.slice(-200) } });
   }
 
@@ -792,10 +845,17 @@ export class AgentContainers {
     if (detail) s.detail = detail;
   }
 
-  private async runSetup(job: JobView, getPve: () => Promise<ProxmoxClient>, over: Partial<Params>, force: boolean) {
+  private async runSetup(job: JobView, getPve: () => Promise<ProxmoxClient>, given: SetupInput, force: boolean) {
     const pve = await getPve();
     const before = this.stored().params;
+    const { acceptLanBridge, ...over } = given;
+    // Nothing chosen and nothing saved: start from an isolated bridge, not the LAN one.
+    if (!over.bridge && !before?.bridge) {
+      const picked = pickBridge((await pve.network(this.d.node).catch(() => ({ interfaces: [] as Net[] }))).interfaces, undefined, this.hostAddress());
+      if (picked) over.bridge = picked;
+    }
     const params = this.params(over);
+    this.accept = acceptLanBridge;
     this.force = force;
     // A changed host setting invalidates the grants/environment checks, so it is never a resume.
     const changed = (Object.keys(over) as (keyof Params)[]).some((k) => over[k] !== undefined && JSON.stringify(over[k]) !== JSON.stringify(before?.[k]));
@@ -817,7 +877,7 @@ export class AgentContainers {
     if (resumed.has("access")) skip("access", "Already in place"); else await this.step(job, "access", () => this.stepAccess(job, pve, params));
     if (resumed.has("key")) skip("key", "Already in place"); else await this.step(job, "key", async () => this.stepKey(job));
     // Rights on the pool, storage, bridge and node need no template; the template's own right is added when it is built.
-    if (resumed.has("grant")) skip("grant", "Already in place"); else await this.step(job, "grant", () => this.stepGrant(job, pve, params));
+    if (resumed.has("grant")) { skip("grant", "Already in place"); await this.revokeStaleNetwork(job, pve, params); } else await this.step(job, "grant", () => this.stepGrant(job, pve, params));
     // The provider install doesn't depend on the template, so a template that fails to build doesn't hide whether it works.
     let templateError: unknown = null;
     if (resumed.has("template") && !force) skip("template", "Already in place");
@@ -892,6 +952,16 @@ export class AgentContainers {
     if (tplFacts.verdict === "unsupported" && tplFacts.active === false) throw new StepError(tplFacts.reason!);
     const net = await pve.network(node);
     if (!net.interfaces.some((i) => i.iface === p.bridge && /bridge/i.test(i.type))) throw new StepError(`There is no bridge named "${p.bridge}" on this node. Choose one of: ${net.interfaces.filter((i) => /bridge/i.test(i.type)).map((i) => i.iface).join(", ") || "(none)"}.`);
+    const mgmt = net.interfaces.find((i) => i.iface === p.bridge && isManagement(i, this.hostAddress()));
+    if (mgmt) {
+      const alt = net.interfaces.filter((i) => /bridge/i.test(i.type) && i.iface !== p.bridge && !isManagement(i, this.hostAddress())).map((i) => i.iface);
+      if (this.accept === LAN_BRIDGE_PHRASE || this.stored().lanBridgeAccepted === p.bridge) {
+        this.save({ lanBridgeAccepted: p.bridge });
+        this.log(job, "warn", `Agent containers will sit on "${p.bridge}", the management bridge: agent code can reach every host on that network. You accepted this.`);
+      } else {
+        throw new StepError(`The bridge "${p.bridge}" carries this host's own address (the management/LAN network). Agent code in the containers would reach every host on it. ${alt.length ? `Choose an isolated bridge instead (${alt.join(", ")}). ` : `Create an isolated bridge (for example ${ISOLATED_BRIDGE}) in Proxmox. `}To use it anyway, send acceptLanBridge: "${LAN_BRIDGE_PHRASE}".`);
+      }
+    }
     return "Host looks ready";
   }
 
@@ -1317,6 +1387,17 @@ export class AgentContainers {
     for (const who of ["user", "token"] as const) await pve.call("PUT", "/access/acl", { path, roles: role, ...(who === "user" ? { users: SANDBOX_USER } : { tokens: TOKEN_ID }), propagate: true, delete: true });
   }
 
+  /** Takes EPCSandboxNetwork away from the sandbox user and token on every bridge but the one wanted (ERR-SEC-005). */
+  private async revokeStaleNetwork(job: JobView, pve: ProxmoxClient, p: Params) {
+    const acls = await pve.call<{ path: string; ugid: string; type: string; roleid: string }[]>("GET", "/access/acl");
+    for (const a of acls) {
+      const bridge = /^\/sdn\/zones\/localnetwork\/(.+)$/.exec(a.path)?.[1];
+      if (a.roleid !== "EPCSandboxNetwork" || !bridge || bridge === p.bridge || (a.ugid !== SANDBOX_USER && a.ugid !== TOKEN_ID)) continue;
+      await pve.call("PUT", "/access/acl", { path: a.path, roles: a.roleid, ...(a.ugid === SANDBOX_USER ? { users: SANDBOX_USER } : { tokens: TOKEN_ID }), propagate: true, delete: true });
+      this.log(job, "info", `Revoked ${a.roleid} on ${a.path} from the ${a.ugid === SANDBOX_USER ? SANDBOX_USER : TOKEN_ID}: agents may no longer use ${bridge}`);
+    }
+  }
+
   /** Which of the privileges a role holds Proxmox does not give this user or token on this path; null if Proxmox can't say. */
   private async lackingPrivs(pve: ProxmoxClient, path: string, role: string, id: string): Promise<string[] | null> {
     try {
@@ -1372,6 +1453,7 @@ export class AgentContainers {
       await this.setAcl(pve, g.path, g.role, g.who);
       this.log(job, "info", `Granted ${g.role} on ${g.path} to the ${g.who === "user" ? SANDBOX_USER : TOKEN_ID}`);
     }
+    await this.revokeStaleNetwork(job, pve, p);
     // Verify with what Proxmox will really allow, not only that the entries exist. A privilege-separated token gets the overlap of its own and its user's rights.
     const after = await this.grantGaps(pve, p, ready, true);
     if (after.gaps.length) throw new StepError(`Proxmox still doesn't give the token these rights: ${describeGaps(after.gaps)}. Check that the signed-in account may change permissions (Permissions.Modify on /), and that no role was edited.`);
@@ -1396,9 +1478,28 @@ export class AgentContainers {
       pl = await this.eng("POST", "/api/plugins/install", { packageName: this.pluginDir, isLocalPath: true });
     }
     if (!pl || pl.status !== "ready") throw new StepError(`The engine installed the provider but it isn't ready (${pl?.status ?? "unknown"}${pl?.lastError ? `: ${pl.lastError}` : ""})`);
+    await this.awaitWorker(job, pl.id);
     this.save({ pluginId: pl.id });
     this.log(job, "info", "The provider is installed and ready");
     return "Installed";
+  }
+
+  /**
+   * The registry says `ready` before the plugin's worker is running, and the engine then refuses with "has no running
+   * worker". Ask the worker something (a config test, which goes to it over RPC): 502 means no worker yet, any other
+   * answer means it is up. Bounded; without an organization there is nothing to ask for, and nothing needs the worker yet.
+   */
+  private async awaitWorker(job: JobView, pluginId: string) {
+    const co = (await this.companies())[0];
+    if (!co) return;
+    const tries = 30;
+    for (let i = 1; i <= tries; i++) {
+      const up = await this.eng("POST", `/api/plugins/${encodeURIComponent(pluginId)}/config/test`, { companyId: co.id, configJson: {} }).then(() => true, (e) => !(e instanceof HttpError && e.status === 502));
+      if (up) return;
+      if (i === 1 || i % 5 === 0) this.log(job, "info", `Waiting for the provider's worker to start (${i}/${tries})`);
+      await this.pace(2000);
+    }
+    throw new StepError("The provider is enabled but its worker still isn't running after about a minute. Check the provider's log in the engine, then run the provider step again.");
   }
 
   private async stepEnvironments(job: JobView, p: Params): Promise<string> {
@@ -1456,7 +1557,17 @@ export class AgentContainers {
       env = await this.eng<EngineEnv>("POST", `/api/companies/${cid}/environments`, { name: envName, description: "Runs this organization's agents in unprivileged Proxmox containers. Managed by ePaperclip.", driver: "sandbox", status: "active", config: cfg, metadata: { epaperclip: "agent-containers", companyId } });
       this.log2(job, `Created environment "${env.name}"`);
     } else if (env.status !== "active" || !Object.entries(cfg).every(([k2, v]) => (env!.config ?? {})[k2] === v)) {
-      env = await this.eng<EngineEnv>("PATCH", `/api/environments/${encodeURIComponent(env.id)}`, { config: cfg, status: "active" });
+      // Only what differs. The engine refuses any `config` in a PATCH while a sandbox cleanup is pending, so a status-only
+      // change must not carry one.
+      const have = env.config ?? {};
+      const changed = Object.fromEntries(Object.entries(cfg).filter(([k2, v]) => have[k2] !== v));
+      const patch = { ...(Object.keys(changed).length ? { config: changed } : {}), status: "active" };
+      try {
+        env = await this.eng<EngineEnv>("PATCH", `/api/environments/${encodeURIComponent(env.id)}`, patch);
+      } catch (e) {
+        if (e instanceof HttpError && PENDING_CLEANUP.test(e.message)) throw await this.pendingCleanup(env.id, e);
+        throw e;
+      }
       this.log2(job, `Updated environment "${env.name}"`);
     }
     this.save({ environments: { ...(this.stored().environments ?? {}), [companyId]: { environmentId: env.id } } });
@@ -1491,6 +1602,20 @@ export class AgentContainers {
     }
     return warnings;
   }
+  /**
+   * Names the stuck lease(s) from the engine's own record when it can be read. The engine has no route this service may
+   * offer to resolve one (see docs/AGENT-CONTAINERS-DIAGNOSIS.md), so this only reports.
+   */
+  private async pendingCleanup(environmentId: string, cause: HttpError): Promise<PendingCleanupError> {
+    const leases = await this.eng<{ providerLeaseId?: string | null; failureReason?: string | null }[]>("GET", `/api/environments/${encodeURIComponent(environmentId)}/leases?status=pending_cleanup`).catch(() => []);
+    const parts = (Array.isArray(leases) ? leases : []).slice(0, 3).map((l) => {
+      const vmid = /(\d{3,})\s*$/.exec(l.providerLeaseId ?? "")?.[1];
+      return `${vmid ? `CT ${vmid}` : "a sandbox"}${l.failureReason ? ` (${l.failureReason})` : ""}`;
+    });
+    const reason = `Cleanup stuck: ${parts.length ? parts.join("; ") : "a sandbox cleanup lease is pending in the engine"}. The engine retries every 30 minutes and refuses environment changes until it succeeds; see the provider's worker log for the Proxmox error.`;
+    return new PendingCleanupError(cause.message, reason);
+  }
+
   /**
    * The engine lets an instance admin read and manage an organization's secrets and agents only through a membership in
    * it. So the service account joins each organization (an invitation, accepted as itself) the first time it needs to.

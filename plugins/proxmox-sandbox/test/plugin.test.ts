@@ -77,7 +77,7 @@ describe("manifest", () => {
     expect(props.sshPrivateKey!.format).toBe("secret-ref");
     expect(props.unprivileged!.default).toBe(true);
     expect(props.allowInsecureTls!.default).toBe(false);
-    expect(props.bridge!.default).toBe("vmbr0");
+    expect(props.bridge!.default).toBe("vmbr1");
     expect(props.storage!["x-paperclip-advanced"]).toBe(true);
   });
 });
@@ -86,7 +86,7 @@ describe("validate", () => {
   it("accepts a complete config and normalises it", async () => {
     const result = await hooks.onEnvironmentValidateConfig!({ driverKey: "proxmox", config: config({ apiUrl: `${pve.url}/api2/json`, namePrefix: " My Agents! " }) });
     expect(result.ok).toBe(true);
-    expect(result.normalizedConfig).toMatchObject({ apiUrl: pve.url, namePrefix: "my-agents", unprivileged: true, bridge: "vmbr0", sshUser: "root" });
+    expect(result.normalizedConfig).toMatchObject({ apiUrl: pve.url, namePrefix: "my-agents", unprivileged: true, bridge: "vmbr1", sshUser: "root" });
     expect(result.warnings!.join(" ")).toMatch(/trust on first use/);
   });
 
@@ -260,7 +260,7 @@ describe("acquire", () => {
     expect(update.form).toMatchObject({
       cores: "4",
       memory: "4096",
-      net0: "name=eth0,bridge=vmbr0,ip=dhcp",
+      net0: "name=eth0,bridge=vmbr1,ip=dhcp",
       tags: "epaperclip;company-company-1;run-run_abc-123",
     });
     expect(pve.find("PUT", "/lxc/101/resize")[0]!.form).toMatchObject({ disk: "rootfs", size: "20G" });
@@ -318,7 +318,7 @@ describe("acquire", () => {
       pool: "epaperclip",
       rootfs: "local-lvm:12",
       unprivileged: "1",
-      net0: "name=eth0,bridge=vmbr0,ip=dhcp",
+      net0: "name=eth0,bridge=vmbr1,ip=dhcp",
       tags: "epaperclip;company-company-1;run-run-1",
     });
     expect(create.form["ssh-public-keys"]).toBe(`${derivePublicKey(key)} epaperclip-proxmox-sandbox`);
