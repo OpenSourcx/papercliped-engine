@@ -386,11 +386,14 @@ describe("leases, workspaces and execution", () => {
   });
 
   it("schedules across workers deterministically and honours requirements", async () => {
-    const h = await host();
+    // A 300 ms heartbeat (the harness default) lets a busy CI runner mark a worker offline between adoption and acquire;
+    // the scheduler skips offline workers. Use a heartbeat far above scheduling jitter and re-check both are online.
+    const h = await host({ hbMs: 3000 });
     const a = worker({ caps: { arch: "amd64", gpu: { present: false }, tools: { git: "2", docker: "24" } } });
     const b = worker({ caps: { arch: "arm64", gpu: { present: true } } });
     await adoptOnline(h, a, "box-a");
     await adoptOnline(h, b, "box-b");
+    await until(() => h.hub.workers().filter((w) => w.online).length === 2, 8000, "both workers online before scheduling");
     const token = h.hub.issueControlToken("co1");
     const gpu = await acquire(h, token, "g", { requirements: { gpu: true } });
     expect(gpu.json.workerName).toBe("box-b");
