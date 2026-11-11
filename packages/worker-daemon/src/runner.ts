@@ -1,5 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { LIMITS } from "@papercliped-engine/worker-fabric";
+import { pidsWithEnvTag } from "./platform.ts";
 
 /** Runs commands for the host: streamed output, a timeout, and cancellation of the whole process group. */
 
@@ -19,7 +21,7 @@ export class Runner {
   }
   start(s: RunSpec) {
     if (this.procs.has(s.id)) throw new Error("duplicate run id");
-    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...(process.env as Record<string, string>), ...this.baseEnv(), ...s.env }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...(process.env as Record<string, string>), ...this.baseEnv(), ...s.env, EPAPERCLIP_LEASE_OWNER: s.owner }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     const rec = { child, owner: s.owner, killed: false };
     this.procs.set(s.id, rec);
     let timedOut = false;
@@ -57,8 +59,37 @@ export class Runner {
     sig("SIGTERM");
     setTimeout(() => sig("SIGKILL"), 2000).unref();
   }
+  /**
+   * Kills processes an adapter detached from the run's group (e.g. a bridge server), found by the owner tag in their
+   * environment: through /proc on Linux, through `ps eww` on macOS (which only shows the person's own processes,
+   * which is all a worker starts). Elsewhere it does nothing.
+   */
+  sweep(owner: string): number {
+    const tag = `EPAPERCLIP_LEASE_OWNER=${owner}`;
+    let pids: number[] = [];
+    try {
+      if (process.platform === "linux") {
+        pids = readdirSync("/proc").filter((d) => /^\d+$/.test(d)).map(Number).filter((pid) => {
+          if (pid === process.pid) return false;
+          try { return readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").includes(tag); } catch { return false; }
+        });
+      } else if (process.platform === "darwin") {
+        pids = pidsWithEnvTag(execFileSync("ps", ["eww", "-ax", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }), tag);
+      }
+    } catch { return 0; }
+    let n = 0;
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGTERM");
+        setTimeout(() => { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }, 2000).unref();
+        n++;
+      } catch { /* not ours or already gone */ }
+    }
+    return n;
+  }
   cancel(owner?: string, id?: string): number {
     let n = 0;
+    if (owner && (!id || id === "*")) n += this.sweep(owner);
     for (const [rid, r] of this.procs) if ((!owner || r.owner === owner) && (!id || id === "*" || id === rid)) { this.kill(rid); n++; }
     return n;
   }

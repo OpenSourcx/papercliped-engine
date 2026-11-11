@@ -23,7 +23,7 @@ curl -fsSL "https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/$SHA
 
 It creates `vmbr1` with `10.77.0.1/24`, DHCP `10.77.0.100-250`, and NAT via the default route. It does
 not touch `vmbr0` or Proxmox's own UI. Override the names/ranges with `EPC_SANDBOX_*` environment
-variables if needed.
+variables if needed. The script also writes a small firewall (`/usr/local/sbin/epaperclip-sandbox-firewall.sh`, run at every boot of the bridge) so sandboxes reach the internet but not your LAN, your tailnet or the host's own ports. Check it from inside a sandbox: pinging your LAN gateway and opening `https://10.77.0.1:8006` must both fail.
 
 Verify:
 
@@ -60,11 +60,11 @@ In the console, run the guided Agent Containers setup. It should detect:
 - template: built from the host's architecture.
 
 On `dir` storage the first sandbox is a full clone; later leases reuse the stopped sandbox. On
-thin/SSD storage Proxmox linked-clones the template.
+thin/SSD storage Proxmox linked-clones the template. A reused sandbox keeps its files between runs of the same organization (it is never shared with another organization); on thin/SSD storage every run gets a fresh clone.
 
 ## 5. Worker (optional, another machine)
 
-On the AI box:
+On the AI box (Linux or macOS). A Mac runs the worker as a per-user LaunchAgent (`deploy/worker/install-macos.sh`, needs Node 22+); Linux uses `deploy/worker/install.sh` (systemd). Either way the worker connects out to your own host and never goes through a Papercliped service:
 
 ```sh
 npm install -g epaperclip-worker

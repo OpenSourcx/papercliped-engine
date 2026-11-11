@@ -37,6 +37,10 @@ async function detectGpu(): Promise<Capabilities["gpu"]> {
     // Jetson uses unified memory; the GPU can address a large share of system RAM.
     return { present: true, kind: "jetson", name: model || "NVIDIA Jetson", vramMb: Math.round((totalmem() / 1048576) * 0.6) };
   }
+  if (process.platform === "darwin" && arch() === "arm64") {
+    // Apple Silicon has unified memory and Ollama uses Metal; the GPU can address roughly two thirds of system RAM.
+    return { present: true, kind: "apple", name: cpus()[0]?.model ?? "Apple Silicon", vramMb: Math.round((totalmem() / 1048576) * 0.66) };
+  }
   const smi = await sh("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]);
   if (smi) {
     const vram = await sh("nvidia-smi", ["--query-gpu=memory.total", "--format=csv,noheader,nounits"]);
@@ -73,7 +77,12 @@ export function networks(ts: string | null): Capabilities["networks"] {
 }
 
 export async function tailscaleIp(): Promise<string | null> {
-  return (await sh("tailscale", ["ip", "-4"]))?.split("\n")[0]?.trim() || null;
+  // The macOS app keeps its command line tool inside the app bundle, off PATH.
+  for (const bin of ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]) {
+    const ip = (await sh(bin, ["ip", "-4"]))?.split("\n")[0]?.trim();
+    if (ip) return ip;
+  }
+  return null;
 }
 
 export async function detectCapabilities(o: { workspaceRoot: string; ollamaUrl: string; maxContext: number | null; setupMode?: "pin" | "self" | null }): Promise<Capabilities> {

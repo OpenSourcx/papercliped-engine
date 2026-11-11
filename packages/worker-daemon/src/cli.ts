@@ -5,6 +5,7 @@ import type { Capabilities } from "@papercliped-engine/worker-fabric";
 import { WorkerClient, VERSION, type Status } from "./client.ts";
 import { detectCapabilities } from "./caps.ts";
 import { WorkerFiles } from "./config.ts";
+import { hasCommand, ollamaInstall } from "./platform.ts";
 import { bestModel, recommendModels, usableMemory } from "@papercliped-engine/worker-fabric";
 
 const run = (cmd: string, args: string[]) => new Promise<void>((res, rej) => {
@@ -112,7 +113,8 @@ async function main() {
           rl.close();
           mode = answer === "2" || /self|guide/i.test(answer) ? "self" : "pin";
         } else {
-          mode = "pin";
+          // Non-interactive runs get the least-privileged mode. Pin-managed installs must be chosen: --mode pin.
+          mode = "self";
         }
       }
       c.setupMode = mode as "pin" | "self";
@@ -133,7 +135,7 @@ async function main() {
         console.log("  3. Pin verifies the result and creates the worker environment");
         console.log("  4. approve the worker; Pin can then schedule agents here.");
       } else {
-        if (!caps.tools.ollama) console.log(`  1. install Ollama${installOllama ? " (running now)" : ": curl -fsSL https://ollama.com/install.sh | sh"}`);
+        if (!caps.tools.ollama) console.log(`  1. install Ollama${installOllama ? " (running now)" : `: ${ollamaInstall(process.platform, hasCommand("brew")).command}`}`);
         else console.log("  1. Ollama is already installed");
         console.log(`  2. pull a model${pull ? " (running now)" : ""}: ollama pull ${model}`);
         console.log("  3. pair with ePaperclip/Pin: epaperclip-worker adopt <code from Workers>");
@@ -142,8 +144,10 @@ async function main() {
       if (installOllama) {
         if (caps.tools.ollama) console.log("Ollama is already installed; skipping.");
         else {
-          if (process.getuid?.() !== 0) throw new Error("Installing Ollama needs root; run with sudo or install it yourself.");
-          await run("sh", ["-c", "curl -fsSL https://ollama.com/install.sh | sh"]);
+          const how = ollamaInstall(process.platform, hasCommand("brew"));
+          if (!how.automatic) throw new Error(`Install Ollama yourself: ${how.command}`);
+          if (how.needsRoot && process.getuid?.() !== 0) throw new Error("Installing Ollama needs root; run with sudo or install it yourself.");
+          await run("sh", ["-c", how.command]);
         }
       }
       if (ollamaUrl) {

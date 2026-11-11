@@ -6,7 +6,7 @@ export interface Capabilities {
   hostname: string;
   cpu: { model: string; cores: number };
   memMb: number;
-  gpu: { present: boolean; name?: string; kind?: "jetson" | "nvidia" | "other"; vramMb?: number };
+  gpu: { present: boolean; name?: string; kind?: "jetson" | "nvidia" | "apple" | "other"; vramMb?: number };
   storage: { path: string; totalGb: number; freeGb: number }[];
   tools: Record<string, string>;
   inference: { runtime: "ollama"; url: string; models: { name: string; sizeMb?: number }[]; maxContext?: number } | null;

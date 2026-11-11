@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { connect } from "node:net";
 import { dirname, join } from "node:path";
 import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
+import { hasCommand, ollamaInstall } from "./platform.ts";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
 import { Gate } from "./gate.ts";
 import { Runner } from "./runner.ts";
@@ -270,7 +271,7 @@ export class WorkerClient {
         case "inference.install": {
           const a = m.args as { action?: "ollama" | "pull"; model?: string };
           const model = typeof a.model === "string" ? a.model : "";
-          const command = a.action === "ollama" ? "curl -fsSL https://ollama.com/install.sh | sh" : `ollama pull ${model}`;
+          const command = a.action === "ollama" ? ollamaInstall(process.platform, hasCommand("brew")).command : `ollama pull ${model}`;
           if (c.setupMode !== "pin") return reply(true, { ok: false, code: "guided_only", command });
           try {
             return reply(true, await helperCall({ action: String(a.action ?? ""), model }));
