@@ -17,7 +17,7 @@ what the installer does. Root shell only.
 Agent Containers refuse the management bridge by default. Create the isolated bridge, DHCP and NAT:
 
 ```sh
-SHA=<pinned-commit>
+SHA=40777ae3be31724abcdbd1b16afc463ad396e99f
 curl -fsSL "https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/$SHA/deploy/isolated-bridge.sh" | bash
 ```
 
@@ -35,7 +35,7 @@ systemctl is-active dnsmasq
 ## 3. Install ePaperclip from the pinned candidate
 
 ```sh
-SHA=<pinned-commit>
+SHA=40777ae3be31724abcdbd1b16afc463ad396e99f
 curl -fsSL "https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/$SHA/deploy/from-source.sh" | EPC_COMMIT="$SHA" bash
 ```
 
