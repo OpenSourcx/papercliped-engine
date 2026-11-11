@@ -46,6 +46,8 @@ for d in $(echo "$DNS" | tr ',' ' '); do
 done
 add INPUT -i "\$B" -j DROP
 add INPUT -i "\$B" -p udp --dport 67 -j ACCEPT
+# The host reaches into its sandboxes (ssh); their replies come back in on this bridge and must get through.
+add INPUT -i "\$B" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 FWSH
 chmod 755 "$FW"
 if ! grep -qF "$MARK" /etc/network/interfaces; then
