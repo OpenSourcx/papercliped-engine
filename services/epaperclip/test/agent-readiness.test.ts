@@ -8,6 +8,17 @@ function agent(patch: Partial<ReadinessAgent> = {}): ReadinessAgent {
 }
 
 describe("agent readiness", () => {
+  it("is not ready while the engine is still verifying the agent, and says why instead of calling it paused", () => {
+    const env = { adapterConfig: { env: { ANTHROPIC_API_KEY: { type: "secret_ref", secretId: "s1" } } } };
+    const r = evaluateAgentReadiness(agent({ ...env, status: "paused", lifecycleState: "verifying" }), { environment: sandbox, secrets: new Set(["s1"]) });
+    expect(r).toMatchObject({ ready: false, configured: true });
+    expect(r.issues.map((i) => i.code)).toEqual(["agent_setup_pending"]);
+    // Once the engine says ready, the same agent is ready.
+    expect(evaluateAgentReadiness(agent({ ...env, lifecycleState: "ready" }), { environment: sandbox, secrets: new Set(["s1"]) }).ready).toBe(true);
+    // A pause somebody chose is still a pause.
+    expect(evaluateAgentReadiness(agent({ ...env, status: "paused", lifecycleState: "paused" }), { environment: sandbox, secrets: new Set(["s1"]) }).issues.map((i) => i.code)).toEqual(["agent_paused"]);
+  });
+
   it("is not ready without an adapter", () => {
     const r = evaluateAgentReadiness(agent({ adapterType: null }));
     expect(r.ready).toBe(false);
