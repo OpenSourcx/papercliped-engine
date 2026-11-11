@@ -198,12 +198,41 @@ export class Iac {
   private async engine<T>(caller: Session, method: string, path: string, body?: unknown): Promise<T> {
     const g = this.gateway;
     if (!g) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
-    const viaService = await g.serviceJson<T>(method, path, body).catch((e) => {
-      if (e instanceof HttpError && e.status === 403) return null;
+    const forbidden = Symbol("forbidden");
+    const viaService = () =>
+      g.serviceJson<T>(method, path, body).catch((e) => {
+        if (e instanceof HttpError && e.status === 403) return forbidden;
+        throw e;
+      });
+    let r = await viaService();
+    // The engine gives its instance admin (our service account) no access to an organization it isn't a member of, so join it once, then retry.
+    const co = path.match(/^\/api\/companies\/([A-Za-z0-9_-]+)/)?.[1];
+    if (r === forbidden && co && (await this.joinService(caller, co))) r = await viaService();
+    if (r !== forbidden && r !== null) return r as T;
+    try {
+      return await g.userJson<T>(caller, method, path, body);
+    } catch (e) {
+      // Say why the service account was refused, not only the caller's own 403, which hides it.
+      if (r === forbidden && e instanceof HttpError && e.status === 403) throw new HttpError(403, "service_forbidden", `The host's service account isn't a member of this organization and couldn't be added, and ${caller.username} has no access to it either. A Proxmox administrator can add themselves to it first.`);
       throw e;
-    });
-    if (viaService !== null) return viaService;
-    return g.userJson<T>(caller, method, path, body);
+    }
+  }
+
+  private readonly serviceJoinFailed = new Map<string, number>();
+
+  /** Makes the service account an admin member of an organization (an invitation the caller creates, accepted as the service account). False if it can't. */
+  private async joinService(caller: Session, companyId: string): Promise<boolean> {
+    const g = this.gateway!;
+    if (Date.now() - (this.serviceJoinFailed.get(companyId) ?? 0) < 60_000) return false;
+    try {
+      const invite = await g.userJson<{ token?: string }>(caller, "POST", `/api/companies/${encodeURIComponent(companyId)}/invites`, { allowedJoinTypes: "human", humanRole: "admin" });
+      if (!invite?.token) throw new Error("no invitation");
+      if ((await g.serviceJson("POST", `/api/invites/${encodeURIComponent(invite.token)}/accept`, { requestType: "human" })) === null) throw new Error("no service session");
+      return true;
+    } catch {
+      this.serviceJoinFailed.set(companyId, Date.now());
+      return false;
+    }
   }
 
   /** A read for the overview: an administrator sees everything (as the service account), anyone else only what their own engine account sees. */
@@ -317,13 +346,33 @@ export class Iac {
       };
     });
     // Engine members whose Proxmox user is gone: their access was removed in Proxmox, so remove it in the engine too.
+    // A removal that can't succeed is remembered (with its reason), shown from memory and retried only after an hour.
     if (callerIsNodeAdmin && this.gateway) {
       const present = new Set(rows.map((r) => r.userid));
+      const unresolved = { ...(this.state.getSetting<Record<string, { message: string; at: number }>>("iac.unresolved") ?? {}) };
+      const before = JSON.stringify(unresolved);
+      const nameOf = (id: string) => orgs.find((o) => o.companyId === id)?.name ?? id;
       for (const [u, list] of orgRoles) {
         if (present.has(u)) continue;
-        for (const o of list) await this.engineRemove(caller, o.companyId, u).catch((e: Error) => warnings.push(`Couldn't remove ${u} from an organization: ${e.message}`));
+        for (const o of list) {
+          const key = `${u}|${o.companyId}`;
+          if (unresolved[key] && Date.now() - unresolved[key].at < 3600_000) {
+            warnings.push(unresolved[key].message);
+            continue;
+          }
+          try {
+            await this.engineRemove(caller, o.companyId, u);
+            delete unresolved[key];
+          } catch (e) {
+            const err = e as HttpError;
+            const message = err.code === "last_owner" ? `${u} no longer exists in Proxmox but is the only owner of ${nameOf(o.companyId)}. Make someone else an owner (Join as admin, then set an owner) and this clears itself.` : `Couldn't remove ${u} from ${nameOf(o.companyId)}: ${err.message}`;
+            unresolved[key] = { message, at: Date.now() };
+            warnings.push(message);
+          }
+        }
         await this.gateway.syncAdminUser(u, false).catch(() => {});
       }
+      if (JSON.stringify(unresolved) !== before) this.state.setSetting("iac.unresolved", unresolved);
     }
     return { users: rows, orgs, realms, groups, canManageUsers, deviceRoles: DEVICE_ROLES, orgPoolRoles: ORG_POOL_ROLES, warnings };
   }
@@ -332,8 +381,16 @@ export class Iac {
 
   private async engineRemove(caller: Session, companyId: string, userid: string) {
     const id = await this.gateway!.accountId(userid);
-    const m = (await this.members(caller, companyId)).find((x) => x.principalType === "user" && x.principalId === id && x.status === "active");
-    if (m) await this.engine(caller, "POST", `/api/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(m.id)}/archive`, {});
+    const roster = await this.members(caller, companyId);
+    const m = roster.find((x) => x.principalType === "user" && x.principalId === id && x.status === "active");
+    if (!m) return;
+    const cid = encodeURIComponent(companyId);
+    if (m.membershipRole === "owner") {
+      // The engine refuses to remove an owner: hand the ownership to the remaining owners first, and never leave an organization with none.
+      if (!roster.some((x) => x.id !== m.id && x.principalType === "user" && x.status === "active" && x.membershipRole === "owner")) throw new HttpError(409, "last_owner", `${userid} is the only owner of this organization. A Proxmox administrator can make someone else an owner first (Join).`);
+      await this.engine(caller, "PATCH", `/api/companies/${cid}/members/${encodeURIComponent(m.id)}`, { membershipRole: "admin" });
+    }
+    await this.engine(caller, "POST", `/api/companies/${cid}/members/${encodeURIComponent(m.id)}/archive`, {});
   }
 
   private async engineSetRole(caller: Session, companyId: string, userid: string, role: OrgRole) {
@@ -498,6 +555,7 @@ export class Iac {
     if (this.gateway) {
       for (const o of orgs) await this.engineRemove(caller, o.companyId, userid).catch((e: Error) => warnings.push(`Organization ${o.companyId}: ${e.message}`));
       await this.gateway.syncAdminUser(userid, false).catch(() => {});
+      this.gateway.forgetUser(userid);
     }
     return { userid, warnings };
   }

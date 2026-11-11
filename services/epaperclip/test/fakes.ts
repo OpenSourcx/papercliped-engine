@@ -250,6 +250,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
         return json(res, 200, { id: mem[3], membershipRole: c.members.get(target), status: "active" });
       }
       if (mem[2] === "members" && target && mem[4] && req.method === "POST") {
+        if (st.strictMembers && c.members.get(target) === "owner") return json(res, 409, { error: "Board owners cannot be removed" });
         c.members.delete(target);
         st.archived.add(`${mem[1]}|${target}`);
         return json(res, 200, { member: { id: mem[3], status: "archived" } });

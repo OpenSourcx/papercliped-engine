@@ -15,8 +15,10 @@ let pve: ReturnType<typeof fakePve>;
 let server: Server;
 let base: string;
 let state: StateStore;
+let clock = 0;
 
 beforeEach(async () => {
+  clock = 0;
   eng = await fakeEngine();
   eng.st.strictMembers = true;
   pve = fakePve();
@@ -30,6 +32,7 @@ beforeEach(async () => {
     staticDir: null,
     secureCookies: false,
     state,
+    now: () => Date.now() + clock,
     engine: { url: eng.url, installDir, sleep: async () => {} },
   });
   server = createServer(app);
@@ -100,5 +103,69 @@ describe("ERR-SYNC-001: a Proxmox administrator can join an organization on this
     pve.users["lee@pve"].admin = true;
     const lee2 = await signIn("lee");
     expect((await send("POST", `/api/iac/orgs/${co}/join`, lee2, { userid: "ghost@pve" })).status).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe("ERR-SYNC-002: orphan memberships are removed through the service account, with the real reason", () => {
+  it("a non-member administrator deleting a user removes that user's membership without a warning", async () => {
+    const { sam, lee, co } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "operator" });
+    const r = await send("DELETE", "/api/iac/users/kai@pve", lee);
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as any).warnings).toEqual([]);
+    const kaiId = eng.userId(managedEmail("kai@pve"))!;
+    expect((await membersOf(sam, co)).find((m) => m.principalId === kaiId)).toMatchObject({ status: "archived" });
+  });
+
+  it("an orphan owner is demoted before removal when another owner exists", async () => {
+    const { sam, lee, co } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "owner" });
+    pve.pveUsers.delete("kai@pve");
+    const ov = (await (await fetch(base + "/api/iac", { headers: { Cookie: lee } })).json()) as any;
+    expect(ov.warnings).toEqual([]);
+    const kaiId = eng.userId(managedEmail("kai@pve"))!;
+    expect((await membersOf(sam, co)).find((m) => m.principalId === kaiId)).toMatchObject({ status: "archived" });
+  });
+
+  it("a sole orphan owner stays, with the reason stored once and shown instead of a misleading 403", async () => {
+    const { sam, lee, co } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "owner" });
+    const kaiId = eng.userId(managedEmail("kai@pve"))!;
+    eng.company("co_sole", "Solo", { [kaiId]: "owner" });
+    pve.pveUsers.delete("kai@pve");
+    const first = (await (await fetch(base + "/api/iac", { headers: { Cookie: lee } })).json()) as any;
+    expect(first.warnings.join(" ")).toMatch(/only owner of Solo/);
+    expect(first.warnings.join(" ")).not.toMatch(/does not have access/i);
+    expect(Object.keys(state.getSetting<Record<string, unknown>>("iac.unresolved") ?? {})).toEqual([`kai@pve|co_sole`]);
+    const second = (await (await fetch(base + "/api/iac", { headers: { Cookie: lee } })).json()) as any;
+    expect(second.warnings).toEqual(first.warnings);
+  });
+});
+
+describe("ERR-SYNC-006: the cached administrator flag is verified against the engine", () => {
+  it("repairs an engine-side demotion at the next sign-in after the cache is ten minutes old", async () => {
+    const { lee } = await setup();
+    expect(lee).toBeTruthy();
+    const leeId = eng.userId(managedEmail("lee@pve"))!;
+    eng.st.admins.delete(leeId);
+    await signIn("lee");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(eng.st.admins.has(leeId)).toBe(false); // still inside the window: trusted
+    clock = 11 * 60_000;
+    await signIn("lee");
+    await until(() => eng.st.admins.has(leeId));
+    expect(eng.st.admins.has(leeId)).toBe(true);
+  });
+});
+
+describe("ERR-SYNC-008: deleting a user also drops their engine session", () => {
+  it("a re-created user gets a fresh engine session, and the account is demoted", async () => {
+    const { sam, co } = await setup();
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "operator" });
+    const before = eng.st.signIns;
+    await send("DELETE", "/api/iac/users/kai@pve", sam);
+    await send("POST", "/api/iac/users", sam, { userid: "kai@pve", password: "longenough" });
+    await send("PUT", `/api/iac/orgs/${co}/members/kai@pve`, sam, { role: "viewer" });
+    expect(eng.st.signIns).toBeGreaterThan(before);
   });
 });
