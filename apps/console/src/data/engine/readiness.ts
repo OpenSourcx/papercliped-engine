@@ -2,6 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Agent } from "@papercliped-engine/engine-client";
 import { connectApi } from "./connectApi.ts";
 import { vaultApi } from "./vaultApi.ts";
+import { lifecycleError, setupState, setupSummary } from "./lifecycle.ts";
 import { engine, useAdapters, useAgentContainers, useAgentReadiness as useBackendAgentReadiness, useSandboxAdapters } from "./queries.ts";
 
 /**
@@ -38,6 +39,8 @@ export interface AgentReadiness {
   summary: string;
   checks: ReadinessCheck[];
   source: "backend" | "derived";
+  /** The engine is still preparing or verifying the agent (it reads "paused"); not a stop anyone chose. */
+  settingUp?: boolean;
 }
 
 /** An unknown/missing signal is not a negative: do not claim an agent can run when we could not check it. */
@@ -80,7 +83,7 @@ const LIFECYCLE_BLOCK: Record<string, string> = {
 };
 
 export function evaluateAgentReadiness(input: {
-  agent: Pick<Agent, "status" | "adapterType"> & { errorReason?: string | null; readiness?: unknown };
+  agent: Pick<Agent, "status" | "adapterType"> & { errorReason?: string | null; readiness?: unknown; lifecycleState?: unknown; lifecycleError?: unknown };
   adapter: Signal;
   model: Signal;
   environment: Signal;
@@ -93,6 +96,16 @@ export function evaluateAgentReadiness(input: {
     { id: "environment", label: "Sandbox environment", ...input.environment },
   ];
   const lifecycle = LIFECYCLE_BLOCK[input.agent.status];
+
+  // Preparing or verifying shows up as "paused", but nobody paused it and Resume is refused: say what it waits for.
+  const setup = setupState(input.agent);
+  if (setup) {
+    const blockers = checks.filter((c) => c.state === "blocked").map((c) => c.detail);
+    const failed = lifecycleError(input.agent);
+    // The host service words this itself (issue agent_setup_pending); prefer its text over the derived one.
+    const base = backend?.reasons.length ? `Still setting up. ${backend.reasons.join(" ")}` : setupSummary(setup, blockers);
+    return { state: "blocked", summary: failed ? `${base} The engine reported: ${failed}` : base, checks, source, settingUp: true };
+  }
 
   // A lifecycle stop says more than any readiness signal, and stays true even if the engine has not
   // learned about it yet. An agent error carries the engine's own reason.

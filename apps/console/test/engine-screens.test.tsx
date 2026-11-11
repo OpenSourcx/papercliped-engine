@@ -40,6 +40,14 @@ describe("chat", () => {
     expect(await screen.findByText("Pick an agent")).toBeTruthy();
   });
 
+  it("does not list chats while the engine setting is off (LiveChat), and shows the switched-off page", async () => {
+    state.routes["GET /engine/api/instance/settings/experimental"] = () => [200, { enableAgentChat: false }];
+    state.routes["GET /engine/api/companies/c1/chats"] = () => [200, []];
+    renderOrg("/pve/acme/chat");
+    expect(await screen.findByText("Chat is switched off")).toBeTruthy();
+    expect(callsTo("GET", "/engine/api/companies/c1/chats")).toHaveLength(0);
+  });
+
   it("opens the conversation on the first message and sends it with a request id", async () => {
     state.routes["GET /engine/api/companies/c1/chats"] = () => [200, []];
     state.routes["POST /engine/api/companies/c1/chats/a1"] = () => [200, issue("chat1", 1, "Chat with Forge", "in_review", { conversationAgentId: "a1" })];
