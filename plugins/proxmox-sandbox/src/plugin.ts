@@ -18,6 +18,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { PluginEnvironmentCreationCleanupError, definePlugin } from "@paperclipai/plugin-sdk";
+import { Breaker, BreakerOpenError, type BreakerOptions, type BreakerStore } from "./breaker.js";
 import { loginCommandLine } from "./login-pty.js";
 import type {
   PluginContext,
@@ -68,6 +69,12 @@ export const PROVIDER_KEY = "proxmox";
 export const OWNER_TAG = "epaperclip";
 const WORKSPACE_DIRNAME = "paperclip-workspace";
 const SHUTDOWN_TIMEOUT_S = 30;
+/** Marks a container from the moment it is cloned until its lease is ready. A stuck one is an orphan. */
+export const PROVISIONING_TAG = "provisioning";
+/** Marks the one stopped pre-cloned container kept per environment (spareContainers). */
+export const SPARE_TAG = "spare";
+/** A failed create is only removed by the next acquire once it is at least this old (or the environment timeout, if longer). */
+const ORPHAN_MIN_AGE_MS = 10 * 60_000;
 
 export interface ProviderDeps {
   /** HTTPS transport for the Proxmox API (default: node:https). */
@@ -79,6 +86,10 @@ export interface ProviderDeps {
   openPty?: PtyOpener;
   /** Grace period between SIGTERM and SIGKILL when a command times out. */
   killGraceSeconds?: number;
+  /** Clock for the failure breaker and for the age of failed creates (default Date.now). */
+  now?: () => number;
+  /** Receives each background job (spare containers) so a test can wait for it. */
+  trackBackground?: (job: Promise<void>) => void;
 }
 
 interface LeaseRef {
@@ -110,8 +121,12 @@ export function sanitizeTag(value: string): string {
   return cleaned || "unknown";
 }
 
-export function buildTags(companyId: string, runId: string): string {
-  return [OWNER_TAG, sanitizeTag(`company-${companyId}`), sanitizeTag(`run-${runId}`)].join(";");
+export function buildTags(companyId: string, runId: string, extra: string[] = []): string {
+  return [OWNER_TAG, sanitizeTag(`company-${companyId}`), sanitizeTag(`run-${runId}`), ...extra].join(";");
+}
+
+function spareTags(companyId: string, extra: string[] = []): string {
+  return [OWNER_TAG, sanitizeTag(`company-${companyId}`), SPARE_TAG, ...extra].join(";");
 }
 
 function parseTags(value: unknown): string[] {
@@ -195,11 +210,29 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
   const ssh = deps.ssh ?? createSshRunner();
   const sleep = deps.sleep ?? defaultSleep;
   const openPty = deps.openPty ?? createPtyOpener();
+  const now = deps.now ?? Date.now;
   /** How to reach each live lease again, for a login that arrives with only the lease id. Lost on a worker restart. */
   const reachable = new Map<string, SshTarget>();
   const logins = new Map<string, { host: string; session: PtySession }>();
   const loginByWorker = new Map<string, PtySession>();
   let ctx: PluginContext | null = null;
+
+  /** Breaker state is kept in the plugin state API when the host grants it, so a worker restart does not reset it. */
+  const breakerStore: BreakerStore = {
+    get: async (k) => {
+      if (!ctx?.state) throw new Error("no plugin state");
+      return await ctx.state.get({ scopeKind: "instance", stateKey: `breaker:${k}` });
+    },
+    set: async (k, v) => {
+      if (!ctx?.state) throw new Error("no plugin state");
+      if (v === null) await ctx.state.delete({ scopeKind: "instance", stateKey: `breaker:${k}` });
+      else await ctx.state.set({ scopeKind: "instance", stateKey: `breaker:${k}` }, v);
+    },
+  };
+  const breaker = new Breaker({ now, store: breakerStore });
+  /** Acquire attempts in progress per environment: concurrent callers wait for them instead of cloning again. */
+  const inflight = new Map<string, Promise<unknown>>();
+  const sparesInProgress = new Set<string>();
 
   const log = (level: "info" | "warn", message: string, meta?: Record<string, unknown>) => {
     ctx?.logger[level](message, meta);
@@ -429,7 +462,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
   ): Promise<number> {
     const node = config.node!;
     const tags = buildTags(params.companyId, params.runId);
-    const description = `Paperclip sandbox. Company ${params.companyId}, environment ${params.environmentId}, run ${params.runId}.`;
+    const description = `Paperclip sandbox. Company ${params.companyId}, environment ${params.environmentId}, run ${params.runId}. Created ${new Date(now()).toISOString()}.`;
     const net0 = `name=eth0,bridge=${config.bridge},ip=dhcp`;
     for (let attempt = 1; ; attempt += 1) {
       const vmid = await api.nextId();
@@ -459,7 +492,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
             net0,
             unprivileged: config.unprivileged ? 1 : 0,
             "ssh-public-keys": `${derivePublicKey(config.sshPrivateKey!)} epaperclip-proxmox-sandbox`,
-            tags,
+            tags: tags + `;${PROVISIONING_TAG}`,
             description,
             onboot: 0,
             start: 0,
@@ -594,7 +627,174 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     return { providerLeaseId: params.providerLeaseId, state: "destroyed" };
   }
 
-  return definePlugin({
+  function breakerKey(config: ProxmoxDriverConfig, params: PluginEnvironmentAcquireLeaseParams): string {
+    const target = createHash("sha256").update(`${config.apiUrl}|${config.node}|${config.template}|${config.pool}`).digest("hex").slice(0, 12);
+    return `${sanitizeTag(params.companyId)}:${sanitizeTag(params.environmentId)}:${target}`;
+  }
+
+  function breakerOptions(config: ProxmoxDriverConfig): BreakerOptions {
+    return { threshold: config.breakerThreshold, windowMs: config.breakerWindowMs, cooldownMs: config.breakerCooldownMs, maxCooldownMs: config.breakerMaxCooldownMs };
+  }
+
+  interface OwnedContainer {
+    vmid: number;
+    status: string;
+    config: Record<string, unknown>;
+    tags: string[];
+  }
+
+  /** This company's containers in the pool that carry our ownership tag. Templates and anything untagged are never listed. */
+  async function listOwned(api: ProxmoxClient, config: ProxmoxDriverConfig, companyId: string): Promise<OwnedContainer[]> {
+    const members = ((await api.pool(config.pool!)).members ?? []) as { type?: string; vmid?: number; node?: string; status?: string; template?: number }[];
+    const owned: OwnedContainer[] = [];
+    for (const m of members) {
+      if (m.type !== "lxc" || !m.vmid || Number(m.template ?? 0) === 1 || (m.node && m.node !== config.node)) continue;
+      try {
+        const ct = await api.lxcConfig(config.node!, m.vmid);
+        if (isOwnedContainer(ct, companyId)) owned.push({ vmid: m.vmid, status: m.status ?? "unknown", config: ct, tags: parseTags(ct.tags) });
+      } catch (error) {
+        if (!isNotFound(error)) log("warn", "Could not read a pool member", { vmid: m.vmid, error: errorMessage(error) });
+      }
+    }
+    return owned;
+  }
+
+  const inEnvironment = (ct: OwnedContainer, environmentId: string) => String(ct.config.description ?? "").includes(`environment ${environmentId},`);
+
+  /**
+   * Destroys this company's containers left by failed creates: ours by tag, still marked provisioning, and old enough that
+   * no acquire can still be working on them. Finished leases (even stopped, retained ones), spares, templates and anything
+   * without our tag are never touched. Best effort: a failure here never fails the acquire.
+   */
+  async function sweepOrphans(api: ProxmoxClient, config: ProxmoxDriverConfig, params: PluginEnvironmentAcquireLeaseParams, owned: OwnedContainer[]): Promise<void> {
+    const minAge = Math.max(ORPHAN_MIN_AGE_MS, config.timeoutMs);
+    for (const ct of owned) {
+      if (!ct.tags.includes(PROVISIONING_TAG)) continue;
+      const created = Date.parse(/Created (\d{4}-\d\d-\d\dT[\d:.]+Z)/.exec(String(ct.config.description ?? ""))?.[1] ?? "");
+      if (!Number.isFinite(created) || now() - created < minAge) continue;
+      try {
+        await destroyContainer(api, { node: config.node!, vmid: ct.vmid }, params.companyId, true, Date.now() + CLEANUP_RESERVE_MS);
+        log("info", "Removed a leaked container from a failed create", { vmid: ct.vmid });
+      } catch (error) {
+        log("warn", "Could not remove a leaked container", { vmid: ct.vmid, error: errorMessage(error) });
+      }
+    }
+  }
+
+  /** One attempt: sweep, then reuse or adopt a spare or clone, then bring it to a lease. Runs under the pool lock until the vmid is chosen. */
+  async function acquireOnce(params: PluginEnvironmentAcquireLeaseParams, config: ProxmoxDriverConfig): Promise<PluginEnvironmentLease> {
+    const api = client(config);
+    const deadline = Date.now() + Math.max(config.timeoutMs - CLEANUP_RESERVE_MS, config.timeoutMs / 2);
+    const template = parseTemplateRef(config.template)!;
+    derivePublicKey(config.sshPrivateKey!); // fail before creating anything if the key is unusable
+
+    if (template.kind === "vmid") {
+      const assessment = assessTemplateConfig(await api.lxcConfig(config.node!, template.vmid), config.allowPrivileged);
+      if (assessment.errors.length > 0) throw new Error(`Template ${template.vmid} is not safe to clone: ${assessment.errors.join(" ")}`);
+    }
+
+    const chosen = await withPoolLock(config.pool!, async () => {
+      let owned: OwnedContainer[] = [];
+      try {
+        owned = await listOwned(api, config, params.companyId);
+        await sweepOrphans(api, config, params, owned);
+        owned = owned.filter((ct) => !ct.tags.includes(PROVISIONING_TAG));
+      } catch (error) {
+        log("warn", "Could not look at the pool before cloning", { error: errorMessage(error) });
+      }
+      const here = owned.filter((ct) => inEnvironment(ct, params.environmentId));
+      if (config.reuseLease) {
+        const reusable = here.filter((ct) => !ct.tags.includes(SPARE_TAG));
+        const found = reusable.find((ct) => ct.status === "running") ?? reusable[0];
+        if (found) return { vmid: found.vmid, kind: "reuse" as const, status: found.status };
+      }
+      const spare = config.spareContainers > 0 ? here.find((ct) => ct.tags.includes(SPARE_TAG) && ct.status === "stopped") : undefined;
+      if (spare) return { vmid: spare.vmid, kind: "spare" as const, status: spare.status };
+      await assertWithinQuota(api, config);
+      return { vmid: await createContainer(api, config, template, params, deadline), kind: "new" as const, status: "stopped" };
+    });
+    const vmid = chosen.vmid;
+    const ref: LeaseRef = { node: config.node!, vmid };
+
+    if (chosen.kind === "reuse") {
+      // An existing lease's container: never destroyed here if it will not come up; the engine or the next acquire deals with it.
+      await api.updateLxcConfig(ref.node, vmid, { tags: buildTags(params.companyId, params.runId) });
+      if ((await api.lxcStatus(ref.node, vmid)).status !== "running") await start(api, ref, deadline);
+      const lease = await readyLease({ api, config, ref, deadline, requestedCwd: str(params.requestedCwd), knownHosts: null, resumed: false, expiresAt: leaseExpiry(params.requestedExpiresAt) });
+      log("info", "Reusing a Proxmox container", { node: ref.node, vmid });
+      return lease;
+    }
+
+    try {
+      // Clones keep the template's settings; apply this environment's size, network and tags. The provisioning
+      // tag stays until the lease is ready, so a failure that cannot be cleaned up right away is found by a later acquire.
+      const sizing = { cores: config.cores, memory: config.memoryMb, net0: `name=eth0,bridge=${config.bridge},ip=dhcp` };
+      if (template.kind === "vmid") await api.updateLxcConfig(ref.node, vmid, { ...sizing, tags: buildTags(params.companyId, params.runId, [PROVISIONING_TAG]) });
+      else if (chosen.kind === "spare") await api.updateLxcConfig(ref.node, vmid, { ...sizing, tags: buildTags(params.companyId, params.runId, [PROVISIONING_TAG]) });
+      if (template.kind === "vmid" || chosen.kind === "spare") {
+        if (config.diskGb != null) {
+          try {
+            const upid = await api.resizeLxc(ref.node, vmid, "rootfs", `${config.diskGb}G`);
+            if (typeof upid === "string" && upid.startsWith("UPID:")) await api.waitForTask(ref.node, upid, `resize of CT ${vmid}`, deadline);
+          } catch (error) {
+            // Proxmox only grows disks; a template disk already larger than diskGb is fine.
+            if (!/shrink|smaller/i.test(errorMessage(error))) throw error;
+          }
+        }
+      }
+      await start(api, ref, deadline);
+      const lease = await readyLease({
+        api,
+        config,
+        ref,
+        deadline,
+        requestedCwd: str(params.requestedCwd),
+        knownHosts: null,
+        resumed: false,
+        expiresAt: leaseExpiry(params.requestedExpiresAt),
+      });
+      await api.updateLxcConfig(ref.node, vmid, { tags: buildTags(params.companyId, params.runId) }); // ready: no longer provisioning
+      log("info", "Proxmox container ready", { node: ref.node, vmid, ip: lease.metadata?.ip, from: chosen.kind });
+      return lease;
+    } catch (error) {
+      await destroyAfterFailedCreate(api, config, ref, params, error);
+      throw error;
+    }
+  }
+
+  /** Keeps one stopped pre-cloned container per environment (spareContainers: 1). Background, best effort, never while the breaker is open. */
+  async function ensureSpare(config: ProxmoxDriverConfig, params: PluginEnvironmentAcquireLeaseParams, bkey: string, bopts: BreakerOptions): Promise<void> {
+    if (sparesInProgress.has(bkey)) return;
+    sparesInProgress.add(bkey);
+    const api = client(config);
+    try {
+      await breaker.check(bkey, bopts);
+      const template = parseTemplateRef(config.template)!;
+      const spareParams = { ...params, runId: "spare" };
+      const vmid = await withPoolLock(config.pool!, async () => {
+        const owned = await listOwned(api, config, params.companyId);
+        if (owned.some((ct) => ct.tags.includes(SPARE_TAG) && inEnvironment(ct, params.environmentId))) return null;
+        await assertWithinQuota(api, config);
+        return await createContainer(api, config, template, spareParams, Date.now() + Math.max(config.timeoutMs - CLEANUP_RESERVE_MS, config.timeoutMs / 2));
+      });
+      if (vmid === null) return;
+      try {
+        await api.updateLxcConfig(config.node!, vmid, { tags: spareTags(params.companyId, [PROVISIONING_TAG]) });
+        await api.updateLxcConfig(config.node!, vmid, { tags: spareTags(params.companyId) });
+        log("info", "Spare container ready", { vmid });
+      } catch (error) {
+        await destroyAfterFailedCreate(api, config, { node: config.node!, vmid }, spareParams, error).catch(() => undefined);
+        throw error;
+      }
+    } catch (error) {
+      if (!(error instanceof BreakerOpenError)) await breaker.failure(bkey, bopts, error);
+      log("warn", "Could not prepare a spare container", { error: errorMessage(error) });
+    } finally {
+      sparesInProgress.delete(bkey);
+    }
+  }
+
+  const built = definePlugin({
     async setup(context) {
       ctx = context;
       context.logger.info("Proxmox sandbox provider ready");
@@ -729,52 +929,26 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
 
     async onEnvironmentAcquireLease(params: PluginEnvironmentAcquireLeaseParams): Promise<PluginEnvironmentLease> {
       const config = runtimeConfig(params.config);
-      const api = client(config);
-      const deadline = Date.now() + Math.max(config.timeoutMs - CLEANUP_RESERVE_MS, config.timeoutMs / 2);
-      const template = parseTemplateRef(config.template)!;
-      derivePublicKey(config.sshPrivateKey!); // fail before creating anything if the key is unusable
-
-      if (template.kind === "vmid") {
-        const assessment = assessTemplateConfig(await api.lxcConfig(config.node!, template.vmid), config.allowPrivileged);
-        if (assessment.errors.length > 0) throw new Error(`Template ${template.vmid} is not safe to clone: ${assessment.errors.join(" ")}`);
-      }
-
-      const vmid = await withPoolLock(config.pool!, async () => { await assertWithinQuota(api, config); return createContainer(api, config, template, params, deadline); });
-      const ref: LeaseRef = { node: config.node!, vmid };
+      const bkey = breakerKey(config, params);
+      const bopts = breakerOptions(config);
+      // Open breaker: refuse before any Proxmox call, so a retry loop clones nothing (ERR-CTR-001).
+      await breaker.check(bkey, bopts);
+      // Single flight: callers for the same environment wait for the attempt in progress. If it failed they get its error and
+      // clone nothing; if it succeeded they make their own attempt (which finds its container when leases are reused).
+      for (let running = inflight.get(bkey); running; running = inflight.get(bkey)) await running;
+      const attempt = acquireOnce(params, config);
+      const settled = attempt.then(() => undefined, () => undefined);
+      inflight.set(bkey, attempt);
+      void settled.then(() => { if (inflight.get(bkey) === attempt) inflight.delete(bkey); });
       try {
-        if (template.kind === "vmid") {
-          // Clones keep the template's settings; apply this environment's size, network and tags.
-          await api.updateLxcConfig(ref.node, vmid, {
-            cores: config.cores,
-            memory: config.memoryMb,
-            net0: `name=eth0,bridge=${config.bridge},ip=dhcp`,
-            tags: buildTags(params.companyId, params.runId),
-          });
-          if (config.diskGb != null) {
-            try {
-              const upid = await api.resizeLxc(ref.node, vmid, "rootfs", `${config.diskGb}G`);
-              if (typeof upid === "string" && upid.startsWith("UPID:")) await api.waitForTask(ref.node, upid, `resize of CT ${vmid}`, deadline);
-            } catch (error) {
-              // Proxmox only grows disks; a template disk already larger than diskGb is fine.
-              if (!/shrink|smaller/i.test(errorMessage(error))) throw error;
-            }
-          }
+        const lease = await attempt;
+        await breaker.success(bkey);
+        if (config.spareContainers > 0) {
+          deps.trackBackground?.(ensureSpare(config, params, bkey, bopts));
         }
-        await start(api, ref, deadline);
-        const lease = await readyLease({
-          api,
-          config,
-          ref,
-          deadline,
-          requestedCwd: str(params.requestedCwd),
-          knownHosts: null,
-          resumed: false,
-          expiresAt: leaseExpiry(params.requestedExpiresAt),
-        });
-        log("info", "Proxmox container ready", { node: ref.node, vmid, ip: lease.metadata?.ip });
         return lease;
       } catch (error) {
-        await destroyAfterFailedCreate(api, config, ref, params, error);
+        if (!(error instanceof BreakerOpenError)) await breaker.failure(bkey, bopts, error);
         throw error;
       }
     },
@@ -925,6 +1099,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
       return { hostRouteId: params.hostRouteId };
     },
   });
+  return built;
 }
 
 const plugin = createProxmoxSandboxPlugin();

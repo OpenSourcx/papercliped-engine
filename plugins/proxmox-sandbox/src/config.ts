@@ -14,6 +14,10 @@ export const DEFAULT_SSH_USER = "root";
 export const DEFAULT_SSH_PORT = 22;
 export const DEFAULT_NAME_PREFIX = "epaperclip";
 export const DEFAULT_TIMEOUT_MS = 300_000;
+export const DEFAULT_BREAKER_THRESHOLD = 3;
+export const DEFAULT_BREAKER_WINDOW_MS = 15 * 60_000;
+export const DEFAULT_BREAKER_COOLDOWN_MS = 2 * 60_000;
+export const DEFAULT_BREAKER_MAX_COOLDOWN_MS = 30 * 60_000;
 export const DEFAULT_CORES = 2;
 export const DEFAULT_MEMORY_MB = 2048;
 export const DEFAULT_DISK_GB = 16;
@@ -48,6 +52,13 @@ export interface ProxmoxDriverConfig {
   namePrefix: string;
   reuseLease: boolean;
   timeoutMs: number;
+  /** Failure breaker (ERR-CTR-001): consecutive acquire failures within `breakerWindowMs` that open it; 0 turns it off. */
+  breakerThreshold: number;
+  breakerWindowMs: number;
+  breakerCooldownMs: number;
+  breakerMaxCooldownMs: number;
+  /** Stopped pre-cloned containers kept per environment to cut first-login latency (0 or 1). */
+  spareContainers: number;
 }
 
 export type TemplateRef =
@@ -161,6 +172,11 @@ export function parseConfig(raw: Record<string, unknown>): ProxmoxDriverConfig {
     namePrefix: normalizeNamePrefix(str(raw.namePrefix)),
     reuseLease: bool(raw.reuseLease, false),
     timeoutMs: int(raw.timeoutMs, DEFAULT_TIMEOUT_MS),
+    breakerThreshold: int(raw.breakerThreshold, DEFAULT_BREAKER_THRESHOLD),
+    breakerWindowMs: int(raw.breakerWindowMs, DEFAULT_BREAKER_WINDOW_MS),
+    breakerCooldownMs: int(raw.breakerCooldownMs, DEFAULT_BREAKER_COOLDOWN_MS),
+    breakerMaxCooldownMs: int(raw.breakerMaxCooldownMs, DEFAULT_BREAKER_MAX_COOLDOWN_MS),
+    spareContainers: int(raw.spareContainers, 0),
   };
 }
 
@@ -265,6 +281,14 @@ export function checkConfig(config: ProxmoxDriverConfig): { errors: string[]; wa
   if (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 1_000 || config.timeoutMs > 86_400_000) {
     errors.push("timeoutMs must be between 1000 and 86400000.");
   }
+
+  if (!Number.isInteger(config.breakerThreshold) || config.breakerThreshold < 0 || config.breakerThreshold > 100) {
+    errors.push("breakerThreshold must be between 0 (off) and 100.");
+  }
+  for (const [name, value] of [["breakerWindowMs", config.breakerWindowMs], ["breakerCooldownMs", config.breakerCooldownMs], ["breakerMaxCooldownMs", config.breakerMaxCooldownMs]] as const) {
+    if (!Number.isInteger(value) || value < 1_000 || value > 86_400_000) errors.push(`${name} must be between 1000 and 86400000.`);
+  }
+  if (config.spareContainers !== 0 && config.spareContainers !== 1) errors.push("spareContainers must be 0 or 1.");
 
   if (template?.kind === "vmid") {
     warnings.push(

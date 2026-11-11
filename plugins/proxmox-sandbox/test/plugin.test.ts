@@ -69,7 +69,7 @@ describe("manifest", () => {
   it("declares the proxmox sandbox driver", () => {
     expect(manifest.id).toBe("epaperclip.proxmox-sandbox-provider");
     expect(manifest.apiVersion).toBe(1);
-    expect(manifest.capabilities).toEqual(["environment.drivers.register"]);
+    expect(manifest.capabilities).toEqual(["environment.drivers.register", "plugin.state.read", "plugin.state.write"]);
     const driver = manifest.environmentDrivers![0]!;
     expect(driver).toMatchObject({ driverKey: "proxmox", kind: "sandbox_provider", supportsLoginPty: true, sandboxCapabilities: { reusableLeases: true } });
     const props = (driver.configSchema as { properties: Record<string, Record<string, unknown>> }).properties;
@@ -261,7 +261,7 @@ describe("acquire", () => {
       cores: "4",
       memory: "4096",
       net0: "name=eth0,bridge=vmbr1,ip=dhcp",
-      tags: "epaperclip;company-company-1;run-run_abc-123",
+      tags: "epaperclip;company-company-1;run-run_abc-123;provisioning",
     });
     expect(pve.find("PUT", "/lxc/101/resize")[0]!.form).toMatchObject({ disk: "rootfs", size: "20G" });
     expect(pve.find("POST", "/lxc/101/status/start")).toHaveLength(1);
@@ -319,7 +319,7 @@ describe("acquire", () => {
       rootfs: "local-lvm:12",
       unprivileged: "1",
       net0: "name=eth0,bridge=vmbr1,ip=dhcp",
-      tags: "epaperclip;company-company-1;run-run-1",
+      tags: "epaperclip;company-company-1;run-run-1;provisioning",
     });
     expect(create.form["ssh-public-keys"]).toBe(`${derivePublicKey(key)} epaperclip-proxmox-sandbox`);
   });

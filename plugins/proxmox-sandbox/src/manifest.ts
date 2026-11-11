@@ -7,6 +7,10 @@ import {
   DEFAULT_NAME_PREFIX,
   DEFAULT_SSH_PORT,
   DEFAULT_SSH_USER,
+  DEFAULT_BREAKER_COOLDOWN_MS,
+  DEFAULT_BREAKER_MAX_COOLDOWN_MS,
+  DEFAULT_BREAKER_THRESHOLD,
+  DEFAULT_BREAKER_WINDOW_MS,
   DEFAULT_TIMEOUT_MS,
 } from "./config.js";
 
@@ -23,7 +27,7 @@ const manifest: PaperclipPluginManifestV1 = {
   description: "Runs Paperclip agents in unprivileged Proxmox VE LXC containers instead of on the host.",
   author: "ePaperclip",
   categories: ["automation"],
-  capabilities: ["environment.drivers.register"],
+  capabilities: ["environment.drivers.register", "plugin.state.read", "plugin.state.write"],
   entrypoints: {
     worker: "./dist/worker.js",
   },
@@ -186,6 +190,36 @@ const manifest: PaperclipPluginManifestV1 = {
             type: "number",
             description: "Time limit in ms for creating a container and for commands that set none.",
             default: DEFAULT_TIMEOUT_MS,
+            ...advanced("API and runtime"),
+          },
+          breakerThreshold: {
+            type: "number",
+            description: "Failed container acquires (inside the window) after which new acquires are refused without cloning anything. 0 turns the breaker off.",
+            default: DEFAULT_BREAKER_THRESHOLD,
+            ...advanced("Failure breaker"),
+          },
+          breakerWindowMs: {
+            type: "number",
+            description: "Window in ms in which failures are counted.",
+            default: DEFAULT_BREAKER_WINDOW_MS,
+            ...advanced("Failure breaker"),
+          },
+          breakerCooldownMs: {
+            type: "number",
+            description: "First cooldown in ms once the breaker opens; it doubles each time a trial attempt fails again.",
+            default: DEFAULT_BREAKER_COOLDOWN_MS,
+            ...advanced("Failure breaker"),
+          },
+          breakerMaxCooldownMs: {
+            type: "number",
+            description: "Longest cooldown in ms.",
+            default: DEFAULT_BREAKER_MAX_COOLDOWN_MS,
+            ...advanced("Failure breaker"),
+          },
+          spareContainers: {
+            type: "number",
+            description: "0 or 1. With 1, one stopped pre-cloned container is kept ready per environment so the next sign-in or run skips the clone. It uses disk (one full clone) while idle.",
+            default: 0,
             ...advanced("API and runtime"),
           },
         },
