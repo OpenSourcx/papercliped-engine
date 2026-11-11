@@ -27,3 +27,11 @@ npm run build     # dist/manifest.js, dist/worker.js
 | `src/config.ts` | Config parsing and validation |
 | `template/build-template.sh` | Builds the agent LXC template on a Proxmox host |
 | `test/` | Fake Proxmox API, lifecycle tests, SDK harness conformance, real-sshd test |
+
+## Protection against retry loops (ERR-CTR-001)
+
+- **Failure breaker.** After `breakerThreshold` (default 3) failed acquires inside `breakerWindowMs` (15 min) for one organization and environment, acquire refuses at once, before any Proxmox call, until a cooldown passes (`breakerCooldownMs` 2 min, doubled on each failed trial, capped at `breakerMaxCooldownMs` 30 min). One success resets it. State is kept in the plugin state API (capabilities `plugin.state.read` and `plugin.state.write`), so a worker restart keeps it; without them it is memory only. `breakerThreshold: 0` turns it off.
+- **Single flight.** Simultaneous acquires for one environment wait for one attempt; if it fails they share its error and clone nothing.
+- **Reuse.** With `reuseLease`, an acquire reuses this organization's running or stopped container for the same environment instead of cloning.
+- **Orphan cleanup.** Every acquire first removes this organization's containers that a failed create left tagged `provisioning` for more than 10 minutes. Templates, finished leases, spares and containers without our tag are never touched.
+- **`spareContainers` (0 or 1, default 0).** Keeps one stopped pre-cloned container per environment, used by the next acquire. It costs one idle full clone of disk.

@@ -108,6 +108,7 @@ export class FakeProxmox {
   addContainer(vmid: number, init: Partial<FakeContainer> & { config?: Record<string, unknown> }): FakeContainer {
     const container: FakeContainer = {
       vmid,
+      pool: init.pool,
       status: init.status ?? "running",
       config: { hostname: `ct-${vmid}`, unprivileged: 1, ...(init.config ?? {}) },
       ip: init.ip ?? "10.10.0.77",
