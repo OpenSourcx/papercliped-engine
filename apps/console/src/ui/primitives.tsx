@@ -2,6 +2,7 @@ import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type 
 import { AlertTriangle, CheckCircle2, CircleDashed, CirclePause, Info, Loader2, XCircle } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { useInModal } from "./Modal.tsx";
+import { PinField } from "./PinField.tsx";
 
 /*
  * ePaperclip's primitives: one component per job (see apps/console/DESIGN.md, "Component inventory"). Every value here
@@ -11,21 +12,29 @@ import { useInModal } from "./Modal.tsx";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
-const buttonBase = "transition-control inline-flex items-center justify-center gap-2 font-medium select-none whitespace-nowrap active:scale-98 disabled:opacity-45 disabled:pointer-events-none";
+const buttonBase = "transition-control inline-flex items-center justify-center gap-2 font-medium select-none whitespace-nowrap active:scale-98 disabled:opacity-45 disabled:pointer-events-none aria-disabled:opacity-45 aria-disabled:cursor-not-allowed";
 const buttonSize: Record<Size, string> = {
   sm: "h-8 px-3 text-compact rounded-md",
   md: "h-10 px-4 text-sm rounded-lg",
   lg: "h-11 px-6 text-body rounded-full",
 };
 const buttonVariant: Record<Variant, string> = {
-  primary: "bg-primary text-primary-ink shadow-raised hover:opacity-90",
+  // A disabled primary is flat, outlined and dashed: it can never be mistaken for the filled, enabled one.
+  primary: "bg-primary text-primary-ink shadow-raised hover:opacity-90 disabled:bg-surface-3 disabled:text-ink-2 disabled:shadow-none disabled:border disabled:border-dashed disabled:border-line-strong disabled:opacity-100! aria-disabled:bg-surface-3 aria-disabled:text-ink-2 aria-disabled:shadow-none aria-disabled:border aria-disabled:border-dashed aria-disabled:border-line-strong aria-disabled:opacity-100! aria-disabled:hover:opacity-100!",
   secondary: "bg-surface-2 text-ink border border-line hover:bg-surface-3 hover:border-line-strong",
   ghost: "text-ink-2 hover:text-ink hover:bg-surface-2",
   danger: "bg-critical/12 text-critical border border-critical/30 hover:bg-critical/20",
 };
 
 /** Buttons name the action ("Create machine", not "Submit"). One primary per view. */
-export function Button({ variant = "secondary", size = "md", loading, className, children, disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean }) {
+export function Button({ variant = "secondary", size = "md", loading, className, children, disabled, disabledReason, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean; /** Why the button can't be used right now. Keeps it focusable (aria-disabled) with the reason as its tooltip. */ disabledReason?: string }) {
+  if (disabled && disabledReason && !loading) {
+    return (
+      <button {...rest} type={rest.type ?? "button"} aria-disabled="true" title={disabledReason} onClick={(e) => e.preventDefault()} className={cn(buttonBase, buttonSize[size], buttonVariant[variant], className)}>
+        {children}
+      </button>
+    );
+  }
   return (
     <button {...rest} disabled={disabled || loading} aria-busy={loading || undefined} className={cn(buttonBase, buttonSize[size], buttonVariant[variant], className)}>
       {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
@@ -96,7 +105,7 @@ export function PageHeader({ title, subtitle, actions, eyebrow }: { title: React
 /* ── Forms ─────────────────────────────────────────────────────────────────────────── */
 
 /** The one recipe for text fields, selects and text areas: same height, fill, border and focus ring. */
-export const controlClass = "transition-control w-full rounded-lg bg-surface-2 border border-line text-sm text-ink placeholder:text-ink-3 outline-none hover:border-line-strong focus:border-line-strong focus-visible:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50";
+export const controlClass = "transition-control w-full rounded-lg bg-surface-2 border border-line text-sm text-ink placeholder:text-ink-3 placeholder:italic outline-none hover:border-line-strong focus:border-line-strong focus-visible:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50";
 export const selectClass = cn(controlClass, "h-10 px-3");
 
 /** A labelled field: the label, the control, then a hint or an error that says what to do. */
@@ -250,7 +259,8 @@ export function Chip({ children, tone = "neutral", className }: { children: Reac
 /** Empty states say what this is for and what to do first. */
 export function EmptyState({ icon, title, body, action }: { icon: ReactNode; title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center text-center py-14 px-6">
+    <div className="relative isolate overflow-hidden flex flex-col items-center text-center py-14 px-6">
+      <PinField className="-z-10 opacity-70 [mask-image:radial-gradient(closest-side,transparent_30%,black)]" />
       <div className="h-11 w-11 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-2 mb-4">{icon}</div>
       <div className="font-medium text-balance">{title}</div>
       <p className="text-ink-3 text-sm mt-1 max-w-sm text-pretty">{body}</p>
