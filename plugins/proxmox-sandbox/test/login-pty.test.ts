@@ -64,6 +64,7 @@ async function setup() {
 describe("login command", () => {
   it("builds a fixed command per key with its own home, and refuses anything else", () => {
     expect(loginCommandLine("claude", HOME)).toContain("CLAUDE_CONFIG_DIR=");
+    expect(loginCommandLine("claude", HOME)).toContain("PATH=/usr/local/bin:$PATH");
     expect(loginCommandLine("codex", HOME)).toContain("codex login --device-auth");
     expect(loginCommandLine("grok", HOME)).toContain("GROK_HOME=");
     expect(() => loginCommandLine("bash", HOME)).toThrow(/isn't supported/);

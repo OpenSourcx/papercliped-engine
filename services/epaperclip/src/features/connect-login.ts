@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { redact } from "../connectors.ts";
 import type { EngineGateway } from "../engine.ts";
 import { HttpError } from "../http.ts";
@@ -73,6 +74,20 @@ function findValue(o: unknown, re: RegExp, accept: (v: unknown) => boolean, dept
   return undefined;
 }
 
+/** An address field the secrecy filter would otherwise hide: Claude's setup-token prompt calls it `authorizationUrl`. */
+function publicSignInUrl(o: unknown, depth = 0): string | null {
+  if (!o || typeof o !== "object" || depth > 4) return null;
+  for (const [k, v] of Object.entries(o as Record<string, unknown>)) if (/^(authorizationUrl|authorization_url)$/i.test(k)) {
+    const url = signInAddress(v);
+    if (url) return url;
+  }
+  for (const v of Object.values(o as Record<string, unknown>)) {
+    const found = publicSignInUrl(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 const DONE = /^(complete|completed|succeeded|success|connected|done|ready|saved)$/i;
 const FAILED = /^(failed|error|errored|cancelled|canceled|expired|denied|timed[-_]?out|timeout)$/i;
 
@@ -106,7 +121,7 @@ export function sanitizeLogin(raw: unknown, ctx: { adapter: string; provider: st
     provider: ctx.provider,
     flow: ctx.flow,
     status,
-    verificationUrl: (urlField as string | undefined) ? signInAddress(urlField) : (urlText ?? null),
+    verificationUrl: (urlField as string | undefined) ? signInAddress(urlField) : (publicSignInUrl(raw) ?? urlText ?? null),
     userCode: (codeField as string | undefined) ?? codeText ?? null,
     needsCode: ctx.flow === "setup-token" && /code|prompt|waiting/.test(status),
     expiresAt,
@@ -126,10 +141,41 @@ interface Tracked {
   at: number;
 }
 // Sign-ins in progress and start limits, per host service (found through its state store).
-const books = new WeakMap<object, { tracked: Map<string, Tracked>; startLimit: Map<string, RateWindow> }>();
+/**
+ * A start that is still waiting for the engine. The engine clones and boots a sandbox before it answers, which can
+ * outlast a browser's or proxy's request timeout, so the HTTP start returns this local attempt and the poll loop
+ * adopts the engine session id once it exists.
+ */
+interface Pending {
+  user: string;
+  companyId: string;
+  adapter: string;
+  provider: string;
+  flow: LoginView["flow"];
+  at: number;
+  status: "starting" | "started" | "failed";
+  login?: LoginView;
+  message?: string;
+}
+const pendingView = (id: string, p: Pending): LoginView => ({
+  id,
+  adapter: p.adapter,
+  provider: p.provider,
+  flow: p.flow,
+  status: p.status === "failed" ? "failed" : "starting",
+  verificationUrl: null,
+  userCode: null,
+  needsCode: false,
+  expiresAt: null,
+  message: p.status === "failed" ? p.message ?? "The sign-in could not start." : null,
+  done: false,
+  failed: p.status === "failed",
+  connectionName: null,
+});
+const books = new WeakMap<object, { tracked: Map<string, Tracked>; startLimit: Map<string, RateWindow>; pending: Map<string, Pending> }>();
 const bookFor = (state: object) => {
   let b = books.get(state);
-  if (!b) books.set(state, (b = { tracked: new Map(), startLimit: new Map() }));
+  if (!b) books.set(state, (b = { tracked: new Map(), startLimit: new Map(), pending: new Map() }));
   return b;
 };
 
@@ -170,7 +216,7 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
   const companyId = m[1];
   if (!COMPANY.test(companyId)) throw new E(400, "bad_request", "Unknown organization");
   const enc = encodeURIComponent;
-  const { tracked, startLimit } = bookFor(ctx.state);
+  const { tracked, startLimit, pending } = bookFor(ctx.state);
 
   // What the organization's agents can use now.
   if (m[2] === "ai" && ctx.method === "GET" && !m[3]) {
@@ -211,15 +257,28 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
     if (ctx.method === "POST" && !m[3]) {
       ctx.sameSite();
       const b = await ctx.readJson();
-      for (const k of Object.keys(b)) if (!["provider", "name", "ownership", "flow"].includes(k)) throw new E(400, "bad_request", `Unknown field ${cleanText(k, 30)}`);
+      for (const k of Object.keys(b)) if (!["provider", "name", "ownership", "flow", "allAgents", "agentIds"].includes(k)) throw new E(400, "bad_request", `Unknown field ${cleanText(k, 30)}`);
       const spec = typeof b.provider === "string" ? ADAPTERS[b.provider] : undefined;
       if (!spec) throw new E(400, "bad_request", "Subscription sign-in is available for anthropic (Claude) and openai (Codex).");
       // The engine has no device login for Claude (claude_local); its sign-in is the setup-token flow.
       const flow = b.flow === undefined ? (spec.provider === "anthropic" ? "setup-token" : "device") : b.flow;
       if (flow !== "device" && flow !== "setup-token") throw new E(400, "bad_request", "flow is device or setup-token");
       if (flow === "setup-token" && spec.provider !== "anthropic") throw new E(400, "bad_request", "setup-token is for Claude");
-      const ownership = b.ownership === undefined ? "shared" : b.ownership;
+      // Paperclip's model: a subscription account is personal ("comes with you") unless the person explicitly
+      // shares it with the organization. A personal account is usable by its owner and any agents they choose;
+      // a shared one belongs to the organization and can go to all agents or a chosen set.
+      const ownership = b.ownership === undefined ? "personal" : b.ownership;
       if (ownership !== "shared" && ownership !== "personal") throw new E(400, "bad_request", "ownership is shared or personal");
+      const allAgents = b.allAgents === undefined ? ownership === "shared" : b.allAgents;
+      if (typeof allAgents !== "boolean") throw new E(400, "bad_request", "allAgents must be true or false");
+      let agentIds: string[] = [];
+      if (b.agentIds !== undefined) {
+        if (!Array.isArray(b.agentIds) || b.agentIds.length > 100) throw new E(400, "bad_request", "agentIds must be a list of up to 100 agents");
+        for (const id of b.agentIds) if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new E(400, "bad_request", "An agent id doesn't look right");
+        agentIds = [...new Set(b.agentIds as string[])];
+      }
+      if (allAgents && agentIds.length) throw new E(400, "bad_request", "Choose all agents or selected agents, not both");
+      if (ownership === "personal" && allAgents) throw new E(400, "bad_request", "A personal account goes to you and any agents you choose, or share it with the organization for all agents");
       const name = cleanText(b.name, 160) || spec.label;
       const limiter = startLimit.get(s.username) ?? new RateWindow(5, 10 * 60_000, ctx.now);
       startLimit.set(s.username, limiter);
@@ -229,14 +288,48 @@ export async function loginRoutes(ctx: FeatureCtx): Promise<boolean> {
       const envs = await gw.userJson<{ id: string; driver?: string; status?: string; metadata?: { epaperclip?: string; companyId?: string } | null }[]>(s, "GET", `/api/companies/${enc(companyId)}/environments`);
       const env = (Array.isArray(envs) ? envs : []).find((e) => e?.driver === "sandbox" && e.status !== "archived" && e.metadata?.epaperclip === "agent-containers" && e.metadata?.companyId === companyId);
       if (!env) throw new E(409, "no_environment", "This organization has no agent container environment yet. Set up agent containers first (Settings, Agent containers).");
-      const aiConnection = { provider: spec.provider, method: "subscription", name, ownership, allAgents: true };
+      const aiConnection = { provider: spec.provider, method: "subscription", name, ownership, allAgents, agentIds };
       const path = flow === "setup-token" ? `/api/companies/${enc(companyId)}/setup-token-login-sessions` : `/api/companies/${enc(companyId)}/adapters/${spec.adapter}/login-sessions`;
-      const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) });
-      const view = sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" });
-      if (!view.id || !SESSION.test(view.id)) throw new E(502, "engine_error", "The engine started a sign-in but didn't say which. Check the engine.");
-      tracked.set(view.id, { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now() });
-      audit(ctx, "connection.login.start", `${spec.provider} -> ${companyId}`, flow);
-      return ctx.json(201, { login: view }), true;
+      const pid = `p_${randomUUID().replace(/-/g, "")}`;
+      const attempt: Pending = { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now(), status: "starting" };
+      pending.set(pid, attempt);
+      for (const [id, p] of pending) if (ctx.now() - p.at > 30 * 60_000) pending.delete(id);
+      // The engine clones and boots a sandbox before it answers (minutes on dir storage). Do that in the background
+      // so a browser or proxy with a shorter request timeout still gets the attempt and can poll it.
+      void (async () => {
+        try {
+          const raw = await gw.userJson<unknown>(s, "POST", path, { aiConnection, environmentId: env.id, ...(flow === "setup-token" ? { adapterType: spec.adapter } : {}) }, { timeoutMs: 360_000 });
+          const view = sanitizeLogin(raw, { adapter: spec.adapter, provider: spec.provider, flow, fallbackId: "" });
+          if (!view.id || !SESSION.test(view.id)) throw new Error("The engine started a sign-in but didn't say which. Check the engine.");
+          tracked.set(view.id, { user: s.username, companyId, adapter: spec.adapter, provider: spec.provider, flow, at: ctx.now() });
+          attempt.login = view;
+          attempt.status = "started";
+          audit(ctx, "connection.login.start", `${spec.provider} -> ${companyId}`, flow);
+        } catch (e) {
+          attempt.status = "failed";
+          attempt.message = e instanceof HttpError ? e.message : redact(cleanText(e instanceof Error ? e.message : "", 200)) ?? "The sign-in could not start.";
+        }
+      })();
+      return ctx.json(202, { login: pendingView(pid, attempt) }), true;
+    }
+    const attempt = m[3] ? pending.get(m[3]) : undefined;
+    if (attempt) {
+      if (attempt.user !== s.username || attempt.companyId !== companyId) throw new E(404, "not_found", "No such sign-in. Start again.");
+      if (attempt.status === "failed") {
+        const view = pendingView(m[3]!, attempt);
+        pending.delete(m[3]!);
+        return ctx.json(200, { login: view }), true;
+      }
+      if (attempt.status === "starting" || !attempt.login) {
+        if (ctx.method === "POST" && m[4] === "cancel") {
+          pending.delete(m[3]!);
+          return ctx.json(200, { ok: true }), true;
+        }
+        if (ctx.method === "POST" && m[4] === "code") throw new E(409, "not_ready", "The container is still starting. Wait for the sign-in address.");
+        return ctx.json(200, { login: pendingView(m[3]!, attempt) }), true;
+      }
+      // The engine session exists now; carry on with its id.
+      m[3] = attempt.login.id;
     }
     const t = m[3] ? tracked.get(m[3]) : undefined;
     if (!t || t.user !== s.username || t.companyId !== companyId) throw new E(404, "not_found", "No such sign-in. Start again.");

@@ -21,6 +21,17 @@ afterEach(async () => {
 
 const j = async (r: Response) => (await r.json()) as any;
 const start = (body: Record<string, unknown>, cookie = h.sam, co = "co_1") => h.call("POST", `/api/connect/orgs/${co}/login`, { cookie }, body);
+/** Poll the local attempt until the engine session id replaces it. */
+const settle = async (id: string, cookie = h.sam, co = "co_1") => {
+  for (let i = 0; i < 100; i++) {
+    const r = await h.call("GET", `/api/connect/orgs/${co}/login/${id}`, { cookie });
+    if (r.status !== 200) throw new Error(`poll answered ${r.status}`);
+    const l = (await j(r)).login;
+    if (!l || l.id !== id || l.failed) return l;
+    await new Promise((res) => setTimeout(res, 10));
+  }
+  throw new Error("the login did not start in time");
+};
 const KEY = "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWX";
 
 describe("sanitising the engine's login session", () => {
@@ -33,20 +44,25 @@ describe("sanitising the engine's login session", () => {
     const v = sanitizeLogin({ id: "s1", status: "waiting", verification_url: "https://evil.example/x", nested: { accessToken: "sk-ant-oat01-XXXXXXXXXXXXXXXXXXXX", userCode: "WXYZ-1234" }, output: "open https://claude.ai/device then sk-ant-oat01-XXXXXXXXXXXXXXXXXXXX", credential: { token: "t" } }, { adapter: "claude_local", provider: "anthropic", flow: "device", fallbackId: "f" });
     expect(v).toMatchObject({ id: "s1", status: "waiting", verificationUrl: "https://claude.ai/device", userCode: "WXYZ-1234", done: false });
     expect(JSON.stringify(v)).not.toMatch(/sk-ant|evil\.example|credential/);
+    // Claude's prompt route calls the address `authorizationUrl`; it must survive the generic credential filter.
+    const prompt = v && sanitizeLogin({ status: "waiting_for_user", authorizationUrl: "https://claude.com/cai/oauth/authorize?code=true&state=x", accessToken: "sk-ant-oat01-NOPE" }, { adapter: "claude_local", provider: "anthropic", flow: "setup-token", fallbackId: "s2" });
+    expect(prompt.verificationUrl).toBe("https://claude.com/cai/oauth/authorize?code=true&state=x");
+    expect(JSON.stringify(prompt)).not.toContain("sk-ant");
   });
 });
 
 describe("signing an organization's agents in with a subscription", () => {
   it("starts the login in the organization's container environment and relays only what the person needs", async () => {
     const r = await start({ provider: "openai", name: "Team Codex" });
-    expect(r.status).toBe(201);
+    expect(r.status).toBe(202);
     const first = (await j(r)).login;
-    expect(first).toMatchObject({ id: "ls1", status: "starting", adapter: "codex_local", provider: "openai", done: false });
+    expect(first).toMatchObject({ status: "starting", adapter: "codex_local", provider: "openai", done: false });
+    expect(first.id).toMatch(/^p_/);
+    const live = await settle(first.id);
+    expect(live).toMatchObject({ id: "ls1", status: "waiting_for_browser", verificationUrl: "https://auth.openai.com/codex/device", userCode: "ABCD-EFGH", done: false });
     const sent = h.overlay.logins.get("ls1")!.body;
-    expect(sent).toEqual({ aiConnection: { provider: "openai", method: "subscription", name: "Team Codex", ownership: "shared", allAgents: true }, environmentId: "env1" });
-    const poll = await j(await h.call("GET", "/api/connect/orgs/co_1/login/ls1", { cookie: h.sam }));
-    expect(poll.login).toMatchObject({ status: "waiting_for_browser", verificationUrl: "https://auth.openai.com/codex/device", userCode: "ABCD-EFGH", done: false });
-    const text = JSON.stringify(poll);
+    expect(sent).toEqual({ aiConnection: { provider: "openai", method: "subscription", name: "Team Codex", ownership: "personal", allAgents: false, agentIds: [] }, environmentId: "env1" });
+    const text = JSON.stringify(live);
     expect(text).not.toContain("SECRETSECRET");
     expect(text).not.toContain("evil.example");
     expect(text).not.toContain("ZZZZ-9999");
@@ -60,8 +76,28 @@ describe("signing an organization's agents in with a subscription", () => {
     expect(audit).not.toContain("SECRETSECRET");
   });
 
+  it("keeps the account personal unless the person shares it, and can install it on chosen agents", async () => {
+    const personal = await settle((await j(await start({ provider: "openai", name: "My Codex" }))).login.id);
+    expect(h.overlay.logins.get(personal.id)!.body.aiConnection).toEqual({ provider: "openai", method: "subscription", name: "My Codex", ownership: "personal", allAgents: false, agentIds: [] });
+
+    const shared = await settle((await j(await start({ provider: "openai", name: "Team Codex", ownership: "shared" }))).login.id);
+    expect(h.overlay.logins.get(shared.id)!.body.aiConnection).toMatchObject({ ownership: "shared", allAgents: true, agentIds: [] });
+
+    const selected = await settle((await j(await start({ provider: "openai", name: "Two agents", ownership: "shared", allAgents: false, agentIds: ["ag1", "ag2", "ag1"] }))).login.id);
+    expect(h.overlay.logins.get(selected.id)!.body.aiConnection).toMatchObject({ ownership: "shared", allAgents: false, agentIds: ["ag1", "ag2"] });
+  });
+
+  it("refuses a personal account for every agent, and all agents plus a selected list", async () => {
+    expect((await start({ provider: "openai", ownership: "personal", allAgents: true })).status).toBe(400);
+    expect((await start({ provider: "openai", ownership: "shared", allAgents: true, agentIds: ["ag1"] })).status).toBe(400);
+    expect((await start({ provider: "openai", agentIds: ["not an id"] })).status).toBe(400);
+    expect((await start({ provider: "openai", allAgents: "yes" })).status).toBe(400);
+  });
+
   it("supports Claude's setup-token flow, including the code from the browser, never echoed back", async () => {
-    const s = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    const pending = (await j(await start({ provider: "anthropic", flow: "setup-token" }))).login;
+    expect(pending).toMatchObject({ adapter: "claude_local", flow: "setup-token" });
+    const s = await settle(pending.id);
     expect(s).toMatchObject({ adapter: "claude_local", flow: "setup-token" });
     // Claude with no flow picks setup-token, the only Claude sign-in the engine has.
     expect((await j(await start({ provider: "anthropic" }))).login).toMatchObject({ adapter: "claude_local", flow: "setup-token" });

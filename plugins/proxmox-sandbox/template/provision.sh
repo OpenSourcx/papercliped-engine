@@ -2,6 +2,8 @@
 # Runs inside the build container as root.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# Global CLIs are installed as root but run as the agent user. Keep the tree world-readable and traversable.
+umask 022
 step() { printf '  -> %s\n' "$*"; }
 
 step "Installing packages"
@@ -29,6 +31,8 @@ step "Installing agent CLIs"
   "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
  "opencode-ai@${OPENCODE_VERSION}" "@mimo-ai/cli@${MIMO_CLI_VERSION}" "@mariozechner/pi-coding-agent@${PI_VERSION}" "@xai-official/grok@${GROK_CLI_VERSION}" \
  "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}"
+# npm can create package directories 0700; the agent user must be able to run claude, codex and friends.
+chmod -R a+rX /usr/local/lib/node_modules /usr/local/bin
 
 step "Creating user ${AGENT_USER}"
 if ! id -u "$AGENT_USER" >/dev/null 2>&1; then

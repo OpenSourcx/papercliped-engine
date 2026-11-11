@@ -194,7 +194,7 @@ export const connectApi = {
 
   orgAi: (company: string) => req<{ connections: { id: string | null; provider: string | null; method: string | null; name: string | null; ownership: string | null; status: string | null }[] }>("GET", `/api/connect/orgs/${enc(company)}/ai`),
   applyToOrg: (company: string, id: string) => req<{ applied: boolean }>("POST", `/api/connect/orgs/${enc(company)}/apply/${enc(id)}`, {}),
-  startLogin: (company: string, b: { provider: "anthropic" | "openai"; flow?: "device" | "setup-token"; name?: string }) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login`, b),
+  startLogin: (company: string, b: { provider: "anthropic" | "openai"; flow?: "device" | "setup-token"; name?: string; ownership?: "personal" | "shared"; allAgents?: boolean; agentIds?: string[] }) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login`, b),
   pollLogin: (company: string, id: string) => req<{ login: LoginView }>("GET", `/api/connect/orgs/${enc(company)}/login/${enc(id)}`),
   sendLoginCode: (company: string, id: string, browserCode: string) => req<{ login: LoginView }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/code`, { browserCode }),
   cancelLogin: (company: string, id: string) => req<{ ok: boolean }>("POST", `/api/connect/orgs/${enc(company)}/login/${enc(id)}/cancel`, {}),
