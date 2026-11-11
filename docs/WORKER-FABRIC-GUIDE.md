@@ -9,7 +9,29 @@ Adopt a Linux machine you own as a persistent ePaperclip worker. Contract and ar
    Files go under `~/.local`, a user systemd unit is created, workspaces are `~/epaperclip-workspaces`. For start at boot a root user must run once: `sudo loginctl enable-linger <user>`.
 4. Upgrade: run the installer again with the new tarball (`--rollback` returns to the previous one). Remove: `--uninstall [--purge]`.
 
-## Adopt
+## Consumer setup: `epaperclip --worker`
+
+On a worker machine, `epaperclip --worker` is the same CLI as `epaperclip-worker`. The first-run path is:
+
+```sh
+epaperclip --worker setup
+```
+
+It detects the machine (CPU, RAM, GPU/VRAM, disk, Ollama), recommends models that actually fit, and prints the install
+plan. Nothing is installed without an explicit flag:
+
+```sh
+sudo epaperclip --worker setup --install-ollama      # run Ollama's official installer
+epaperclip --worker setup --pull --model llama3.1:8b # pull the chosen model
+epaperclip --worker setup --adopt <code>             # pair with ePaperclip/Pin
+```
+
+`epaperclip --worker recommend` shows the device and the model table without changing anything. The recommender uses
+conservative memory floors and never suggests a model that does not fit the free disk. GPU recommendations need a
+detected NVIDIA/Jetson GPU; otherwise the model is offered as CPU inference and labelled slower.
+
+The same command is available after the worker tarball install (`epaperclip-worker setup`). On a Proxmox host the
+`epaperclip` package provides the host commands and delegates `worker` to the worker CLI when it is installed.
 In the console open Workers, choose Add worker, pick the network (Tailscale recommended, Local network, Custom), copy the single-use code (15 minutes), and run `epaperclip-worker adopt <code>` on the worker. Without a code a worker may ask to join: approve it in the console after comparing the verification string. `epaperclip-worker status` and `diagnose` show progress.
 
 ## Networking

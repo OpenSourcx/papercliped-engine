@@ -33,9 +33,16 @@ function osRelease(): { name: string; version: string } {
 async function detectGpu(): Promise<Capabilities["gpu"]> {
   let model = "";
   try { model = readFileSync("/proc/device-tree/model", "utf8").replace(/\0/g, ""); } catch { /* not a device-tree machine */ }
-  if (existsSync("/etc/nv_tegra_release") || /jetson|tegra|orin/i.test(model)) return { present: true, kind: "jetson", name: model || "NVIDIA Jetson" };
+  if (existsSync("/etc/nv_tegra_release") || /jetson|tegra|orin/i.test(model)) {
+    // Jetson uses unified memory; the GPU can address a large share of system RAM.
+    return { present: true, kind: "jetson", name: model || "NVIDIA Jetson", vramMb: Math.round((totalmem() / 1048576) * 0.6) };
+  }
   const smi = await sh("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]);
-  if (smi) return { present: true, kind: "nvidia", name: smi.split("\n")[0] };
+  if (smi) {
+    const vram = await sh("nvidia-smi", ["--query-gpu=memory.total", "--format=csv,noheader,nounits"]);
+    const vramMb = vram ? Math.max(...vram.split("\n").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x))) : undefined;
+    return { present: true, kind: "nvidia", name: smi.split("\n")[0], ...(vramMb ? { vramMb } : {}) };
+  }
   return { present: false };
 }
 
