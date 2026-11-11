@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { Vault, VaultError, type Sealed } from "./vault.ts";
+import { Vault, VaultError, type RecoveryFile, type Sealed } from "./vault.ts";
 
 /**
  * The host service's own state, in `EPC_STATE_DIR` (default /var/lib/epaperclip): `vault.key` and `state.json`. The
@@ -56,6 +56,44 @@ export class StateStore {
     const parsed = JSON.parse(text) as Partial<StateFile>;
     if (parsed.version !== 1 || typeof parsed.settings !== "object" || typeof parsed.secrets !== "object") throw new Error(`${join(dir, "state.json")} is not ePaperclip state`);
     this.data = { version: 1, settings: parsed.settings ?? {}, secrets: parsed.secrets ?? {} };
+  }
+
+  /** The id of the vault key in use, so a recovery file can be matched to what this host has sealed. */
+  vaultKeyId(): string {
+    return this.vault.kid;
+  }
+
+  /** The vault key sealed under a passphrase, to keep off the host. The key itself never leaves this class. */
+  vaultRecoveryExport(passphrase: string, now: Date = new Date()): RecoveryFile {
+    return this.vault.exportRecovery(passphrase, now);
+  }
+
+  /** Key ids that sealed something stored here (secrets and settings, wherever they sit). */
+  private sealedKeyIds(): Set<string> {
+    const ids = new Set<string>();
+    const walk = (o: unknown) => {
+      if (!o || typeof o !== "object") return;
+      const x = o as Record<string, unknown>;
+      if (x.v === 1 && typeof x.kid === "string" && typeof x.iv === "string" && typeof x.ct === "string") return void ids.add(x.kid);
+      for (const v of Object.values(x)) walk(v);
+    };
+    walk(this.data);
+    return ids;
+  }
+
+  /**
+   * Puts a recovered key in place of the one on disk. It must open the file with the passphrase, and (when this host
+   * has sealed values) match at least one of them, so a wrong file can't replace a good key. The running service keeps
+   * its old key until it restarts; the key it replaces is kept beside `vault.key`.
+   */
+  vaultRestoreFromRecovery(file: RecoveryFile, passphrase: string, now: number = Date.now()): { kid: string; same: boolean; restartRequired: boolean; backup: string | null } {
+    if (!this.dir) throw new VaultError("This host keeps no vault key file, so there is nothing to restore into.");
+    const restored = Vault.fromRecovery(file, passphrase);
+    if (restored.kid === this.vault.kid) return { kid: restored.kid, same: true, restartRequired: false, backup: null };
+    const sealed = this.sealedKeyIds();
+    if (sealed.size > 0 && !sealed.has(restored.kid)) throw new VaultError("That recovery file's key doesn't match anything sealed on this host, so restoring it would recover nothing.");
+    const { backup } = restored.writeKeyFile(this.dir, now);
+    return { kid: restored.kid, same: false, restartRequired: true, backup };
   }
 
   getSecret(name: string): string | null {

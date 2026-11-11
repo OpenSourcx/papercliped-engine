@@ -15,6 +15,7 @@ import { access } from "./access.ts";
 import { accessAdmin } from "./access-admin.ts";
 import { handleWizard } from "./wizard.ts";
 import { handlePin } from "./pin.ts";
+import { handleSafety } from "./safety.ts";
 import { handleVault } from "./vault.ts";
 import { handleActivity } from "./activity.ts";
 import { connectApi } from "./connect.ts";
@@ -92,6 +93,7 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "cluster", handle: handleCluster },
   { name: "pin", handle: handlePin },
   { name: "vault", handle: handleVault },
+  { name: "safety", handle: handleSafety },
   { name: "activity", handle: handleActivity },
   { name: "connect", handle: connectApi },
   { name: "connections", handle: connectionRoutes },
