@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { activity } from "../src/activity.ts";
 import { createApp } from "../src/app.ts";
 import { newestDebian, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE, LAN_BRIDGE_PHRASE } from "../src/containers.ts";
 import { generateSshKey } from "../src/containers-ssh.ts";
@@ -339,6 +340,21 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 1024, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
     // An organization without a resource group has no aggregate limit.
     expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
+  });
+
+  it("records each organization's sync errors and logs them instead of dropping them (ERR-SYNC-010)", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    // An organization the service account is not a member of: adding it needs a signed-in actor, which the 60 s tick doesn't have.
+    eng.company("co_ghost", "Ghost", {});
+    state.setSetting("resourceGroups", { ...state.getSetting<Record<string, unknown>>("resourceGroups"), co_ghost: { name: "Ghost", pool: "epc-ghost", cores: 1, memoryMb: 512, diskGb: 5, maxGuests: 1, updatedAt: 0, updatedBy: "x" } });
+    const out = await app.containers.reconcile();
+    expect(out.join(" ")).toMatch(/Ghost/);
+    const status = state.getSetting<Record<string, { name: string; at: number; errors: string[] }>>("orgSyncStatus")!;
+    expect(status.co_ghost.errors[0]).toMatch(/service account isn't a member/);
+    expect(Object.values(status).find((x) => x.name === "Northwind")!.errors).toEqual([]);
+    expect(activity.list({ event: "org.sync" }).some((e) => /Ghost/.test(e.message))).toBe(true);
   });
 
   it("does not give an organization without a resource group a shared-pool environment", async () => {

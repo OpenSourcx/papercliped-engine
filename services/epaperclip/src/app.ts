@@ -576,9 +576,60 @@ export function createApp(d: AppDeps) {
     await broker.replace(next);
   };
 
+  const removeBrokerGroup = async (companyId: string) => {
+    if (!broker) return;
+    const current = await broker.overview();
+    const id = brokerGroupName(companyId);
+    if (!(id in current.groups)) return;
+    const { [id]: _gone, ...next } = current.groups;
+    await broker.replace(next);
+  };
+
   const needEngine = (): EngineGateway => {
     if (!gateway) throw new HttpError(503, "engine_unavailable", "The engine isn't set up on this host.");
     return gateway;
+  };
+
+  /**
+   * Makes (or repairs) an organization's resource group: its pool, the members' pool ACLs, the broker group and the
+   * container environment. Throws only when the pool itself can't be made; later steps are recorded in `provisioning`
+   * and returned as warnings, so a retry (or the reconciler) can finish them.
+   */
+  const provisionGroup = async (req: IncomingMessage, res: ServerResponse, s: Session, companyId: string, spec: ReturnType<typeof parseResourceGroup>) => {
+    const all = state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {};
+    const existing = all[companyId];
+    const pool = await asUser(req, res, async (pve) => {
+      if (existing) {
+        // Idempotent retries reuse the pool, but only while Proxmox still has it. A pool removed outside ePaperclip is
+        // recreated under the same name, so the stored group never points at a pool that no longer exists.
+        const pools = await pve.pools().catch(() => null);
+        if (pools === null || pools.some((p) => p.poolid === existing.pool)) return existing.pool;
+        await pve.call("POST", "/pools", { poolid: existing.pool, comment: `ePaperclip organization: ${spec.name}` });
+        return existing.pool;
+      }
+      const taken = new Set([...(await pve.pools().catch(() => [])).map((p) => p.poolid), ...Object.values(all).map((g) => g.pool)]);
+      const base = `epc-${poolSlug(spec.name)}`;
+      const free = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find((p) => !taken.has(p));
+      if (!free) throw new HttpError(409, "pool_taken", "Pick a more distinctive name; pools with this name already exist");
+      await pve.call("POST", "/pools", { poolid: free, comment: `ePaperclip organization: ${spec.name}` });
+      return free;
+    });
+    const pending: NonNullable<ResourceGroup["provisioning"]> = { state: "pending", at: now(), steps: [{ id: "pool", state: "done" }, { id: "acl", state: "pending" }, { id: "broker", state: "pending" }, { id: "environment", state: "pending" }] };
+    const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username, provisioning: pending };
+    state.setSetting("resourceGroups", { ...all, [companyId]: group });
+    // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
+    const warnings = await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
+    pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
+    try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) {
+      // No broker on this device is a valid setup: the organization's agent containers are limited by the provider's own aggregate quota, and nothing needs the broker. A broker that exists but fails is still a failure.
+      if (brokerOptionalUnavailable(e)) { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up or not answering on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
+    // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
+    const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
+    warnings.push(...environmentWarnings);
+    pending.steps[3] = { id: "environment", state: environmentWarnings.length ? "failed" : "done", ...(environmentWarnings.length ? { detail: environmentWarnings[0] } : {}) };
+    group.provisioning = { ...pending, state: warnings.length ? "failed" : "ready", ...(warnings.length ? { error: warnings[0] } : {}) };
+    state.setSetting("resourceGroups", { ...(state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {}), [companyId]: group });
+    return { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) };
   };
 
   /** Administrators of this node, as Proxmox sees them: Sys.Modify on "/". */
@@ -858,6 +909,31 @@ export function createApp(d: AppDeps) {
       return sendJson(res, 200, await companyAgentReadiness(needEngine(), s, companyId, now()));
     }
 
+    // One call makes an organization and its resource group, or leaves nothing behind: the engine organization is
+    // created first (as this administrator, who becomes its owner), then the pool; if the pool can't be made the
+    // organization is archived again. Later provisioning steps (ACLs, broker, environment) that fail are reported and
+    // repaired by the reconciler, not rolled back, since the organization itself is whole.
+    if (method === "POST" && path === "/api/orgs") {
+      requireSameSite(req);
+      const s = requireSession(req);
+      const spec = parseResourceGroup(await readJson(req));
+      const company = await needEngine().userJson<{ id: string; name: string }>(s, "POST", "/api/companies", { name: spec.name });
+      try {
+        const done = await provisionGroup(req, res, s, company.id, spec);
+        audit(req, "org.create", company.id, spec.name);
+        return sendJson(res, 200, { company, ...done });
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        const rest = { ...(state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {}) };
+        delete rest[company.id];
+        state.setSetting("resourceGroups", rest);
+        const undone = await needEngine().userJson(s, "DELETE", `/api/companies/${encodeURIComponent(company.id)}`).then(() => true, () => false);
+        activity.warn("host", "org.create.rollback", `Creating ${spec.name} failed (${reason}); ${undone ? "the engine organization was archived again" : "the engine organization could not be archived and needs cleaning up"}`, { companyId: company.id });
+        const status = e instanceof HttpError ? e.status : 502;
+        throw new HttpError(status, e instanceof HttpError ? e.code : "provision_failed", `${reason}. The new organization was rolled back${undone ? "" : ", but the engine organization " + company.id + " could not be archived; archive it in the console"}.`);
+      }
+    }
+
     const rg = path.match(/^\/api\/resource-groups\/([A-Za-z0-9_-]{1,64})$/);
     if (rg && (method === "PUT" || method === "DELETE")) {
       requireSameSite(req);
@@ -871,38 +947,7 @@ export function createApp(d: AppDeps) {
       const all = state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {};
       const existing = all[companyId];
       if (spec) {
-        const pool = await asUser(req, res, async (pve) => {
-          if (existing) {
-            // Idempotent retries reuse the pool, but only while Proxmox still has it. A pool removed outside ePaperclip is
-            // recreated under the same name, so the stored group never points at a pool that no longer exists.
-            const pools = await pve.pools().catch(() => null);
-            if (pools === null || pools.some((p) => p.poolid === existing.pool)) return existing.pool;
-            await pve.call("POST", "/pools", { poolid: existing.pool, comment: `ePaperclip organization: ${spec.name}` });
-            return existing.pool;
-          }
-          const taken = new Set([...(await pve.pools().catch(() => [])).map((p) => p.poolid), ...Object.values(all).map((g) => g.pool)]);
-          const base = `epc-${poolSlug(spec.name)}`;
-          const free = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find((p) => !taken.has(p));
-          if (!free) throw new HttpError(409, "pool_taken", "Pick a more distinctive name; pools with this name already exist");
-          await pve.call("POST", "/pools", { poolid: free, comment: `ePaperclip organization: ${spec.name}` });
-          return free;
-        });
-        const pending: NonNullable<ResourceGroup["provisioning"]> = { state: "pending", at: now(), steps: [{ id: "pool", state: "done" }, { id: "acl", state: "pending" }, { id: "broker", state: "pending" }, { id: "environment", state: "pending" }] };
-        const group: ResourceGroup = { ...spec, pool, updatedAt: now(), updatedBy: s.username, provisioning: pending };
-        state.setSetting("resourceGroups", { ...all, [companyId]: group });
-        // A new pool: the organization's members get their roles on it in Proxmox (Integrated Access Control).
-        const warnings = await asUser(req, res, (pve) => iac.syncPool(pve, s, companyId)).catch((e: Error) => [e.message]);
-        pending.steps[1] = { id: "acl", state: warnings.length ? "failed" : "done", ...(warnings.length ? { detail: warnings[0] } : {}) };
-        try { await syncBrokerGroup(companyId, group); pending.steps[2] = { id: "broker", state: "done" }; } catch (e) {
-          // No broker on this device is a valid setup: the organization's agent containers are limited by the provider's own aggregate quota, and nothing needs the broker. A broker that exists but fails is still a failure.
-          if (brokerOptionalUnavailable(e)) { pending.steps[2] = { id: "broker", state: "skipped", detail: "The host resource broker is not set up or not answering on this device. Agent containers are still limited by the organization's quota; host-side leases are unavailable." }; } else { const message = e instanceof Error ? e.message : String(e); warnings.push(message); pending.steps[2] = { id: "broker", state: "failed", detail: message }; } }
-        // Agent containers: the pool gets the sandbox token's rights and the organization's environment follows the new limits.
-        const environmentWarnings = await asUser(req, res, (pve) => containers.onResourceGroup(pve, companyId, (m, p, b) => needEngine().userJson(s, m, p, b))).catch((e: Error) => [e.message]);
-        warnings.push(...environmentWarnings);
-        pending.steps[3] = { id: "environment", state: environmentWarnings.length ? "failed" : "done", ...(environmentWarnings.length ? { detail: environmentWarnings[0] } : {}) };
-        group.provisioning = { ...pending, state: warnings.length ? "failed" : "ready", ...(warnings.length ? { error: warnings[0] } : {}) };
-        state.setSetting("resourceGroups", { ...(state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {}), [companyId]: group });
-        return sendJson(res, 200, { group: { companyId, ...group }, ...(warnings.length ? { warnings } : {}) });
+        return sendJson(res, 200, await provisionGroup(req, res, s, companyId, spec));
       }
       if (!existing) throw new HttpError(404, "not_found", "That organization has no resource group");
       const poolRemoved = await asUser(req, res, async (pve) => {
@@ -1016,6 +1061,37 @@ export function createApp(d: AppDeps) {
         audit(req, "user.delete", userid);
         return sendJson(res, 200, done);
       }
+    }
+    if (path === "/api/iac/drift" && method === "GET") {
+      return sendJson(res, 200, await asUser(req, res, async (pve, s) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only a Proxmox administrator can compare the engine with Proxmox");
+        return { items: await iac.drift(pve, s), sync: state.getSetting<Record<string, unknown>>("orgSyncStatus") ?? {} };
+      }));
+    }
+    if (path === "/api/iac/drift/repair" && method === "POST") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const out = await asUser(req, res, async (pve, s) => {
+        if (!(await isNodeAdmin(pve))) throw new HttpError(403, "forbidden", "Only a Proxmox administrator can repair drift");
+        return iac.repair(pve, s, { removeStale: b.removeStale === true }, async (companyId) => {
+          const g = (state.getSetting<Record<string, ResourceGroup>>("resourceGroups") ?? {})[companyId];
+          if (g) await provisionGroup(req, res, s, companyId, { name: g.name, cores: g.cores, memoryMb: g.memoryMb, diskGb: g.diskGb, maxGuests: g.maxGuests });
+        });
+      });
+      for (const r of out.results) if (r.kind === "orphan-group" && r.done) await removeBrokerGroup(r.companyId).catch(() => {});
+      audit(req, "org-drift.repair", undefined, `${out.repaired} repaired${b.removeStale === true ? ", stale grants removed" : ""}`);
+      return sendJson(res, 200, out);
+    }
+    const iacJoin = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/join$/);
+    if (iacJoin && method === "POST") {
+      requireSameSite(req);
+      const b = await readJson(req);
+      const done = await asUser(req, res, async (pve, s) => {
+        const userid = typeof b.userid === "string" && b.userid ? b.userid : s.username;
+        return iac.joinOrg(pve, s, await isNodeAdmin(pve), iacJoin[1], userid, (b.role as OrgRole | undefined) ?? "admin");
+      });
+      audit(req, "org-membership.grant", done.userid, `${iacJoin[1]}: ${done.role}${done.joined ? "" : " (already a member)"}`);
+      return sendJson(res, 200, { ok: true, ...done });
     }
     const iacMember = path.match(/^\/api\/iac\/orgs\/([A-Za-z0-9_-]{1,64})\/members\/([^/]{3,100})$/);
     if (iacMember && (method === "PUT" || method === "DELETE")) {
@@ -2323,6 +2399,13 @@ export function createApp(d: AppDeps) {
       // New agents default to their organization's container environment right away.
       after: (m, p, status) => {
         if (status >= 200 && status < 300 && m === "POST" && /^\/api\/companies(\/[^/]+\/agent(s|-hires))?(\/|\?|$)/i.test(p)) void containers.reconcile((am, ap, ab) => needEngine().userJson(s, am, ap, ab)).catch(() => {});
+        // Archiving an organization: clean up its Proxmox side as the person who archived it (their ticket may lack the rights; the drift repair finishes it).
+        const archived = status >= 200 && status < 300 ? (m === "DELETE" ? p.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/?$/) : m === "POST" ? p.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/archive\/?$/) : null) : null;
+        if (archived) void clientFor(s).then(async (pve) => {
+          const r = await iac.cleanupGroup(pve, archived[1]!);
+          if (r.removed) await removeBrokerGroup(archived[1]!).catch(() => {});
+          else activity.warn("host", "org.cleanup", r.kept ?? "Cleanup incomplete", { companyId: archived[1]! });
+        }).catch((e: Error) => activity.warn("host", "org.cleanup", `Couldn't clean up the Proxmox side of an archived organization: ${e.message}`, { companyId: archived[1]! }));
       },
     });
   };

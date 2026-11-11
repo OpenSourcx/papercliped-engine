@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -222,7 +222,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       companies.set(id, { name: body.name ?? "Org", members: new Map([[uid, "owner"]]) });
       return json(res, 201, { id, name: body.name, status: "active" });
     }
-    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => st.admins.has(uid!) || c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: "active" })));
+    if (p === "/api/companies" && req.method === "GET") return json(res, 200, [...companies].filter(([, c]) => st.admins.has(uid!) || c.members.has(uid)).map(([id, c]) => ({ id, name: c.name, status: st.archivedCompanies.has(id) ? "archived" : "active" })));
     // Membership: list, change role, archive; invitations with a role, accepted by the invitee.
     const mem = p.match(/^\/api\/companies\/([\w-]+)\/(members|invites)(?:\/([\w.-]+)(\/archive)?)?$/);
     if (mem) {
@@ -230,6 +230,8 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       if (!c) return json(res, 404, { error: "Company not found" });
       const manager = st.admins.has(uid!) || ["owner", "admin"].includes(c.members.get(uid!) ?? "");
       if (mem[2] === "members" && req.method === "GET" && !mem[3]) {
+        // The real engine (authz.ts assertCompanyAccess) gives instance admins no company access without a membership.
+        if (st.strictMembers && !c.members.has(uid)) return json(res, 403, { error: "User does not have access to this company" });
         if (!manager && !c.members.has(uid)) return json(res, 403, { error: "Not a member" });
         const list = [...c.members].map(([id, role]) => ({ id: `m.${mem[1]}.${id}`, principalType: "user", principalId: id, membershipRole: role, status: "active" }));
         const gone = [...st.archived].filter((k) => k.startsWith(`${mem[1]}|`)).map((k) => ({ id: `m.${mem[1]}.${k.split("|")[1]}`, principalType: "user", principalId: k.split("|")[1], membershipRole: "viewer", status: "archived" }));
@@ -248,6 +250,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
         return json(res, 200, { id: mem[3], membershipRole: c.members.get(target), status: "active" });
       }
       if (mem[2] === "members" && target && mem[4] && req.method === "POST") {
+        if (st.strictMembers && c.members.get(target) === "owner") return json(res, 409, { error: "Board owners cannot be removed" });
         c.members.delete(target);
         st.archived.add(`${mem[1]}|${target}`);
         return json(res, 200, { member: { id: mem[3], status: "archived" } });
@@ -261,6 +264,13 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       companies.get(inv.companyId)!.members.set(uid, inv.role);
       st.archived.delete(`${inv.companyId}|${uid}`);
       return json(res, 202, { status: "approved", requestType: "human" });
+    }
+    const archiveCo = p.match(/^\/api\/companies\/([\w-]+)$/);
+    if (archiveCo && req.method === "DELETE") {
+      if (!companies.has(archiveCo[1])) return json(res, 404, { error: "Company not found" });
+      if (!st.admins.has(uid!) && companies.get(archiveCo[1])!.members.get(uid!) !== "owner") return json(res, 403, { error: "Permission denied" });
+      st.archivedCompanies.add(archiveCo[1]);
+      return json(res, 200, { id: archiveCo[1], status: "archived" });
     }
     const co = p.match(/^\/api\/companies\/([\w-]+)(\/(agents|issues|approvals))?$/);
     if (co) {
@@ -612,7 +622,7 @@ export function fakePve() {
     if (pool && req.method === "DELETE") return admin ? (pools.delete(pool[1]), ok(null)) : { status: 403, body: "" };
     return { status: 404, body: "" };
   };
-  return { transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles, failLogs, host };
+  return { users, transport, pools, calls, pveUsers, acl, groups, roles, tokens, tokenSecrets, guests, failures, storageFiles, failLogs, host };
 }
 
 /**
