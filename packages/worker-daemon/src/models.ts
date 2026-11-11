@@ -18,7 +18,7 @@ export interface ModelSpec {
 export const MODEL_CATALOG: ModelSpec[] = [
   { id: "qwen2.5:0.5b", label: "Qwen 2.5 0.5B", sizeGb: 0.4, minRamGb: 1, minVramGb: 1, tags: ["small", "chat"], note: "Tiny; good for smoke tests and low-power boxes." },
   { id: "llama3.2:1b", label: "Llama 3.2 1B", sizeGb: 1.3, minRamGb: 2, minVramGb: 2, note: "Fast small chat model; weak on hard reasoning.", tags: ["chat"] },
-  { id: "llama3.2:3b", label: "Llama 3.2 3B", sizeGb: 2, minRamGb: 4, minVramGb: 3, tags: ["chat"], note: "Balanced small model; good default for CPU-only workers." },
+  { id: "llama3.2:3b", label: "Llama 3.2 3B", sizeGb: 2, minRamGb: 4, minVramGb: 3, tags: ["chat"], note: "Balanced small model; a good default on 4 GB GPUs and CPU-only workers." },
   { id: "qwen2.5-coder:7b", label: "Qwen 2.5 Coder 7B", sizeGb: 4.7, minRamGb: 8, minVramGb: 6, tags: ["code"], note: "Strong local coding model; needs a real GPU for good speed." },
   { id: "llama3.1:8b", label: "Llama 3.1 8B", sizeGb: 4.9, minRamGb: 8, minVramGb: 6, tags: ["chat"], note: "General assistant; the usual 8 GB GPU baseline." },
   { id: "deepseek-r1:8b", label: "DeepSeek R1 8B", sizeGb: 5.2, minRamGb: 10, minVramGb: 8, tags: ["reasoning"], note: "Reasoning-oriented; slower and more memory-hungry." },
