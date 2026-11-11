@@ -311,6 +311,7 @@ body {
       display: inline-flex;
       align-items: center;
       min-height: var(--touch-target);
+      min-width: var(--touch-target);
     }
   }
   button:not(:disabled),
