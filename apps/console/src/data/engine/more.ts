@@ -77,7 +77,11 @@ export const useChats = (companyId: Id, enabled: boolean) => {
 
 /** The saved agent chats of several organizations at once (PinView's list), sharing the cache with useChats. */
 export function useChatsOf(companyIds: string[]) {
-  const ready = useEngineReady() && useChatEnabled();
+  // Always call both hooks. `useEngineReady() && useChatEnabled()` short-circuits and changes the hook count when
+  // the engine becomes ready, which corrupts the next query's effect state and blanks the console after login.
+  const engineReady = useEngineReady();
+  const chatEnabled = useChatEnabled();
+  const ready = engineReady && chatEnabled;
   return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.chats(id), queryFn: () => engine.chat.list(id), enabled: ready, retry: false, refetchInterval: 30_000 })) });
 }
 
