@@ -24,8 +24,11 @@ FW=/usr/local/sbin/epaperclip-sandbox-firewall.sh
 
 say() { echo "isolated-bridge: $*"; }
 
-if ip link show "$BRIDGE" >/dev/null 2>&1; then
-  say "$BRIDGE already exists; leaving it alone. Choose another with EPC_SANDBOX_BRIDGE."
+MARK="# ePaperclip sandbox network"
+# A bridge that is there but wasn't made by this script is someone else's: leave it alone. One this script made earlier
+# (it carries our marker) is finished off below, so a run that stopped halfway can simply be run again.
+if ip link show "$BRIDGE" >/dev/null 2>&1 && ! grep -qF "$MARK" /etc/network/interfaces; then
+  say "$BRIDGE already exists and wasn't made by this script; leaving it alone. Choose another with EPC_SANDBOX_BRIDGE."
   exit 0
 fi
 
@@ -45,6 +48,7 @@ add INPUT -i "\$B" -j DROP
 add INPUT -i "\$B" -p udp --dport 67 -j ACCEPT
 FWSH
 chmod 755 "$FW"
+if ! grep -qF "$MARK" /etc/network/interfaces; then
 cp /etc/network/interfaces "/root/interfaces.pre-epaperclip-$(date +%Y%m%d%H%M%S)"
 cat >>/etc/network/interfaces <<NET
 
@@ -59,19 +63,25 @@ iface $BRIDGE inet static
 	post-down iptables -t nat -D POSTROUTING -s $NET/$PREFIX -o $UPLINK -j MASQUERADE 2>/dev/null || true
 	post-up   $FW
 NET
+fi
 
-ip link add name "$BRIDGE" type bridge
-ip addr add "$CIDR" dev "$BRIDGE"
+if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
+  ip link add name "$BRIDGE" type bridge
+  ip addr add "$CIDR" dev "$BRIDGE"
+fi
 ip link set "$BRIDGE" up
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
+printf 'net.ipv4.ip_forward=1\n' >/etc/sysctl.d/99-epaperclip-sandbox.conf
 iptables -t nat -C POSTROUTING -s "$NET/$PREFIX" -o "$UPLINK" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s "$NET/$PREFIX" -o "$UPLINK" -j MASQUERADE
 
 "$FW"
 
 if ! dpkg -s dnsmasq >/dev/null 2>&1; then
   say "installing dnsmasq"
-  DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq dnsmasq
+  # A Proxmox host without a subscription usually has the enterprise repository enabled, which answers 401 and makes
+  # `apt-get update` exit non-zero even though the other repositories updated. That must not stop the install.
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq || say "warning: apt-get update reported errors (often the enterprise repository without a subscription); trying the install anyway"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq dnsmasq || { echo "isolated-bridge: couldn't install dnsmasq (is this host online?). Install it yourself (apt install dnsmasq) and run this again." >&2; exit 1; }
 fi
 cat >/etc/dnsmasq.d/epaperclip-sandbox.conf <<DNS
 # ePaperclip sandbox DHCP: DHCP only, no DNS service on this bridge.
