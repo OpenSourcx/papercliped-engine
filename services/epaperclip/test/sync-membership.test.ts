@@ -95,6 +95,15 @@ describe("ERR-SYNC-001: a Proxmox administrator can join an organization on this
     expect((await membersOf(sam, co)).filter((m) => m.principalId === kaiId && m.status === "active")).toHaveLength(1);
   });
 
+  it("tells the console whether the caller is an administrator, so it can offer Join", async () => {
+    const { lee } = await setup();
+    const ov = (await (await fetch(base + "/api/iac", { headers: { Cookie: lee } })).json()) as any;
+    expect(ov.admin).toBe(true);
+    pve.users["lee@pve"].admin = false;
+    const plain = await signIn("lee");
+    expect(((await (await fetch(base + "/api/iac", { headers: { Cookie: plain } })).json()) as any).admin).toBe(false);
+  });
+
   it("refuses anyone who is not a Proxmox administrator, and unknown Proxmox users", async () => {
     const { co } = await setup();
     pve.users["lee@pve"].admin = false;

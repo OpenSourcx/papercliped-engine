@@ -77,6 +77,7 @@ interface EngineMember {
 interface ResourceGroup {
   pool: string;
   name?: string;
+  provisioning?: { state: string; error?: string };
 }
 
 export interface UserSpec {
@@ -386,7 +387,7 @@ export class Iac {
       }
       if (JSON.stringify(unresolved) !== before) this.state.setSetting("iac.unresolved", unresolved);
     }
-    return { users: rows, orgs, realms, groups, canManageUsers, deviceRoles: DEVICE_ROLES, orgPoolRoles: ORG_POOL_ROLES, warnings };
+    return { users: rows, orgs, realms, groups, canManageUsers, admin: callerIsNodeAdmin, deviceRoles: DEVICE_ROLES, orgPoolRoles: ORG_POOL_ROLES, warnings };
   }
 
   // ---- Changes

@@ -273,7 +273,20 @@ export interface IacOverview {
   realms: { realm: string; type: string; comment?: string; default?: number }[];
   groups: { groupid: string; comment?: string }[];
   canManageUsers: boolean;
+  /** The caller is a Proxmox administrator (so an engine instance admin, who can join any organization on this device). */
+  admin?: boolean;
   warnings: string[];
+}
+
+export interface OrgDriftItem {
+  kind: "missing-acl" | "stale-acl" | "missing-group" | "orphan-group" | "failed-provisioning";
+  companyId: string;
+  org: string;
+  pool?: string;
+  userid?: string;
+  role?: string;
+  detail: string;
+  repair: "grant" | "revoke" | "cleanup" | "reprovision" | null;
 }
 
 export interface IacUserSpec {
@@ -302,5 +315,9 @@ export const iac = {
   deleteUser: (userid: string) => call<IacResult>("DELETE", `/api/iac/users/${enc(userid)}`),
   setPassword: (userid: string, password: string, confirmationPassword: string) => call<{ ok: true }>("PUT", `/api/iac/users/${enc(userid)}/password`, { password, confirmationPassword }),
   setOrgRole: (companyId: string, userid: string, role: OrgRole) => call<{ ok: true }>("PUT", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`, { role }),
+  /** A Proxmox administrator gives themselves (or userid) a role in an organization on this device. */
+  joinOrg: (companyId: string, opts: { userid?: string; role?: OrgRole } = {}) => call<{ ok: true; userid: string; role: OrgRole; joined: boolean }>("POST", `/api/iac/orgs/${enc(companyId)}/join`, opts),
+  drift: () => call<{ items: OrgDriftItem[]; sync: Record<string, { name: string; at: number; errors: string[] }> }>("GET", "/api/iac/drift"),
+  repairDrift: (removeStale = false) => call<{ repaired: number; results: { kind: string; companyId: string; done: boolean; note?: string }[] }>("POST", "/api/iac/drift/repair", { removeStale }),
   removeFromOrg: (companyId: string, userid: string) => call<{ ok: true }>("DELETE", `/api/iac/orgs/${enc(companyId)}/members/${enc(userid)}`),
 };
