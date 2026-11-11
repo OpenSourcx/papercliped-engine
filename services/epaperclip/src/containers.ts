@@ -260,6 +260,18 @@ export interface StorageFacts {
 }
 
 const BLOCK_TYPES = new Set(["lvm", "lvmthin", "zfspool", "zfs", "rbd", "iscsi", "iscsidirect"]);
+/** Proxmox storage types that can linked-clone a container template (not thick LVM, dir, NFS or CIFS). */
+const LINKED_CLONE_STORAGE_TYPES = new Set(["lvmthin", "zfspool", "btrfs", "rbd"]);
+
+/** Storage-class policy, exported so the host's portability choices are testable without a Proxmox API. */
+export function acquisitionTimeoutForStorage(type: string | undefined): number {
+  return type && LINKED_CLONE_STORAGE_TYPES.has(type) ? 240_000 : 900_000;
+}
+
+/** Slow/unknown storage reuses a stopped sandbox; linked-clone storage can afford a fresh one. */
+export function reuseLeaseForStorage(type: string | undefined): boolean {
+  return !type || !LINKED_CLONE_STORAGE_TYPES.has(type);
+}
 const NETWORK_TYPES = new Set(["nfs", "cifs", "glusterfs", "cephfs"]);
 /** Filesystems that cannot hold an unprivileged container's root: no ownership/xattrs for uid 100000+, or no POSIX modes. */
 const UNSUITABLE_FS = new Set(["ntfs", "ntfs3", "exfat", "vfat", "msdos", "fuseblk", "fat"]);
@@ -630,8 +642,16 @@ export class AgentContainers {
 
   /** How long a sandbox acquisition may take on this storage class. Linked-clone storage is fast; dir/HDD is not. */
   private providerTimeout(storage: string): number {
-    const type = this.stored().storageFacts?.[storage]?.type;
-    return type && ["lvmthin", "zfspool", "btrfs", "rbd"].includes(type) ? 240_000 : 900_000;
+    return acquisitionTimeoutForStorage(this.stored().storageFacts?.[storage]?.type);
+  }
+
+  /**
+   * Reuse a stopped sandbox on slow storage instead of paying a full clone on every run. On linked-clone
+   * storage a fresh clone is cheap, so it stays fresh. Paperclip's reusable lease releases by stopping,
+   * and the next acquire resumes it.
+   */
+  private shouldReuseLease(storage: string): boolean {
+    return reuseLeaseForStorage(this.stored().storageFacts?.[storage]?.type);
   }
 
   /** Container size for an organization: its resource group's limits, capped by the chosen size. */
@@ -665,7 +685,7 @@ export class AgentContainers {
       unprivileged: true,
       sshPrivateKey: sec.keySecretId,
       sshUser: AGENT_USER,
-      reuseLease: false,
+      reuseLease: this.shouldReuseLease(p.storage),
       // A dir/HDD clone can take minutes; a thin/SSD clone does not. The provider uses this both as its
       // acquisition budget and as the per-request timeout, so it must follow the storage class.
       timeoutMs: this.providerTimeout(p.storage),

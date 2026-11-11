@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.ts";
-import { newestDebian, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE } from "../src/containers.ts";
+import { acquisitionTimeoutForStorage, newestDebian, reuseLeaseForStorage, TOKEN_ID, SANDBOX_USER, CONFIRM_PHRASE } from "../src/containers.ts";
 import { generateSshKey } from "../src/containers-ssh.ts";
 import { SessionStore } from "../src/sessions.ts";
 import { StateStore } from "../src/state.ts";
@@ -573,3 +573,19 @@ describe("pieces", () => {
 });
 
 void vi;
+
+
+describe("storage portability policy", () => {
+  it("gives linked-clone storage a short budget and fresh clones, and slow/unknown storage reusable leases", () => {
+    expect(acquisitionTimeoutForStorage("lvmthin")).toBe(240_000);
+    expect(acquisitionTimeoutForStorage("zfspool")).toBe(240_000);
+    expect(acquisitionTimeoutForStorage("dir")).toBe(900_000);
+    expect(acquisitionTimeoutForStorage(undefined)).toBe(900_000);
+    expect(reuseLeaseForStorage("lvmthin")).toBe(false);
+    expect(reuseLeaseForStorage("zfspool")).toBe(false);
+    expect(reuseLeaseForStorage("btrfs")).toBe(false);
+    expect(reuseLeaseForStorage("rbd")).toBe(false);
+    expect(reuseLeaseForStorage("dir")).toBe(true);
+    expect(reuseLeaseForStorage(undefined)).toBe(true);
+  });
+});
