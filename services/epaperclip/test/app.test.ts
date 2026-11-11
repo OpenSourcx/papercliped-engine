@@ -1028,7 +1028,10 @@ describe("live consoles", () => {
     const c = await signIn("lee");
     const { out, closed } = await open("/api/console/node?cmd=upgrade", { Cookie: c, Origin: base });
     expect(await closed).toBe(4000);
-    expect(out.join("")).toContain("doesn't have console access");
+    expect(out.join("")).toContain("only runs the upgrade terminal for root@pam");
+    const shell = await open("/api/console/node", { Cookie: c, Origin: base });
+    expect(await shell.closed).toBe(4000);
+    expect(shell.out.join("")).toContain("doesn't have console access");
   });
 });
 
