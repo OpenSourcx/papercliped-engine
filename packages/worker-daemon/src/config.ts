@@ -17,6 +17,8 @@ export interface WorkerConfig {
   ollamaUrl: string;
   inference: { gatePort: number; slots: number; maxContext: number | null };
   revoked: boolean;
+  /** Who executes setup steps after pairing: Pin through the helper, or the person with Pin's guidance. */
+  setupMode: "pin" | "self" | null;
   /** A pairing code's id and secret, kept only until the first successful connection. */
   pairing: { id: string; secret: string } | null;
 }
@@ -25,7 +27,7 @@ export const DEFAULT_DIR = "/var/lib/epaperclip-worker";
 
 export const defaults = (dir: string): WorkerConfig => ({
   version: 1, hostKey: null, endpoints: [], workerId: null, name: "", workspaceRoot: process.env.EPW_WORKSPACES || "/workspaces", prefer: null, ollamaUrl: "",
-  inference: { gatePort: 11435, slots: 1, maxContext: null }, revoked: false, pairing: null,
+  inference: { gatePort: 11435, slots: 1, maxContext: null }, revoked: false, setupMode: null, pairing: null,
 });
 
 function writeAtomic(file: string, text: string, mode: number) {

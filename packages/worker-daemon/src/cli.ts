@@ -99,6 +99,23 @@ async function main() {
       const adoptCode = flag("adopt");
       const name = flag("name");
       const ollamaUrl = flag("ollama-url");
+      let mode = flag("mode");
+      if (mode && mode !== "pin" && mode !== "self") throw new Error("--mode must be pin or self");
+      if (!mode) {
+        if (process.stdin.isTTY) {
+          const { createInterface } = await import("node:readline/promises");
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          console.log("\nHow should this machine be set up?");
+          console.log("  1) Let Pin set it up — Pin installs Ollama and a fitting model with your approval");
+          console.log("  2) Guide me — Pin walks me through each command; I run it");
+          const answer = (await rl.question("Choose [1]: ")).trim();
+          rl.close();
+          mode = answer === "2" || /self|guide/i.test(answer) ? "self" : "pin";
+        } else {
+          mode = "pin";
+        }
+      }
+      c.setupMode = mode as "pin" | "self";
       console.log("ePaperclip worker setup\n");
       console.log(`  host      ${caps.hostname} · ${caps.os.name} ${caps.os.version} ${caps.arch}`);
       console.log(`  cpu       ${caps.cpu.model} · ${caps.cpu.cores} cores`);
@@ -108,12 +125,20 @@ async function main() {
       console.log(`  ollama    ${caps.inference ? `${caps.inference.url} · ${caps.inference.models.length} model(s)` : "not found"}`);
       console.log("");
       printRecommendations(caps);
+      console.log(`\nSetup authority: ${mode === "pin" ? "Pin installs with your approval" : "you run the steps; Pin guides"}`);
       console.log("\nPlan");
-      if (!caps.tools.ollama) console.log(`  1. install Ollama${installOllama ? " (running now)" : ": curl -fsSL https://ollama.com/install.sh | sh"}`);
-      else console.log("  1. Ollama is already installed");
-      console.log(`  2. pull a model${pull ? " (running now)" : ""}: ollama pull ${model}`);
-      console.log("  3. pair with ePaperclip/Pin: epaperclip-worker adopt <code from Workers>");
-      console.log("  4. approve the worker in ePaperclip or Pin; Pin can then schedule agents here.");
+      if (mode === "pin") {
+        console.log("  1. pair with ePaperclip/Pin using the code from Workers");
+        console.log(`  2. Pin installs Ollama if needed and pulls ${model} with your approval`);
+        console.log("  3. Pin verifies the result and creates the worker environment");
+        console.log("  4. approve the worker; Pin can then schedule agents here.");
+      } else {
+        if (!caps.tools.ollama) console.log(`  1. install Ollama${installOllama ? " (running now)" : ": curl -fsSL https://ollama.com/install.sh | sh"}`);
+        else console.log("  1. Ollama is already installed");
+        console.log(`  2. pull a model${pull ? " (running now)" : ""}: ollama pull ${model}`);
+        console.log("  3. pair with ePaperclip/Pin: epaperclip-worker adopt <code from Workers>");
+        console.log("  4. approve the worker; Pin can then schedule agents here.");
+      }
       if (installOllama) {
         if (caps.tools.ollama) console.log("Ollama is already installed; skipping.");
         else {
@@ -146,6 +171,7 @@ async function main() {
       row(existsSync(idf) ? (statSync(idf).mode & 0o077) === 0 : true, existsSync(idf) ? "identity.json is private (0600)" : "no identity yet (created on first run)");
       row(existsSync(c.workspaceRoot), `workspace root ${c.workspaceRoot} exists`);
       row(!!c.hostKey, c.hostKey ? "paired with a host" : "not paired: run `epaperclip-worker adopt <code>`");
+      console.log(`     setup mode: ${c.setupMode ?? "not chosen"}`);
       for (const e of c.endpoints) {
         const u = e.url.replace(/^ws/, "http").replace(/\/fabric\/v1\/connect$/, "/fabric/v1/health");
         const ok = await fetch(u, { signal: AbortSignal.timeout(4000) }).then((r) => r.ok).catch(() => false);

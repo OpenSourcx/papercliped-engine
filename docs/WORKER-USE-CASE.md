@@ -38,6 +38,60 @@ Pin to manage it.
 6. **Scale by buying another box.** Repeat the same flow. Pin manages placement and routing; the
    Proxmox host stays the control plane and never becomes the model server.
 
+## Two setup modes — one device-link session
+
+The first-run CLI asks who holds execution authority. Both modes use the same pairing/device-link session
+with Pin; only the execution authority changes.
+
+| Mode | Who runs the commands | What Pin does |
+| --- | --- | --- |
+| **Let Pin set it up** (recommended) | The narrow privileged helper, installed with consent by the worker installer. | Recommends the model, asks for approval, triggers install/pull, streams progress, verifies the result. |
+| **Guide me** | The person, in their own terminal. | Walks through each step, shows the exact command, waits, verifies the worker reports the result, and keeps the plan in sync. |
+
+The CLI presents it plainly:
+
+```text
+How should this machine be set up?
+  1) Let Pin set it up — Pin installs Ollama and a fitting model with your approval
+  2) Guide me — Pin walks me through each command; I run it
+
+Choose [1]:
+```
+
+`--mode pin` and `--mode self` make the choice non-interactive. There is no third mode and no silent
+root.
+
+### Device link protocol
+
+The pairing code is only the authorization. After it is accepted, the worker and host keep a **device
+link session** that Pin drives:
+
+1. `link.hello` — worker identity, version, transport.
+2. `caps` — real CPU/RAM/GPU-VRAM/disk/Ollama report.
+3. `plan` — Pin proposes the setup steps and the model that fits; the person can change the model.
+4. `approve` — explicit approval for each privileged step.
+5. `execute` — helper (Pin mode) or the person (guide mode) runs the fixed command.
+6. `progress` — stdout/progress streamed to Pin; no arbitrary command channel.
+7. `verify` — the worker re-reports capabilities; Pin marks the step done only when the result is real.
+8. `done` — the worker is ready for environments and agent runs.
+
+The same link survives reconnects. A guided step can be claimed by the person, and Pin only advances
+when the worker reports the result. A Pin-managed step can fall back to guided if the helper is absent.
+
+## Native agent orchestration on the host
+
+The host orchestrates agents through **Paperclip's own adapters and native runner**, including the ACP
+adapters (`claude_local`, `codex_local`, `paperclip_runner`, ACPX Claude). Do not build a parallel agent
+loop inside the worker or the host service.
+
+- The host owns organizations, agents, tasks, runs, approvals and model accounts.
+- The adapter/runner owns the agent session and tool loop.
+- The worker owns the machine: execution, workspace, model runtime and the inference gate.
+- A worker run is still a Paperclip sandbox lease: the `remote-worker` provider selects a worker, realizes
+  the workspace, and executes through the existing contract.
+- ACP is the adapter boundary for Claude/Codex-style agents; the worker must expose what the adapter
+  needs, not reinterpret prompts.
+
 ## Identity and trust — the local ID service
 
 - The approver is a **signed-in Proxmox administrator** on the host (or a Papercliped-authenticated
@@ -78,9 +132,13 @@ Pin never talks to root directly. It asks the worker; the worker asks the helper
 
 - [ ] A person with a fresh AI box can add it from Pin/Workers and see its real specs, without a cloud
   account or a second orchestrator.
+- [ ] The CLI offers **Let Pin set up** and **help me set it up**; both use the device-link session and
+  neither hides what will run.
 - [ ] Pin recommends models that fit the detected CPU/GPU/RAM/disk and never suggests one that does not.
 - [ ] Pin can install Ollama and pull the chosen model through the privileged helper, with approval,
-  progress and no arbitrary root.
+  progress and no arbitrary root; guided mode works without the helper.
+- [ ] Agent runs use Paperclip's adapters/native runner (including ACP adapters); no parallel agent loop
+  exists in the worker or host service.
 - [ ] An agent run lands on that worker, completes, and can be cancelled; Pin shows where it ran.
 - [ ] A second worker can be added and the scheduler chooses between them by capability and load.
 - [ ] Drain, disable, refresh and revoke are observable in Pin; revocation is durable.
