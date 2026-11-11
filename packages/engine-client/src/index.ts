@@ -395,7 +395,8 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
     health: () => call<{ status: string; bootstrapStatus?: string; deploymentMode?: string }>("GET", P.health),
     me: () => call<BoardAccess>("GET", P.me),
     companies: {
-      list: () => call<Company[]>("GET", P.companies),
+      /** scope=accessible: only the organizations the caller can enter (an instance admin otherwise lists every one). */
+      list: (query?: { scope?: "accessible" }) => call<Company[]>("GET", P.companies, {}, undefined, query),
       get: (companyId: string) => call<Company>("GET", P.company, { companyId }),
       create: (body: CreateCompanyBody) => call<Company>("POST", P.companies, {}, body),
       update: (companyId: string, body: Partial<Pick<Company, "name" | "description" | "budgetMonthlyCents">> & { status?: "active" | "paused" | "archived"; requireBoardApprovalForNewAgents?: boolean }) => call<Company>("PATCH", P.company, { companyId }, body),

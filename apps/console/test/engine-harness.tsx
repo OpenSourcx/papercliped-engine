@@ -47,6 +47,7 @@ export const baseRoutes = (): Record<string, Handler> => ({
   "GET /engine/api/companies/c1/sidebar-badges": () => [200, { inbox: 0, approvals: 0, failedRuns: 0, joinRequests: 0 }],
   "GET /engine/api/companies/c1/attention": () => [200, { companyId: "c1", generatedAt: "2026-10-01T00:00:00Z", totalCount: 0, deskBadgeCount: 0, nextCursor: null, countsBySourceKind: {}, items: [] }],
   "GET /engine/api/companies/c1/issues": () => [200, []],
+  "GET /engine/api/instance/settings/experimental": () => [200, { enableAgentChat: true }],
   "GET /api/resource-groups": () => [200, { groups: [{ companyId: "c1", name: "Acme Works", pool: "epc-acme-works", cores: 4, memoryMb: 8192, diskGb: 40, maxGuests: 3 }] }],
 });
 

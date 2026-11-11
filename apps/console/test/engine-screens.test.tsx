@@ -31,6 +31,7 @@ describe("chat", () => {
   it("says it is switched off, and lets an administrator turn it on", async () => {
     let on = false;
     state.routes["GET /engine/api/companies/c1/chats"] = () => (on ? [200, []] : [404, { error: "Agent Chat is disabled" }]);
+    state.routes["GET /engine/api/instance/settings/experimental"] = () => [200, { enableAgentChat: on }];
     state.routes["PATCH /engine/api/instance/settings/experimental"] = () => { on = true; return [200, { enableAgentChat: true }]; };
     renderOrg("/pve/acme/chat");
     expect(await screen.findByText("Chat is switched off")).toBeTruthy();
