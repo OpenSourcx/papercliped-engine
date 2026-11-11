@@ -1,6 +1,6 @@
 # Worker Fabric guide
 
-Adopt a Linux machine you own as a persistent ePaperclip worker. Contract and architecture: [WORKER-FABRIC.md](WORKER-FABRIC.md).
+Adopt a Linux machine you own as a persistent ePaperclip worker. **Why this exists:** [WORKER-USE-CASE.md](WORKER-USE-CASE.md). Protocol: [WORKER-FABRIC.md](WORKER-FABRIC.md).
 
 ## Install on the worker
 1. Get `epaperclip-worker-<version>.tar.gz` and its SHA-256 (build: `bash scripts/package-worker.sh`). There is no curl-pipe-shell installer.
