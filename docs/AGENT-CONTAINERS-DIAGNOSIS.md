@@ -131,6 +131,18 @@ I cannot say which one the owner's host has. That needs the debug log (runbook b
 * "Run only this step" for rights, provider and environments: `POST /api/agent-containers/steps/{grant|plugin|environments}`.
 * The same matcher (a copy, kept identical by a test) enriches the sandbox plugin's `ProxmoxTaskError` for agent runs.
 
+## A stuck sandbox cleanup (ERR-CTR-002) and the sandbox bridge (ERR-SEC-001, ERR-SEC-005)
+
+* The engine refuses any environment `config` change while a sandbox cleanup lease is pending (after five failed destroys
+  it retries every 30 minutes, forever). Setup now reports state `needs_repair` with `Cleanup stuck: CT <vmid> (<reason>)`
+  read from `GET /api/environments/{id}/leases?status=pending_cleanup`, and the environment step sends only the changed
+  keys (and no `config` when only the status differs). **No repair action is offered**: the engine has no route that
+  resolves a lease, and none is in `services/epaperclip/src/engine-allow.ts`. Fix the Proxmox cause (a locked or missing
+  CT; see the provider worker log), wait for the sweep (or restart the engine), then press Set up again.
+* Setup refuses a bridge that carries the host's own address (an address and a gateway, or the address ePaperclip reaches
+  Proxmox on) unless the request carries `acceptLanBridge: "agents can reach my LAN"`. The default is `vmbr1`. Moving the
+  bridge revokes `EPCSandboxNetwork` on the old one for the sandbox user and token.
+
 ## Runbook: what an administrator runs on the Proxmox host (as root)
 
 Replace 104 with the container id from the error.

@@ -640,3 +640,80 @@ describe("the sandbox bridge is never the management bridge by default (ERR-SEC-
     expect(net(SANDBOX_USER)).toEqual(["/sdn/zones/localnetwork/vmbr1"]);
   });
 });
+
+describe("a pending sandbox cleanup blocks the environment (ERR-CTR-002)", () => {
+  const settle = async (sam: string, jobId: string) => {
+    let j: any;
+    for (let i = 0; i < 400; i++) {
+      j = (await send("GET", `/api/agent-containers/jobs/${jobId}`, sam)).json;
+      if (j.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return j;
+  };
+
+  it("reports needs_repair with the reason, not a generic error, and no repair route is offered", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    eng.st.pendingCleanup.push({ providerLeaseId: "pve/105", failureReason: "CT 105 is locked (backup)" });
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { size: { cores: 2, memoryMb: 1024, diskGb: 16 } });
+    const job = await settle(sam, moved.json.jobId);
+    expect(job.status).toBe("failed");
+    const s = await status(sam);
+    expect(s.state).toBe("needs_repair");
+    expect(s.repair).toMatchObject({ kind: "pending_cleanup", action: null });
+    expect(s.repair.reason).toContain("105");
+    expect(s.repair.reason).toContain("locked");
+    expect(s.error).toContain("cleanup is pending");
+    expect(co).toBeTruthy();
+  });
+
+  it("sends only the fields that changed, and no config at all when only the status differs", async () => {
+    const sam = await admin();
+    const { co } = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    const env = [...eng.st.envs.values()][0];
+    eng.st.envPatches.length = 0;
+    // Someone paused the environment: only the status needs to change, which a pending cleanup must not block.
+    env.status = "paused";
+    eng.st.pendingCleanup.push({ providerLeaseId: "pve/105", failureReason: null });
+    const step = await send("POST", "/api/agent-containers/steps/environments", sam, {});
+    expect(step.status).toBeLessThan(300);
+    expect((await settle(sam, step.json.jobId)).status).toBe("done");
+    expect(eng.st.envPatches).toEqual([{ status: "active" }]);
+    // A real change sends just that key.
+    eng.st.pendingCleanup.length = 0;
+    eng.st.envPatches.length = 0;
+    const moved = await send("POST", "/api/agent-containers/settings", sam, { size: { cores: 2, memoryMb: 1024, diskGb: 16 } });
+    expect((await settle(sam, moved.json.jobId)).status).toBe("done");
+    expect(eng.st.envPatches.length).toBe(1);
+    expect(Object.keys((eng.st.envPatches[0] as any).config)).toEqual(["memoryMb"]);
+    expect(co).toBeTruthy();
+  });
+});
+
+describe("the provider's worker is awaited (ERR-CTR-006)", () => {
+  it("re-enables a plugin in error and waits until its worker answers before the environments", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    eng.st.plugins.push({ id: "pl_9", pluginKey: "epaperclip.proxmox-sandbox-provider", status: "error", lastError: "crashed", packageName: "x" });
+    eng.st.workerDownPolls = 3;
+    const job = await runSetup(sam);
+    expect(job.status, JSON.stringify(job.log.slice(-3))).toBe("done");
+    expect(eng.st.plugins[0].status).toBe("ready");
+    expect(eng.st.workerProbes).toBe(4);
+  });
+
+  it("gives up after a bounded wait and says the worker isn't running", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    eng.st.plugins.push({ id: "pl_9", pluginKey: "epaperclip.proxmox-sandbox-provider", status: "disabled", lastError: null, packageName: "x" });
+    eng.st.workerDownPolls = 10_000;
+    const job = await runSetup(sam);
+    expect(job.status).toBe("failed");
+    expect(job.error).toContain("worker");
+    expect(eng.st.workerProbes).toBeLessThanOrEqual(40);
+    expect(job.steps.find((x: any) => x.id === "environments").state).not.toBe("done");
+  });
+});

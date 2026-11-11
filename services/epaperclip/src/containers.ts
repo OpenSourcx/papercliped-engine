@@ -40,7 +40,7 @@ export const ROLES: Record<string, string[]> = {
   EPCSandboxNode: ["Sys.Audit"],
 };
 
-export type ContainersState = "not_set_up" | "partial" | "ready" | "error";
+export type ContainersState = "not_set_up" | "partial" | "ready" | "error" | "needs_repair";
 export type StepId = "check" | "access" | "key" | "template" | "grant" | "plugin" | "environments" | "enforce";
 const STEPS: { id: StepId; label: string }[] = [
   { id: "access", label: "Create the sandbox user, role and API token in Proxmox" },
@@ -108,6 +108,8 @@ export interface JobView {
   steps: { id: StepId | "teardown"; label: string; state: StepState; detail?: string }[];
   log: { t: number; level: "info" | "warn" | "error"; text: string }[];
   error?: string;
+  /** Set when the engine refused the environment change because a sandbox cleanup lease is pending or capped (ERR-CTR-002). */
+  needsRepair?: string;
   /** Why the failed Proxmox task failed, when it was one: the matched cause, the exact fix and the (redacted) log lines it rests on. */
   diagnosis?: LxcDiagnosis & { step: string };
 }
@@ -135,6 +137,15 @@ interface EngineEnv {
 }
 
 class StepError extends Error {}
+/** The engine refuses any environment config change while a sandbox cleanup lease is unresolved. */
+class PendingCleanupError extends StepError {
+  readonly reason: string;
+  constructor(message: string, reason: string) {
+    super(message);
+    this.reason = reason;
+  }
+}
+const PENDING_CLEANUP = /sandbox cleanup is pending/i;
 /** A failed Proxmox task with the diagnosis made from its log; `input` lets a later probe refine it. */
 class DiagError extends StepError {
   readonly diagnosis: LxcDiagnosis;
@@ -593,6 +604,9 @@ export class AgentContainers {
     let state: ContainersState = done === steps.length ? "ready" : core === 0 ? "not_set_up" : "partial";
     if (state !== "ready" && (checkError || (st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.finishedAt !== undefined))) state = "error";
     if (state === "not_set_up" && checkError) state = "error";
+    const failedJob = st.lastJob?.kind === "setup" && st.lastJob.status === "failed" ? st.lastJob : undefined;
+    // A capped cleanup lease is not something setup can retry its way out of; say so instead of a generic error.
+    if (state !== "ready" && failedJob?.needsRepair) state = "needs_repair";
     if (this.stored().lastState !== state) this.save({ lastState: state });
     return {
       ...base,
@@ -606,10 +620,11 @@ export class AgentContainers {
       templateAttempts: st.templateAttempts ?? 0,
       arch: this.arch(),
       grantMissing: grantGaps.map((g) => ({ path: g.path, role: g.role, who: g.who, why: g.why, lacking: g.lacking })),
+      ...(state === "needs_repair" && failedJob?.needsRepair ? { repair: { kind: "pending_cleanup", reason: failedJob.needsRepair, action: null } } : {}),
       ...(state !== "ready" && st.lastJob?.kind === "setup" && st.lastJob.status === "failed" && st.lastJob.diagnosis ? { diagnosis: st.lastJob.diagnosis } : {}),
       params: st.params ?? null,
       options: await this.options(pve, st.params ?? null),
-      ...(checkError ? { error: checkError } : state === "error" && st.lastJob?.error ? { error: st.lastJob.error } : {}),
+      ...(checkError ? { error: checkError } : (state === "error" || state === "needs_repair") && st.lastJob?.error ? { error: st.lastJob.error } : {}),
     };
   }
 
@@ -807,6 +822,7 @@ export class AgentContainers {
     job.status = "failed";
     job.error = msg;
     if (e instanceof DiagError) job.diagnosis = { ...e.diagnosis, step: e.what };
+    if (e instanceof PendingCleanupError) job.needsRepair = e.reason;
     job.finishedAt = this.now();
     this.log(job, "error", msg);
     this.finish(job);
@@ -1462,9 +1478,28 @@ export class AgentContainers {
       pl = await this.eng("POST", "/api/plugins/install", { packageName: this.pluginDir, isLocalPath: true });
     }
     if (!pl || pl.status !== "ready") throw new StepError(`The engine installed the provider but it isn't ready (${pl?.status ?? "unknown"}${pl?.lastError ? `: ${pl.lastError}` : ""})`);
+    await this.awaitWorker(job, pl.id);
     this.save({ pluginId: pl.id });
     this.log(job, "info", "The provider is installed and ready");
     return "Installed";
+  }
+
+  /**
+   * The registry says `ready` before the plugin's worker is running, and the engine then refuses with "has no running
+   * worker". Ask the worker something (a config test, which goes to it over RPC): 502 means no worker yet, any other
+   * answer means it is up. Bounded; without an organization there is nothing to ask for, and nothing needs the worker yet.
+   */
+  private async awaitWorker(job: JobView, pluginId: string) {
+    const co = (await this.companies())[0];
+    if (!co) return;
+    const tries = 30;
+    for (let i = 1; i <= tries; i++) {
+      const up = await this.eng("POST", `/api/plugins/${encodeURIComponent(pluginId)}/config/test`, { companyId: co.id, configJson: {} }).then(() => true, (e) => !(e instanceof HttpError && e.status === 502));
+      if (up) return;
+      if (i === 1 || i % 5 === 0) this.log(job, "info", `Waiting for the provider's worker to start (${i}/${tries})`);
+      await this.pace(2000);
+    }
+    throw new StepError("The provider is enabled but its worker still isn't running after about a minute. Check the provider's log in the engine, then run the provider step again.");
   }
 
   private async stepEnvironments(job: JobView, p: Params): Promise<string> {
@@ -1522,7 +1557,17 @@ export class AgentContainers {
       env = await this.eng<EngineEnv>("POST", `/api/companies/${cid}/environments`, { name: envName, description: "Runs this organization's agents in unprivileged Proxmox containers. Managed by ePaperclip.", driver: "sandbox", status: "active", config: cfg, metadata: { epaperclip: "agent-containers", companyId } });
       this.log2(job, `Created environment "${env.name}"`);
     } else if (env.status !== "active" || !Object.entries(cfg).every(([k2, v]) => (env!.config ?? {})[k2] === v)) {
-      env = await this.eng<EngineEnv>("PATCH", `/api/environments/${encodeURIComponent(env.id)}`, { config: cfg, status: "active" });
+      // Only what differs. The engine refuses any `config` in a PATCH while a sandbox cleanup is pending, so a status-only
+      // change must not carry one.
+      const have = env.config ?? {};
+      const changed = Object.fromEntries(Object.entries(cfg).filter(([k2, v]) => have[k2] !== v));
+      const patch = { ...(Object.keys(changed).length ? { config: changed } : {}), status: "active" };
+      try {
+        env = await this.eng<EngineEnv>("PATCH", `/api/environments/${encodeURIComponent(env.id)}`, patch);
+      } catch (e) {
+        if (e instanceof HttpError && PENDING_CLEANUP.test(e.message)) throw await this.pendingCleanup(env.id, e);
+        throw e;
+      }
       this.log2(job, `Updated environment "${env.name}"`);
     }
     this.save({ environments: { ...(this.stored().environments ?? {}), [companyId]: { environmentId: env.id } } });
@@ -1557,6 +1602,20 @@ export class AgentContainers {
     }
     return warnings;
   }
+  /**
+   * Names the stuck lease(s) from the engine's own record when it can be read. The engine has no route this service may
+   * offer to resolve one (see docs/AGENT-CONTAINERS-DIAGNOSIS.md), so this only reports.
+   */
+  private async pendingCleanup(environmentId: string, cause: HttpError): Promise<PendingCleanupError> {
+    const leases = await this.eng<{ providerLeaseId?: string | null; failureReason?: string | null }[]>("GET", `/api/environments/${encodeURIComponent(environmentId)}/leases?status=pending_cleanup`).catch(() => []);
+    const parts = (Array.isArray(leases) ? leases : []).slice(0, 3).map((l) => {
+      const vmid = /(\d{3,})\s*$/.exec(l.providerLeaseId ?? "")?.[1];
+      return `${vmid ? `CT ${vmid}` : "a sandbox"}${l.failureReason ? ` (${l.failureReason})` : ""}`;
+    });
+    const reason = `Cleanup stuck: ${parts.length ? parts.join("; ") : "a sandbox cleanup lease is pending in the engine"}. The engine retries every 30 minutes and refuses environment changes until it succeeds; see the provider's worker log for the Proxmox error.`;
+    return new PendingCleanupError(cause.message, reason);
+  }
+
   /**
    * The engine lets an instance admin read and manage an organization's secrets and agents only through a membership in
    * it. So the service account joins each organization (an invitation, accepted as itself) the first time it needs to.
