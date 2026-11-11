@@ -8,6 +8,7 @@ import { ApiError } from "../../data/api.ts";
 import { connectApi } from "../../data/engine/connectApi.ts";
 import { errorText } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
+import { PERMISSION_NOTE } from "../../data/storePlugins.ts";
 import { cn, formatBytes } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, selectClass, Select } from "../../ui/primitives.tsx";
@@ -202,7 +203,7 @@ export function StoreItemModal({ onClose }: { onClose: () => void }) {
         {it.lib?.kind === "fixed" && <p className="text-compact text-warning">{it.lib.note}</p>}
         {it.lib?.kind === "manual" && <p className="text-compact text-ink-3">{it.lib.note}</p>}
         {it.kind === "template" && it.template?.infopage && <p className="text-compact text-ink-3">A container system from Proxmox's template list.</p>}
-        {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-compact text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>.</p>}
+        {plugin?.permissions && plugin.permissions.length > 0 && <p className="text-compact text-ink-3">Asks to be allowed: <span className="font-mono text-ink-2">{plugin.permissions.join(", ")}</span>. {PERMISSION_NOTE}</p>}
         {notYet && <p className="text-compact text-ink-3">Not available yet. {plugin.planned ? "This is planned; nothing on this device implements it." : "Installing from the Store is not connected to this device yet."}</p>}
         {plugin && !notYet && plugin.kind === "connector" && <p className="text-compact text-ink-3">Installing adds it to Connectors, where you finish setting it up and choose who can use it. {it.status === "installed" ? "Remove it to take it out of Connectors." : ""}</p>}
         {plugin && !notYet && plugin.kind !== "connector" && <p className="text-compact text-ink-3">{liveAdapter ? (plugin.version !== undefined ? "From the signed catalog. It is installed by the engine after this device checked that the npm package is exactly the one the catalog was signed for." : "Built into Paperclip and verified against its adapter list, so there is nothing to download. Enabling it switches it on in the engine.") : plugin.kind === "adapter" ? "Built into Paperclip, so there is nothing to download. Enabling it lets agents use it once the agent runtime is on this device. Your choice is saved now." : "Pin can use this once the Pin runtime is on this device. Your choice is saved now."}</p>}

@@ -7,6 +7,9 @@ import type { Connector } from "./types.ts";
  * Which are installed is kept on this device; the runtime that executes adapters and skills arrives with the
  * ePaperclip fork, and the Store says so on those cards.
  */
+/** Shown wherever plugin permissions are listed: they are declared, not enforced (ERR-STORE-008). */
+export const PERMISSION_NOTE = "These are what the publisher says it needs. They are not enforced: a plugin runs as the engine user on this device, so install only plugins you trust.";
+
 export type PluginKind = "connector" | "adapter" | "skill";
 
 export interface PluginEntry {
