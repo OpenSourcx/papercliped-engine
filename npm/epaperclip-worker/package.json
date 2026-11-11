@@ -1,0 +1,24 @@
+{
+  "name": "epaperclip-worker",
+  "version": "0.1.0",
+  "description": "Run an ePaperclip worker on a machine you own: detect CPU/GPU/RAM, recommend and install local models, and pair with ePaperclip/Pin.",
+  "license": "MIT",
+  "author": "OpenSourcx",
+  "homepage": "https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/WORKER-FABRIC-GUIDE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenSourcx/papercliped-engine.git",
+    "directory": "npm/epaperclip-worker"
+  },
+  "keywords": ["paperclip", "agent", "worker", "ollama", "proxmox"],
+  "type": "module",
+  "bin": {
+    "epaperclip-worker": "bin/epaperclip-worker.js"
+  },
+  "files": ["bin/epaperclip-worker.js", "worker/", "README.md", "LICENSE"],
+  "os": ["linux"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "prepack": "node scripts/prepack.mjs"
+  }
+}

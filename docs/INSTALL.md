@@ -58,6 +58,25 @@ npx epaperclip install
 
 or `npm install -g epaperclip`, then `epaperclip install`. Host Node.js only starts this command. The services run on the installer's own pinned Node.js. Upgrade with `npx epaperclip@latest install`.
 
+### Worker machines (not the Proxmox host)
+
+A worker adds AI compute on another machine. Node 22 or newer:
+
+```sh
+npm install -g epaperclip-worker
+epaperclip-worker setup
+```
+
+`setup` detects CPU/RAM/GPU/VRAM/disk, recommends models that fit, and prints the plan. It installs nothing without an explicit flag:
+
+```sh
+sudo epaperclip-worker setup --install-ollama
+epaperclip-worker setup --pull --model llama3.1:8b
+epaperclip-worker setup --adopt <code from Workers>
+```
+
+`epaperclip --worker ...` delegates to the same command when both packages are installed. The worker only connects out to the host and never opens a port. For a persistent systemd service use the worker tarball installer; see [WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md).
+
 ### With one command
 
 ```sh
