@@ -286,6 +286,15 @@ describe("acquire", () => {
     expect(lease.metadata).toMatchObject({ cloneMode: "linked" });
   });
 
+  it("uses a full clone when the source CT is not marked as a template", async () => {
+    pve.storageTypes.set("local-lvm", "lvmthin");
+    pve.containers.get(9000)!.config.template = 0;
+    const lease = await acquire();
+    const clone = pve.find("POST", "/lxc/9000/clone")[0]!;
+    expect(clone.form).toMatchObject({ newid: "101", full: "1", storage: "local-lvm" });
+    expect(lease.metadata).toMatchObject({ cloneMode: "full" });
+  });
+
   it("fails clearly when linked clones are requested on dir storage", async () => {
     await expect(acquire({ cloneMode: "linked" })).rejects.toThrow(/does not support linked container clones/);
     expect(pve.find("POST", "/lxc/9000/clone")).toHaveLength(0);

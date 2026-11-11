@@ -436,7 +436,14 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
       if (config.cloneMode === "linked") throw new Error("Linked clones need a container template (a vmid), not a vztmpl file.");
       return "full";
     }
-    const storage = storageOfRootfs(await api.lxcConfig(config.node!, template.vmid));
+    const templateConfig = await api.lxcConfig(config.node!, template.vmid);
+    // Proxmox only linked-clones a CT that is marked as a template. A normal stopped CT is always a full copy,
+    // whatever the storage supports.
+    if (Number(templateConfig.template ?? 0) !== 1) {
+      if (config.cloneMode === "linked") throw new Error(`CT ${template.vmid} is not a template; Proxmox can only linked-clone CT templates.`);
+      return "full";
+    }
+    const storage = storageOfRootfs(templateConfig);
     const type = storage ? String((await api.storageStatus(config.node!, storage).catch(() => null))?.type ?? "") : "";
     const supported = LINKED_CLONE_TYPES.has(type);
     if (config.cloneMode === "linked" && !supported) {
