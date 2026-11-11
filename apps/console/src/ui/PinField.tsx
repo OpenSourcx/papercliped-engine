@@ -120,7 +120,7 @@ export function PinField({ className, working = false }: { className?: string; w
         const k = field.kind[i];
         if (k === 2 && !workingRef.current) continue;
         // fade: slow sine between nearly gone and clearly visible
-        ctx.globalAlpha = k === 2 ? 0.5 : 0.08 + 0.3 * (0.5 + 0.5 * Math.sin(field.phase[i]));
+        ctx.globalAlpha = k === 2 ? 0.5 : 0.14 + 0.36 * (0.5 + 0.5 * Math.sin(field.phase[i]));
         const c = Math.cos(field.rot[i]), s = Math.sin(field.rot[i]);
         ctx.setTransform(dpr * c, dpr * s, -dpr * s, dpr * c, dpr * field.x[i] * w, dpr * field.y[i] * h);
         drawSprite(ctx, k, field.size[i]);

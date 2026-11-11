@@ -10,7 +10,8 @@ vi.mock("../src/data/store.tsx", () => ({
 import { Button, RowCards, SectionTitle } from "../src/ui/primitives.tsx";
 import { BackupTable } from "../src/pages/backups/Backups.tsx";
 
-afterEach(cleanup);
+const phone = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({ matches: on && q.includes("767"), addEventListener: () => undefined, removeEventListener: () => undefined }));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Button disabled reasons", () => {
   it("stays focusable, explains itself, and never fires while disabled", () => {
@@ -41,7 +42,14 @@ describe("Button disabled reasons", () => {
 });
 
 describe("phone layouts", () => {
-  it("RowCards shows each row's title, fields and actions, and is phone-only", () => {
+  it("RowCards render nothing above phone width, so a desktop page never holds the rows twice", () => {
+    phone(false);
+    render(<RowCards label="Things" rows={[{ key: "a", title: "alpha", fields: [] }]} />);
+    expect(screen.queryByRole("list")).toBeNull();
+  });
+
+  it("RowCards shows each row's title, fields and actions at phone width", () => {
+    phone(true);
     const open = vi.fn();
     render(<RowCards label="Things" rows={[{ key: "a", title: "alpha", fields: [["Size", "1 GiB"], ["State", "Up"]], actions: <button type="button">Edit</button>, onOpen: open }]} />);
     const list = screen.getByRole("list", { name: "Things" });
@@ -54,6 +62,7 @@ describe("phone layouts", () => {
   });
 
   it("the backup table has a card list for phones and keeps its table for md and up", () => {
+    phone(true);
     const files = [{ volid: "local:backup/vzdump-lxc-101.tar.zst", vmid: 101, storage: "local", at: 1_700_000_000, size: 2 ** 30, notes: "nightly" }];
     const { container } = render(<MemoryRouter><BackupTable files={files as never} /></MemoryRouter>);
     const list = screen.getByRole("list", { name: "Backups" });

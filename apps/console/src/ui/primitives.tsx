@@ -1,4 +1,4 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { AlertTriangle, CheckCircle2, CircleDashed, CirclePause, Info, Loader2, XCircle } from "lucide-react";
 import { cn } from "../lib/storage.ts";
 import { useInModal } from "./Modal.tsx";
@@ -310,8 +310,24 @@ export function useFieldId(prefix = "f") {
  * The phone layout of a wide table: one card per row, a title with its actions, then label and value pairs. Pair it
  * with `hidden md:table` on the table itself, so nothing has to scroll sideways at 375 px (ERR-CON-004).
  */
+/** True below the md breakpoint (768 px). The phone card lists render only there, so a desktop page never holds the same rows twice. */
+export function usePhone() {
+  const query = "(max-width: 767px)";
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setPhone(mq.matches);
+    on();
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  return phone;
+}
+
 export interface RowCard { key: string; title: ReactNode; actions?: ReactNode; fields: [string, ReactNode][]; onOpen?: () => void }
 export function RowCards({ rows, label }: { rows: RowCard[]; label: string }) {
+  if (!usePhone()) return null;
   return (
     <ul className="md:hidden divide-y divide-line" aria-label={label}>
       {rows.map((r) => (

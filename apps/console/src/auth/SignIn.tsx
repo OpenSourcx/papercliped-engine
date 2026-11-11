@@ -165,7 +165,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (u: LiveUser) => void }) {
               </div>
             )}
             <FormError text={error} />
-            <button type="submit" disabled={busy || blocked || !username.trim() || !password} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
+            <button type="submit" disabled={busy || blocked || !username.trim() || !password} title={!busy && (blocked ? "Read the notice and tick the box to continue" : !username.trim() || !password ? "Enter your username and password" : undefined) || undefined} className="h-12 w-full rounded-full bg-primary text-primary-ink font-medium text-body inline-flex items-center justify-center gap-2 disabled:bg-surface-3 disabled:text-ink-3 transition-control active:scale-98">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
             </button>
             {openidRealms.length > 0 && (

@@ -16,7 +16,7 @@ export interface SideRow extends ConversationItem { status?: "working" | "waitin
 export interface SideGroup { id: string; label: string; rows: SideRow[]; actions?: MenuEntry[]; limit?: number; empty?: string }
 
 function NavItem({ icon, label, onClick, to, badge, active }: { icon: ReactNode; label: string; onClick?: () => void; to?: string; badge?: ReactNode; active?: boolean }) {
-  const cls = cn("transition-control w-full flex items-center gap-3 rounded-lg px-2.5 h-9 text-sm text-left", active ? "bg-surface-3 text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink");
+  const cls = cn("transition-control w-full flex items-center gap-3 rounded-lg px-2.5 h-9 pointer-coarse:h-11 text-sm text-left", active ? "bg-surface-3 text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink");
   const body = <><span aria-hidden className="w-4 flex justify-center text-ink-2">{icon}</span><span className="flex-1 truncate">{label}</span>{badge}</>;
   return to ? <Link to={to} className={cls}>{body}</Link> : <button type="button" onClick={onClick} aria-pressed={active} className={cls}>{body}</button>;
 }
