@@ -8,6 +8,7 @@ import type { Session, SessionStore } from "../sessions.ts";
 import type { StateStore } from "../state.ts";
 import { handleCluster } from "./cluster.ts";
 import { handleDisks } from "./disks.ts";
+import { orgContainerRoutes } from "./org-containers.ts";
 import { handleGuest } from "./guest.ts";
 import { nodeFeature } from "./node.ts";
 import { access } from "./access.ts";
@@ -82,6 +83,7 @@ export type FeatureHandler = (ctx: FeatureCtx) => Promise<boolean>;
 export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "native-apps", handle: nativeAppRoutes },
   { name: "disks", handle: handleDisks },
+  { name: "org-containers", handle: orgContainerRoutes },
   { name: "node", handle: nodeFeature },
   { name: "access-admin", handle: accessAdmin },
   { name: "access", handle: access },

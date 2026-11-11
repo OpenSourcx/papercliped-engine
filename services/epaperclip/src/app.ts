@@ -27,6 +27,7 @@ import { RoutineIngress } from "./routine-ingress.ts";
 import { AppAccessManager } from "./app-access.ts";
 import { EngineGateway, enginePath, type EngineStatus } from "./engine.ts";
 import { companyAgentReadiness } from "./agent-readiness.ts";
+import { orgContainers } from "./features/org-containers.ts";
 import { Connectors, isProvider, type HttpFetch } from "./connectors.ts";
 import { Publishing } from "./publishing.ts";
 import { CloudflareProvision } from "./cloudflareProvision.ts";
@@ -2234,6 +2235,13 @@ export function createApp(d: AppDeps) {
           const g = (await pve.clusterResources()).find((r) => r.vmid === Number(m[1]));
           if (!g || (g.type !== "lxc" && g.type !== "qemu")) throw new Error("Unknown machine.");
           if (g.status !== "running") throw new Error("The machine isn't running. Start it to open its console.");
+          // Opened from an organization (`?org=`): the person must be an owner or admin of it, and the machine one of its own.
+          const org = url.searchParams.get("org");
+          if (org !== null) {
+            if (!/^[A-Za-z0-9_-]{1,64}$/.test(org)) throw new Error("Unknown organization.");
+            const mine = await orgContainers({ gateway, state }, s, pve, org, true).catch((e: unknown) => { throw e instanceof HttpError ? new Error(e.message) : e; });
+            if (!mine.some((c) => c.vmid === g.vmid)) throw new Error("That container isn't one of this organization's.");
+          }
           guest = { type: g.type as GuestType, vmid: g.vmid! };
           node = g.node ?? node;
         }
