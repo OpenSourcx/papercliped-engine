@@ -60,7 +60,7 @@ export function fakeDisks(base: Transport) {
     const path = u.pathname.replace("/api2/json", "");
     const form = new URLSearchParams(req.body ?? "");
     const params: Record<string, string> = Object.fromEntries([...u.searchParams, ...form]);
-    const mine = /^\/(nodes\/pve\/(disks|scan)|storage|nodes\/pve\/(qemu|lxc)\/\d+|nodes\/pve\/storage\/[^/]+\/content|cluster\/resources|cluster\/backup)/.test(path);
+    const mine = /^\/(nodes$|nodes\/pve\/(disks|scan)|storage|nodes\/pve\/(qemu|lxc)\/\d+|nodes\/pve\/storage\/[^/]+\/content|cluster\/resources|cluster\/backup)/.test(path);
     if (!mine) return base(req);
     // Who is asking: the shared fake knows the tickets; an administrator has Sys.Modify on "/".
     const perm = await base({ ...req, method: "GET", url: `${u.origin}/api2/json/access/permissions?path=/`, body: undefined });
@@ -72,6 +72,7 @@ export function fakeDisks(base: Transport) {
     const write = req.method !== "GET";
     if (write && !admin) return deny;
 
+    if (path === "/nodes" && !write) return ok([{ node: "pve", status: "online" }]);
     if (path === "/cluster/resources") {
       if (params.type === "storage") return ok([...storages.values()].map((s) => ({ type: "storage", node: "pve", storage: s.storage, plugintype: s.type, content: s.content, status: "available", disk: 1, maxdisk: 10 })));
       return ok([...guests].map(([vmid, g]) => ({ id: `${g.type}/${vmid}`, type: g.type, vmid, node: "pve", name: g.name, status: g.status })));
