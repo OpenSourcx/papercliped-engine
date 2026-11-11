@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Capabilities } from "@papercliped-engine/worker-fabric";
-import { bestModel, recommendModels, usableMemory } from "../src/models.ts";
+import { bestModel, recommendModels, usableMemory } from "@papercliped-engine/worker-fabric";
 
 const caps = (over: Partial<Capabilities> = {}): Capabilities => ({
   os: { name: "Debian", version: "12" },

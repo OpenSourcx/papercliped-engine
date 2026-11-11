@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { LIMITS, ServerHandshake, fingerprint, generateIdentity, select, sha256hex, verificationString, newPairingSecret, encodePairing, type Candidate, type Capabilities, type Heartbeat, type Identity, type Requirements, type Transport, endpointsFor, type SchedRequest } from "@papercliped-engine/worker-fabric";
+import { LIMITS, ServerHandshake, fingerprint, generateIdentity, select, sha256hex, verificationString, newPairingSecret, encodePairing, recommendModels, usableMemory, type Candidate, type Capabilities, type Heartbeat, type Identity, type Requirements, type Transport, endpointsFor, type SchedRequest } from "@papercliped-engine/worker-fabric";
 import type { StateStore } from "../state.ts";
 import { HttpError } from "../http.ts";
 
@@ -584,6 +584,35 @@ export class FabricHub {
 
   refresh(id: string) {
     return this.call(id, "caps.refresh", {});
+  }
+
+  /**
+   * What Pin would do on this worker: the authority the person chose, the real specs, and models that fit.
+   * The host computes it from the worker's report; the worker does not get to invent a recommendation.
+   */
+  setup(id: string) {
+    const w = this.worker(id);
+    if (!w || w.state !== "adopted") throw new HttpError(404, "not_found", "No such worker.");
+    if (!w.capabilities) throw new HttpError(409, "no_capabilities", "This worker hasn't reported its hardware yet.");
+    return {
+      workerId: id,
+      name: w.name,
+      online: this.workers().find((x) => x.id === id)?.online === true,
+      setupMode: w.capabilities.setupMode ?? null,
+      usable: usableMemory(w.capabilities),
+      recommendations: recommendModels(w.capabilities),
+    };
+  }
+
+  /** A Pin-managed setup action. The worker decides whether the privileged helper is available. */
+  async inference(by: string, id: string, action: string, model: string | undefined) {
+    if (action !== "ollama" && action !== "pull") throw new HttpError(400, "bad_request", "action must be ollama or pull");
+    if (action === "pull" && (!model || !/^[A-Za-z0-9._:-]{1,80}$/.test(model))) throw new HttpError(400, "bad_request", "A model id is required for pull.");
+    const w = this.worker(id);
+    if (!w || w.state !== "adopted") throw new HttpError(404, "not_found", "No such worker.");
+    const result = await this.call(id, "inference.install", { action, ...(model ? { model } : {}) }, 15 * 60_000);
+    this.audit("worker", "inference.install", id, `${action}${model ? ` ${model}` : ""}`);
+    return result;
   }
 
   // ---- control tokens (per organization)

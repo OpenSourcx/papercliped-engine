@@ -1,6 +1,7 @@
 import { ClientHandshake, decodePairing, orderEndpoints, type Capabilities, type Identity } from "@papercliped-engine/worker-fabric";
 import type { Server } from "node:http";
 import { existsSync } from "node:fs";
+import { connect } from "node:net";
 import { dirname, join } from "node:path";
 import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
@@ -113,7 +114,7 @@ export class WorkerClient {
 
   private async startGate() {
     const c = this.o.files.config();
-    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext })))(c);
+    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c);
     this.caps = caps;
     if (!caps.inference) return;
     this.gate = new Gate(c.inference.slots);
@@ -192,7 +193,7 @@ export class WorkerClient {
         void (async () => {
           try {
             if (!session) {
-              const caps = this.caps ?? (await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext })))(c));
+              const caps = this.caps ?? (await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c));
               this.caps = caps;
               const f = hs.finish(text, { pairing: adopting ? c.pairing ?? undefined : undefined, name: c.name || undefined, caps: adopting ? caps : undefined });
               session = f.session;
@@ -231,7 +232,7 @@ export class WorkerClient {
   }
 
   private async announce(c: WorkerConfig) {
-    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext })))(c);
+    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c);
     this.caps = caps;
     this.send?.({ ev: "caps", caps, version: this.o.version ?? VERSION });
     this.beat();
@@ -266,6 +267,17 @@ export class WorkerClient {
         case "caps.refresh":
           await this.announce(c);
           return reply(true, {});
+        case "inference.install": {
+          const a = m.args as { action?: "ollama" | "pull"; model?: string };
+          const model = typeof a.model === "string" ? a.model : "";
+          const command = a.action === "ollama" ? "curl -fsSL https://ollama.com/install.sh | sh" : `ollama pull ${model}`;
+          if (c.setupMode !== "pin") return reply(true, { ok: false, code: "guided_only", command });
+          try {
+            return reply(true, await helperCall({ action: String(a.action ?? ""), model }));
+          } catch (e) {
+            return reply(true, { ok: false, code: "helper_missing", command, detail: e instanceof Error ? e.message : "helper unavailable" });
+          }
+        }
         case "revoked": {
           const cc = this.o.files.config();
           cc.revoked = true;
@@ -280,6 +292,26 @@ export class WorkerClient {
       reply(false, undefined, e instanceof WorkspaceError || e instanceof Error ? e.message.slice(0, 400) : "failed");
     }
   }
+}
+
+/** The narrow privileged helper, if the worker installer installed it. It accepts only fixed actions. */
+function helperCall(req: { action: string; model: string }, timeoutMs = 180_000): Promise<unknown> {
+  const socket = process.env.EPW_HELPER_SOCKET || "/run/epaperclip-worker/helper.sock";
+  return new Promise((resolve, reject) => {
+    const s = connect(socket);
+    let buf = "";
+    const done = (fn: () => void) => { s.destroy(); fn(); };
+    s.setTimeout(timeoutMs, () => done(() => reject(new Error("the privileged helper timed out"))));
+    s.on("error", (e) => done(() => reject(e)));
+    s.on("connect", () => s.write(JSON.stringify(req) + "\n"));
+    s.on("data", (d) => {
+      buf += d.toString("utf8");
+      const i = buf.indexOf("\n");
+      if (i < 0) return;
+      try { resolve(JSON.parse(buf.slice(0, i))); } catch { reject(new Error("the helper answered badly")); }
+      done(() => {});
+    });
+  });
 }
 
 const sleep = (ms: number, stop: () => boolean) =>

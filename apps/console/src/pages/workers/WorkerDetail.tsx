@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Ban, KeyRound, Pause, Play, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 import { useEngine } from "../../data/store.tsx";
 import { fabricApi, fabricErrorText, FabricError, type Lease, type Worker, useFabricAction, useWorker } from "../../data/engine/fabric.ts";
 import { useModals } from "../../modals/useModals.ts";
 import { ConfirmModal } from "../../ui/Confirm.tsx";
-import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Status, Tabs } from "../../ui/primitives.tsx";
+import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Status, Tabs } from "../../ui/primitives.tsx";
 import { CapabilityFacts, Fact } from "./Hardware.tsx";
 import { FabricGate } from "./Gate.tsx";
 import { ago, clock, healthOf, providerLabel } from "./util.ts";
@@ -96,6 +97,7 @@ function Overview({ w }: { w: Worker }) {
   const c = w.capabilities;
   return (
     <div className="grid gap-5">
+      <AiSetup w={w} />
       <Card className="p-4 sm:p-5">
         <SectionTitle>Capabilities</SectionTitle>
         <CapabilityFacts c={c} />
@@ -127,6 +129,49 @@ function Overview({ w }: { w: Worker }) {
         </Card>
       )}
     </div>
+  );
+}
+
+function AiSetup({ w }: { w: Worker }) {
+  const setup = useQuery({ queryKey: ["fabric", "worker", w.id, "setup"], queryFn: () => fabricApi.setup(w.id), enabled: w.state === "adopted" });
+  const run = useFabricAction((body: { action: "ollama" | "pull"; model?: string }) => fabricApi.inference(w.id, body));
+  const [model, setModel] = useState("");
+  if (w.state !== "adopted") return null;
+  const s = setup.data?.setup;
+  const fits = (s?.recommendations ?? []).filter((r) => r.fit !== "too_big");
+  const selected = model || fits[0]?.spec.id || "";
+  const result = run.data?.result;
+  return (
+    <Card className="p-4 sm:p-5">
+      <SectionTitle>AI setup</SectionTitle>
+      {setup.isPending && <p className="text-sm text-ink-3" role="status">Reading this worker's hardware…</p>}
+      {setup.error && <p role="alert" className="text-sm text-critical">{fabricErrorText(setup.error)}</p>}
+      {s && (
+        <div className="space-y-3">
+          <p className="text-compact text-ink-2">
+            {s.setupMode === "pin" ? "Pin-managed: Pin installs with your approval." : s.setupMode === "self" ? "Guided: you run the steps; Pin verifies." : "No setup authority chosen yet on the worker."}
+            {!s.online && " The worker is offline; connect it before installing anything."}
+          </p>
+          {fits.length === 0 ? <p className="text-sm text-ink-3">No catalogue model fits this machine.</p> : (
+            <>
+              <Field label="Model that fits this worker" htmlFor="worker-model" hint="Only models that fit the detected RAM/VRAM/disk are listed.">
+                <Select id="worker-model" value={selected} onChange={(e) => setModel(e.target.value)}>
+                  {fits.map((r) => <option key={r.spec.id} value={r.spec.id}>{r.spec.label} · {r.fit === "gpu" ? "GPU" : "CPU"} · ~{r.spec.sizeGb} GB</option>)}
+                </Select>
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button loading={run.isPending && run.variables?.action === "ollama"} disabled={!s.online} onClick={() => run.mutate({ action: "ollama" })}>Install Ollama</Button>
+                <Button loading={run.isPending && run.variables?.action === "pull"} disabled={!s.online || !selected} onClick={() => run.mutate({ action: "pull", model: selected })}>Pull model</Button>
+              </div>
+            </>
+          )}
+          {result?.code === "guided_only" && <Notice tone="info" title="Guided mode">Run this on the worker, then refresh capabilities:<pre className="mt-2 overflow-x-auto text-xs">{result.command}</pre></Notice>}
+          {result?.code === "helper_missing" && <Notice tone="warning" title="Pin can't install yet">The privileged helper isn't installed. Run this on the worker:<pre className="mt-2 overflow-x-auto text-xs">{result.command}</pre></Notice>}
+          {result?.ok && <Notice tone="good" title="Done">{result.output || "The worker reports the step succeeded."}</Notice>}
+          {run.error && <p role="alert" className="text-sm text-critical">{fabricErrorText(run.error)}</p>}
+        </div>
+      )}
+    </Card>
   );
 }
 

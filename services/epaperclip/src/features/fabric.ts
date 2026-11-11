@@ -103,7 +103,7 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
     const w = hub.workers().find((x) => x.online && x.fingerprint === hub.pendingFingerprint(pend[1]!));
     return ctx.json(200, { ok: true, worker: w ?? null }), true;
   }
-  const one = path.match(/^\/api\/fabric\/workers\/(wrk_[0-9a-f]{12})(?:\/(revoke|refresh))?$/);
+  const one = path.match(/^\/api\/fabric\/workers\/(wrk_[0-9a-f]{12})(?:\/(revoke|refresh|setup|inference))?$/);
   if (one) {
     const id = one[1]!;
     const rec = hub.worker(id);
@@ -128,6 +128,16 @@ export async function fabricRoutes(ctx: FeatureCtx): Promise<boolean> {
       change();
       await hub.refresh(id);
       return ctx.json(200, { ok: true }), true;
+    }
+    if (action === "setup" && method === "GET") {
+      return ctx.json(200, { setup: hub.setup(id) }), true;
+    }
+    if (action === "inference" && method === "POST") {
+      change();
+      const b = await ctx.readJson();
+      const actionName = typeof b.action === "string" ? b.action : "";
+      const model = typeof b.model === "string" ? b.model : undefined;
+      return ctx.json(200, { result: await hub.inference(by, id, actionName, model) }), true;
     }
   }
   throw new E(404, "not_found", "Not found");

@@ -52,6 +52,28 @@ export interface NewPairing { id: string; code: string; expiresAt: number; insta
 export interface WorkerPatch { name?: string; companies?: string[] | null; shellSlots?: number; inferenceSlots?: number; drain?: boolean; disabled?: boolean }
 export interface EnvSpec { companyId: string; name?: string; workerId?: string; requirements?: Requirements; assignAgents?: string[] }
 
+export interface ModelRecommendation {
+  spec: { id: string; label: string; sizeGb: number; tags: string[]; note: string };
+  fit: "gpu" | "cpu" | "too_big";
+  reason: string;
+  command: string;
+}
+export interface WorkerSetup {
+  workerId: string;
+  name: string;
+  online: boolean;
+  setupMode: "pin" | "self" | null;
+  usable: { vramGb: number; ramGb: number };
+  recommendations: ModelRecommendation[];
+}
+export interface InferenceResult {
+  ok?: boolean;
+  code?: "guided_only" | "helper_missing" | string;
+  command?: string;
+  output?: string;
+  detail?: string;
+}
+
 export class FabricError extends Error {
   status: number;
   code: string | null;
@@ -94,6 +116,8 @@ export const fabricApi = {
   revoke: (id: string) => req<ReturnType<typeof ok>>("POST", `/api/fabric/workers/${enc(id)}/revoke`, {}),
   remove: (id: string) => req<ReturnType<typeof ok>>("DELETE", `/api/fabric/workers/${enc(id)}`),
   refresh: (id: string) => req<ReturnType<typeof ok>>("POST", `/api/fabric/workers/${enc(id)}/refresh`, {}),
+  setup: (id: string) => req<{ setup: WorkerSetup }>("GET", `/api/fabric/workers/${enc(id)}/setup`),
+  inference: (id: string, body: { action: "ollama" | "pull"; model?: string }) => req<{ result: InferenceResult }>("POST", `/api/fabric/workers/${enc(id)}/inference`, body),
   pair: (spec: { name?: string; companies?: string[] | null; transport?: string }) => req<NewPairing>("POST", "/api/fabric/pairings", spec),
   cancelPairing: (id: string) => req<unknown>("DELETE", `/api/fabric/pairings/${enc(id)}`),
   approve: (id: string, spec: { name?: string; companies?: string[] | null }) => req<{ worker: Worker }>("POST", `/api/fabric/pending/${enc(id)}/approve`, spec),

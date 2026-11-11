@@ -5,7 +5,7 @@ import type { Capabilities } from "@papercliped-engine/worker-fabric";
 import { WorkerClient, VERSION, type Status } from "./client.ts";
 import { detectCapabilities } from "./caps.ts";
 import { WorkerFiles } from "./config.ts";
-import { bestModel, recommendModels, usableMemory } from "./models.ts";
+import { bestModel, recommendModels, usableMemory } from "@papercliped-engine/worker-fabric";
 
 const run = (cmd: string, args: string[]) => new Promise<void>((res, rej) => {
   const p = spawn(cmd, args, { stdio: "inherit" });
@@ -79,20 +79,20 @@ async function main() {
     }
     case "caps": {
       const c = files.config();
-      console.log(JSON.stringify(await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext }), null, 2));
+      console.log(JSON.stringify(await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode }), null, 2));
       return;
     }
     case "recommend":
     case "models": {
       const c = files.config();
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
       printDevice(caps);
       printRecommendations(caps);
       return;
     }
     case "setup": {
       const c = files.config();
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
       const model = flag("model") ?? bestModel(caps).spec.id;
       const installOllama = rest.includes("--install-ollama");
       const pull = rest.includes("--pull");
@@ -177,7 +177,7 @@ async function main() {
         const ok = await fetch(u, { signal: AbortSignal.timeout(4000) }).then((r) => r.ok).catch(() => false);
         row(ok, `${e.provider} endpoint ${e.url} ${ok ? "reachable" : "not reachable"}`);
       }
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
       console.log(`     ${caps.os.name} ${caps.os.version} ${caps.arch}, ${caps.cpu.cores} cores, ${caps.memMb} MiB, gpu: ${caps.gpu.present ? caps.gpu.name : "none"}`);
       console.log(`     tools: ${Object.entries(caps.tools).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`);
       console.log(`     inference: ${caps.inference ? `${caps.inference.url} models ${caps.inference.models.map((m) => m.name).join(", ")}` : "no Ollama found"}`);

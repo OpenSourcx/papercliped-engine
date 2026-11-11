@@ -76,7 +76,7 @@ export async function tailscaleIp(): Promise<string | null> {
   return (await sh("tailscale", ["ip", "-4"]))?.split("\n")[0]?.trim() || null;
 }
 
-export async function detectCapabilities(o: { workspaceRoot: string; ollamaUrl: string; maxContext: number | null }): Promise<Capabilities> {
+export async function detectCapabilities(o: { workspaceRoot: string; ollamaUrl: string; maxContext: number | null; setupMode?: "pin" | "self" | null }): Promise<Capabilities> {
   const ts = await tailscaleIp();
   const candidates = [o.ollamaUrl, process.env.OLLAMA_HOST ? (process.env.OLLAMA_HOST.startsWith("http") ? process.env.OLLAMA_HOST : `http://${process.env.OLLAMA_HOST}`) : "", "http://127.0.0.1:11434", ts ? `http://${ts}:11434` : ""].filter(Boolean);
   const [tools, gpu, inf] = await Promise.all([detectTools(), detectGpu(), probeOllama(candidates)]);
@@ -89,6 +89,7 @@ export async function detectCapabilities(o: { workspaceRoot: string; ollamaUrl: 
   return {
     os, arch: arch() === "x64" ? "amd64" : arch() === "arm64" ? "arm64" : arch(), hostname: hostname(), cpu: { model: c[0]?.model ?? "unknown", cores: c.length }, memMb: Math.round(totalmem() / 1048576),
     gpu, storage, tools, inference: inf ? { runtime: "ollama", url: inf.url, models: inf.models, ...(o.maxContext ? { maxContext: o.maxContext } : {}) } : null, networks: networks(ts), workspaceRoot: o.workspaceRoot,
+    ...(o.setupMode ? { setupMode: o.setupMode } : {}),
   };
 }
 
