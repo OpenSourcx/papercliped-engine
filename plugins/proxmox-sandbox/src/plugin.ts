@@ -362,6 +362,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     knownHosts: string | null;
     resumed: boolean;
     expiresAt?: string | null;
+    cloneMode?: "linked" | "full" | null;
   }): Promise<PluginEnvironmentLease> {
     const { api, config, ref, deadline } = input;
     const ip = await discoverIp(api, ref, deadline);
@@ -379,6 +380,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         vmid: ref.vmid,
         ip,
         expiresAt: input.expiresAt ?? null,
+        cloneMode: input.cloneMode ?? "full",
         remoteCwd,
         shellCommand: remote.shellCommand,
         sshUser: config.sshUser,
@@ -415,6 +417,35 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     if (over.length) throw new Error(`The organization's resource limit is reached: ${over.join("; ")}. Nothing was created. Stop other containers or raise the organization's limits.`);
   }
 
+  const LINKED_CLONE_TYPES = new Set(["lvmthin", "zfspool", "btrfs", "rbd"]);
+
+  /** The storage id in a template's `rootfs` value (`drive2:104/base-...raw`). */
+  function storageOfRootfs(config: Record<string, unknown>): string | null {
+    const rootfs = str(config.rootfs);
+    const id = rootfs?.split(":", 1)[0]?.trim();
+    return id && /^[A-Za-z][A-Za-z0-9._-]*$/.test(id) ? id : null;
+  }
+
+  /**
+   * Linked clones need a storage that supports them (lvmthin, zfspool, btrfs, rbd). A `dir`/NFS/CIFS
+   * host must use a full clone; it is the same product, just a slower storage class. Explicit choices
+   * fail loudly rather than silently doing the other thing.
+   */
+  async function resolveCloneMode(api: ProxmoxClient, config: ProxmoxDriverConfig, template: TemplateRef): Promise<"linked" | "full"> {
+    if (template.kind !== "vmid") {
+      if (config.cloneMode === "linked") throw new Error("Linked clones need a container template (a vmid), not a vztmpl file.");
+      return "full";
+    }
+    const storage = storageOfRootfs(await api.lxcConfig(config.node!, template.vmid));
+    const type = storage ? String((await api.storageStatus(config.node!, storage).catch(() => null))?.type ?? "") : "";
+    const supported = LINKED_CLONE_TYPES.has(type);
+    if (config.cloneMode === "linked" && !supported) {
+      throw new Error(`Storage ${storage ?? "(unknown)"} does not support linked container clones${type ? ` (type ${type})` : ""}; use cloneMode "full" or "auto".`);
+    }
+    if (config.cloneMode === "full") return "full";
+    return supported ? "linked" : "full";
+  }
+
   /** Creates the container (clone or create) and returns its vmid. Retries if another caller took the same vmid. */
   async function createContainer(
     api: ProxmoxClient,
@@ -422,6 +453,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     template: TemplateRef,
     params: PluginEnvironmentAcquireLeaseParams,
     deadline: number,
+    cloneMode: "linked" | "full",
   ): Promise<number> {
     const node = config.node!;
     const tags = buildTags(params.companyId, params.runId);
@@ -435,9 +467,10 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         if (template.kind === "vmid") {
           upid = await api.cloneLxc(node, template.vmid, {
             newid: vmid,
-            full: 1,
+            full: cloneMode === "linked" ? 0 : 1,
             pool: config.pool,
-            storage: config.storage ?? undefined,
+            // Proxmox rejects a storage target on a linked clone; the clone stays on the template's storage.
+            ...(cloneMode === "full" ? { storage: config.storage ?? undefined } : {}),
             hostname,
             description,
           });
@@ -461,7 +494,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
             start: 0,
           });
         }
-        log("info", "Creating Proxmox container", { node, vmid, mode: template.kind === "vmid" ? "clone" : "create" });
+        log("info", "Creating Proxmox container", { node, vmid, mode: template.kind === "vmid" ? `clone:${cloneMode}` : "create" });
         try {
           await api.waitForTask(node, upid, template.kind === "vmid" ? `clone of CT ${template.vmid} to ${vmid}` : `create of CT ${vmid}`, deadline);
         } catch (error) {
@@ -720,7 +753,8 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         if (assessment.errors.length > 0) throw new Error(`Template ${template.vmid} is not safe to clone: ${assessment.errors.join(" ")}`);
       }
 
-      const vmid = await withPoolLock(config.pool!, async () => { await assertWithinQuota(api, config); return createContainer(api, config, template, params, deadline); });
+      const cloneMode = await resolveCloneMode(api, config, template);
+      const vmid = await withPoolLock(config.pool!, async () => { await assertWithinQuota(api, config); return createContainer(api, config, template, params, deadline, cloneMode); });
       const ref: LeaseRef = { node: config.node!, vmid };
       try {
         if (template.kind === "vmid") {
@@ -751,6 +785,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
           knownHosts: null,
           resumed: false,
           expiresAt: leaseExpiry(params.requestedExpiresAt),
+          cloneMode,
         });
         log("info", "Proxmox container ready", { node: ref.node, vmid, ip: lease.metadata?.ip });
         return lease;
@@ -785,6 +820,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         knownHosts: str(params.leaseMetadata?.knownHosts),
         resumed: true,
         expiresAt: leaseExpiry(params.leaseMetadata?.expiresAt),
+        cloneMode: str(params.leaseMetadata?.cloneMode) === "linked" ? "linked" : "full",
       });
     },
 

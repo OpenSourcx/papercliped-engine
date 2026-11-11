@@ -39,6 +39,8 @@ beforeEach(() => {
   pve.taskFailures.clear();
   pve.nextVmid = 101;
   pve.racesOnNextId = 0;
+  pve.storageTypes.set("local", "dir");
+  pve.storageTypes.set("local-lvm", "dir");
   pve.addTemplate(9000);
   home = mkdtempSync(path.join(tmpdir(), "pve-test-home-"));
   shell = createLocalShell(home);
@@ -273,6 +275,20 @@ describe("acquire", () => {
     const mkdir = shell.calls.at(-1)!;
     expect(mkdir.acceptNewHostKey).toBeFalsy();
     expect(mkdir.target.knownHosts).toMatch(/fake|FakeHostKey/);
+  });
+
+  it("uses a linked clone when the template storage supports it, and records the mode", async () => {
+    pve.storageTypes.set("local-lvm", "lvmthin");
+    const lease = await acquire();
+    const clone = pve.find("POST", "/lxc/9000/clone")[0]!;
+    expect(clone.form).toMatchObject({ newid: "101", full: "0" });
+    expect(clone.form.storage).toBeUndefined();
+    expect(lease.metadata).toMatchObject({ cloneMode: "linked" });
+  });
+
+  it("fails clearly when linked clones are requested on dir storage", async () => {
+    await expect(acquire({ cloneMode: "linked" })).rejects.toThrow(/does not support linked container clones/);
+    expect(pve.find("POST", "/lxc/9000/clone")).toHaveLength(0);
   });
 
   it("gives slow Proxmox calls the environment's timeout, not the client's 30s default", async () => {

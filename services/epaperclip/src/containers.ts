@@ -628,6 +628,12 @@ export class AgentContainers {
     return Object.entries(want).every(([k, v]) => have[k] === v);
   }
 
+  /** How long a sandbox acquisition may take on this storage class. Linked-clone storage is fast; dir/HDD is not. */
+  private providerTimeout(storage: string): number {
+    const type = this.stored().storageFacts?.[storage]?.type;
+    return type && ["lvmthin", "zfspool", "btrfs", "rbd"].includes(type) ? 240_000 : 900_000;
+  }
+
   /** Container size for an organization: its resource group's limits, capped by the chosen size. */
   private limits(companyId: string, p: Params): Size {
     const rg = this.d.state.getSetting<Record<string, { cores?: number; memoryMb?: number; diskGb?: number }>>("resourceGroups")?.[companyId];
@@ -660,6 +666,9 @@ export class AgentContainers {
       sshPrivateKey: sec.keySecretId,
       sshUser: AGENT_USER,
       reuseLease: false,
+      // A dir/HDD clone can take minutes; a thin/SSD clone does not. The provider uses this both as its
+      // acquisition budget and as the per-request timeout, so it must follow the storage class.
+      timeoutMs: this.providerTimeout(p.storage),
     };
     // The organization's resource group is an aggregate limit over everything in its pool; the provider enforces it when it allocates.
     const group = this.pools()[companyId];
@@ -789,7 +798,15 @@ export class AgentContainers {
   private async runSetup(job: JobView, getPve: () => Promise<ProxmoxClient>, over: Partial<Params>, force: boolean) {
     const pve = await getPve();
     const before = this.stored().params;
-    const params = this.params(over);
+    // Ask the host what it can actually offer before falling back to any default. A host without
+    // `local-lvm` or `vmbr0` must not be handed a setting that does not exist.
+    const offered = await this.options(pve, before ?? null).catch(() => null);
+    const params = this.params({
+      ...over,
+      storage: over.storage ?? offered?.suggested.storage ?? undefined,
+      templateStorage: over.templateStorage ?? offered?.suggested.templateStorage ?? undefined,
+      bridge: over.bridge ?? offered?.suggested.bridge ?? undefined,
+    });
     this.force = force;
     // A changed host setting invalidates the grants/environment checks, so it is never a resume.
     const changed = (Object.keys(over) as (keyof Params)[]).some((k) => over[k] !== undefined && JSON.stringify(over[k]) !== JSON.stringify(before?.[k]));

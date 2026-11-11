@@ -59,6 +59,8 @@ export class FakeProxmox {
   readonly containers = new Map<number, FakeContainer>();
   readonly pools = new Set<string>(["epaperclip"]);
   readonly storages = new Set<string>(["local", "local-lvm"]);
+  /** Proxmox storage type per id. `dir` by default, so the full-clone path is the default test path. */
+  readonly storageTypes = new Map<string, string>([["local", "dir"], ["local-lvm", "dir"]]);
   readonly volumes = new Set<string>(["local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst"]);
   readonly tasks = new Map<string, FakeTask>();
   nextVmid = 101;
@@ -235,7 +237,7 @@ export class FakeProxmox {
 
     if (method === "GET" && rest === "/status") return this.reply(res, { uptime: 12345, cpu: 0.02 });
     if (method === "GET" && (m = /^\/storage\/([^/]+)\/status$/.exec(rest))) {
-      return this.storages.has(m[1]!) ? this.reply(res, { active: 1, enabled: 1, content: "rootdir,images" }) : this.fail(res, 500, `storage '${m[1]}' does not exist`);
+      return this.storages.has(m[1]!) ? this.reply(res, { type: this.storageTypes.get(m[1]!) ?? "dir", active: 1, enabled: 1, content: "rootdir,images" }) : this.fail(res, 500, `storage '${m[1]}' does not exist`);
     }
     if (method === "GET" && (m = /^\/storage\/([^/]+)\/content\/(.+)$/.exec(rest))) {
       const volid = decodeURIComponent(m[2]!);
