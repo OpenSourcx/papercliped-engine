@@ -55,6 +55,18 @@ describe("physical disks", () => {
     expect((await get("/api/disks/smart?disk=sda;reboot", c)).status).toBe(400);
   });
 
+  it("acts on the node it is told about, and refuses one the cluster does not have (ERR-PVE-003)", async () => {
+    const c = await signIn();
+    const ghost = await get("/api/disks/list?node=ghost", c);
+    expect(ghost.status).toBe(404);
+    const w = await post(c, "/api/disks/wipe", { disk: "/dev/sdb", confirm: "sdb", node: "ghost" });
+    expect(w.status).toBe(404);
+    expect(pve.calls.some((x) => /\/nodes\/ghost\//.test(x.path))).toBe(false);
+    expect(reached("PUT", /wipedisk/)).toBe(false);
+    const here = await j(await get("/api/disks/list?node=pve", c));
+    expect(here.node).toBe("pve");
+  });
+
   it("wipes only after the disk's name is typed, and the check happens at the API", async () => {
     const c = await signIn();
     const no = await post(c, "/api/disks/wipe", { disk: "/dev/sdb" });

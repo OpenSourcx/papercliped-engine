@@ -55,7 +55,7 @@ export function useMe() {
 
 export function useOrgs() {
   const ready = useEngineReady();
-  return useQuery({ queryKey: qk.orgs, queryFn: engine.companies.list, enabled: ready, refetchInterval: 60_000 });
+  return useQuery({ queryKey: qk.orgs, queryFn: () => engine.companies.list({ scope: "accessible" }), enabled: ready, refetchInterval: 60_000 });
 }
 
 /** The agents of several organizations at once (for the rail and Home), sharing the cache with useAgents. */
@@ -79,13 +79,13 @@ export function useResourceGroup(companyId: string | null | undefined) {
 /** Per-agent readiness for one organization, from the host service (adapter + credential + sandbox environment). */
 export function useAgentReadiness(companyId: string | null | undefined) {
   const ready = useEngineReady();
-  return useQuery({ queryKey: qk.agentReadiness(companyId ?? ""), queryFn: () => host.agentReadiness.get(companyId!), enabled: ready && !!companyId, staleTime: 30_000, retry: 1 });
+  return useQuery({ queryKey: qk.agentReadiness(companyId ?? ""), queryFn: () => host.agentReadiness.get(companyId!), enabled: ready && !!companyId, staleTime: 30_000, retry: false, retryOnMount: false });
 }
 
 /** Readiness for several organizations at once, sharing the cache with useAgentReadiness. */
 export function useAgentReadinessOf(companyIds: string[]) {
   const ready = useEngineReady();
-  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agentReadiness(id), queryFn: () => host.agentReadiness.get(id), enabled: ready, staleTime: 30_000, retry: 1 })) });
+  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agentReadiness(id), queryFn: () => host.agentReadiness.get(id), enabled: ready, staleTime: 30_000, retry: false, retryOnMount: false })) });
 }
 
 export function useCompanyQuery<T>(companyId: string | null | undefined, key: readonly unknown[], fn: (id: string) => Promise<T>, opts: { poll?: boolean; retry?: boolean } = {}) {

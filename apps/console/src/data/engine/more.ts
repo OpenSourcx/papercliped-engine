@@ -66,12 +66,18 @@ export function useChatSettings() {
   const ready = useEngineReady();
   return useQuery({ queryKey: qk.chatSettings, queryFn: engine.chat.settings, enabled: ready, staleTime: 30_000, retry: false });
 }
-export const useChats = (companyId: Id, enabled: boolean) =>
-  useCompanyQuery(enabled ? companyId : null, qk.chats(k(companyId)), (id) => engine.chat.list(id), { retry: false });
+/** Agent chat is an experimental engine setting; its routes answer 404 while it is off, so nothing asks until it is known to be on. */
+export function useChatEnabled(): boolean {
+  return useChatSettings().data?.enableAgentChat === true;
+}
+export const useChats = (companyId: Id, enabled: boolean) => {
+  const on = useChatEnabled();
+  return useCompanyQuery(enabled && on ? companyId : null, qk.chats(k(companyId)), (id) => engine.chat.list(id), { retry: false });
+};
 
 /** The saved agent chats of several organizations at once (PinView's list), sharing the cache with useChats. */
 export function useChatsOf(companyIds: string[]) {
-  const ready = useEngineReady();
+  const ready = useEngineReady() && useChatEnabled();
   return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.chats(id), queryFn: () => engine.chat.list(id), enabled: ready, retry: false, refetchInterval: 30_000 })) });
 }
 

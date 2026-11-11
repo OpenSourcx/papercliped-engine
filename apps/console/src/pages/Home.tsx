@@ -9,7 +9,8 @@ import { usePin } from "../pin/PinContext.tsx";
 import { modalHref, settingsHref } from "../modals/useModals.ts";
 import { ArcMeter, BarMeter } from "../ui/meters.tsx";
 import { Avatar, Card, SectionTitle, Status } from "../ui/primitives.tsx";
-import { errorText, useCanCreateOrgs, useEngineStatus, useOrgs } from "../data/engine/queries.ts";
+import { deviceCondition } from "../lib/deviceStatus.ts";
+import { errorText, useAgentContainers, useCanCreateOrgs, useEngineStatus, useOrgs } from "../data/engine/queries.ts";
 import { EngineUnavailable, Loading } from "./org/live/common.tsx";
 
 function greeting(): string {
@@ -61,6 +62,7 @@ export function Home() {
   const working = data.orgs.flatMap((o) => o.agents).filter((a) => a.status === "working").length;
   const activeRules = data.rules.filter((r) => r.enabled).length;
   // Live, only engine instance admins (Proxmox node administrators) can create organizations; the demo always can.
+  const containers = useAgentContainers();
   const liveCanCreate = useCanCreateOrgs();
   const canCreate = live ? liveCanCreate : true;
 
@@ -73,7 +75,7 @@ export function Home() {
             {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
           </h1>
           <p className="text-ink-3 mt-4 text-body fade-in">
-            {device} is {host.cpuPct < 70 ? "running smoothly" : "busy"} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
+            {device} {deviceCondition(host, live ? containers.data : null)} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
           </p>
           <div className="mt-9 text-left">
             <PinComposer />

@@ -2,6 +2,7 @@ import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { STORAGE_DEFS, SECRET_KEYS, STORAGE_ID_RE, buildStorageParams, parseBwlimit, parsePrune, storageDef, type StorageTypeDef } from "@papercliped-engine/proxmox-client/storage-schema";
 import type { FeatureCtx, FeatureHandler } from "./index.ts";
 import { handleGuestDisks } from "./disksGuest.ts";
+import { resolveNode } from "./nodeCommon.ts";
 import { CheckError, device, diskInUse, matchesDevice, storageName, zfsSpec } from "./disksCheck.ts";
 
 /**
@@ -110,7 +111,8 @@ export const handleDisks: FeatureHandler = async (ctx: FeatureCtx) => {
 };
 
 async function route(ctx: FeatureCtx, method: string, path: string): Promise<boolean> {
-  const node = ctx.node;
+  // The node comes from ?node= or the body (checked against the cluster), else this one, so a disk action always lands on the node the person was looking at (ERR-PVE-003).
+  const pick = (pve: ProxmoxClient, b?: Record<string, unknown>) => resolveNode(ctx, pve, b);
   const { HttpError } = ctx;
   const q = ctx.url.searchParams;
 
@@ -118,12 +120,12 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
 
   // ---- Physical disks
   if (method === "GET" && path === "/api/disks/list") {
-    const disks = await ctx.asUser((pve) => listDisks(pve, node, q.get("partitions") === "1"));
-    return ctx.json(200, { node, disks }), true;
+    const out = await ctx.asUser(async (pve) => { const node = await pick(pve); return { node, disks: await listDisks(pve, node, q.get("partitions") === "1") }; });
+    return ctx.json(200, out), true;
   }
   if (method === "GET" && path === "/api/disks/smart") {
     const dev = device(q.get("disk"));
-    const smart = await ctx.asUser((pve) => pve.call<Json>("GET", `/nodes/${seg(node)}/disks/smart`, { disk: dev }));
+    const smart = await ctx.asUser(async (pve) => pve.call<Json>("GET", `/nodes/${seg(await pick(pve))}/disks/smart`, { disk: dev }));
     return ctx.json(200, { disk: dev, health: smart.health ?? null, type: smart.type ?? null, text: typeof smart.text === "string" ? smart.text.slice(0, 20000) : null, attributes: Array.isArray(smart.attributes) ? smart.attributes : [] }), true;
   }
   if (method === "POST" && (path === "/api/disks/initgpt" || path === "/api/disks/wipe")) {
@@ -132,6 +134,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     const dev = device(b.disk);
     if (!matchesDevice(b.confirm, dev)) throw new HttpError(409, "confirm", `Type the disk's name (${dev.replace(/^\/dev\//, "")}) to confirm.`);
     const t = await ctx.asUser(async (pve) => {
+      const node = await pick(pve, b);
       const found = (await listDisks(pve, node, true)).find((d) => d.devpath === dev);
       if (!found) throw new HttpError(404, "not_found", "Proxmox doesn't list that disk");
       if (found.inUseReason) throw new HttpError(409, "in_use", `${found.name} can't be ${path.endsWith("wipe") ? "wiped" : "initialized"}: ${found.inUseReason}.`);
@@ -142,14 +145,14 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
 
   const kindList = path.match(/^\/api\/disks\/(directory|lvm|lvmthin|zfs)$/);
   if (kindList && method === "GET") {
-    const out = await ctx.asUser((pve) => pve.call<unknown>("GET", `/nodes/${seg(node)}/disks/${kindList[1]}`));
+    const out = await ctx.asUser(async (pve) => pve.call<unknown>("GET", `/nodes/${seg(await pick(pve))}/disks/${kindList[1]}`));
     return ctx.json(200, { items: Array.isArray(out) ? out : (out as Json | null)?.children ?? [] }), true;
   }
   const zfsOne = path.match(/^\/api\/disks\/zfs\/([^/]+)$/);
   if (zfsOne && method === "GET") {
     const name = decodeURIComponent(zfsOne[1]);
     if (!POOL_NAME.test(name)) throw new CheckError("Unknown pool");
-    return ctx.json(200, await ctx.asUser((pve) => pve.call<Json>("GET", `/nodes/${seg(node)}/disks/zfs/${seg(name)}`))), true;
+    return ctx.json(200, await ctx.asUser(async (pve) => pve.call<Json>("GET", `/nodes/${seg(await pick(pve))}/disks/zfs/${seg(name)}`))), true;
   }
 
   const create = path.match(/^\/api\/disks\/(directory|lvm|lvmthin|zfs)$/);
@@ -158,6 +161,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     const kind = create[1] as Kind;
     const b = await ctx.readJson();
     const t = await ctx.asUser(async (pve) => {
+      const node = await pick(pve, b);
       const disks = await listDisks(pve, node, false);
       const sizes = new Map(disks.map((d) => [d.devpath, d.sizeBytes]));
       const need = (dev: string) => {
@@ -189,7 +193,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     if (b.confirm !== name) throw new HttpError(409, "confirm", `Type the name (${name}) to confirm.`);
     const params: Record<string, string | boolean | undefined> = { "cleanup-config": b.cleanupConfig === true, "cleanup-disks": b.cleanupDisks === true };
     if (kind === "lvmthin") params["volume-group"] = typeof b.volumeGroup === "string" && POOL_NAME.test(b.volumeGroup) ? b.volumeGroup : (() => { throw new CheckError("Say which volume group the thin pool is in"); })();
-    const t = await ctx.asUser((pve) => pve.call<string>("DELETE", `/nodes/${seg(node)}/disks/${kind}/${seg(name)}`, params));
+    const t = await ctx.asUser(async (pve) => pve.call<string>("DELETE", `/nodes/${seg(await pick(pve, b))}/disks/${kind}/${seg(name)}`, params));
     return ctx.json(202, { task: task(t) }), true;
   }
 
@@ -237,7 +241,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
   if (usage && method === "GET") {
     const id = decodeURIComponent(usage[1]);
     if (!STORAGE_ID_RE.test(id)) throw new CheckError("Unknown storage");
-    return ctx.json(200, await ctx.asUser((pve) => storageUsage(pve, node, id))), true;
+    return ctx.json(200, await ctx.asUser(async (pve) => storageUsage(pve, await pick(pve), id))), true;
   }
   const rm = path.match(/^\/api\/storage-config\/([^/]+)\/delete$/);
   if (rm && method === "POST") {
@@ -247,7 +251,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     const b = await ctx.readJson();
     if (b.confirm !== id) throw new HttpError(409, "confirm", `Type the storage's name (${id}) to confirm.`);
     await ctx.asUser(async (pve) => {
-      const u = await storageUsage(pve, node, id);
+      const u = await storageUsage(pve, await pick(pve, b), id);
       if ((u.guests.length || u.backupJobs.length) && b.acknowledgeInUse !== true) throw new HttpError(409, "in_use", `${id} is still used by ${u.guests.length} machine${u.guests.length === 1 ? "" : "s"} and ${u.backupJobs.length} backup job${u.backupJobs.length === 1 ? "" : "s"}. Confirm that you want to remove it anyway.`);
       await pve.call("DELETE", `/storage/${seg(id)}`);
     });
@@ -267,7 +271,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     if (kind === "pbs") Object.assign(params, { server: server(), username: text("username") ?? (() => { throw new CheckError("Enter the username"); })(), password: text("password", 1024) ?? (() => { throw new CheckError("Enter the password"); })(), fingerprint: text("fingerprint", 100), port: b.port === undefined || b.port === "" ? undefined : Number.isInteger(b.port) && (b.port as number) > 0 && (b.port as number) < 65536 ? (b.port as number) : (() => { throw new CheckError("Port is 1 to 65535"); })() });
     if (kind === "iscsi") params.portal = typeof b.portal === "string" && hostName.test(b.portal) ? b.portal : (() => { throw new CheckError("Enter the portal's address first"); })();
     if (kind === "lvmthin") params.vg = typeof b.vg === "string" && POOL_NAME.test(b.vg) ? b.vg : (() => { throw new CheckError("Pick a volume group first"); })();
-    const items = await ctx.asUser((pve) => pve.call<Json[]>("GET", `/nodes/${seg(node)}/scan/${kind}`, params));
+    const items = await ctx.asUser(async (pve) => pve.call<Json[]>("GET", `/nodes/${seg(await pick(pve, b))}/scan/${kind}`, params));
     return ctx.json(200, { items: Array.isArray(items) ? items : [] }), true;
   }
 
@@ -282,7 +286,7 @@ async function route(ctx: FeatureCtx, method: string, path: string): Promise<boo
     if (b.notes !== undefined) params.notes = typeof b.notes === "string" && b.notes.length <= 2048 ? b.notes : (() => { throw new CheckError("Notes are limited to 2048 characters"); })();
     if (b.protected !== undefined) params.protected = typeof b.protected === "boolean" ? b.protected : (() => { throw new CheckError("Protected is on or off"); })();
     if (!Object.keys(params).length) throw new CheckError("Nothing to change");
-    await ctx.asUser((pve) => pve.call("PUT", `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`, params));
+    await ctx.asUser(async (pve) => pve.call("PUT", `/nodes/${seg(await pick(pve, b))}/storage/${seg(storage)}/content/${seg(volid)}`, params));
     return ctx.json(200, { ok: true }), true;
   }
   return false;

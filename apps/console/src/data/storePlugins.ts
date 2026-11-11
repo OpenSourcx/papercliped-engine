@@ -7,6 +7,9 @@ import type { Connector } from "./types.ts";
  * Which are installed is kept on this device; the runtime that executes adapters and skills arrives with the
  * ePaperclip fork, and the Store says so on those cards.
  */
+/** Shown wherever plugin permissions are listed: they are declared, not enforced (ERR-STORE-008). */
+export const PERMISSION_NOTE = "These are what the publisher says it needs. They are not enforced: a plugin runs as the engine user on this device, so install only plugins you trust.";
+
 export type PluginKind = "connector" | "adapter" | "skill";
 
 export interface PluginEntry {
@@ -19,6 +22,8 @@ export interface PluginEntry {
   /** Set for entries from the signed marketplace catalog. */
   version?: string;
   permissions?: string[];
+  /** Listed, but nothing on the host implements it yet: shown as planned and never installable (ERR-STORE-003). */
+  planned?: boolean;
 }
 
 export const PLUGINS: PluginEntry[] = [
@@ -26,10 +31,10 @@ export const PLUGINS: PluginEntry[] = [
   { id: "openai", kind: "connector", connectorKind: "model", name: "OpenAI", vendor: "OpenAI", summary: "ChatGPT and Codex models, with a subscription or an API key." },
   { id: "gemini", kind: "connector", connectorKind: "model", name: "Google Gemini", vendor: "Google", summary: "Gemini models through an API key." },
   { id: "github", kind: "connector", connectorKind: "code", name: "GitHub", vendor: "GitHub", summary: "Let agents read repositories, open pull requests and follow issues." },
-  { id: "linear", kind: "connector", connectorKind: "code", name: "Linear", vendor: "Linear", summary: "Sync agent tasks with your Linear issues." },
+  { id: "linear", planned: true, kind: "connector", connectorKind: "code", name: "Linear", vendor: "Linear", summary: "Sync agent tasks with your Linear issues." },
   { id: "slack", kind: "connector", connectorKind: "chat", name: "Slack", vendor: "Slack", summary: "Agents and Pin can post updates and take requests in channels." },
   { id: "discord", kind: "connector", connectorKind: "chat", name: "Discord", vendor: "Discord", summary: "Talk to Pin and your agents from a Discord server." },
-  { id: "gmail", kind: "connector", connectorKind: "mail", name: "Gmail", vendor: "Google", summary: "Let agents draft and read mail you choose to share." },
+  { id: "gmail", planned: true, kind: "connector", connectorKind: "mail", name: "Gmail", vendor: "Google", summary: "Let agents draft and read mail you choose to share." },
   { id: "tailscale", kind: "connector", connectorKind: "network", name: "Tailscale", vendor: "Tailscale", summary: "Reach this device and your connected AI apps from anywhere, without opening ports." },
   { id: "cloudflared", kind: "connector", connectorKind: "network", name: "Cloudflare Tunnel", vendor: "Cloudflare", summary: "Publish this console and the connector address through a tunnel." },
   // Paperclip's built-in adapters, by their Paperclip type. They come with Paperclip, so the Store enables and disables them.

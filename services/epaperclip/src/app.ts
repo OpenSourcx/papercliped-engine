@@ -2250,6 +2250,8 @@ export function createApp(d: AppDeps) {
           redraw: guest?.type === "lxc",
         };
       } catch (e) {
+        // Proxmox only runs a terminal command (the upgrade) for root@pam, whatever else the person may do (ERR-PVE-002).
+        if (e instanceof ProxmoxError && e.status === 403 && url.searchParams.get("cmd") === "upgrade" && s.username !== "root@pam") throw new Error("Proxmox only runs the upgrade terminal for root@pam. Sign in as root@pam, or open the Shell and run apt update && apt full-upgrade.");
         if (e instanceof ProxmoxError && e.status === 403) throw new Error("Your Proxmox account doesn't have console access here (Sys.Console or VM.Console).");
         if (e instanceof ProxmoxError && e.status === 401) throw new Error("Your Proxmox session ended. Sign in again.");
         if (e instanceof ProxmoxError && e.detail && /serial/i.test(e.detail)) throw new Error("This VM has no serial port. Use its graphical console in Proxmox, or add a serial port (serial0: socket).");

@@ -91,8 +91,20 @@ describe("services and time", () => {
     expect(no.status).toBe(400);
     expect(no.json.error).toMatch(/pveproxy/);
     expect(bodiesFor("POST", "/nodes/pve/services/pveproxy/stop")).toHaveLength(0);
-    expect((await send(sam, "POST", "/api/node/services/pveproxy/stop", { confirm: "pveproxy" })).status).toBe(202);
+    expect((await send(sam, "POST", "/api/node/services/sshd/stop", { confirm: "sshd" })).status).toBe(202);
     expect((await send(sam, "POST", "/api/node/services/chrony/stop", {})).status).toBe(202);
+  });
+
+  it("never offers to stop pveproxy, pvedaemon or pve-cluster, even with the name typed (ERR-PVE-005)", async () => {
+    const sam = await signIn("sam");
+    for (const s of ["pveproxy", "pvedaemon", "pve-cluster"]) {
+      const r = await send(sam, "POST", `/api/node/services/${s}/stop`, { confirm: s });
+      expect(r.status).toBe(400);
+      expect(bodiesFor("POST", `/nodes/pve/services/${s}/stop`)).toHaveLength(0);
+    }
+    const list = await send(sam, "GET", "/api/node/services");
+    expect(list.json.services.find((s: any) => s.service === "postfix").canStop).toBe(true);
+    expect(list.json.services.filter((s: any) => s.canStop === false).every((s: any) => ["pveproxy", "pvedaemon", "pve-cluster"].includes(s.service))).toBe(true);
   });
 
   it("turns a Proxmox 403 into a clear message", async () => {

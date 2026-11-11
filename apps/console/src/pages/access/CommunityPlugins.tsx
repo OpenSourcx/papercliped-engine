@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PERMISSION_NOTE } from "../../data/storePlugins.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { connectApi } from "../../data/engine/connectApi.ts";
@@ -35,7 +36,7 @@ export function CommunityPlugins() {
       {data?.plugins.map((p) => <Card key={p.id} className="p-4"><div className="flex flex-wrap items-center gap-3">
         {p.verified ? <ShieldCheck className="h-5 w-5 text-good shrink-0" aria-hidden /> : <ShieldAlert className="h-5 w-5 text-warning shrink-0" aria-hidden />}
         <div className="min-w-0 flex-1 basis-48"><div className="truncate font-medium">{p.packageName ?? p.key ?? p.id}{p.version ? ` ${p.version}` : ""}</div>
-          <div className="text-xs text-ink-3">{p.verified ? `From the signed catalog. Permissions you accepted: ${p.grantedPermissions?.join(", ") || "none"}` : "Not from the signed catalog. It can be switched off or revoked, never switched on from here."}</div></div>
+          <div className="text-xs text-ink-3">{p.verified ? `From the signed catalog. Permissions you accepted (declared, not enforced): ${p.grantedPermissions?.join(", ") || "none"}` : "Not from the signed catalog. It can be switched off or revoked, never switched on from here."}</div></div>
         <Status kind={p.status === "ready" ? "good" : "warning"} label={p.status ?? "unknown"} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -49,6 +50,7 @@ export function CommunityPlugins() {
     {review && <Modal title={`${review.upgrade ? "Upgrade" : "Install"} ${review.name} ${review.version}`} onClose={close} footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" disabled={!accepted} loading={apply.isPending} onClick={() => apply.mutate(review)}>{review.upgrade ? "Upgrade" : "Install"}</Button></>}>
       <div className="space-y-3"><p className="text-sm text-ink-2">This plugin declares that it needs:</p>
         <ul className="list-disc pl-5 text-compact font-mono">{review.permissions.length ? review.permissions.map((p) => <li key={p}>{p}</li>) : <li className="font-sans">No permissions declared.</li>}</ul>
+        <p className="text-compact text-ink-3 mt-2">{PERMISSION_NOTE}</p>
         <p className="text-xs text-ink-3">These are the publisher’s declarations, shown from the signed catalog. The device checks that the package is exactly the one the catalog was signed for, and records what you accepted.</p>
         <Toggle label="I have reviewed these permissions and accept them" checked={accepted} onChange={setAccepted} />
         {apply.error && !(apply.error instanceof NodeApiError && apply.error.code === "capability_increase") && <p role="alert" className="text-compact text-critical">{errorText(apply.error)}</p>}

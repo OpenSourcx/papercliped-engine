@@ -18,6 +18,7 @@ describe("Community plugins", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Review and install" }));
     expect(screen.getByText("net.acme.test")).toBeTruthy();
     expect(screen.getByText("secrets.read")).toBeTruthy();
+    expect(screen.getByText(/not enforced/)).toBeTruthy(); // ERR-STORE-008
     const go = screen.getByRole("button", { name: "Install" }) as HTMLButtonElement;
     expect(go.disabled).toBe(true);
     fireEvent.click(screen.getByRole("switch", { name: /reviewed these permissions/ }));
