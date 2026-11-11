@@ -15,9 +15,9 @@
  * The Proxmox API and SSH layers are injected (see ProviderDeps), so the whole
  * lifecycle runs in tests against a fake Proxmox server and a local shell.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { definePlugin } from "@paperclipai/plugin-sdk";
+import { PluginEnvironmentCreationCleanupError, definePlugin } from "@paperclipai/plugin-sdk";
 import { loginCommandLine } from "./login-pty.js";
 import type {
   PluginContext,
@@ -87,9 +87,13 @@ interface LeaseRef {
 }
 
 /** `providerLeaseId` is `<node>/<vmid>`, so cleanup works even after the environment config changes. */
+/** Time an acquire keeps back from the engine's timeout to remove (or report) a container it could not finish. */
+const CLEANUP_RESERVE_MS = 30_000;
+
 export function parseLeaseId(value: string | null | undefined): LeaseRef | null {
   if (!value) return null;
-  const match = /^([A-Za-z0-9][A-Za-z0-9-]*)\/(\d+)$/.exec(value);
+  // "node/vmid", or "node_vmid" for a failed creation handed to the engine (its cleanup ids allow no "/").
+  const match = /^([A-Za-z0-9][A-Za-z0-9-]*)[/_](\d+)$/.exec(value);
   if (!match) return null;
   return { node: match[1]!, vmid: Number(match[2]) };
 }
@@ -465,8 +469,8 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         try {
           await api.waitForTask(node, upid, template.kind === "vmid" ? `clone of CT ${template.vmid} to ${vmid}` : `create of CT ${vmid}`, deadline);
         } catch (error) {
-          // The task may have left a half-made container behind; remove it before reporting.
-          await destroyQuietly(api, config, { node, vmid }, params.companyId, deadline);
+          // The task may have left a half-made container behind (or still be running); remove it before reporting.
+          await destroyAfterFailedCreate(api, config, { node, vmid }, params, error);
           throw error;
         }
         return vmid;
@@ -511,7 +515,8 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     }
     // A container this acquire just created may not carry its tags yet (a clone gets them after the
     // copy); it is recognised by the hostname the create call gave it.
-    const justCreated = options.createdHostname !== undefined && ctConfig.hostname === options.createdHostname;
+    const justCreated = options.createdHostname !== undefined && ctConfig.hostname === options.createdHostname &&
+      (!companyId || String(ctConfig.description ?? "").includes(companyId));
     if (!justCreated && !isOwnedContainer(ctConfig, companyId)) {
       // Our container is gone and the vmid now belongs to something else: leave it alone.
       log("warn", "Container is not one of ours; not deleting it", { node: ref.node, vmid: ref.vmid });
@@ -530,14 +535,25 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     return true;
   }
 
-  /** Removes a container that this acquire call created and could not finish. */
-  async function destroyQuietly(api: ProxmoxClient, config: ProxmoxDriverConfig, ref: LeaseRef, companyId: string, deadline: number): Promise<void> {
+  /**
+   * Removes a container that this acquire call created and could not finish. If it can't be removed now (a clone that
+   * timed out still holds the lock), the engine is told which container it is, so its cleanup retries the delete
+   * instead of the container silently holding the organization's quota.
+   */
+  async function destroyAfterFailedCreate(api: ProxmoxClient, config: ProxmoxDriverConfig, ref: LeaseRef, params: PluginEnvironmentAcquireLeaseParams, cause: unknown): Promise<void> {
     try {
-      await destroyContainer(api, ref, companyId, true, Math.max(deadline, Date.now() + 120_000), {
-        createdHostname: containerHostname(config, ref.vmid),
-      });
+      await destroyContainer(api, ref, params.companyId, true, Date.now() + CLEANUP_RESERVE_MS - 5_000, { createdHostname: containerHostname(config, ref.vmid) });
     } catch (error) {
-      log("warn", "Cleanup of a failed container did not finish", { vmid: ref.vmid, error: errorMessage(error) });
+      log("warn", "Cleanup of a failed container did not finish; the engine will retry it", { vmid: ref.vmid, error: errorMessage(error) });
+      throw new PluginEnvironmentCreationCleanupError([cause, error], `${errorMessage(cause)} The half-made container ${ref.vmid} could not be removed yet; it will be removed when Proxmox releases it.`, {
+        providerLeaseId: `${ref.node}_${ref.vmid}`,
+        companyId: params.companyId,
+        environmentId: params.environmentId,
+        runId: params.runId,
+        attemptId: randomUUID(),
+        accountFingerprint: createHash("sha256").update(`${config.apiUrl}|${config.apiTokenId ?? ""}`).digest("hex"),
+        labels: { "paperclip-provider": OWNER_TAG, "paperclip-vmid": String(ref.vmid) },
+      });
     }
   }
 
@@ -571,7 +587,10 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     if (!ref) throw new Error(`Not a Proxmox lease id: ${params.providerLeaseId}`);
     const config = cleanupConfig(params.config);
     const api = client(config);
-    await destroyContainer(api, ref, params.companyId, params.cancelActiveWork === true, Date.now() + config.timeoutMs);
+    // A failed creation's container may never have got its tags; it is recognised by its hostname and description.
+    const failedCreate = params.leaseMetadata?.failedCreateCleanup !== undefined;
+    await destroyContainer(api, ref, params.companyId, params.cancelActiveWork === true || failedCreate, Date.now() + config.timeoutMs,
+      failedCreate ? { createdHostname: containerHostname(config, ref.vmid) } : {});
     return { providerLeaseId: params.providerLeaseId, state: "destroyed" };
   }
 
@@ -711,7 +730,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     async onEnvironmentAcquireLease(params: PluginEnvironmentAcquireLeaseParams): Promise<PluginEnvironmentLease> {
       const config = runtimeConfig(params.config);
       const api = client(config);
-      const deadline = Date.now() + config.timeoutMs;
+      const deadline = Date.now() + Math.max(config.timeoutMs - CLEANUP_RESERVE_MS, config.timeoutMs / 2);
       const template = parseTemplateRef(config.template)!;
       derivePublicKey(config.sshPrivateKey!); // fail before creating anything if the key is unusable
 
@@ -755,7 +774,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
         log("info", "Proxmox container ready", { node: ref.node, vmid, ip: lease.metadata?.ip });
         return lease;
       } catch (error) {
-        await destroyQuietly(api, config, ref, params.companyId, deadline);
+        await destroyAfterFailedCreate(api, config, ref, params, error);
         throw error;
       }
     },

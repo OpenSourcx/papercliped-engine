@@ -628,11 +628,17 @@ export class AgentContainers {
     return Object.entries(want).every(([k, v]) => have[k] === v);
   }
 
-  /** Container size for an organization: its resource group's limits, capped by the chosen size. */
+  /**
+   * Container size for an organization: an equal share of its resource group's limits (one per allowed guest), capped by
+   * the chosen size. A container the size of the whole limit would leave no room for a second one, such as a sign-in
+   * beside a running agent.
+   */
   private limits(companyId: string, p: Params): Size {
-    const rg = this.d.state.getSetting<Record<string, { cores?: number; memoryMb?: number; diskGb?: number }>>("resourceGroups")?.[companyId];
+    const rg = this.d.state.getSetting<Record<string, { cores?: number; memoryMb?: number; diskGb?: number; maxGuests?: number }>>("resourceGroups")?.[companyId];
+    const share = Math.max(1, rg?.maxGuests ?? 1);
     const min = (a: number | undefined, b: number) => (typeof a === "number" && a > 0 ? Math.min(a, b) : b);
-    return { cores: min(rg?.cores, p.size.cores), memoryMb: Math.max(1024, min(rg?.memoryMb, p.size.memoryMb)), diskGb: Math.max(TEMPLATE_DISK_GB, min(rg?.diskGb, p.size.diskGb)) };
+    const part = (a: number | undefined) => (typeof a === "number" && a > 0 ? Math.max(1, Math.floor(a / share)) : undefined);
+    return { cores: Math.max(1, min(part(rg?.cores), p.size.cores)), memoryMb: Math.max(1024, min(part(rg?.memoryMb), p.size.memoryMb)), diskGb: Math.max(TEMPLATE_DISK_GB, min(rg?.diskGb, p.size.diskGb)) };
   }
 
   /** What an environment's config must contain. Secrets are referenced by Paperclip secret id, never by value. */
@@ -1381,7 +1387,8 @@ export class AgentContainers {
       this.log(job, "info", "The provider is already installed and ready");
       return "Already installed";
     }
-    if (pl && pl.status === "disabled") {
+    // The engine re-enables a provider that is disabled, failed to activate (error) or awaits an upgrade; installing it again is refused.
+    if (pl && (pl.status === "disabled" || pl.status === "error" || pl.status === "upgrade_pending")) {
       pl = await this.eng("POST", `/api/plugins/${encodeURIComponent(pl.id)}/enable`, {});
     }
     if (!pl || pl.status !== "ready") {

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PluginContext, PluginEnvironmentLease } from "@paperclipai/plugin-sdk";
+import { readEnvironmentCreationCleanupError } from "@paperclipai/plugin-sdk";
 import { createProxmoxSandboxPlugin, buildTags, sanitizeTag } from "../src/plugin.js";
 import { nodeHttpsTransport } from "../src/proxmox-api.js";
 import { validateSshPrivateKey } from "../src/config.js";
@@ -337,6 +338,19 @@ describe("acquire", () => {
     await expect(acquire()).rejects.toThrow(/out of space/);
     expect(pve.containers.has(101)).toBe(false);
     expect(pve.find("DELETE", "/lxc/101")).toHaveLength(1);
+  });
+
+  it("hands a half-made container it can't delete yet to the engine's cleanup, which then removes it", async () => {
+    pve.taskFailures.set("vzclone", { exitstatus: "clone timed out", log: [], leaveBehind: true });
+    pve.lockedDeletes = 1;
+    const error = await acquire().catch((e: unknown) => e);
+    const cleanup = readEnvironmentCreationCleanupError(error);
+    expect(cleanup).toMatchObject({ providerLeaseId: "pve_101", companyId: "company-1", runId: "run-1" });
+    expect(pve.containers.has(101)).toBe(true);
+    // The engine's retry: the container never got its company tags, but it is recognised as this failed creation.
+    const receipt = await hooks.onEnvironmentDestroyLease!({ ...base, config: config(), providerLeaseId: cleanup!.providerLeaseId, leaseMetadata: { failedCreateCleanup: cleanup } });
+    expect(receipt).toMatchObject({ state: "destroyed" });
+    expect(pve.containers.has(101)).toBe(false);
   });
 
   it("deletes the new container when it never becomes reachable", async () => {

@@ -155,7 +155,7 @@ describe("agent containers setup", () => {
     expect(eng.st.envs.size).toBe(1);
     const env = [...eng.st.envs.values()][0];
     expect(env).toMatchObject({ driver: "sandbox", metadata: { epaperclip: "agent-containers", companyId: co } });
-    expect(env.config).toMatchObject({ provider: "proxmox", node: "pve", apiTokenId: TOKEN_ID, template: "9000", pool, storage: "local-lvm", bridge: "vmbr0", unprivileged: true, sshUser: "agent", cores: 2, memoryMb: 4096, diskGb: 16 });
+    expect(env.config).toMatchObject({ provider: "proxmox", node: "pve", apiTokenId: TOKEN_ID, template: "9000", pool, storage: "local-lvm", bridge: "vmbr0", unprivileged: true, sshUser: "agent", cores: 1, memoryMb: 2048, diskGb: 16 }); // a 4-guest group: one guest's share
     expect(eng.st.secrets.has(env.config.apiTokenSecret)).toBe(true);
     expect(eng.st.secrets.has(env.config.sshPrivateKey)).toBe(true);
     expect(eng.st.envBodies.join()).not.toContain(pve.tokenSecrets[0]);
@@ -230,6 +230,19 @@ describe("agent containers setup", () => {
     const before = { tokens: tokenPosts(), guests: pve.guests.size, envs: eng.st.envs.size, secrets: eng.st.secrets.size, plugins: eng.st.plugins.length, scripts: ssh.st.scripts.length, key: state.getSecret("agentContainers.sshKey") };
     expect((await runSetup(sam)).status).toBe("done");
     expect({ tokens: tokenPosts(), guests: pve.guests.size, envs: eng.st.envs.size, secrets: eng.st.secrets.size, plugins: eng.st.plugins.length, scripts: ssh.st.scripts.length, key: state.getSecret("agentContainers.sshKey") }).toEqual(before);
+    expect((await status(sam)).state).toBe("ready");
+  });
+
+  it("re-enables a provider that failed to activate instead of installing it again", async () => {
+    const sam = await admin();
+    await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    // On a busy host the worker can miss the engine's initialize timeout; the plugin is then in "error".
+    Object.assign(eng.st.plugins[0], { status: "error", lastError: 'Activation failed: RPC call "initialize" timed out after 15000ms' });
+    expect((await status(sam)).state).not.toBe("ready");
+    expect((await runSetup(sam)).status).toBe("done");
+    expect(eng.st.plugins).toHaveLength(1);
+    expect(eng.st.plugins[0].status).toBe("ready");
     expect((await status(sam)).state).toBe("ready");
   });
 
@@ -323,7 +336,7 @@ describe("agent containers setup", () => {
     expect(envs.find((e) => e.metadata.companyId === first.co).config.pool).toBe(first.pool);
     // Resizing is followed.
     await send("PUT", `/api/resource-groups/${second.co}`, sam, { name: "Lumen", cores: 1, memoryMb: 2048, diskGb: 10, maxGuests: 2 });
-    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 2048, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
+    expect(envs.find((e) => e.metadata.companyId === second.co).config).toMatchObject({ cores: 1, memoryMb: 1024, diskGb: 10, quotaGuests: 2, quotaCores: 1, quotaMemoryMb: 2048 });
     // An organization without a resource group has no aggregate limit.
     expect(envs.find((e) => e.metadata.companyId === first.co).config.quotaGuests).toBeDefined();
   });

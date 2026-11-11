@@ -98,10 +98,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       if (!bd.packageName || bd.isLocalPath !== true) return json(res, 400, { error: "packageName is required" });
       if (st.pluginInstallError) return json(res, 400, { error: st.pluginInstallError });
       const existing = st.plugins.find((x) => x.pluginKey === "epaperclip.proxmox-sandbox-provider");
-      if (existing) {
-        existing.status = "ready";
-        return json(res, 200, existing);
-      }
+      if (existing) return json(res, 400, { error: `Plugin already installed: ${existing.pluginKey}` });
       const rec = { id: `pl_${st.plugins.length + 1}`, pluginKey: "epaperclip.proxmox-sandbox-provider", status: "ready", lastError: null, packageName: bd.packageName };
       st.plugins.push(rec);
       return json(res, 200, rec);
