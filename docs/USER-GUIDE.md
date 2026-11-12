@@ -22,7 +22,9 @@ There is no separate ePaperclip password and no cloud account. A Papercliped acc
 
 Agents never run on the host. Until a Proxmox administrator sets up **Settings, Agent containers** the engine refuses to run any agent. Setup builds a Debian template container and a sandbox provider and takes several minutes. Details, what it creates, how to remove it: [ENGINE.md#agent-containers](ENGINE.md#agent-containers); by hand: [PROXMOX-SANDBOX.md](PROXMOX-SANDBOX.md). Organizations, budgets and approvals: [ORGS.md](ORGS.md). The Pin copilot: [PIN.md](PIN.md). Models and the router: [ROUTER.md](ROUTER.md). Secrets handling: [VAULT.md](VAULT.md).
 
-(Organizations and agents on the console are not fully wired to live engine data yet; check the roadmap before relying on them.)
+**Slow to start?** How quickly an agent container appears depends on the storage it is made on: about two minutes on ordinary directory storage, a few seconds on ZFS. See [Fast storage for agent containers](FAST-STORAGE.md), written for people who have never used ZFS.
+
+(On a device, organizations, agents, tasks, chat, artifacts and skills are live; the demo shows placeholders. The parity matrix in `PARITY.md` lists what is still open.)
 
 ## 4. Machine management
 
