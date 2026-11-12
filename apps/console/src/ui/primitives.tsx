@@ -202,6 +202,50 @@ export function Avatar({ name, hue, size = 32, className }: { name: string; hue:
   );
 }
 
+/** A small stable hash so an agent keeps the same face on every page and every visit. */
+function faceHash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/**
+ * An agent's face: a soft blob with eyes, a mouth and a little blush, chosen from the name so it never changes. People,
+ * organizations and apps keep their initials (Avatar); agents get a face, so a list of agents is easy to tell apart.
+ */
+export function AgentAvatar({ name, hue, size = 32, className }: { name: string; hue: number; size?: number; className?: string }) {
+  const h = faceHash(name || "agent");
+  const eyes = h % 4;
+  const mouth = (h >>> 3) % 4;
+  const ink = "var(--on-status)";
+  const eye = (cx: number) => {
+    if (eyes === 0) return <circle key={cx} cx={cx} cy={21} r={2.1} fill={ink} />;
+    if (eyes === 1) return <path key={cx} d={`M${cx - 2.6} 22 Q${cx} 18.2 ${cx + 2.6} 22`} stroke={ink} strokeWidth={1.8} strokeLinecap="round" fill="none" />;
+    if (eyes === 2) return <g key={cx}><ellipse cx={cx} cy={21} rx={2.3} ry={3} fill={ink} /><circle cx={cx + 0.8} cy={20} r={0.9} className="agent-face-shine" /></g>;
+    return <path key={cx} d={`M${cx - 2.6} 21 H${cx + 2.6}`} stroke={ink} strokeWidth={1.8} strokeLinecap="round" />;
+  };
+  const mouthPath = [
+    <path key="m" d="M16.5 27.2 Q20 30.6 23.5 27.2" stroke={ink} strokeWidth={1.6} strokeLinecap="round" fill="none" />,
+    <ellipse key="m" cx={20} cy={28} rx={1.8} ry={2.1} fill={ink} />,
+    <path key="m" d="M17.5 27.6 H22.5" stroke={ink} strokeWidth={1.6} strokeLinecap="round" fill="none" />,
+    <path key="m" d="M16 27 Q20 32 24 27 Z" fill={ink} />,
+  ][mouth];
+  return (
+    <span aria-hidden className={cn("agent-face inline-flex shrink-0", className)} style={{ width: size, height: size, "--hue": hue } as CSSProperties}>
+      <svg viewBox="0 0 40 40" width={size} height={size} role="presentation">
+        <ellipse className="agent-face-shade" cx={20} cy={36.5} rx={9} ry={1.8} opacity={0.5} />
+        <path d="M5.5 33 V19 C5.5 9.5 12 4 20 4 C28 4 34.5 9.5 34.5 19 V33 C34.5 34.7 33.2 36 31.5 36 H8.5 C6.8 36 5.5 34.7 5.5 33 Z" className="agent-face-body" />
+        <path d="M9 14 C11 8.8 15 6.4 19 6.2" stroke={ink} strokeOpacity={0.35} strokeWidth={2} strokeLinecap="round" fill="none" />
+        {eye(14.2)}
+        {eye(25.8)}
+        <circle cx={11} cy={25.5} r={2.3} className="agent-face-blush" />
+        <circle cx={29} cy={25.5} r={2.3} className="agent-face-blush" />
+        {mouthPath}
+      </svg>
+    </span>
+  );
+}
+
 /**
  * The status vocabulary. Status always pairs an icon with a label, so state never rides on colour alone:
  *   good      running, connected, done          green check

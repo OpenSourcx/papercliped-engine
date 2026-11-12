@@ -10,7 +10,7 @@ import { useAgentAction, useAgentContainers, useAgents, useComments, useMe, useR
 import { useEngine } from "../../../data/store.tsx";
 import { settingsHref } from "../../../modals/useModals.ts";
 import { useChats, useChatSettings, useChatWrites } from "../../../data/engine/more.ts";
-import { Avatar, Button, Card, EmptyState, Notice, PageFrame, PageHeader, Spinner, Status, Textarea } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Notice, PageFrame, PageHeader, Spinner, Status, Textarea, AgentAvatar } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 
@@ -54,7 +54,7 @@ export function LiveChat() {
             const c = byAgent.get(a.id);
             return (
               <button key={a.id} onClick={() => setSelected(a.id)} aria-current={a.id === selected ? "true" : undefined} className={`w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 ${a.id === selected ? "bg-surface-3" : ""}`}>
-                <Avatar name={a.name} hue={org.hue + 40} size={32} />
+                <AgentAvatar name={a.name} hue={org.hue + 40} size={32} />
                 <span className="flex-1 min-w-0"><span className="block text-sm font-medium truncate">{a.name}</span><span className="block text-xs text-ink-3">{c ? `Updated ${ago(c.updatedAt)}` : "Start a chat"}</span></span>
                 {c?.conversationState === "active" && canRun && a.status !== "error" && a.status !== "paused" && a.status !== "pending_approval" && <Spinner label="Writing" className="[&>span]:sr-only" />}
               </button>
@@ -124,7 +124,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   };
   return (
     <Card className="flex flex-col min-h-[28rem]">
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-line"><Avatar name={agent.name} hue={org.hue + 40} size={32} /><div className="flex-1"><div className="text-sm font-medium">{agent.name}</div></div><Status kind={kind} label={label} /></div>
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-line"><AgentAvatar name={agent.name} hue={org.hue + 40} size={32} /><div className="flex-1"><div className="text-sm font-medium">{agent.name}</div></div><Status kind={kind} label={label} /></div>
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 space-y-4 max-h-[60vh]" aria-live="polite" aria-label={`Conversation with ${agent.name}`}>
         {conversationId && comments.isPending && <Loading />}
         {comments.error && <LoadError error={comments.error} retry={() => void comments.refetch()} />}

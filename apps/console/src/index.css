@@ -364,6 +364,11 @@ body {
   background: oklch(var(--identity-bg) var(--hue, 32));
   color: oklch(var(--identity-ink) var(--hue, 32));
 }
+/* An agent's face (AgentAvatar): the body takes the identity hue; features use the on-status ink, so they read on it in both themes. */
+.agent-face-body { fill: oklch(var(--identity-grad-from) var(--hue, 32)); }
+.agent-face-shade { fill: oklch(var(--identity-bg) var(--hue, 32)); }
+.agent-face-shine { fill: oklch(var(--identity-bg) var(--hue, 32)); }
+.agent-face-blush { fill: var(--critical); opacity: 0.35; }
 .identity-gradient {
   background: linear-gradient(135deg, oklch(var(--identity-grad-from) var(--hue, 32)), oklch(var(--identity-grad-to) calc(var(--hue, 32) + 40)));
   color: var(--on-status);

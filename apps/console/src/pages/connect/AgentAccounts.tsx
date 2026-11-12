@@ -64,14 +64,14 @@ export function AgentAccounts({ companyId, orgName }: { companyId: string; orgNa
           <p className="text-xs text-ink-3 mt-3">Only the organization's owners and admins can do this. The engine accepts Anthropic, OpenAI, OpenRouter and xAI keys for agents.</p>
         </Card>
       </div>
-      {signIn && <SignInModal companyId={companyId} orgName={orgName} provider={signIn} onClose={() => { setSignIn(null); void qc.invalidateQueries({ queryKey: ["connect", "org-ai", companyId] }); }} />}
+      {signIn && <SignInModal companyId={companyId} orgName={orgName} provider={signIn} knownIds={(ai.data?.connections ?? []).map((c) => c.id).filter((id): id is string => typeof id === "string")} onClose={() => { setSignIn(null); void qc.invalidateQueries({ queryKey: ["connect", "org-ai", companyId] }); }} />}
     </>
   );
 }
 
-function SignInModal({ companyId, orgName, provider, onClose }: { companyId: string; orgName: string; provider: "anthropic" | "openai"; onClose: () => void }) {
+function SignInModal({ companyId, orgName, provider, knownIds, onClose }: { companyId: string; orgName: string; provider: "anthropic" | "openai"; knownIds: string[]; onClose: () => void }) {
   const label = provider === "anthropic" ? "Claude" : "ChatGPT";
-  const [ownership, setOwnership] = useState<"personal" | "shared">("personal");
+  const [ownership, setOwnership] = useState<"personal" | "shared">("shared");
   const [allAgents, setAllAgents] = useState(true);
   const [chosen, setChosen] = useState<string[]>([]);
   const agents = useAgents(companyId);
@@ -96,10 +96,19 @@ function SignInModal({ companyId, orgName, provider, onClose }: { companyId: str
     if (!login || login.done || login.failed) return;
     stop.current = false;
     const t = setInterval(() => {
-      connectApi.pollLogin(companyId, login.id).then((r) => { if (!stop.current) setLogin(r.login); }, (e) => { if (!stop.current) { setError(errorText(e)); setLogin(null); } });
+      connectApi.pollLogin(companyId, login.id).then((r) => { if (!stop.current) setLogin(r.login); }, (e) => {
+        if (stop.current) return;
+        // The host forgets a sign-in once it has finished, so the poll after the last step can answer "not found" even
+        // though it worked. Look at the accounts before calling it a failure.
+        connectApi.orgAi(companyId).then((r) => {
+          if (stop.current) return;
+          if (r.connections.some((c) => typeof c.id === "string" && !knownIds.includes(c.id))) setLogin((l) => (l ? { ...l, done: true, failed: false } : l));
+          else { setError(errorText(e)); setLogin(null); }
+        }, () => { if (!stop.current) { setError(errorText(e)); setLogin(null); } });
+      });
     }, 2500);
     return () => { stop.current = true; clearInterval(t); };
-  }, [login?.id, login?.done, login?.failed, companyId]);
+  }, [login?.id, login?.done, login?.failed, companyId, knownIds]);
   const sendCode = useMutation({
     mutationFn: () => connectApi.sendLoginCode(companyId, login!.id, code.trim()),
     onSuccess: (r) => { setLogin(r.login); setCode(""); },
@@ -147,11 +156,11 @@ function SignInModal({ companyId, orgName, provider, onClose }: { companyId: str
         )}
         {login && !login.done && !login.failed && (
           <div className="space-y-3" aria-live="polite">
-            {!signinAt && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for the container" />Starting the sign-in in the container…</div>}
+            {!signinAt && <div className="flex items-center gap-2 text-sm text-ink-2"><Spinner label="Waiting for the container" />Starting the sign-in in the container. This takes about 20 seconds the first time.</div>}
             {signinAt && <div><div className="text-compact font-medium mb-1">1. Open this address</div><a href={signinAt} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-accent break-all text-sm">{new URL(signinAt).host}<ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden /></a></div>}
             {login.userCode && <div><div className="text-compact font-medium mb-1">2. Enter this code</div><div className="font-mono text-title tracking-code select-all">{login.userCode}</div></div>}
             {login.needsCode && (
-              <Field label="3. Paste the code the browser shows" hint="Sent to the container to finish; never stored or shown again.">
+              <Field label={`${login.userCode ? 3 : 2}. Paste the code the browser shows`} hint="Sent to the container to finish; never stored or shown again.">
                 <div className="flex gap-2"><Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" spellCheck={false} className="font-mono" /><Button loading={sendCode.isPending} disabled={!code.trim()} onClick={() => sendCode.mutate()}>Send</Button></div>
               </Field>
             )}

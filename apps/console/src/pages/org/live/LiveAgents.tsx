@@ -1,3 +1,4 @@
+import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Zap } from "lucide-react";
@@ -12,7 +13,7 @@ import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { useConfirm } from "../../../ui/Confirm.tsx";
-import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select, AgentAvatar } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -46,7 +47,7 @@ export function LiveAgents() {
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
-                <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
+                <div className="flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
                 <div className="mt-2 flex flex-wrap items-center gap-2"><ReadinessPill readiness={ready} /></div>
                 {ready && ready.state !== "ready" && <p className="text-xs text-ink-3 mt-1.5">{ready.summary}</p>}
                 <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
@@ -180,7 +181,7 @@ export function LiveAgentDetail() {
       {a && (
         <>
           <PageHeader
-            title={<span className="inline-flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} />{a.name}</span>}
+            title={<span className="inline-flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={48} /><span className="flex flex-col leading-tight">{a.name}<span className="text-compact font-normal text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</span></span></span>}
             subtitle={<><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
             actions={
               <>

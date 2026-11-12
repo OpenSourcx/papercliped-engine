@@ -6,7 +6,7 @@ import { TASK_ICON, TASK_LABEL } from "../data/meta.tsx";
 import type { Agent } from "../data/types.ts";
 import { formatBytes } from "../lib/storage.ts";
 import { BarMeter } from "../ui/meters.tsx";
-import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind, PageFrame } from "../ui/primitives.tsx";
+import { Avatar, Card, Chip, PageHeader, SectionTitle, Status, type StatusKind, PageFrame, AgentAvatar } from "../ui/primitives.tsx";
 
 const AGENT_STATUS: Record<Agent["status"], [StatusKind, string]> = { working: ["working", "Working"], idle: ["idle", "Idle"], paused: ["paused", "Paused"], error: ["critical", "Error"] };
 
@@ -68,7 +68,7 @@ function DemoOrgDashboard() {
               const [kind, label] = AGENT_STATUS[a.status];
               return (
                 <div key={a.id} className="flex items-center gap-3 py-3">
-                  <Avatar name={a.name} hue={org.hue + 40} size={32} />
+                  <AgentAvatar name={a.name} hue={org.hue + 40} size={32} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{a.name} <span className="text-ink-3 font-normal">· {a.role}</span></div>
                     <div className="text-xs text-ink-3 truncate">{a.task ?? `${a.adapter} · ${a.engine === "native" ? "runs natively" : "runs in a container session"}`}</div>
