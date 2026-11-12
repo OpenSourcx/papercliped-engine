@@ -91,6 +91,74 @@ async function main() {
       printRecommendations(caps);
       return;
     }
+    case "connect": {
+      // One command: look at this machine, pair it, wait for approval, then stay online so Pin can guide the rest in the console.
+      const code = rest.find((a) => !a.startsWith("--"));
+      const tty = !!process.stdin.isTTY;
+      let mode = flag("mode");
+      if (mode && mode !== "pin" && mode !== "self") throw new Error("--mode must be pin or self");
+      const c = files.config();
+      console.log("ePaperclip worker\n");
+      console.log("1/4  Looking at this machine");
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
+      printDevice(caps);
+      const best = bestModel(caps);
+      console.log(best.fit === "too_big" ? "  model     none of the catalogue fits; this worker can still run tasks" : `  model     ${best.spec.id} fits (${best.spec.note})`);
+      console.log("\n2/4  Who sets this machine up?");
+      if (!mode) {
+        if (tty) {
+          const { createInterface } = await import("node:readline/promises");
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          console.log("  1) Pin does it, asking you first (recommended)\n  2) Pin tells me the commands and I run them");
+          mode = /^(2|self|guide)/i.test((await rl.question("  Choose [1]: ")).trim()) ? "self" : "pin";
+          rl.close();
+        } else mode = "self";
+      }
+      console.log(`  ${mode === "pin" ? "Pin installs what is missing, with your approval each time." : "You run each command; Pin shows it in the console."}`);
+      c.setupMode = mode as "pin" | "self";
+      const name = flag("name");
+      if (name) c.name = name;
+      files.saveConfig(c);
+      console.log("\n3/4  Pairing with ePaperclip");
+      let pairing = code;
+      if (!pairing && tty) {
+        const { createInterface } = await import("node:readline/promises");
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        console.log("  In the ePaperclip console open Workers, then Add worker, and copy the code.");
+        pairing = (await rl.question("  Paste the code: ")).trim();
+        rl.close();
+      }
+      if (!pairing) throw new Error("No pairing code. Open Workers in the ePaperclip console, choose Add worker, and run: epaperclip-worker connect <code>");
+      const client = new WorkerClient({ files, log: () => undefined });
+      client.adopt(pairing);
+      console.log("  Code accepted.\n\n4/4  Connecting (the worker only calls out; it opens no port)");
+      let last = "";
+      const say = (s: Status) => {
+        const line = s.state === "pending" ? `  Waiting for approval. Check that the console shows code ${s.verification ?? ""}, then approve it.`
+          : s.state === "online" ? "  Online."
+          : s.state === "refused" || s.state === "revoked" ? `  ${s.detail ?? s.state}`
+          : s.state === "connecting" ? "  Connecting..." : "";
+        if (line && line !== last) { last = line; console.log(line); }
+      };
+      let online: () => void = () => undefined;
+      const done = new Promise<void>((res) => { online = res; });
+      client.onStatus = (s: Status) => {
+        say(s);
+        try { writeFileSync(join(files.dir, "status.json"), JSON.stringify({ ...s, at: Date.now(), version: VERSION, pid: process.pid })); } catch { /* best effort */ }
+        if (s.state === "online" || s.state === "refused" || s.state === "revoked") online();
+      };
+      await client.start();
+      for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { client.stop(); setTimeout(() => process.exit(0), 300); });
+      await done;
+      if (last.trim() === "Online.") {
+        console.log(`\nDone. Pin takes it from here in the console${mode === "pin" ? ": it will ask before installing anything" : ": it will show you each command"}.`);
+        console.log("Leave this running, or keep it on across reboots with the worker installer (deploy/worker/install.sh).");
+        return;
+      }
+      client.stop();
+      process.exitCode = 1;
+      return;
+    }
     case "setup": {
       const c = files.config();
       const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
@@ -213,7 +281,7 @@ async function main() {
       console.log(VERSION);
       return;
     default:
-      console.log("epaperclip-worker <run|adopt|status|config|diagnose|caps|recommend|setup|version>");
+      console.log("epaperclip-worker <connect|run|adopt|status|config|diagnose|caps|recommend|setup|version>\n\n  connect [code]   check this machine, pair it, wait for approval; Pin guides the rest (start here)");
   }
 }
 void chmodSync;

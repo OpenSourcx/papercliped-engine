@@ -541,6 +541,7 @@ if [ -f "$ROOT/deploy/epaperclip-update.sh" ]; then
   install -m 0755 "$ROOT/deploy/epaperclip-update.sh" "$STAGE/update/run.sh"
   install -m 0755 "$ROOT/deploy/install.sh" "$STAGE/update/install.sh"
   [ -f "$ROOT/deploy/epaperclip-cli.sh" ] && install -m 0755 "$ROOT/deploy/epaperclip-cli.sh" "$STAGE/update/epaperclip"
+  [ -f "$ROOT/deploy/isolated-bridge.sh" ] && install -m 0755 "$ROOT/deploy/isolated-bridge.sh" "$STAGE/update/isolated-bridge.sh"
   # The verifier and the pinned release-signing key the helper checks every update with. They are root's, installed from a
   # release that was itself verified, so a new key can only arrive inside a release the previous key signed.
   [ -f "$ROOT/deploy/verify-release.sh" ] && install -m 0644 "$ROOT/deploy/verify-release.sh" "$STAGE/update/verify-release.sh"
