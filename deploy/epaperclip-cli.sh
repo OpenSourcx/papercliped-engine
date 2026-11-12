@@ -23,6 +23,8 @@ usage() {
   cat <<TXT
 ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
 
+  ${B}setup${R}                guided first run: checks this host, makes the private sandbox network, installs, and says what to do next
+  ${B}doctor${R}               check this host without changing anything
   ${B}status${R}               versions, whether both services run and answer, where the data is
   ${B}version${R}              the installed version
   ${B}update${R} [--pre]       install the newest release (candidates too while you run one, or with --pre); signature-checked
@@ -130,7 +132,52 @@ device() {
 }
 
 cmd="${1:-help}"; [ "$#" -eq 0 ] || shift
+# ---- setup / doctor: the first-run path. doctor only looks; setup does the steps, asking before each change.
+ok() { echo "  ${B}ok${R}    $*"; }
+warn() { echo "  ${B}check${R} $*"; }
+bad() { echo "  ${B}no${R}    $*"; DOCTOR_BAD=1; }
+doctor() {
+  DOCTOR_BAD=0
+  command -v pveversion >/dev/null 2>&1 && ok "Proxmox VE $(pveversion | sed -n 's|^pve-manager/\([^/]*\)/.*|\1|p')" || bad "this isn't a Proxmox VE host (pveversion not found)"
+  local mem; mem="$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [ "$mem" -ge 8 ]; then ok "memory ${mem} GiB"; elif [ "$mem" -ge 2 ]; then warn "memory ${mem} GiB: works, but 8 GiB is comfortable for agents"; else bad "memory ${mem} GiB: the installer needs at least 2"; fi
+  local free; free="$(df -Pk "${PREFIX%/*}" 2>/dev/null | awk 'NR==2 {printf "%d", $4/1048576}')"
+  [ "${free:-0}" -ge 4 ] && ok "free disk for the program ${free} GiB" || bad "free disk for the program ${free:-0} GiB (needs about 3.1)"
+  if command -v zpool >/dev/null 2>&1 && zpool list -H -o name 2>/dev/null | grep -q .; then ok "ZFS pool found ($(zpool list -H -o name | paste -sd, -)): sandboxes can start in seconds. See docs/FAST-STORAGE.md"
+  else warn "no ZFS pool: sandboxes still work, but each new one takes about two minutes to copy. docs/FAST-STORAGE.md explains the fast option"; fi
+  if ip link show vmbr1 >/dev/null 2>&1; then ok "private sandbox network vmbr1 exists"; else warn "no private sandbox network yet (setup creates it)"; fi
+  if [ -f "$PREFIX/VERSION" ]; then ok "ePaperclip $(tr -d '[:space:]' <"$PREFIX/VERSION") installed"; else warn "ePaperclip isn't installed yet"; fi
+  curl -fsS --max-time 5 -o /dev/null https://github.com 2>/dev/null && ok "internet reachable" || bad "no internet access (the installer and container templates need it)"
+  return "$DOCTOR_BAD"
+}
+ask() { local a; [ -t 0 ] || return 0; read -r -p "$1 [Y/n] " a; case "$a" in n|N|no) return 1 ;; *) return 0 ;; esac; }
+setup() {
+  need_root setup
+  echo "${B}ePaperclip setup${R}"; echo; echo "1/4  Checking this host"
+  doctor || die "fix the lines marked 'no' above, then run: epaperclip setup"
+  echo; echo "2/4  Private network for agent containers"
+  if ip link show vmbr1 >/dev/null 2>&1; then echo "  already there"
+  elif ask "  Create the isolated sandbox network (vmbr1, 10.77.0.0/24, NAT)?"; then
+    local b; b="$(dirname "$SELF")/isolated-bridge.sh"; [ -f "$b" ] || b="$PREFIX/update/isolated-bridge.sh"
+    if [ -f "$b" ]; then bash "$b"; else die "isolated-bridge.sh isn't here; get it from https://github.com/$REPO/blob/main/deploy/isolated-bridge.sh and run it as root"; fi
+  else echo "  skipped: Agent Containers setup will refuse to start without it"; fi
+  echo; echo "3/4  ePaperclip"
+  if [ -f "$PREFIX/VERSION" ]; then echo "  version $(tr -d '[:space:]' <"$PREFIX/VERSION") is installed"
+  elif ask "  Install the newest signed release now?"; then bash "$SELF" update; else die "not installed; run: epaperclip update"; fi
+  echo; echo "4/4  Check it answers"
+  local i; for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsSk --max-time 3 -o /dev/null "https://127.0.0.1/" 2>/dev/null && break; sleep 2; done
+  bash "$INSTALLER" --status || true
+  local ip; ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo; echo "${B}Next${R}"
+  echo "  1. Open https://${ip:-<this host>}/ and sign in with your Proxmox account."
+  echo "  2. Agent Containers: it sets itself up (about 8 minutes the first time)."
+  echo "  3. Create an organization, connect your Claude or Codex account, and give Pin a task."
+  echo "  4. Another machine? There run: epaperclip-worker connect"
+}
+
 case "$cmd" in
+  setup) setup ;;
+  doctor) doctor ;;
   status) exec bash "$INSTALLER" --status ;;
   version) tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null && echo || die "not installed" ;;
   rollback) need_root rollback; exec bash "$INSTALLER" --rollback ;;

@@ -14,6 +14,7 @@ import { delimiter, join } from "node:path";
 const payload = new URL("../payload/", import.meta.url).pathname;
 const usage = `usage: epaperclip <command>
 
+  setup                guided first run: checks the host, makes the sandbox network, installs, and says what to do next
   install              install ePaperclip, or upgrade it to this package's version
   status               version, whether both services run and answer, where the data is
   rollback             go back to the previous version
@@ -39,7 +40,7 @@ if (cmd === "worker" || cmd === "--worker") {
   process.exit(r.status ?? 1);
 }
 
-const flags = { install: [], status: ["--status"], rollback: ["--rollback"], uninstall: ["--uninstall"] }[cmd];
+const flags = { setup: [], install: [], status: ["--status"], rollback: ["--rollback"], uninstall: ["--uninstall"] }[cmd];
 if (!flags) fail(`unknown command '${cmd}'\n\n${usage}`, 2);
 let args = [...flags, ...rest];
 if (cmd === "uninstall" && rest.includes("--purge")) args = ["--purge", ...rest.filter((a) => a !== "--purge")];
@@ -73,4 +74,9 @@ try { accessSync(installer, constants.R_OK); } catch { cleanup(); fail("the rele
 const r = spawnSync("bash", [installer, ...args], { stdio: "inherit" });
 cleanup();
 if (r.error) fail(`couldn't run the installer: ${r.error.message}`);
+if (cmd === "setup" && r.status === 0) {
+  // Installed: the guided steps (sandbox network, health check, what to do next) live in the installed command.
+  const s2 = spawnSync("epaperclip", ["setup"], { stdio: "inherit" });
+  process.exit(s2.status ?? 1);
+}
 process.exit(r.status ?? 1);

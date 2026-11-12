@@ -12,7 +12,7 @@ const root = new URL("../", import.meta.url).pathname;
 const bundle = `${root}services/epaperclip/dist/epaperclip.mjs`;
 const brokerBundle = `${root}services/host-broker/dist/epaperclip-broker.mjs`;
 const consoleDir = `${root}apps/console/dist`;
-const deployFiles = ["epaperclip-exec.mjs", "epaperclip-exec.socket", "epaperclip-exec@.service", "epaperclip-publish.mjs", "epaperclip-publish.socket", "epaperclip-publish@.service", "install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip-broker.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh", "epaperclip-cli.sh"];
+const deployFiles = ["epaperclip-exec.mjs", "epaperclip-exec.socket", "epaperclip-exec@.service", "epaperclip-publish.mjs", "epaperclip-publish.socket", "epaperclip-publish@.service", "install.sh", "epaperclip.service", "epaperclip-engine.service", "epaperclip-broker.service", "epaperclip.default", "engine-links.mjs", "epaperclip-update.sh", "epaperclip-update.service", "epaperclip-update.path", "verify-release.sh", "epaperclip-cli.sh", "isolated-bridge.sh"];
 const engineFiles = ["package.json", "package-lock.json"];
 // The Proxmox sandbox provider (agent containers): its built code, template scripts and lockfile. Its production packages
 // are installed at install time with the private Node.js, like the engine's (about 44 MB, so they are not in the download).
