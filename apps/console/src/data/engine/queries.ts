@@ -237,7 +237,13 @@ export const hasAccountBinding = (agent: { runtimeConfig?: unknown }): boolean =
 export function useGiveMyAccount(companyId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ agent, provider, method }: { agent: { id: string; status?: string; runtimeConfig?: unknown }; provider: string; method?: string | null }) => {
+    mutationFn: async ({ agent, provider, method, connectionId }: { agent: { id: string; status?: string; runtimeConfig?: unknown }; provider: string; method?: string | null; connectionId?: string | null }) => {
+      // An agent can only use a connection that is installed for it. Install it for the whole organization (what Paperclip does for a
+      // first sign-in), keeping whatever was already installed.
+      if (connectionId) {
+        const have = await engine.toolConnections.installs(connectionId).then((r) => r.installs, () => []);
+        if (!have.some((i) => i.targetType === "company" && i.targetId === companyId)) await engine.toolConnections.putInstalls(connectionId, [...have, { targetType: "company", targetId: companyId }]);
+      }
       const rc = (agent.runtimeConfig && typeof agent.runtimeConfig === "object" ? agent.runtimeConfig : {}) as Record<string, unknown>;
       await engine.agents.update(agent.id, { runtimeConfig: { ...rc, aiConnection: { provider, method: method ?? "subscription", mode: "responsible_user" } } });
       if (agent.status === "paused") await engine.agents.resume(agent.id).catch(() => undefined);

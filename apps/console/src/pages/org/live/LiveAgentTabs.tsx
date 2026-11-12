@@ -35,9 +35,11 @@ function TestAgentCard({ agent }: { agent: Agent }) {
   const envId = (agent as unknown as { defaultEnvironmentId?: string | null }).defaultEnvironmentId ?? null;
   const test = useMutation({ mutationFn: () => engine.agentAuth.test(companyId, agent.adapterType, envId as string) });
   const r = test.data;
-  const tone = !r ? "idle" : r.status === "pass" ? "good" : r.status === "warn" ? "warning" : "critical";
-  const title = test.isPending ? "Testing in the container…" : !r ? "Test your agent" : r.status === "pass" ? "Connection successful" : r.status === "warn" ? "Works, with warnings" : "The test didn't pass";
-  const body = test.isPending ? "Starting the container and asking the harness to answer. This takes about 20 seconds." : !r ? "Check that this agent's runtime and model can answer, before you give it work." : r.status === "pass" ? "Your runtime checks passed. Review the details below." : "Read the details below; each line says what to change.";
+  // The container and the harness can be fine while the agent has no login: that agent cannot run, so it is not "working".
+  const noLogin = !!r && r.checks.some((c) => /login is required|no ready authentication/i.test(c.message));
+  const tone = !r ? "idle" : r.status === "pass" && !noLogin ? "good" : r.status === "fail" ? "critical" : "warning";
+  const title = test.isPending ? "Testing in the container…" : !r ? "Test your agent" : noLogin ? "The runtime works, but this agent has no model account" : r.status === "pass" ? "Connection successful" : r.status === "warn" ? "Works, with warnings" : "The test didn't pass";
+  const body = test.isPending ? "Starting the container and asking the harness to answer. This takes about 20 seconds." : !r ? "Check that this agent's runtime and model can answer, before you give it work." : noLogin ? "Everything else passed. Give it your account with the button at the top of this page, then test again." : r.status === "pass" ? "Your runtime checks passed. Review the details below." : "Read the details below; each line says what to change.";
   return (
     <Card className="p-5 space-y-3">
       <div className="flex items-center gap-3">
