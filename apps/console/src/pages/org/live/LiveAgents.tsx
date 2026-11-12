@@ -102,6 +102,7 @@ export function LiveAgents() {
             <thead>
               <tr className="border-b border-line text-left text-compact text-ink-3">
                 <th scope="col" className="px-5 py-3 font-normal">Agent</th>
+                <th scope="col" className="px-4 py-3 font-normal">Status</th>
                 <th scope="col" className="px-4 py-3 font-normal">Harness</th>
                 <th scope="col" className="px-4 py-3 font-normal">Connection</th>
                 <th scope="col" className="px-4 py-3 font-normal">Default model</th>
@@ -123,9 +124,9 @@ export function LiveAgents() {
                           <span className="block font-medium truncate">{a.name}</span>
                           <span className="block text-xs text-ink-3 truncate">{names.role(a)}{a.title ? ` · ${a.title}` : ""}{a.lastHeartbeatAt ? ` · ran ${ago(a.lastHeartbeatAt)}` : ""}</span>
                         </span>
-                        <span className="ml-auto flex shrink-0 items-center gap-2"><ReadinessPill readiness={ready} /><Status kind={kind} label={label} /></span>
                       </Link>
                     </td>
+                    <td className="px-4 py-3"><span className="flex flex-wrap items-center gap-2"><Status kind={kind} label={label} /><ReadinessPill readiness={ready} /></span></td>
                     <td className="px-4 py-3 text-ink-2 whitespace-nowrap">{a.adapterType}</td>
                     <td className={`px-4 py-3 whitespace-nowrap ${connection === "Not connected" ? "text-warning" : "text-ink-2"}`}>{connection}</td>
                     <td className="px-4 py-3 font-mono text-compact text-ink-2 whitespace-nowrap">{model}</td>
@@ -298,7 +299,7 @@ export function LiveAgentDetail() {
             return (
               <Notice tone="info" title={`Your ${nice} account is connected, but ${a.name} isn't using it yet`} className="mb-3">
                 <p>Use it for {a.name}: its tasks will run with your {nice} login. Nothing is shared with anyone else.</p>
-                <div className="mt-2"><Button variant="primary" size="sm" loading={giveMine.isPending} onClick={() => giveMine.mutate({ agent: a, provider, method: mine.method })}>Use my {nice} account{a.status === "paused" ? " and resume" : ""}</Button></div>
+                <div className="mt-2"><Button variant="primary" size="sm" loading={giveMine.isPending} onClick={() => giveMine.mutate({ agent: a, provider, method: mine.method, connectionId: mine.id })}>Use my {nice} account{a.status === "paused" ? " and resume" : ""}</Button></div>
                 <ActionError error={giveMine.error} />
               </Notice>
             );

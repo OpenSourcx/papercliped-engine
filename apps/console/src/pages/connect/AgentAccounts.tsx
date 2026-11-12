@@ -116,7 +116,13 @@ function SignInModal({ companyId, orgName, provider, knownIds, onClose }: { comp
     if (!login?.done || gave.current || ownership !== "personal" || !agents.data) return;
     gave.current = true;
     const prov = provider;
-    for (const a of agents.data) if (accountProviderOf(a.adapterType) === prov && !hasAccountBinding(a) && a.status !== "terminated") giveMine.mutate({ agent: a, provider: prov });
+    const targets = agents.data.filter((a) => accountProviderOf(a.adapterType) === prov && !hasAccountBinding(a) && a.status !== "terminated");
+    if (targets.length === 0) return;
+    // The new account's id: the one that was not there before. The connection has to be installed for the agent before it can use it.
+    void connectApi.orgAi(companyId).then((r) => {
+      const fresh = r.connections.find((c) => c.provider === prov && typeof c.id === "string" && !knownIds.includes(c.id));
+      for (const a of targets) giveMine.mutate({ agent: a, provider: prov, method: fresh?.method, connectionId: fresh?.id });
+    }, () => undefined);
   }, [login?.done, ownership, agents.data, provider]); // eslint-disable-line react-hooks/exhaustive-deps
   const sendCode = useMutation({
     mutationFn: () => connectApi.sendLoginCode(companyId, login!.id, code.trim()),

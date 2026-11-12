@@ -261,6 +261,7 @@ export const ENGINE_PATHS = {
   // Signing an agent harness in (docs/AGENT-AUTH.md): Claude by browser code, Codex and Grok by device code.
   authSignal: "/api/companies/{companyId}/adapters/{type}/auth-signal",
   testEnvironment: "/api/companies/{companyId}/adapters/{type}/test-environment",
+  toolConnectionInstalls: "/api/tool-connections/{connectionId}/installs",
   deviceLogins: "/api/companies/{companyId}/adapters/{type}/login-sessions",
   deviceLoginActive: "/api/companies/{companyId}/adapters/{type}/login-sessions/active",
   deviceLogin: "/api/companies/{companyId}/adapters/{type}/login-sessions/{sessionId}",
@@ -506,6 +507,11 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       accept: (issueId: string, interactionId: string, body: Record<string, unknown> = {}) => call<unknown>("POST", P.interactionAccept, { id: issueId, interactionId }, body),
       reject: (issueId: string, interactionId: string, body: Record<string, unknown> = {}) => call<unknown>("POST", P.interactionReject, { id: issueId, interactionId }, body),
       touchedByMe: (companyId: string, limit = 50) => call<Issue[]>("GET", P.issues, { companyId }, undefined, { touchedByUserId: "me", limit }),
+    },
+    /** Which agents (or the whole organization) a connection is installed for: an agent can only use a connection installed for it. */
+    toolConnections: {
+      installs: (connectionId: string) => call<{ connectionId: string; installs: { targetType: "company" | "agent"; targetId: string }[] }>("GET", P.toolConnectionInstalls, { connectionId }),
+      putInstalls: (connectionId: string, installs: { targetType: "company" | "agent"; targetId: string }[]) => call<unknown>("PUT", P.toolConnectionInstalls, { connectionId }, { installs }),
     },
     agentAuth: {
       /** "authenticated", "missing" or "unknown" for Claude and Codex; anything else is "unknown". */
