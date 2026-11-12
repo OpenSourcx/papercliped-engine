@@ -1,3 +1,6 @@
+import { useAgentSkills, useSkills } from "../../../data/engine/more.ts";
+import { PinOrb } from "../../../pin/PinIsland.tsx";
+import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Zap } from "lucide-react";
@@ -5,14 +8,14 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { useConfirm } from "../../../ui/Confirm.tsx";
-import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select, AgentAvatar } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -23,6 +26,7 @@ export function LiveAgents() {
   const { setup } = useEngine();
   const b = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   const agents = useAgents(companyId);
+  const pinTeammate = usePinIdentity(companyId);
   const names = useNames(companyId);
   const [params, setParams] = useSearchParams();
   const creating = params.get("new") === "1";
@@ -38,6 +42,16 @@ export function LiveAgents() {
       {agents.isPending && <Card><Loading label="Loading agents" /></Card>}
       {agents.error && <Card><LoadError error={agents.error} retry={() => void agents.refetch()} /></Card>}
       {agents.data && list.length === 0 && <Card><EmptyState icon={<Bot className="h-5 w-5" />} title="No agents yet" body="Create an agent, give it a role, and assign it tasks." action={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} /></Card>}
+      {pinTeammate.data && (
+        <Card className="p-4 mb-4 flex items-center gap-4">
+          <PinOrb size={44} />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">Pin <span className="ml-1 text-compact font-normal text-ink-3">works in {org.name} through the host</span></div>
+            <p className="text-compact text-ink-3">Everything Pin does here is allowed one app and one action at a time, and recorded under Pin's name. Pin never runs inside a container, so it has no sandbox to set up.</p>
+          </div>
+          <Link to={`${b}/connectors`} className="text-compact text-accent whitespace-nowrap">What Pin may use</Link>
+        </Card>
+      )}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {list.map((a) => {
           const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
@@ -46,7 +60,7 @@ export function LiveAgents() {
           return (
             <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
               <Card interactive className="p-4 h-full">
-                <div className="flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
+                <div className="flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
                 <div className="mt-2 flex flex-wrap items-center gap-2"><ReadinessPill readiness={ready} /></div>
                 {ready && ready.state !== "ready" && <p className="text-xs text-ink-3 mt-1.5">{ready.summary}</p>}
                 <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
@@ -163,6 +177,11 @@ export function LiveAgentDetail() {
   const a = agent.data;
   const readiness = useAgentReadiness(companyId, a ? [a] : []);
   const current = a ? readiness.get(a.id) : undefined;
+  const everyone = useAgents(companyId);
+  const skillSnap = useAgentSkills(companyId, agentId);
+  const skillList = useSkills(companyId);
+  const skillNames = (skillSnap.data?.supported ? skillSnap.data.desiredSkills : []).map((key) => (skillList.data ?? []).find((k) => k.key === key)?.name ?? key.split("/").pop() ?? key);
+  const directReports = (everyone.data ?? []).filter((x) => x.reportsTo === agentId && x.status !== "terminated").length;
   const [params, setParams] = useSearchParams();
   type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
@@ -180,7 +199,7 @@ export function LiveAgentDetail() {
       {a && (
         <>
           <PageHeader
-            title={<span className="inline-flex items-center gap-3"><Avatar name={a.name} hue={org.hue + 40} size={40} />{a.name}</span>}
+            title={<span className="inline-flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={48} /><span className="flex flex-col leading-tight">{a.name}<span className="text-compact font-normal text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</span></span></span>}
             subtitle={<><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
             actions={
               <>
@@ -228,13 +247,19 @@ export function LiveAgentDetail() {
             <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-5">
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
+                <dt className="text-ink-3">Role</dt><dd>{names.role(a)}</dd>
+                <dt className="text-ink-3">Title</dt><dd>{a.title || "Not set"}</dd>
+                <dt className="text-ink-3">Direct reports</dt><dd>{directReports}</dd>
                 <dt className="text-ink-3">Runs with</dt><dd>{a.adapterType}{typeof a.adapterConfig?.model === "string" ? ` · ${a.adapterConfig.model}` : ""}</dd>
                 <dt className="text-ink-3">Reports to</dt><dd>{a.reportsTo ? names.agent(a.reportsTo) : "You"}</dd>
                 <dt className="text-ink-3">Last ran</dt><dd>{ago(a.lastHeartbeatAt)}</dd>
                 <dt className="text-ink-3">Spend</dt><dd>{a.budgetMonthlyCents ? `${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)} this month` : `${dollars(a.spentMonthlyCents)} this month, no budget set`}</dd>
                 {a.errorReason && <><dt className="text-ink-3">Error</dt><dd className="text-critical">{a.errorReason}</dd></>}
               </dl>
-              {a.capabilities && <p className="text-compact text-ink-2 mt-4 whitespace-pre-wrap">{a.capabilities}</p>}
+              <div className="mt-4"><div className="text-compact font-semibold uppercase tracking-label text-ink-3 mb-2">Capabilities</div>{a.capabilities ? <p className="text-compact text-ink-2 whitespace-pre-wrap">{a.capabilities}</p> : <p className="text-compact text-ink-3">No capability summary has been added.</p>}</div>
+              <div className="mt-4"><div className="flex items-center justify-between mb-2"><div className="text-compact font-semibold uppercase tracking-label text-ink-3">Skills</div><button type="button" className="text-compact text-accent" onClick={() => setTab("skills")}>Manage</button></div>
+                {skillNames.length === 0 ? <p className="text-compact text-ink-3">No skills turned on.</p> : <div className="flex flex-wrap gap-1.5">{skillNames.map((n) => <span key={n} className="rounded-full border border-line px-2.5 py-0.5 text-compact text-ink-2">{n}</span>)}</div>}
+              </div>
             </Card>
             <Card>
               <div className="px-5 pt-4 pb-2 text-compact font-semibold uppercase tracking-label text-ink-3">Recent runs</div>

@@ -13,7 +13,7 @@ import { useModals } from "../../../modals/useModals.ts";
 import { suggestSize } from "../../../pin/brain.ts";
 import { formatBytes } from "../../../lib/storage.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
-import { Avatar, Button, Card, PageFrame, PageHeader, SectionTitle, Status } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, PageFrame, PageHeader, SectionTitle, Status, AgentAvatar } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { describeActivity, useNames } from "./names.ts";
 
@@ -178,7 +178,7 @@ export function LiveDashboard() {
                 const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
                 return (
                   <Link key={a.id} to={`${b}/agents/${a.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-2/40 -mx-2 px-2 rounded-md">
-                    <Avatar name={a.name} hue={org.hue + 40} size={32} />
+                    <AgentAvatar name={a.name} hue={org.hue + 40} size={32} />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium">{a.name} <span className="text-ink-3 font-normal">· {names.role(a)}</span></div>
                       <div className="text-xs text-ink-3 truncate">{a.adapterType}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>

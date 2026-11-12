@@ -8,7 +8,7 @@ import type { Agent, Org, TaskStatus } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
 import { BarMeter } from "../../ui/meters.tsx";
 import { Modal } from "../../ui/Modal.tsx";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind, Select } from "../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Toggle, type StatusKind, Select, AgentAvatar } from "../../ui/primitives.tsx";
 import { LiveAgents } from "./live/LiveAgents.tsx";
 import { LiveTasks } from "./live/LiveTasks.tsx";
 import { LiveRoutines } from "./live/LiveRoutines.tsx";
@@ -51,7 +51,7 @@ function DemoInbox() {
             {org.inbox.map((i) => (
               <div key={i.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className={cn("h-2 w-2 rounded-full shrink-0", i.read ? "bg-transparent" : "bg-accent")} aria-label={i.read ? undefined : "Unread"} />
-                <Avatar name={i.from} hue={org.hue + 40} size={28} />
+                <AgentAvatar name={i.from} hue={org.hue + 40} size={28} />
                 <span className={cn("flex-1 text-sm", !i.read && "font-medium")}>{i.title}</span>
                 <span className="text-xs text-ink-3">{ago(i.at)}</span>
               </div>
@@ -199,7 +199,7 @@ function DemoDecisions() {
             {org.approvals.length === 0 && <Card><EmptyState icon={<Check className="h-5 w-5" />} title="Nothing to decide" body="Approval requests from agents show up here." /></Card>}
             {org.approvals.map((a) => (
               <Card key={a.id} className="p-4 flex flex-wrap items-center gap-3">
-                <Avatar name={a.requestedBy} hue={org.hue + 40} size={32} />
+                <AgentAvatar name={a.requestedBy} hue={org.hue + 40} size={32} />
                 <div className="flex-1 min-w-[200px]"><div className="text-sm font-medium">{a.title}</div><div className="text-xs text-ink-3">{a.requestedBy} · {a.kind} · {ago(a.at)}</div></div>
                 {a.status === "pending" ? (
                   <div className="flex gap-2">
@@ -233,7 +233,7 @@ function DemoAgents() {
                 return (
                   <button key={x.id} onClick={() => setOpen(x.id)} className="text-left">
                     <Card interactive className="p-4 h-full">
-                      <div className="flex items-center gap-3"><Avatar name={x.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium">{x.name}</div><div className="text-xs text-ink-3">{x.role} · {x.adapter}</div></div><Status kind={kind} label={label} /></div>
+                      <div className="flex items-center gap-3"><AgentAvatar name={x.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium">{x.name}</div><div className="text-xs text-ink-3">{x.role} · {x.adapter}</div></div><Status kind={kind} label={label} /></div>
                       <div className="text-compact text-ink-2 mt-3 truncate">{x.task ?? (x.engine === "native" ? "Runs natively on the host" : "Runs in container sessions")}</div>
                       {x.budgetUsd ? <BarMeter className="mt-3" label="Budget this month" pct={((x.spendUsd ?? 0) / x.budgetUsd) * 100} value={`$${(x.spendUsd ?? 0).toFixed(2)} of $${x.budgetUsd}`} /> : null}
                     </Card>
@@ -242,7 +242,7 @@ function DemoAgents() {
               })}
             </div>
             {a && (
-              <Modal title={a.name} subtitle={`${a.role} in ${org.name}`} icon={<Avatar name={a.name} hue={org.hue + 40} size={40} />} onClose={() => setOpen(null)}>
+              <Modal title={a.name} subtitle={`${a.role} in ${org.name}`} icon={<AgentAvatar name={a.name} hue={org.hue + 40} size={40} />} onClose={() => setOpen(null)}>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
                   <dt className="text-ink-3">Status</dt><dd><Status kind={AGENT[a.status][0]} label={AGENT[a.status][1]} /></dd>
                   <dt className="text-ink-3">Harness</dt><dd>{a.adapter}</dd>
@@ -276,7 +276,7 @@ function DemoCosts() {
             <Card className="divide-y divide-line">
               {org.agents.map((a) => (
                 <div key={a.id} className="flex items-center gap-3 px-5 py-3">
-                  <Avatar name={a.name} hue={org.hue + 40} size={28} />
+                  <AgentAvatar name={a.name} hue={org.hue + 40} size={28} />
                   <span className="w-28 text-sm">{a.name}</span>
                   <BarMeter className="flex-1" label={a.role} pct={a.budgetUsd ? ((a.spendUsd ?? 0) / a.budgetUsd) * 100 : 0} value={a.budgetUsd ? `$${(a.spendUsd ?? 0).toFixed(2)} of $${a.budgetUsd}` : "No budget"} />
                 </div>

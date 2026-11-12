@@ -83,6 +83,13 @@ summary() { # version proxmox engine-version url [more urls...]
   echo "  ${B}Engine${R}    Paperclip $ev ${D}(loopback only; hourly backups in $BACKUPS)${R}"
   echo "  ${B}Proxmox${R}   untouched at https://$(host_ip):8006/ ${D}— keep it as your way back in${R}"
   echo
+  echo "  ${B}Next${R}      1. Sign in at the address above."
+  echo "            2. Agent containers sets itself up ${D}(the template takes 8 to 20 minutes, once)${R}."
+  echo "            3. Create an organization, connect Claude or Codex ${D}(choose everyone in the organization)${R}, give Pin a task."
+  if ip link show vmbr1 >/dev/null 2>&1 && [ ! -f /usr/local/sbin/epaperclip-sandbox-firewall.sh ]; then
+    echo "  ${Y}${M_WARN} vmbr1 exists but has no sandbox firewall: containers on it could reach your LAN. Run: epaperclip doctor${R}"
+  fi
+  echo
 }
 
 [ "$(id -u)" -eq 0 ] || die "run as root (for example: sudo ./deploy/install.sh)"
@@ -703,6 +710,10 @@ if healthy_all; then
     say "open https://$(host_ip)$suffix/ (or https://$(host_name)/) and sign in with your Proxmox account."
     for tip in $(tailnet_ips); do say "also https://$tip/ — only from devices signed in to the same Tailscale network."; done
     say "Proxmox's own interface is untouched at https://$(host_ip):8006/ — keep it as your way back in."
+    say "next: 1) sign in at the address above  2) Agent containers sets itself up (the template takes 8 to 20 minutes, once)  3) create an organization, connect your Claude or Codex account (choose 'everyone in the organization'), give Pin a task."
+    if ip link show vmbr1 >/dev/null 2>&1 && [ ! -f /usr/local/sbin/epaperclip-sandbox-firewall.sh ]; then
+      say "warning: the bridge vmbr1 exists but has no sandbox firewall, so agent containers on it could reach your LAN. Run: epaperclip setup (or deploy/isolated-bridge.sh on a clean bridge name)."
+    fi
   fi
   if [ "$first_install" -ne 1 ]; then
     if [ -e "$BIN_DIR/epaperclip" ] || [ -e /usr/sbin/epaperclip ]; then say "to go back to the previous version: epaperclip rollback"; else say "to go back to the previous version: sudo ./deploy/install.sh --rollback"; fi

@@ -1,3 +1,4 @@
+import { AgentAvatar } from "../ui/primitives.tsx";
 import { FEATURES, type FeatureNav } from "../features/registry.ts";
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
@@ -161,7 +162,7 @@ function LiveOrgSidebar({ org, companyId }: { org: Org; companyId: string }) {
         <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {org.agents.length === 0 && <Link to={`${b}/agents?new=1`} className="block px-2 text-xs text-ink-3 hover:text-ink py-1">No agents yet · create one</Link>}
           {org.agents.map((a) => (
-            <Item key={a.id} to={`${b}/agents/${a.id}`} icon={<span className="relative inline-flex"><Users className="h-4 w-4" />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status}>
+            <Item key={a.id} to={`${b}/agents/${a.id}`} icon={<span className="relative inline-flex"><AgentAvatar name={a.name} hue={org.hue + 40} size={18} />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status}>
               {a.name}
             </Item>
           ))}
@@ -215,7 +216,7 @@ function DemoOrgSidebar({ org }: { org: Org }) {
         </Section>
         <Section id="sec-agents" label="Agents" action={<Link to={`${b}/agents`} className="tap-link text-micro text-ink-3 hover:text-ink px-1">All</Link>}>
           {org.agents.map((a) => (
-            <Item key={a.id} to={`${b}/agents`} icon={<span className="relative inline-flex"><Users className="h-4 w-4" />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status === "working" ? "working" : a.status}>
+            <Item key={a.id} to={`${b}/agents`} icon={<span className="relative inline-flex"><AgentAvatar name={a.name} hue={org.hue + 40} size={18} />{a.status === "working" && <span aria-label="working" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-good border border-bg" />}</span>} muted={a.status !== "working"} count={a.status === "working" ? "working" : a.status}>
               {a.name}
             </Item>
           ))}

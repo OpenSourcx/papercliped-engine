@@ -548,6 +548,8 @@ export function createEngineClient(opts: { base?: string; fetch?: Fetch } = {}) 
       file: (companyId: string, skillId: string, path: string) => call<CompanySkillFileDetail>("GET", P.skillFiles, { companyId, skillId }, undefined, { path }),
       catalog: () => call<Record<string, unknown>[]>("GET", P.skillsCatalog),
       installCatalog: (companyId: string, body: Record<string, unknown>) => call<unknown>("POST", P.skillInstallCatalog, { companyId }, body),
+      /** Creates a skill in this organization only, from text. */
+      create: (companyId: string, body: { name: string; slug?: string; description?: string; markdown?: string; tagline?: string; authorName?: string; categories?: string[] }) => call<unknown>("POST", P.skills, { companyId }, body),
       sources: (companyId: string) => call<Record<string, unknown>[]>("GET", P.skillSources, { companyId }),
       refreshSource: (companyId: string, sourceId: string) => call<unknown>("POST", P.skillSourceRefresh, { companyId, sourceId }, {}),
       forAgent: (agentId: string) => call<AgentSkillSnapshot>("GET", P.agentSkills, { id: agentId }),

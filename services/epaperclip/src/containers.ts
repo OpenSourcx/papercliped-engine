@@ -1637,7 +1637,13 @@ export class AgentContainers {
     let accounts: EngineAccount[] | undefined;
     const getAccounts = async () => (accounts ??= await this.orgAccounts(cid));
     for (const a of agents) {
-      if (a.status === "terminated" || a.id === pinIdentity) continue;
+      if (a.status === "terminated") continue;
+      if (a.id === pinIdentity) {
+        // Pin works through the host under this identity; it never runs in a container. The engine would otherwise keep
+        // verifying it as a sandbox agent every minute and failing ("http cannot run in a sandbox"), so it is paused for good.
+        if (a.lifecycleState && a.lifecycleState !== "paused") await this.eng("POST", `/api/agents/${encodeURIComponent(a.id)}/pause`, {}).catch(() => undefined);
+        continue;
+      }
       // A tick that just gave the agent its account does not count as a failed tick: the cause of the failure is gone.
       const justBound = await this.bindAccount(a, companyId, name, getAccounts, warnings);
       await this.reviveAfterBinding(justBound ? { ...a, runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: true } } : a, companyId, name, warnings);
@@ -1718,14 +1724,21 @@ export class AgentContainers {
     if (a.id in done) return false;
     const fits = (await getAccounts()).filter((c) => c.provider === provider && c.ownership === "shared" && c.status === "connected" && typeof c.grantId === "string");
     const pick = fits.length === 1 ? fits[0] : fits.find((c) => c.isDefault);
-    if (!pick) return false;
+    // No shared account: use the engine's own default, "the responsible user's account". A task runs with the personal login
+    // of the person it is for, which is what a person who signed in for themselves expects, and what Paperclip itself does.
+    // Only when a connected personal account for this provider exists, so an agent is never pointed at nothing.
+    const personal = pick ? undefined : (await getAccounts()).find((c) => c.provider === provider && c.ownership === "personal" && c.status === "connected");
+    if (!pick && !personal) return false;
     try {
-      await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: { provider, method: pick.method ?? "subscription", mode: "shared", connectionId: pick.id, grantId: pick.grantId } } });
-      this.d.state.setSetting("agentAccountBound", { ...done, [a.id]: { grantId: pick.grantId as string, at: Date.now() } });
+      const aiConnection = pick
+        ? { provider, method: pick.method ?? "subscription", mode: "shared", connectionId: pick.id, grantId: pick.grantId }
+        : { provider, method: personal!.method ?? "subscription", mode: "responsible_user" };
+      await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection } });
+      this.d.state.setSetting("agentAccountBound", { ...done, [a.id]: { grantId: pick ? (pick.grantId as string) : "responsible_user", at: Date.now() } });
       this.stuckAgents.delete(a.id); // the cause of its failing test run is gone; count again from now
-      activity.info("engine", "agent.account", `Gave ${a.name} the organization's ${provider} account${pick.name ? ` "${pick.name}"` : ""}`, { agentId: a.id });
+      activity.info("engine", "agent.account", pick ? `Gave ${a.name} the organization's ${provider} account${pick.name ? ` "${pick.name}"` : ""}` : `Set ${a.name} to use the responsible person's ${provider} account`, { agentId: a.id });
     } catch (e) {
-      warnings.push(`${org}: couldn't give ${a.name} the organization's ${provider} account: ${errText(e)}`);
+      warnings.push(`${org}: couldn't give ${a.name} an ${provider} account: ${errText(e)}`);
       return false;
     }
     return true;

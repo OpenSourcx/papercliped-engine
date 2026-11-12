@@ -7,7 +7,7 @@ import { ago } from "../../../data/engine/map.ts";
 import { APPROVAL_TYPE_LABEL, ISSUE_ICON, ISSUE_LABEL } from "../../../data/engine/labels.tsx";
 import { useApprovals } from "../../../data/engine/queries.ts";
 import { useAttention, useInboxWrites, useIssueInteractions, useMine } from "../../../data/engine/more.ts";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Tabs, Textarea, Select } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Status, Tabs, Textarea, Select, AgentAvatar } from "../../../ui/primitives.tsx";
 import { useDecide } from "../../../data/engine/queries.ts";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -72,7 +72,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
   return (
     <Card className="p-4" >
       <div className="flex flex-wrap items-start gap-3">
-        <Avatar name={item.originAgentName ?? kindLabel} hue={org.hue + 40} size={32} />
+        <AgentAvatar name={item.originAgentName ?? kindLabel} hue={org.hue + 40} size={32} />
         <div className="flex-1 min-w-52">
           <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-medium">{title}</span><Chip tone={SEVERITY_TONE[item.severity] ?? "neutral"}>{kindLabel}</Chip></div>
           <div className="text-xs text-ink-3">{item.originAgentName ? `${item.originAgentName} · ` : ""}{item.whyNow} · {ago(item.createdAt)}</div>

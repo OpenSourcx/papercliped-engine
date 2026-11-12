@@ -4,7 +4,7 @@ import { useEngine } from "../../data/store.tsx";
 import type { Agent, Org } from "../../data/types.ts";
 import { cn } from "../../lib/storage.ts";
 import { Modal } from "../../ui/Modal.tsx";
-import { Avatar, Input, PageFrame, PageHeader, Status, type StatusKind, Select } from "../../ui/primitives.tsx";
+import { Avatar, Input, PageFrame, PageHeader, Status, type StatusKind, Select, AgentAvatar } from "../../ui/primitives.tsx";
 import { useOrg } from "./OrgPages.tsx";
 
 const W = 216; // node width
@@ -198,7 +198,7 @@ export function OrgChart() {
                     )}
                     aria-label={`${a.name}, ${a.role}, ${label}. Press Enter for details.`}
                   >
-                    <Avatar name={a.name} hue={org.hue + 40} size={36} />
+                    <AgentAvatar name={a.name} hue={org.hue + 40} size={36} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium truncate">{a.name}</span>
                       <span className="block text-xs text-ink-3 truncate">{a.role} · {a.adapter}</span>
@@ -217,7 +217,7 @@ export function OrgChart() {
               const a = org.agents.find((x) => x.id === drag.id)!;
               return (
                 <div className="absolute pointer-events-none rounded-xl border border-accent bg-surface-3 px-3 flex items-center gap-2 shadow-2xl" style={{ left: drag.x - W / 2, top: drag.y - H / 2, width: W, height: 56 }}>
-                  <Avatar name={a.name} hue={org.hue + 40} size={28} />
+                  <AgentAvatar name={a.name} hue={org.hue + 40} size={28} />
                   <span className="text-compact font-medium">{a.name}</span>
                 </div>
               );
@@ -227,7 +227,7 @@ export function OrgChart() {
         {toast && <div role="status" className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-surface-3 border border-line-strong px-4 h-9 flex items-center text-compact shadow-xl fade-in">{toast}</div>}
       </div>
       {selected && (
-        <Modal title={selected.name} subtitle={`${selected.role} in ${org.name}`} icon={<Avatar name={selected.name} hue={org.hue + 40} size={40} />} onClose={() => setOpen(null)}>
+        <Modal title={selected.name} subtitle={`${selected.role} in ${org.name}`} icon={<AgentAvatar name={selected.name} hue={org.hue + 40} size={40} />} onClose={() => setOpen(null)}>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm items-center">
             <dt className="text-ink-3">Status</dt><dd><Status kind={STATUS[selected.status][0]} label={STATUS[selected.status][1]} /></dd>
             <dt className="text-ink-3">Working on</dt><dd>{selected.task ?? "Nothing right now"}</dd>
