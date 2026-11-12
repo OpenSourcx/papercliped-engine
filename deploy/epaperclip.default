@@ -14,3 +14,6 @@
 #EPC_ENGINE_URL=http://127.0.0.1:3100
 #EPC_ENGINE_PUBLIC_URL=http://127.0.0.1:3100
 #EPC_ENGINE_DIR=/opt/epaperclip/engine
+
+# Sign in with GitHub (PinView -> Changes): the client ID of a GitHub OAuth app with device flow enabled. See docs/GITHUB-OAUTH.md.
+#EPC_GITHUB_CLIENT_ID=

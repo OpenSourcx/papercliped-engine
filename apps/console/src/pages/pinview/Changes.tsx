@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleDot, CircleX, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2 } from "lucide-react";
 import { githubApi, type GithubStatus, type PullRequest } from "../../data/engine/githubApi.ts";
@@ -26,6 +26,39 @@ export function useGithub() {
 
 const parseRepos = (text: string) => text.split(/[\s,]+/).map((r) => r.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "")).filter(Boolean);
 
+/** Sign in with GitHub: a short code to type at github.com, no token to paste. Polls until the person approves. */
+function GithubSignIn({ onDone }: { onDone: () => void }) {
+  const [dev, setDev] = useState<{ id: string; userCode: string; verificationUri: string; interval: number } | null>(null);
+  const [state, setState] = useState<"idle" | "waiting" | "denied" | "expired">("idle");
+  const start = useMutation({ mutationFn: () => githubApi.deviceStart(), onSuccess: (d) => { setDev(d); setState("waiting"); } });
+  useEffect(() => {
+    if (!dev || state !== "waiting") return;
+    const t = setInterval(() => {
+      githubApi.devicePoll(dev.id).then((r) => {
+        if (r.status === "done") { setDev(null); setState("idle"); onDone(); }
+        else if (r.status === "denied" || r.status === "expired") { setDev(null); setState(r.status); }
+      }, () => undefined);
+    }, Math.max(5, dev.interval) * 1000);
+    return () => clearInterval(t);
+  }, [dev, state, onDone]);
+  return (
+    <div className="space-y-2" aria-live="polite">
+      {state !== "waiting" && <Button type="button" variant="primary" size="sm" loading={start.isPending} onClick={() => start.mutate()}>Connect with GitHub</Button>}
+      {state === "waiting" && dev && (
+        <div className="rounded-lg border border-line p-3 space-y-1.5">
+          <div className="text-compact font-medium">1. Open <a className="text-accent" href={dev.verificationUri} target="_blank" rel="noopener noreferrer">{new URL(dev.verificationUri).host}/login/device</a></div>
+          <div className="text-compact font-medium">2. Enter this code</div>
+          <div className="font-mono text-title tracking-code select-all">{dev.userCode}</div>
+          <p className="text-xs text-ink-3">This page notices when you approve. Nothing is pasted, and the token never appears here.</p>
+        </div>
+      )}
+      {state === "denied" && <p role="alert" className="text-compact text-critical">GitHub says you declined. You can start again.</p>}
+      {state === "expired" && <p role="alert" className="text-compact text-critical">The code ran out. Start again.</p>}
+      {start.error && <p role="alert" className="text-compact text-critical">{errorText(start.error)}</p>}
+    </div>
+  );
+}
+
 /** Connect GitHub, or change the token or the repositories. A blank token keeps the saved one. */
 export function ConnectGithub({ status, onDone }: { status: GithubStatus | undefined; onDone?: () => void }) {
   const qc = useQueryClient();
@@ -36,11 +69,15 @@ export function ConnectGithub({ status, onDone }: { status: GithubStatus | undef
     onSuccess: (s) => { qc.setQueryData(STATUS_KEY, s); void qc.invalidateQueries({ queryKey: PRS_KEY }); setToken(""); onDone?.(); },
   });
   const ready = (status?.connected || token.trim()) && parseRepos(repos).length > 0;
+  const viaGithub = !!status?.oauth && !status?.connected;
   return (
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
-      <Field label={status?.connected ? `Token (saved, ending ${status.last4}; leave blank to keep it)` : "GitHub token"} htmlFor="gh-token" hint="A fine-grained token with read access to pull requests and checks.">
-        <Input id="gh-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
-      </Field>
+      {viaGithub && <GithubSignIn onDone={() => { void qc.invalidateQueries({ queryKey: STATUS_KEY }); }} />}
+      {!viaGithub && (
+        <Field label={status?.connected ? `Connected${status.login ? ` as ${status.login}` : ""} (ending ${status.last4}). Paste a token to replace it, or leave blank to keep it` : "GitHub token"} htmlFor="gh-token" hint={status?.connected ? undefined : "Signing in with GitHub isn't set up on this device, so paste a fine-grained token with read access to pull requests and checks."}>
+          <Input id="gh-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
+        </Field>
+      )}
       <Field label="Repositories" htmlFor="gh-repos" hint="owner/name, one per line, up to 12.">
         <Textarea id="gh-repos" rows={3} spellCheck={false} value={repos} onChange={(e) => setRepos(e.target.value)} className="font-mono" placeholder="opensourcx/papercliped-engine" />
       </Field>

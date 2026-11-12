@@ -2,14 +2,14 @@ import { NodeApiError } from "./nodeApi.ts";
 
 /** Pull-request tracking (services/epaperclip/src/features/github.ts). The token is write-only: only its last four characters return. */
 
-async function req<T>(method: "GET" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+async function req<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
       credentials: "same-origin",
       headers: method === "GET" ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json", "X-EPC-Request": "1" },
-      body: method === "PUT" ? JSON.stringify(body ?? {}) : undefined,
+      body: method === "PUT" || method === "POST" ? JSON.stringify(body ?? {}) : undefined,
     });
   } catch {
     throw new NodeApiError(0, "Can't reach this device", "offline");
@@ -28,7 +28,9 @@ async function req<T>(method: "GET" | "PUT" | "DELETE", path: string, body?: unk
   return data as T;
 }
 
-export interface GithubStatus { connected: boolean; login: string | null; last4: string | null; repos: string[]; canManage: boolean }
+export interface GithubStatus { connected: boolean; login: string | null; last4: string | null; repos: string[]; canManage: boolean; oauth?: boolean }
+export interface GithubDevice { id: string; userCode: string; verificationUri: string; interval: number; expiresIn: number }
+export type GithubDevicePoll = { status: "pending" | "denied" | "expired" } | { status: "done"; login: string }
 export interface PullRequest {
   repo: string;
   number: number;
@@ -46,6 +48,8 @@ export interface PullRequests { connected: boolean; prs: PullRequest[]; errors: 
 export const githubApi = {
   status: () => req<GithubStatus>("GET", "/api/github"),
   connect: (b: { token?: string; repos?: string[] }) => req<GithubStatus>("PUT", "/api/github", b),
+  deviceStart: () => req<GithubDevice>("POST", "/api/github/device/start", {}),
+  devicePoll: (id: string) => req<GithubDevicePoll>("POST", "/api/github/device/poll", { id }),
   disconnect: () => req<GithubStatus>("DELETE", "/api/github"),
   prs: () => req<PullRequests>("GET", "/api/github/prs"),
 };
