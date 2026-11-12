@@ -464,6 +464,20 @@ describe("agent containers setup", () => {
       expect(eng.st.agentActs).toEqual(["pause claude-1", "resume claude-1"]);
     });
 
+    it("resumes an agent that was paused by the guard and bound afterwards, even by an earlier build, and not one that fails for another reason", async () => {
+      const bound = { mode: "shared", provider: "anthropic", method: "subscription", connectionId: "conn-1", grantId: "grant-1" };
+      const co = await setup([acct()], [
+        agent("old-bound", "claude_local", { status: "paused", lifecycleState: "paused", runtimeConfig: { aiConnection: bound } }),
+        agent("bound-first", "claude_local", { status: "paused", lifecycleState: "paused", runtimeConfig: { aiConnection: bound } }),
+      ]);
+      // An earlier build recorded the pause and, later, the binding as a bare grant id; the other agent was bound BEFORE it was paused.
+      state.setSetting("agentSetupPaused", { "old-bound": { companyId: co, name: "old-bound", at: 1000, attempts: 3, reason: "its test run keeps failing" }, "bound-first": { companyId: co, name: "bound-first", at: Date.now(), attempts: 3, reason: "its test run keeps failing" } });
+      state.setSetting("agentAccountBound", { "old-bound": "grant-1", "bound-first": { grantId: "grant-1", at: 5 } });
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["resume old-bound"]);
+      expect(Object.keys(state.getSetting<Record<string, unknown>>("agentSetupPaused")!)).toEqual(["bound-first"]);
+    });
+
     it("prefers the default when several shared accounts fit, and never re-binds an agent after its binding was cleared", async () => {
       const co = await setup([acct(), acct({ id: "conn-2", grantId: "grant-2", isDefault: true })], [agent("claude-1", "claude_local")]);
       await app.containers.reconcile();
