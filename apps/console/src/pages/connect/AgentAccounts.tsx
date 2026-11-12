@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, ExternalLink, KeyRound, LogIn } from "lucide-react";
 import { connectApi, type LoginView } from "../../data/engine/connectApi.ts";
-import { errorText, useAgents } from "../../data/engine/queries.ts";
+import { accountProviderOf, errorText, hasAccountBinding, useAgents, useGiveMyAccount } from "../../data/engine/queries.ts";
 import { failureCode, signInFailureHelp } from "../../data/engine/signInHelp.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Modal } from "../../ui/Modal.tsx";
@@ -80,6 +80,8 @@ function SignInModal({ companyId, orgName, provider, knownIds, onClose }: { comp
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const stop = useRef(false);
+  const giveMine = useGiveMyAccount(companyId);
+  const gave = useRef(false);
   const canStart = ownership === "personal" || allAgents || chosen.length > 0;
 
   const start = useMutation({
@@ -109,6 +111,13 @@ function SignInModal({ companyId, orgName, provider, knownIds, onClose }: { comp
     }, 2500);
     return () => { stop.current = true; clearInterval(t); };
   }, [login?.id, login?.done, login?.failed, companyId, knownIds]);
+  // Signing in for yourself should be enough: agents of this provider that have no account yet use it, and a paused one is resumed.
+  useEffect(() => {
+    if (!login?.done || gave.current || ownership !== "personal" || !agents.data) return;
+    gave.current = true;
+    const prov = provider;
+    for (const a of agents.data) if (accountProviderOf(a.adapterType) === prov && !hasAccountBinding(a) && a.status !== "terminated") giveMine.mutate({ agent: a, provider: prov });
+  }, [login?.done, ownership, agents.data, provider]); // eslint-disable-line react-hooks/exhaustive-deps
   const sendCode = useMutation({
     mutationFn: () => connectApi.sendLoginCode(companyId, login!.id, code.trim()),
     onSuccess: (r) => { setLogin(r.login); setCode(""); },

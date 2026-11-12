@@ -221,6 +221,34 @@ export function useCreateAgent(companyId: string) {
   return useMutation({ mutationFn: (body: CreateAgentBody) => engine.agents.create(companyId, body), onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.agents(companyId) }); void qc.invalidateQueries({ queryKey: qk.dashboard(companyId) }); void qc.invalidateQueries({ queryKey: qk.approvals(companyId) }); void qc.invalidateQueries({ queryKey: qk.activity(companyId) }); } });
 }
 
+/** Which provider's account an agent's harness signs in with (only the subscription harnesses). */
+const ACCOUNT_PROVIDER: Record<string, string> = { claude_local: "anthropic", codex_local: "openai" };
+export const accountProviderOf = (adapterType: string | null | undefined): string | undefined => (adapterType ? ACCOUNT_PROVIDER[adapterType] : undefined);
+export const hasAccountBinding = (agent: { runtimeConfig?: unknown }): boolean => {
+  const rc = agent.runtimeConfig as { aiConnection?: unknown } | null | undefined;
+  return !!rc && typeof rc === "object" && rc.aiConnection !== undefined && rc.aiConnection !== null;
+};
+
+/**
+ * Gives an agent the signed-in person's own account: the engine's "responsible person's account" mode, which runs a task with the
+ * login of whoever it is for. It is done here, as the person, because only they can see their personal accounts; the host's
+ * background check runs as the host and cannot. A paused agent is resumed so it starts checking at once.
+ */
+export function useGiveMyAccount(companyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ agent, provider, method }: { agent: { id: string; status?: string; runtimeConfig?: unknown }; provider: string; method?: string | null }) => {
+      const rc = (agent.runtimeConfig && typeof agent.runtimeConfig === "object" ? agent.runtimeConfig : {}) as Record<string, unknown>;
+      await engine.agents.update(agent.id, { runtimeConfig: { ...rc, aiConnection: { provider, method: method ?? "subscription", mode: "responsible_user" } } });
+      if (agent.status === "paused") await engine.agents.resume(agent.id).catch(() => undefined);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.agents(companyId) });
+      void qc.invalidateQueries({ queryKey: ["engine", "co", companyId] });
+    },
+  });
+}
+
 export function useAgentAction(companyId: string) {
   const qc = useQueryClient();
   return useMutation({

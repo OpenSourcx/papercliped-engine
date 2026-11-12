@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { connectApi } from "../../../data/engine/connectApi.ts";
 import { useAgentSkills, useSkills } from "../../../data/engine/more.ts";
 import { PinOrb } from "../../../pin/PinIsland.tsx";
 import { agentIdentity } from "../../../ui/agentIdentity.ts";
@@ -8,7 +10,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, isPinIdentity, useCreateAgent, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, accountProviderOf, hasAccountBinding, isPinIdentity, useCreateAgent, useGiveMyAccount, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
@@ -202,6 +204,8 @@ export function LiveAgentDetail() {
   const readiness = useAgentReadiness(companyId, a ? [a] : []);
   const current = a ? readiness.get(a.id) : undefined;
   const everyone = useAgents(companyId);
+  const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), retry: 1 });
+  const giveMine = useGiveMyAccount(companyId);
   const skillSnap = useAgentSkills(companyId, agentId);
   const skillList = useSkills(companyId);
   const skillNames = (skillSnap.data?.supported ? skillSnap.data.desiredSkills : []).map((key) => (skillList.data ?? []).find((k) => k.key === key)?.name ?? key.split("/").pop() ?? key);
@@ -246,6 +250,20 @@ export function LiveAgentDetail() {
             </div>
           </div>
           {terminate.dialog}
+          {(() => {
+            const provider = accountProviderOf(a.adapterType);
+            const mine = provider ? (accounts.data?.connections ?? []).find((c) => c.provider === provider && c.status === "connected") : undefined;
+            const modelBlocked = (current?.checks ?? []).some((c) => c.id === "model" && c.state === "blocked");
+            if (!provider || !mine || !modelBlocked || hasAccountBinding(a)) return null;
+            const nice = provider === "anthropic" ? "Claude" : "ChatGPT";
+            return (
+              <Notice tone="info" title={`Your ${nice} account is connected, but ${a.name} isn't using it yet`} className="mb-3">
+                <p>Use it for {a.name}: its tasks will run with your {nice} login. Nothing is shared with anyone else.</p>
+                <div className="mt-2"><Button variant="primary" size="sm" loading={giveMine.isPending} onClick={() => giveMine.mutate({ agent: a, provider, method: mine.method })}>Use my {nice} account{a.status === "paused" ? " and resume" : ""}</Button></div>
+                <ActionError error={giveMine.error} />
+              </Notice>
+            );
+          })()}
           {settingUp && (
             <Notice tone="warning" title={settingUp === "preparing" ? "This agent is being prepared" : settingUp === "verifying" ? "This agent is being verified" : "This agent is starting again"} className="mb-3">
               <p>The engine shows it as paused while it checks that the agent can run. Nobody paused it, and Resume does nothing until the checks pass. It starts by itself once they do.</p>
