@@ -357,6 +357,46 @@ describe("agent containers setup", () => {
     expect(activity.list({ event: "org.sync" }).some((e) => /Ghost/.test(e.message))).toBe(true);
   });
 
+  it("pauses an agent whose verification keeps failing, once, instead of letting the engine retry it forever (ERR-CTR-001)", async () => {
+    const sam = await admin();
+    const o = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    const [ceo] = eng.st.agents.get(o.co) ?? (await send("GET", `/engine/api/companies/${o.co}/agents`, sam), eng.st.agents.get(o.co))!;
+    // The engine keeps re-verifying it every minute and every try fails; a second agent is healthy, a third was paused on purpose.
+    Object.assign(ceo, { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation.", lifecycleHolds: [] });
+    const healthy = { id: "healthy-1", name: "Healthy", role: "engineer", status: "idle", lifecycleState: "ready", lifecycleError: null, lifecycleHolds: [], defaultEnvironmentId: null };
+    const chosen = { id: "paused-1", name: "Chosen pause", role: "engineer", status: "paused", lifecycleState: "paused", lifecycleError: null, lifecycleHolds: [], defaultEnvironmentId: null };
+    eng.st.agents.get(o.co)!.push(healthy, chosen);
+    await app.containers.reconcile();
+    await app.containers.reconcile();
+    expect(eng.st.agentActs).toEqual([]); // two failed minutes are not yet a loop
+    const out = await app.containers.reconcile();
+    expect(eng.st.agentActs).toEqual([`pause ${ceo.id}`]);
+    expect(ceo.lifecycleState).toBe("paused");
+    expect(out.join(" ")).toMatch(/paused CEO after 3 failed setup attempts/);
+    expect(state.getSetting<Record<string, { name: string; attempts: number }>>("agentSetupPaused")![ceo.id]).toMatchObject({ name: "CEO", attempts: 3 });
+    // It is not paused again, and nobody else is touched.
+    await app.containers.reconcile();
+    await app.containers.reconcile();
+    expect(eng.st.agentActs).toEqual([`pause ${ceo.id}`]);
+  });
+
+  it("stops retrying an environment the engine refuses for an adapter that can't run in a sandbox, and says why", async () => {
+    const sam = await admin();
+    const o = await org(sam, "Northwind");
+    expect((await runSetup(sam)).status).toBe("done");
+    await send("GET", `/engine/api/companies/${o.co}/agents`, sam);
+    const agent = { id: "proc-1", name: "Shell runner", role: "engineer", status: "paused", adapterType: "process", adapterConfig: {}, lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation.", lifecycleHolds: [], defaultEnvironmentId: null };
+    eng.st.agents.get(o.co)!.push(agent);
+    const first = await app.containers.reconcile();
+    expect(first.join(" ")).toMatch(/Shell runner uses the "process" adapter, which the engine won't run in a container/);
+    await app.containers.reconcile();
+    await app.containers.reconcile();
+    // One refusal, not one a minute, and the agent is then paused with the right reason.
+    expect(eng.st.refusedEnv.filter((id) => id === "proc-1")).toHaveLength(1);
+    expect(state.getSetting<Record<string, { reason: string }>>("agentSetupPaused")!["proc-1"]!.reason).toMatch(/adapter can't run in a container/);
+  });
+
   it("does not give an organization without a resource group a shared-pool environment", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);

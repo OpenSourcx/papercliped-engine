@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { refusedEnv: [] as string[], agentActs: [] as string[], archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -206,7 +206,13 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       for (const list of st.agents.values()) {
         const a = list.find((x) => x.id === agentOne[1]);
         if (a) {
-          Object.assign(a, b());
+          const patch = b();
+          // The real engine refuses a sandbox environment for an adapter that can't run in one (the plain process adapter).
+          if (patch.defaultEnvironmentId && a.adapterType === "process") {
+            st.refusedEnv.push(a.id);
+            return json(res, 422, { error: 'Environment driver "sandbox" is not allowed here' });
+          }
+          Object.assign(a, patch);
           return json(res, 200, a);
         }
       }
@@ -218,6 +224,8 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
         const a = list.find((x) => x.id === agentAct[1]);
         if (a) {
           a.status = agentAct[2] === "pause" ? "paused" : "idle";
+          if (agentAct[2] === "pause") { a.lifecycleState = "paused"; a.lifecycleError = null; }
+          st.agentActs.push(`${agentAct[2]} ${a.id}`);
           return json(res, 200, a);
         }
       }

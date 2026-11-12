@@ -377,6 +377,12 @@ export interface ContainersDeps {
 /** Harness adapters that have both an ACP lane (the engine's default) and a direct command-line lane. */
 const CLI_LANE = new Set(["claude_local", "codex_local", "gemini_local", "kimi_local"]);
 
+/** How many one-minute ticks in a row an agent may fail verification before it is paused (ERR-CTR-001). */
+export const SETUP_LOOP_LIMIT = 3;
+
+/** An agent the host paused because its setup kept failing; kept so the console can say why. */
+export interface SetupPause { companyId: string; name: string; at: number; attempts: number; reason: string }
+
 export class AgentContainers {
   private readonly d: ContainersDeps;
   private readonly now: () => number;
@@ -387,6 +393,9 @@ export class AgentContainers {
   private readonly jobs = new Map<string, JobView>();
   private scrub = new Set<string>();
   private reconciling: Promise<void> | null = null;
+  /** Consecutive ticks an agent has been seen failing verification, and adapters the engine has refused a sandbox for. */
+  private readonly stuckAgents = new Map<string, number>();
+  private readonly noSandbox = new Set<string>();
   private actor: EngineActor | null = null;
   /** Set by an explicit "try the template again": allows a rebuild after repeated failures. */
   private force = false;
@@ -1611,13 +1620,14 @@ export class AgentContainers {
     this.save({ environments: { ...(this.stored().environments ?? {}), [companyId]: { environmentId: env.id } } });
 
     // The organization's agents default to it, unless someone chose a different non-local environment on purpose.
-    const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
+    const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null; lifecycleState?: string | null; lifecycleError?: string | null; lifecycleHolds?: unknown[] | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
     const known = new Map(envs.map((e) => [e.id, e]));
     // Pin's own identity in this organization is only a subject for tool policy (src/pin-apps.ts). It never runs, so it must
     // not be given the organization's container environment, which would let a wake-up allocate a container for it.
     const pinIdentity = (this.d.state.getSetting<Record<string, string>>("pin.appIdentities") ?? {})[companyId];
     for (const a of agents) {
       if (a.status === "terminated" || a.id === pinIdentity) continue;
+      await this.guardSetupLoop(a, companyId, name, warnings);
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.
@@ -1632,14 +1642,54 @@ export class AgentContainers {
       const cur = a.defaultEnvironmentId ? known.get(a.defaultEnvironmentId) : undefined;
       // No default, or one that points at the (hidden) local environment, is replaced. A deliberate other choice stays.
       if (a.defaultEnvironmentId && cur && cur.driver !== "local" && !this.ours(cur)) continue;
+      const refusal = `${a.id}:${a.adapterType ?? ""}`;
+      if (this.noSandbox.has(refusal)) continue; // the engine already said no for this adapter; asking again every minute only adds noise
       try {
         await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { defaultEnvironmentId: env.id });
       } catch (e) {
-        warnings.push(`${name}: couldn't set ${a.name}'s environment: ${errText(e)}`);
+        if (/not allowed here/i.test(errText(e))) {
+          this.noSandbox.add(refusal);
+          warnings.push(`${name}: ${a.name} uses the "${a.adapterType ?? "unknown"}" adapter, which the engine won't run in a container. Give it a Claude, Codex, Gemini, OpenCode or Cursor adapter instead.`);
+        } else warnings.push(`${name}: couldn't set ${a.name}'s environment: ${errText(e)}`);
       }
     }
     return warnings;
   }
+  /**
+   * The engine re-verifies an agent that can't pass its test run every minute, forever, with no attempt cap or backoff, and
+   * each try can acquire a whole sandbox (on directory storage a full clone: tens of GB of writes a day). The engine's own
+   * way to stop that is to pause the agent, which takes it out of its setup sweep; Retry brings it back. So an agent seen
+   * failing verification for SETUP_LOOP_LIMIT ticks in a row is paused once, and why is recorded for the console.
+   */
+  private async guardSetupLoop(a: { id: string; name: string; adapterType?: string; lifecycleState?: string | null; lifecycleError?: string | null; lifecycleHolds?: unknown[] | null }, companyId: string, org: string, warnings: string[]): Promise<void> {
+    const failing = a.lifecycleState === "verifying" && !!a.lifecycleError && !(a.lifecycleHolds?.length ?? 0);
+    if (!failing) {
+      this.stuckAgents.delete(a.id);
+      if (a.lifecycleState === "ready") this.forgetSetupPause(a.id);
+      return;
+    }
+    const n = (this.stuckAgents.get(a.id) ?? 0) + 1;
+    this.stuckAgents.set(a.id, n);
+    if (n < SETUP_LOOP_LIMIT) return;
+    const why = this.noSandbox.has(`${a.id}:${a.adapterType ?? ""}`) ? `its "${a.adapterType}" adapter can't run in a container` : "its test run keeps failing";
+    try {
+      await this.eng("POST", `/api/agents/${encodeURIComponent(a.id)}/pause`, {});
+    } catch (e) {
+      warnings.push(`${org}: couldn't pause ${a.name} after ${n} failed setup attempts: ${errText(e)}`);
+      return;
+    }
+    this.stuckAgents.delete(a.id);
+    this.d.state.setSetting("agentSetupPaused", { ...(this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused") ?? {}), [a.id]: { companyId, name: a.name, at: Date.now(), attempts: n, reason: why } });
+    warnings.push(`${org}: paused ${a.name} after ${n} failed setup attempts because ${why}, so it stops cloning containers. Fix that, then press Retry.`);
+  }
+
+  private forgetSetupPause(agentId: string) {
+    const cur = this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused");
+    if (!cur || !(agentId in cur)) return;
+    const { [agentId]: _gone, ...rest } = cur;
+    this.d.state.setSetting("agentSetupPaused", rest);
+  }
+
   /**
    * Names the stuck lease(s) from the engine's own record when it can be read. The engine has no route this service may
    * offer to resolve one (see docs/AGENT-CONTAINERS-DIAGNOSIS.md), so this only reports.
