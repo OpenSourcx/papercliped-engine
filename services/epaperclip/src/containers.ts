@@ -1658,7 +1658,7 @@ export class AgentContainers {
   /**
    * The engine re-verifies an agent that can't pass its test run every minute, forever, with no attempt cap or backoff, and
    * each try can acquire a whole sandbox (on directory storage a full clone: tens of GB of writes a day). The engine's own
-   * way to stop that is to pause the agent, which takes it out of its setup sweep; Retry brings it back. So an agent seen
+   * way to stop that is to pause the agent, which takes it out of its setup sweep; Resume brings it back (Retry is only for an agent still verifying). So an agent seen
    * failing verification for SETUP_LOOP_LIMIT ticks in a row is paused once, and why is recorded for the console.
    */
   private async guardSetupLoop(a: { id: string; name: string; adapterType?: string; lifecycleState?: string | null; lifecycleError?: string | null; lifecycleHolds?: unknown[] | null }, companyId: string, org: string, warnings: string[]): Promise<void> {
@@ -1680,7 +1680,7 @@ export class AgentContainers {
     }
     this.stuckAgents.delete(a.id);
     this.d.state.setSetting("agentSetupPaused", { ...(this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused") ?? {}), [a.id]: { companyId, name: a.name, at: Date.now(), attempts: n, reason: why } });
-    warnings.push(`${org}: paused ${a.name} after ${n} failed setup attempts because ${why}, so it stops cloning containers. Fix that, then press Retry.`);
+    warnings.push(`${org}: paused ${a.name} after ${n} failed setup attempts because ${why}, so it stops cloning containers. Fix that, then resume the agent.`);
   }
 
   private forgetSetupPause(agentId: string) {

@@ -373,7 +373,7 @@ describe("agent containers setup", () => {
     const out = await app.containers.reconcile();
     expect(eng.st.agentActs).toEqual([`pause ${ceo.id}`]);
     expect(ceo.lifecycleState).toBe("paused");
-    expect(out.join(" ")).toMatch(/paused CEO after 3 failed setup attempts/);
+    expect(out.join(" ")).toMatch(/paused CEO after 3 failed setup attempts.*then resume the agent/);
     expect(state.getSetting<Record<string, { name: string; attempts: number }>>("agentSetupPaused")![ceo.id]).toMatchObject({ name: "CEO", attempts: 3 });
     // It is not paused again, and nobody else is touched.
     await app.containers.reconcile();
