@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { OrgChartCanvas } from "./LiveOrgChart.tsx";
 import { connectApi } from "../../../data/engine/connectApi.ts";
 import { useAgentSkills, useSkills } from "../../../data/engine/more.ts";
 import { PinOrb } from "../../../pin/PinIsland.tsx";
 import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Zap } from "lucide-react";
+import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Search, Zap } from "lucide-react";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
@@ -17,7 +18,7 @@ import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
 import { useConfirm } from "../../../ui/Confirm.tsx";
-import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Status, Tabs, Select, AgentAvatar } from "../../../ui/primitives.tsx";
+import { Avatar, Button, Card, EmptyState, Input, Notice, PageFrame, PageHeader, Segmented, Status, Tabs, Select, AgentAvatar } from "../../../ui/primitives.tsx";
 import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, AgentSkillsTab } from "./LiveAgentTabs.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
@@ -57,14 +58,19 @@ export function LiveAgents() {
   const [params, setParams] = useSearchParams();
   const creating = params.get("new") === "1";
   const setCreating = (v: boolean) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set("new", "1"); else n.delete("new"); return n; }, { replace: !v });
-  const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
+  const all = (agents.data ?? []).filter((a) => a.status !== "terminated");
+  const [q, setQ] = useState("");
+  const view = params.get("view") === "chart" ? "chart" : "list";
+  const setView = (v: "list" | "chart") => setParams((p) => { const n = new URLSearchParams(p); if (v === "list") n.delete("view"); else n.set("view", v); return n; }, { replace: true });
+  const needle = q.trim().toLowerCase();
+  const list = needle ? all.filter((a) => [a.name, a.title, a.role, a.adapterType].some((x) => typeof x === "string" && x.toLowerCase().includes(needle))) : all;
   const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
   const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
   const readiness = useAgentReadiness(companyId, list);
-  const working = list.filter((a) => a.status === "running").length;
+  const working = all.filter((a) => a.status === "running").length;
   return (
     <PageFrame width="6xl">
-      <PageHeader title="Agents" subtitle={agents.data ? `${working} of ${list.length} working.` : undefined} actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} />
+      <PageHeader title="Agents" subtitle={agents.data ? `${working} of ${all.length} working.` : undefined} actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} />
       {agents.isPending && <Card><Loading label="Loading agents" /></Card>}
       {agents.error && <Card><LoadError error={agents.error} retry={() => void agents.refetch()} /></Card>}
       {agents.data && list.length === 0 && <Card><EmptyState icon={<Bot className="h-5 w-5" />} title="No agents yet" body="Create an agent, give it a role, and assign it tasks." action={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} /></Card>}
@@ -78,25 +84,58 @@ export function LiveAgents() {
           <Link to={`${b}/connectors`} className="text-compact text-accent whitespace-nowrap">What Pin may use</Link>
         </Card>
       )}
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {list.map((a) => {
-          const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
-          const latest = latestRunStatusOf(latestByAgent.get(a.id));
-          const ready = readiness.get(a.id);
-          return (
-            <Link key={a.id} to={`${b}/agents/${a.id}`} className="text-left">
-              <Card interactive className="p-4 h-full">
-                <div className="flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={40} /><div className="flex-1 min-w-0"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-ink-3 truncate">{names.role(a)} · {a.adapterType}</div></div><Status kind={kind} label={label} /></div>
-                <div className="mt-2 flex flex-wrap items-center gap-2"><ReadinessPill readiness={ready} /></div>
-                {ready && ready.state !== "ready" && <p className="text-xs text-ink-3 mt-1.5">{ready.summary}</p>}
-                <div className="text-compact text-ink-2 mt-3 truncate">{a.reportsTo ? `Reports to ${names.agent(a.reportsTo)}` : "Reports to you"}{a.lastHeartbeatAt ? ` · last ran ${ago(a.lastHeartbeatAt)}` : ""}</div>
-                {latest && <div className="mt-2"><Status kind={latest[0]} label={`Latest run: ${latest[1]}`} /></div>}
-                {a.budgetMonthlyCents ? <BarMeter className="mt-3" label="Budget this month" pct={(a.spentMonthlyCents / a.budgetMonthlyCents) * 100} value={`${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)}`} /> : null}
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+      {all.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden />
+            <Input aria-label="Search agents" className="pl-9" placeholder="Search agents..." value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <Segmented label="View" value={view} onChange={(v) => setView(v as "list" | "chart")} options={[{ value: "list", label: "List" }, { value: "chart", label: "Org chart" }]} />
+          <span className="ml-auto text-compact text-ink-3">{list.length} {list.length === 1 ? "agent" : "agents"}</span>
+        </div>
+      )}
+      {all.length > 0 && list.length === 0 && <Card><p className="px-5 py-4 text-sm text-ink-3">No agent matches "{q}".</p></Card>}
+      {view === "chart" && list.length > 0 && <OrgChartCanvas list={list} companyId={companyId} base={b} />}
+      {view === "list" && list.length > 0 && (
+        <Card className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-compact text-ink-3">
+                <th scope="col" className="px-5 py-3 font-normal">Agent</th>
+                <th scope="col" className="px-4 py-3 font-normal">Harness</th>
+                <th scope="col" className="px-4 py-3 font-normal">Connection</th>
+                <th scope="col" className="px-4 py-3 font-normal">Default model</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {list.map((a) => {
+                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
+                const ready = readiness.get(a.id);
+                const rc = (a as unknown as { runtimeConfig?: { aiConnection?: { mode?: string } } }).runtimeConfig;
+                const connection = !accountProviderOf(a.adapterType) ? "Not needed" : rc?.aiConnection?.mode === "responsible_user" ? "Your account" : rc?.aiConnection ? "Organization account" : "Not connected";
+                const model = typeof a.adapterConfig?.model === "string" ? a.adapterConfig.model : "Default";
+                return (
+                  <tr key={a.id} className="hover:bg-surface-2/50">
+                    <td className="px-5 py-3">
+                      <Link to={`${b}/agents/${a.id}`} className="flex items-center gap-3 min-w-0">
+                        <AgentAvatar name={a.name} hue={org.hue + 40} size={40} />
+                        <span className="min-w-0">
+                          <span className="block font-medium truncate">{a.name}</span>
+                          <span className="block text-xs text-ink-3 truncate">{names.role(a)}{a.title ? ` · ${a.title}` : ""}{a.lastHeartbeatAt ? ` · ran ${ago(a.lastHeartbeatAt)}` : ""}</span>
+                        </span>
+                        <span className="ml-auto flex shrink-0 items-center gap-2"><ReadinessPill readiness={ready} /><Status kind={kind} label={label} /></span>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-ink-2 whitespace-nowrap">{a.adapterType}</td>
+                    <td className={`px-4 py-3 whitespace-nowrap ${connection === "Not connected" ? "text-warning" : "text-ink-2"}`}>{connection}</td>
+                    <td className="px-4 py-3 font-mono text-compact text-ink-2 whitespace-nowrap">{model}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
       {creating && <NewAgentModal onClose={() => setCreating(false)} />}
     </PageFrame>
   );

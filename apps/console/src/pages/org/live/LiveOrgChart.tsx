@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Agent, HeartbeatRun } from "@papercliped-engine/engine-client";
-import { GitBranch } from "lucide-react";
+import { GitBranch, Maximize2, Minus, Plus } from "lucide-react";
 import { useEngine } from "../../../data/store.tsx";
 import { useAgents, useLatestRuns } from "../../../data/engine/queries.ts";
 import { useAgentSettingsWrites } from "../../../data/engine/more.ts";
-import { AgentAvatar, Card, EmptyState, PageFrame, PageHeader, Select, Status } from "../../../ui/primitives.tsx";
+import { AgentAvatar, Card, EmptyState, IconButton, PageFrame, PageHeader, Select, Status } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
@@ -15,10 +16,7 @@ export function LiveOrgChart() {
   const { companyId, org } = useLiveOrg();
   const { setup } = useEngine();
   const agents = useAgents(companyId);
-  const names = useNames(companyId);
   const list = (agents.data ?? []).filter((a) => a.status !== "terminated");
-  const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
-  const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
   const roots = forestRoots(list);
   const base = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   return (
@@ -27,8 +25,32 @@ export function LiveOrgChart() {
       {agents.isPending && <Card><Loading label="Loading agents" /></Card>}
       {agents.error && <Card><LoadError error={agents.error} retry={() => void agents.refetch()} /></Card>}
       {agents.data && list.length === 0 && <Card><EmptyState icon={<GitBranch className="h-5 w-5" />} title="No agents yet" body="Create an agent and it will appear here." /></Card>}
-      {roots.length > 0 && <div className="overflow-x-auto pb-4"><div className="min-w-max flex gap-8 justify-center px-6 py-5">{roots.map((a) => <Branch key={a.id} agent={a} all={list} latestByAgent={latestByAgent} companyId={companyId} names={names} base={base} seen={new Set()} />)}</div></div>}
+      {roots.length > 0 && <OrgChartCanvas list={list} companyId={companyId} base={base} />}
     </PageFrame>
+  );
+}
+
+/** The chart itself, with zoom: used on the organization chart page and as the Agents page's chart view. */
+export function OrgChartCanvas({ list, companyId, base }: { list: Agent[]; companyId: string; base: string }) {
+  const names = useNames(companyId);
+  const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
+  const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
+  const roots = forestRoots(list);
+  const [zoom, setZoom] = useState(1);
+  const clamp = (z: number) => Math.min(1.6, Math.max(0.4, Math.round(z * 10) / 10));
+  return (
+    <div className="relative rounded-xl border border-line bg-surface/40">
+      <div className="absolute right-3 top-3 z-10 flex flex-col gap-1.5">
+        <IconButton label="Zoom in" size="sm" onClick={() => setZoom((z) => clamp(z + 0.1))}><Plus className="h-4 w-4" /></IconButton>
+        <IconButton label="Zoom out" size="sm" onClick={() => setZoom((z) => clamp(z - 0.1))}><Minus className="h-4 w-4" /></IconButton>
+        <IconButton label="Fit to view" size="sm" onClick={() => setZoom(1)}><Maximize2 className="h-4 w-4" /></IconButton>
+      </div>
+      <div className="overflow-auto" style={{ maxHeight: "70vh", minHeight: 320 }}>
+        <div className="min-w-max flex gap-8 justify-center px-8 py-8" style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}>
+          {roots.map((a) => <Branch key={a.id} agent={a} all={list} latestByAgent={latestByAgent} companyId={companyId} names={names} base={base} seen={new Set()} />)}
+        </div>
+      </div>
+    </div>
   );
 }
 
