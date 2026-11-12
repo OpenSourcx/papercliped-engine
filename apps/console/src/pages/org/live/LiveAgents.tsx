@@ -1,3 +1,4 @@
+import { PinOrb } from "../../../pin/PinIsland.tsx";
 import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -6,7 +7,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
@@ -24,6 +25,7 @@ export function LiveAgents() {
   const { setup } = useEngine();
   const b = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   const agents = useAgents(companyId);
+  const pinTeammate = usePinIdentity(companyId);
   const names = useNames(companyId);
   const [params, setParams] = useSearchParams();
   const creating = params.get("new") === "1";
@@ -39,6 +41,16 @@ export function LiveAgents() {
       {agents.isPending && <Card><Loading label="Loading agents" /></Card>}
       {agents.error && <Card><LoadError error={agents.error} retry={() => void agents.refetch()} /></Card>}
       {agents.data && list.length === 0 && <Card><EmptyState icon={<Bot className="h-5 w-5" />} title="No agents yet" body="Create an agent, give it a role, and assign it tasks." action={<Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />New agent</Button>} /></Card>}
+      {pinTeammate.data && (
+        <Card className="p-4 mb-4 flex items-center gap-4">
+          <PinOrb size={44} />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">Pin <span className="ml-1 text-compact font-normal text-ink-3">works in {org.name} through the host</span></div>
+            <p className="text-compact text-ink-3">Everything Pin does here is allowed one app and one action at a time, and recorded under Pin's name. Pin never runs inside a container, so it has no sandbox to set up.</p>
+          </div>
+          <Link to={`${b}/connectors`} className="text-compact text-accent whitespace-nowrap">What Pin may use</Link>
+        </Card>
+      )}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {list.map((a) => {
           const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);

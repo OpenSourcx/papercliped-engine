@@ -1637,7 +1637,13 @@ export class AgentContainers {
     let accounts: EngineAccount[] | undefined;
     const getAccounts = async () => (accounts ??= await this.orgAccounts(cid));
     for (const a of agents) {
-      if (a.status === "terminated" || a.id === pinIdentity) continue;
+      if (a.status === "terminated") continue;
+      if (a.id === pinIdentity) {
+        // Pin works through the host under this identity; it never runs in a container. The engine would otherwise keep
+        // verifying it as a sandbox agent every minute and failing ("http cannot run in a sandbox"), so it is paused for good.
+        if (a.lifecycleState && a.lifecycleState !== "paused") await this.eng("POST", `/api/agents/${encodeURIComponent(a.id)}/pause`, {}).catch(() => undefined);
+        continue;
+      }
       // A tick that just gave the agent its account does not count as a failed tick: the cause of the failure is gone.
       const justBound = await this.bindAccount(a, companyId, name, getAccounts, warnings);
       await this.reviveAfterBinding(justBound ? { ...a, runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: true } } : a, companyId, name, warnings);

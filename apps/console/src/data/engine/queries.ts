@@ -12,6 +12,13 @@ import { qk } from "./keys.ts";
 
 export const engine = createEngineClient();
 
+/**
+ * Pin's own identity in an organization ("Pin (host)", src/pin-apps.ts on the host service). It is how Pin works inside the
+ * organization: it acts under that name with a default-deny tool policy, through the host, and never runs in a container.
+ * It is not one of the organization's agents, so lists and counts leave it out and it has its own card on the Agents page.
+ */
+export const isPinIdentity = (a: { name?: string | null; adapterType?: string | null }): boolean => a.name === "Pin (host)" && a.adapterType === "http";
+
 /** A plain sentence for any failure, for showing on screen. */
 export function errorText(e: unknown): string {
   if (e instanceof EngineError || e instanceof HostError) {
@@ -61,7 +68,7 @@ export function useOrgs() {
 /** The agents of several organizations at once (for the rail and Home), sharing the cache with useAgents. */
 export function useAgentsOf(companyIds: string[]) {
   const ready = useEngineReady();
-  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agents(id), queryFn: () => engine.agents.list(id), enabled: ready, refetchInterval: 30_000 })) });
+  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agents(id), queryFn: () => engine.agents.list(id).then((l) => l.filter((a) => !isPinIdentity(a))), enabled: ready, refetchInterval: 30_000 })) });
 }
 
 /** Every resource group the person can see (one list from the host service); an organization without an entry has none yet. */
@@ -96,7 +103,9 @@ export function useCompanyQuery<T>(companyId: string | null | undefined, key: re
 
 export const useOrg = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.detail(companyId ?? ""), (id) => engine.companies.get(id));
 export const useDashboard = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.dashboard(companyId ?? ""), (id) => engine.companies.dashboard(id));
-export const useAgents = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.agents(companyId ?? ""), (id) => engine.agents.list(id));
+export const useAgents = (companyId: string | null | undefined) => useCompanyQuery(companyId, qk.agents(companyId ?? ""), (id) => engine.agents.list(id).then((l) => l.filter((a) => !isPinIdentity(a))));
+/** Pin's identity in this organization, if it has one yet. */
+export const usePinIdentity = (companyId: string | null | undefined) => useCompanyQuery(companyId, [...qk.agents(companyId ?? ""), "pin"], (id) => engine.agents.list(id).then((l) => l.find((a) => isPinIdentity(a)) ?? null));
 export const useAgent = (companyId: string | null | undefined, agentId: string) => useCompanyQuery(companyId, qk.agent(companyId ?? "", agentId), () => engine.agents.get(agentId));
 export const useRuns = (companyId: string | null | undefined, agentId?: string) => useCompanyQuery(companyId, qk.runs(companyId ?? "", agentId), (id) => engine.agents.runs(id, agentId, 10));
 /** Latest run for each visible agent. Each is keyed by its own agent ID, so a result is never shown on the wrong card. */
