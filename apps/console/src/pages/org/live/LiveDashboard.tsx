@@ -19,9 +19,9 @@ import { describeActivity, useNames } from "./names.ts";
 
 function Stat({ icon, value, label, to }: { icon: React.ReactNode; value: string; label: string; to: string }) {
   return (
-    <Link to={to}>
-      <Card interactive className="p-4 flex items-center gap-3">
-        <span className="h-9 w-9 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{icon}</span>
+    <Link to={to} className="block h-full">
+      <Card interactive className="p-4 flex items-center gap-3 h-full">
+        <span className="h-9 w-9 shrink-0 rounded-lg bg-surface-2 flex items-center justify-center text-ink-2">{icon}</span>
         <div>
           <div className="text-xl font-semibold tabular-nums leading-tight">{value}</div>
           <div className="text-xs text-ink-3">{label}</div>
@@ -135,22 +135,27 @@ export function LiveDashboard() {
 
   return (
     <PageFrame width="6xl">
-      <PageHeader
-        eyebrow={<Link to={`/${device}/home`} className="tap-link hover:text-ink">{device}</Link>}
-        title={<span className="inline-flex items-center gap-3"><Avatar name={org.name} hue={org.hue} size={40} />{org.name}</span>}
-        subtitle={<>{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-compact ml-3 font-mono">{org.engine?.prefix}</span></>}
-      />
+      <div className="mb-8">
+        <Link to={`/${device}/home`} className="tap-link text-compact text-ink-3 hover:text-ink">{device}</Link>
+        <div className="mt-1.5 flex items-start gap-4">
+          <Avatar name={org.name} hue={org.hue} size={56} className="mt-0.5" />
+          <div className="min-w-0">
+            <h1 className="text-heading sm:text-display font-semibold tracking-tight text-balance">{org.name}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-2 text-body">{working ? <Status kind="working" label={`${working} of ${live.length} agents working`} /> : <Status kind="idle" label={live.length ? "Idle" : "No agents yet"} />}<span className="text-ink-3 text-compact font-mono">{org.engine?.prefix}</span></div>
+          </div>
+        </div>
+      </div>
 
       {dash.error && <Card className="mb-4"><LoadError error={dash.error} retry={() => void dash.refetch()} /></Card>}
       <GettingStartedCard base={b} />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat icon={<Bot className="h-4 w-4" />} value={d ? String(d.agents.active + d.agents.running + d.agents.paused + d.agents.error) : "–"} label={d ? `${d.agents.running} working · ${d.agents.paused} paused${d.agents.error ? ` · ${d.agents.error} with errors` : ""}` : "Agents"} to={`${b}/agents`} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <Stat icon={<Bot className="h-4 w-4" />} value={agents.data ? String(live.length) : d ? String(d.agents.active + d.agents.running + d.agents.paused + d.agents.error) : "–"} label={agents.data ? `${working} working · ${live.filter((a) => a.status === "paused").length} paused${live.some((a) => a.status === "error") ? ` · ${live.filter((a) => a.status === "error").length} with errors` : ""}` : d ? `${d.agents.running} working · ${d.agents.paused} paused` : "Agents"} to={`${b}/agents`} />
         <Stat icon={<ListChecks className="h-4 w-4" />} value={d ? String(d.tasks.open) : "–"} label={d ? `Open tasks · ${d.tasks.inProgress} in progress${d.tasks.blocked ? ` · ${d.tasks.blocked} blocked` : ""}` : "Open tasks"} to={`${b}/tasks`} />
         <Stat icon={<Vote className="h-4 w-4" />} value={d ? String(d.pendingApprovals) : "–"} label="Waiting for your decision" to={`${b}/decisions`} />
         <Stat icon={<CircleDollarSign className="h-4 w-4" />} value={d ? dollars(d.costs.monthSpendCents) : "–"} label={d && d.costs.monthBudgetCents ? `Spent this month of ${dollars(d.costs.monthBudgetCents)}` : "Spent this month"} to={`${b}/costs`} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid lg:grid-cols-3 gap-4 items-start">
         <ResourceGroupCard />
         <Card className="p-5">
           <SectionTitle action={<Link to={`${b}/activity`} className="text-compact text-ink-3 hover:text-ink">All</Link>}>Recent activity</SectionTitle>
