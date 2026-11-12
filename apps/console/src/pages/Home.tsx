@@ -73,7 +73,7 @@ export function Home() {
         <div className="absolute inset-0 hero-glow pointer-events-none" aria-hidden />
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-28 sm:pt-36 pb-16 sm:pb-20 text-center">
           <h1 className="text-hero sm:text-hero-lg font-medium tracking-tight fade-in">
-            {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
+            <span className="block">{greeting()}, {name}.</span><span className="block text-ink-2">What's on your mind?</span>
           </h1>
           <p className="text-ink-3 mt-4 text-body fade-in">
             {device} {hostKnown ? deviceCondition(host, live ? containers.data : null) : "is loading"} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
@@ -101,11 +101,11 @@ export function Home() {
                 <ArcMeter label="Memory" pct={(host.memUsed / host.memTotal) * 100} caption={hostKnown ? `${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}` : "Reading…"} />
                 <ArcMeter label="Root disk" pct={host.diskTotal ? (host.diskUsed / host.diskTotal) * 100 : 0} caption={hostKnown ? `${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}` : "Reading…"} />
               </div>
-              <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-compact text-ink-3">
+              <div className="mt-5 pt-4 border-t border-line flex flex-wrap justify-center gap-x-6 gap-y-1 text-compact text-ink-3">
                 {hostKnown ? <><span>{host.cpuModel}</span><span>Proxmox VE {proxmoxVersion(host.version)}</span><span>{host.ip}</span></> : <span>Reading this device…</span>}
               </div>
             </Card>
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
               {[
                 { icon: <Boxes className="h-4 w-4" />, value: `${running} / ${machines.length}`, label: "Machines running", to: `/${device}/machines` },
                 { icon: <Bot className="h-4 w-4" />, value: String(working), label: "Agents working", to: `/${device}/${data.orgs[0]?.slug ?? "home"}` },
@@ -128,10 +128,10 @@ export function Home() {
 
         <section>
           <SectionTitle action={<Link to={`/${device}/storage`} className="text-compact text-ink-3 hover:text-ink">View storage</Link>}>Drives</SectionTitle>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {[
-              ...(host.diskTotal ? [{ id: "/", name: "Root file system", sub: "System disk", used: host.diskUsed, total: host.diskTotal, root: true, active: true }] : []),
-              ...data.host.storage.map((s) => ({ id: s.id, name: s.id, sub: [s.type, s.content.slice(0, 3).join(", ")].filter(Boolean).join(" · "), used: s.used, total: s.total, root: false, active: s.active !== false })),
+              ...(host.diskTotal ? [{ id: "/", name: "Root file system", sub: data.host.storage.some((s) => s.type === "dir" && host.diskTotal && Math.abs(s.total - host.diskTotal) / host.diskTotal < 0.02 && Math.abs(s.used - host.diskUsed) / host.diskTotal < 0.02) ? "System disk, also holds local" : "System disk", used: host.diskUsed, total: host.diskTotal, root: true, active: true }] : []),
+              ...data.host.storage.filter((s) => !(host.diskTotal && s.type === "dir" && Math.abs(s.total - host.diskTotal) / host.diskTotal < 0.02 && Math.abs(s.used - host.diskUsed) / host.diskTotal < 0.02)).map((s) => ({ id: s.id, name: s.id, sub: [s.type, s.content.slice(0, 3).join(", ")].filter(Boolean).join(" · "), used: s.used, total: s.total, root: false, active: s.active !== false })),
             ].map((s) => (
               <Link key={s.id} to={`/${device}/storage`}>
                 <Card interactive className="p-4">

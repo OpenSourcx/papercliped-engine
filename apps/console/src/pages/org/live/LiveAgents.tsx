@@ -8,7 +8,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, useCreateAgent, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, isPinIdentity, useCreateAgent, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
@@ -20,6 +20,30 @@ import { AgentBudgetTab, AgentConfigTab, AgentInstructionsTab, AgentRunsTab, Age
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 import { useAgentsCanRun } from "../../containers/Banner.tsx";
+
+/** Pin's page in an organization. It is not an agent to run: nothing to resume, wake up, set up or terminate. */
+function PinTeammate({ orgName, base }: { orgName: string; base: string }) {
+  return (
+    <>
+      <div className="mb-8 flex items-start gap-4">
+        <PinOrb size={64} />
+        <div className="min-w-0">
+          <h1 className="text-heading sm:text-display font-semibold tracking-tight">Pin</h1>
+          <p className="mt-1 text-compact text-ink-3">Works in {orgName} through the host</p>
+        </div>
+      </div>
+      <Card className="p-5 space-y-4 max-w-2xl">
+        <p className="text-sm text-ink-2">Pin is your assistant for the Proxmox host. In {orgName} it acts under the name "Pin (host)", through the host, never inside a container. So there is nothing to resume, wake up or set up here.</p>
+        <ul className="list-disc pl-5 space-y-1.5 text-sm text-ink-2">
+          <li>Everything Pin may do is allowed one app and one action at a time. Anything not allowed is refused.</li>
+          <li>Every action is recorded under Pin's name in Activity.</li>
+          <li>You can allow or revoke what Pin may use at any time.</li>
+        </ul>
+        <div className="flex flex-wrap gap-2"><Link to={`${base}/connectors`}><Button variant="primary">What Pin may use</Button></Link><Link to={`${base}/activity`}><Button>See what Pin did</Button></Link></div>
+      </Card>
+    </>
+  );
+}
 
 export function LiveAgents() {
   const { org, companyId } = useLiveOrg();
@@ -196,13 +220,20 @@ export function LiveAgentDetail() {
       <Link to={`${b}/agents`} className="inline-flex items-center gap-1.5 text-compact text-ink-3 hover:text-ink mb-4"><ArrowLeft className="h-3.5 w-3.5" />Agents</Link>
       {agent.isPending && <Card><Loading label="Loading agent" /></Card>}
       {agent.error && <Card><LoadError error={agent.error} retry={() => void agent.refetch()} /></Card>}
-      {a && (
+      {a && isPinIdentity(a) && <PinTeammate orgName={org.name} base={b} />}
+      {a && !isPinIdentity(a) && (
         <>
-          <PageHeader
-            title={<span className="inline-flex items-center gap-3"><AgentAvatar name={a.name} hue={org.hue + 40} size={48} /><span className="flex flex-col leading-tight">{a.name}<span className="text-compact font-normal text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</span></span></span>}
-            subtitle={<><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3 text-sm ml-3">{names.role(a)}</span></>}
-            actions={
-              <>
+          <div className="mb-8 flex flex-wrap items-start justify-between gap-x-4 gap-y-4">
+            <div className="flex min-w-0 flex-1 basis-72 items-start gap-4">
+              <AgentAvatar name={a.name} hue={org.hue + 40} size={64} className="mt-0.5" />
+              <div className="min-w-0">
+                <h1 className="text-heading sm:text-display font-semibold tracking-tight text-balance">{a.name}</h1>
+                <p className="mt-1 text-compact text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-2"><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3">{names.role(a)}</span></div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+
                 {settingUp ? (
                   <Button onClick={() => act.mutate({ id: a.id, action: "retry" })} loading={act.isPending && act.variables?.action === "retry"} disabled={act.isPending}><RefreshCw className="h-4 w-4" />Check again</Button>
                 ) : a.status === "paused" ? (
@@ -212,9 +243,8 @@ export function LiveAgentDetail() {
                 )}
                 {a.status !== "terminated" && <Button variant="danger" onClick={() => terminate.ask({ title: `Terminate ${a.name}?`, body: "The agent stops for good and can't be brought back. Its tasks, comments and history stay.", label: "Terminate", danger: true, run: () => act.mutateAsync({ id: a.id, action: "terminate" }).catch(() => {}) })} disabled={act.isPending}><Ban className="h-4 w-4" />Terminate</Button>}
                 <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={!canRun || act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"} disabledReason={canRun ? undefined : "Agents can't run until agent containers are set up"}><Zap className="h-4 w-4" />Wake up</Button>
-              </>
-            }
-          />
+            </div>
+          </div>
           {terminate.dialog}
           {settingUp && (
             <Notice tone="warning" title={settingUp === "preparing" ? "This agent is being prepared" : settingUp === "verifying" ? "This agent is being verified" : "This agent is starting again"} className="mb-3">

@@ -159,6 +159,22 @@ describe("the kill switch and the vault recovery routes", () => {
     expect(audit).toContain("safety.kill-switch");
   });
 
+  it("while it is on, nothing can be started behind it: no resume, wake-up, routine run or container setup", async () => {
+    const sam = await signIn("sam");
+    const a = await org(sam, "Acme");
+    const agent = (await send("GET", `/engine/api/companies/${a}/agents`, sam)).json[0].id;
+    await send("POST", "/api/safety/kill-switch", sam, { confirm: "STOP EVERYTHING" });
+    for (const path of [`/engine/api/agents/${agent}/resume`, `/engine/api/agents/${agent}/wakeup`, `/engine/api/agents/${agent}/heartbeat/invoke`, `/engine/api/companies/${a}/agents/${agent}/wakeup`, "/api/agent-containers/setup"]) {
+      const r = await send("POST", path, sam, {});
+      expect(r.status, path).toBe(423);
+      expect(JSON.stringify(r.json)).toContain("kill switch");
+    }
+    // Reading is untouched, and once a person turns it off the same route is no longer refused by the switch.
+    expect((await send("GET", `/engine/api/companies/${a}/agents`, sam)).status).toBe(200);
+    await send("POST", "/api/safety/resume", sam, {});
+    expect((await send("POST", "/api/agent-containers/setup", sam, {})).status).not.toBe(423);
+  });
+
   it("resumes without restarting anything, and unpauses only what it paused", async () => {
     const sam = await signIn("sam");
     const a = await org(sam, "Acme");

@@ -22,6 +22,7 @@ import { NodeScope } from "./features/clusterNode.ts";
 import { Iac, validateSpec, type OrgRole } from "./iac.ts";
 import { SessionStore, type Session } from "./sessions.ts";
 import { HttpError, cookieValue, readJson, sendJson } from "./http.ts";
+import { killSwitchOn } from "./features/safety.ts";
 import { StateStore } from "./state.ts";
 import { RoutineIngress } from "./routine-ingress.ts";
 import { AppAccessManager } from "./app-access.ts";
@@ -972,6 +973,7 @@ export function createApp(d: AppDeps) {
       }));
     }
     if (method === "POST" && path === "/api/agent-containers/setup") {
+      if (killSwitchOn(state)) throw new HttpError(423, "kill_switch", "The kill switch is on, so agent containers can't be set up or changed. Turn it off in Settings, Safety first.");
       requireSameSite(req);
       const s = requireSession(req);
       const body = await readJson(req);
@@ -2387,6 +2389,11 @@ export function createApp(d: AppDeps) {
     // Route every spelling accepted by the engine through the same permission-safe finish, including encoded paths.
     let target = "";
     try { target = decodeURIComponent((req.url ?? "").split("?")[0]!).replace(/^\/engine/, ""); } catch { /* forward performs the normal path validation */ }
+    // The emergency switch is only an emergency switch if nothing can start again behind it: no resuming or waking an agent, no
+    // running a routine, until a person turns it off in Settings, Safety.
+    if (req.method === "POST" && killSwitchOn(state) && /^\/api\/(agents\/[^/]+\/(resume|wakeup|invoke|heartbeat\/invoke)|companies\/[^/]+\/(agents\/[^/]+\/(resume|wakeup)|routines\/[^/]+\/run))\/?$/i.test(target)) {
+      throw new HttpError(423, "kill_switch", "The kill switch is on, so nothing can start. Turn it off in Settings, Safety first.");
+    }
     const finish = target.match(/^\/api\/companies\/([A-Za-z0-9_-]{1,64})\/tools\/apps\/([A-Za-z0-9_-]{1,64})\/finish\/?$/i);
     if (req.method === "POST" && finish) {
       enginePath(req.url ?? "");
