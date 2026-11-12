@@ -117,6 +117,71 @@ describe("GitHub pull-request tracking", () => {
   });
 });
 
+describe("GitHub sign-in (OAuth device flow)", () => {
+  const oauth = (answers: unknown[]) => {
+    const real2 = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const u = String(input);
+      if (u.startsWith("https://github.com/login/device/code")) { calls.push("code " + init.body); return j({ device_code: "DEV123", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 5 }); }
+      if (u.startsWith("https://github.com/login/oauth/access_token")) { calls.push("token"); return j(answers.shift() ?? { error: "authorization_pending" }); }
+      if (u === "https://api.github.com/user") return j({ login: "octo" });
+      return real2(input, init);
+    }) as typeof fetch;
+    return calls;
+  };
+  afterEach(() => { delete process.env.EPC_GITHUB_CLIENT_ID; });
+
+  it("says it isn't set up until the device has an OAuth app, and never shows the device code", async () => {
+    const sam = await signIn("sam");
+    expect((await send("GET", "/api/github", sam)).json.oauth).toBe(false);
+    const r = await send("POST", "/api/github/device/start", sam, {});
+    expect(r.status).toBe(409);
+    expect(r.json.code).toBe("oauth_not_configured");
+  });
+
+  it("starts, waits while GitHub says pending, then saves the token sealed and reports done", async () => {
+    process.env.EPC_GITHUB_CLIENT_ID = "Iv1.testclient";
+    const sam = await signIn("sam");
+    expect((await send("GET", "/api/github", sam)).json.oauth).toBe(true);
+    const calls = oauth([{ error: "authorization_pending" }, { access_token: "gho_abcdefghijklmnopqrstuvwxyz0123456789" }]);
+    const start = await send("POST", "/api/github/device/start", sam, {});
+    expect(start.status).toBe(200);
+    expect(start.json).toMatchObject({ userCode: "ABCD-1234", verificationUri: "https://github.com/login/device" });
+    expect(JSON.stringify(start.json)).not.toContain("DEV123");
+    expect(calls[0]).toContain("client_id=Iv1.testclient");
+    expect((await send("POST", "/api/github/device/poll", sam, { id: start.json.id })).json.status).toBe("pending");
+    // GitHub asks to wait between polls; the host holds the second poll back instead of hammering GitHub.
+    expect((await send("POST", "/api/github/device/poll", sam, { id: start.json.id })).json.status).toBe("pending");
+    expect(calls.filter((c) => c === "token")).toHaveLength(1);
+  });
+
+  it("saves the token sealed when GitHub approves, shows only its last four, and survives a denial", async () => {
+    process.env.EPC_GITHUB_CLIENT_ID = "Iv1.testclient";
+    const sam = await signIn("sam");
+    oauth([{ access_token: "gho_abcdefghijklmnopqrstuvwxyz0123456789" }]);
+    const start = await send("POST", "/api/github/device/start", sam, {});
+    const done = await send("POST", "/api/github/device/poll", sam, { id: start.json.id });
+    expect(done.json).toMatchObject({ status: "done", login: "octo" });
+    const st = (await send("GET", "/api/github", sam)).json;
+    expect(st).toMatchObject({ connected: true, login: "octo", last4: "6789" });
+    expect(JSON.stringify(st)).not.toContain("gho_abcdefghij");
+    oauth([{ error: "access_denied" }]);
+    const again = await send("POST", "/api/github/device/start", sam, {});
+    expect((await send("POST", "/api/github/device/poll", sam, { id: again.json.id })).json.status).toBe("denied");
+  });
+
+  it("refuses a stranger's sign-in id and a non-administrator", async () => {
+    process.env.EPC_GITHUB_CLIENT_ID = "Iv1.testclient";
+    const sam = await signIn("sam");
+    const lee = await signIn("lee");
+    oauth([]);
+    const start = await send("POST", "/api/github/device/start", sam, {});
+    expect((await send("POST", "/api/github/device/poll", lee, { id: start.json.id })).status).toBe(403);
+    expect((await send("POST", "/api/github/device/poll", sam, { id: "dv_nope" })).status).toBe(404);
+  });
+});
+
 describe("Pin's list_pull_requests", () => {
   it("says GitHub isn't connected, and filters by repository and open state once it is", async () => {
     const { pullRequestsTool } = await import("../src/features/github.ts");

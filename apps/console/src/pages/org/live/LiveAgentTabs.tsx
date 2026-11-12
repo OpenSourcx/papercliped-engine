@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Plus, Square, Trash2 } from "lucide-react";
 import type { Agent, HeartbeatRun } from "@papercliped-engine/engine-client";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
-import { engine, useAdapterModels, useAdapters, useAgents, useEngineReady } from "../../../data/engine/queries.ts";
+import { accountProviderOf, engine, useAdapterModels, useAdapters, useAgents, useEngineReady, useGiveMyAccount } from "../../../data/engine/queries.ts";
+import { useNavigate } from "react-router-dom";
+import { useEngine } from "../../../data/store.tsx";
+import { connectApi } from "../../../data/engine/connectApi.ts";
 import { tapEvents } from "../../../data/engine/events.ts";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { useAgentSettingsWrites, useAgentSkills, useBudgetWrites, useCreateSecret, useInstructions, useInstructionsFile, useInstructionsHistory, useSecrets, useSkills, useSkillWrites } from "../../../data/engine/more.ts";
@@ -79,6 +82,7 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const [model, setModel] = useState(typeof cfg.model === "string" ? cfg.model : "");
   const [command, setCommand] = useState(typeof cfg.command === "string" ? cfg.command : "");
   const rt = (agent as unknown as { runtimeConfig?: { heartbeat?: { enabled?: boolean; intervalSec?: number } } }).runtimeConfig ?? {};
+  const [engineLane, setEngineLane] = useState(typeof cfg.engine === "string" && cfg.engine !== "cli" ? cfg.engine : "");
   const [effort, setEffort] = useState(typeof cfg.effort === "string" ? cfg.effort : "");
   const [maxTurns, setMaxTurns] = useState(typeof cfg.maxTurnsPerRun === "number" ? String(cfg.maxTurnsPerRun) : "");
   const [timeoutSec, setTimeoutSec] = useState(typeof cfg.timeoutSec === "number" ? String(cfg.timeoutSec) : "");
@@ -97,6 +101,16 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const wholeOrBlank = (v: string, min: number) => v.trim() === "" || (/^\d{1,7}$/.test(v.trim()) && Number(v) >= min);
   const badRun = !wholeOrBlank(maxTurns, 1) || !wholeOrBlank(timeoutSec, 0) || !wholeOrBlank(beatSec, 30);
   const hasEffort = adapter === "claude_local";
+  const provider = accountProviderOf(adapter);
+  const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), retry: 1 });
+  const mine = provider ? (accounts.data?.connections ?? []).find((c) => c.provider === provider && c.status === "connected") : undefined;
+  const aiNow = (agent as unknown as { runtimeConfig?: { aiConnection?: { mode?: string } } }).runtimeConfig?.aiConnection;
+  const connectionNow: "none" | "responsible_user" | "shared" = !aiNow ? "none" : aiNow.mode === "responsible_user" ? "responsible_user" : "shared";
+  const giveMine = useGiveMyAccount(companyId);
+  const navigate = useNavigate();
+  const { org: liveOrg } = useLiveOrg();
+  const { setup } = useEngine();
+  const connectBase = `/${setup?.deviceName ?? "pve"}/${liveOrg.slug}`;
 
   const save = () => {
     const nextEnv: Record<string, unknown> = {};
@@ -105,6 +119,7 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
     if (model) adapterConfig.model = model; else delete adapterConfig.model;
     if (adapter === "process") { if (command) adapterConfig.command = command; else delete adapterConfig.command; }
     if (env.length) adapterConfig.env = nextEnv; else delete adapterConfig.env;
+    if (engineLane) adapterConfig.engine = engineLane; else if (adapterConfig.engine !== "cli") delete adapterConfig.engine;
     if (hasEffort) { if (effort) adapterConfig.effort = effort; else delete adapterConfig.effort; }
     if (maxTurns.trim()) adapterConfig.maxTurnsPerRun = Number(maxTurns); else delete adapterConfig.maxTurnsPerRun;
     if (timeoutSec.trim()) adapterConfig.timeoutSec = Number(timeoutSec); else delete adapterConfig.timeoutSec;
@@ -124,13 +139,32 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
           <Field label="Reports to" htmlFor="ag-reports"><Select id="ag-reports" value={reportsTo} onChange={(e) => setReportsTo(e.target.value)}><option value="">You</option>{(agents.data ?? []).filter((a) => a.id !== agent.id && a.status !== "terminated").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></Field>
         </div>
         <Field label="Capabilities" htmlFor="ag-cap" hint="What this agent is good at, so others know when to hand it work."><Textarea id="ag-cap" rows={3} value={capabilities} onChange={(e) => setCapabilities(e.target.value)} /></Field>
+        <h3 className="pt-2 text-compact font-semibold uppercase tracking-label text-ink-3">Adapter</h3>
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label="Runs with" htmlFor="ag-adapter"><Select id="ag-adapter" value={adapter} onChange={(e) => { setAdapter(e.target.value); setModel(""); }}>{(adapters.data ?? []).filter((a) => !a.disabled).map((a) => <option key={a.type} value={a.type}>{a.label || a.type}</option>)}{!(adapters.data ?? []).some((a) => a.type === adapter) && <option value={adapter}>{adapter}</option>}</Select></Field>
+          <Field label="Harness" htmlFor="ag-adapter" hint="The program that does the work inside the container."><Select id="ag-adapter" value={adapter} onChange={(e) => { setAdapter(e.target.value); setModel(""); }}>{(adapters.data ?? []).filter((a) => !a.disabled).map((a) => <option key={a.type} value={a.type}>{a.label || a.type}</option>)}{!(adapters.data ?? []).some((a) => a.type === adapter) && <option value={adapter}>{adapter}</option>}</Select></Field>
+          <Field label="Connection" htmlFor="ag-connection" hint={provider ? (connectionNow === "responsible_user" ? "Its tasks run with the login of the person they are for." : connectionNow === "shared" ? "Uses an account shared with the organization." : "No account yet. Choose one below.") : "This harness doesn't use a model account."}>
+            {provider ? (
+              <Select id="ag-connection" value={connectionNow} disabled={giveMine.isPending} onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__connect") { navigate(`${connectBase}/connectors`); return; }
+                if (v === "responsible_user" && mine) giveMine.mutate({ agent, provider, method: mine.method, connectionId: mine.id });
+              }}>
+                {connectionNow === "none" && <option value="none">Not connected</option>}
+                {connectionNow === "shared" && <option value="shared">Organization account</option>}
+                <option value="responsible_user" disabled={!mine && connectionNow !== "responsible_user"}>{mine ? "Responsible user's default" : "Responsible user's default (no account yet)"}</option>
+                <option value="__connect">Connect an account…</option>
+              </Select>
+            ) : <Input id="ag-connection" disabled value="Not needed" />}
+            <ActionError error={giveMine.error} />
+          </Field>
           {info && info.modelsCount > 0 ? (
             <Field label="Model" htmlFor="ag-model"><Select id="ag-model" value={model} onChange={(e) => setModel(e.target.value)}><option value="">Default</option>{model && !(models.data ?? []).some((m) => m.id === model) && <option value={model}>{model}</option>}{(models.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.label || m.id}</option>)}</Select></Field>
           ) : adapter === "process" ? (
             <Field label="Command" htmlFor="ag-command"><Input id="ag-command" className="font-mono" value={command} onChange={(e) => setCommand(e.target.value)} /></Field>
           ) : null}
+          {hasEffort && (
+            <Field label="Thinking effort" htmlFor="ag-effort" hint="How hard the model thinks before it answers. Auto lets the model decide."><Select id="ag-effort" value={effort} onChange={(e) => setEffort(e.target.value)}><option value="">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option></Select></Field>
+          )}
         </div>
         <p className="text-xs text-ink-3">Agents run in containers, not on the host. Changing how an agent runs takes effect on its next run.</p>
       </Card>
@@ -138,8 +172,8 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
       <Card className="p-5 space-y-4">
         <h3 className="text-compact font-semibold uppercase tracking-label text-ink-3">How it runs</h3>
         <div className="grid sm:grid-cols-2 gap-3">
-          {hasEffort && (
-            <Field label="Thinking effort" htmlFor="ag-effort" hint="How hard the model thinks before it answers. Auto lets the model decide."><Select id="ag-effort" value={effort} onChange={(e) => setEffort(e.target.value)}><option value="">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option></Select></Field>
+          {(adapter === "claude_local" || adapter === "codex_local") && (
+            <Field label="How it talks to the harness" htmlFor="ag-engine" hint="Direct is the quiet default. ACP keeps a live session open."><Select id="ag-engine" value={engineLane} onChange={(e) => setEngineLane(e.target.value)}><option value="">Direct (recommended)</option><option value="cli">Direct command line</option><option value="acp">ACP session</option></Select></Field>
           )}
           <Field label="Most turns in one run" htmlFor="ag-turns" hint="Leave empty for the default. A run stops here instead of looping."><Input id="ag-turns" inputMode="numeric" placeholder="1000" value={maxTurns} onChange={(e) => setMaxTurns(e.target.value)} /></Field>
           <Field label="Time limit for a run (seconds)" htmlFor="ag-timeout" hint="0 or empty means no limit."><Input id="ag-timeout" inputMode="numeric" placeholder="0" value={timeoutSec} onChange={(e) => setTimeoutSec(e.target.value)} /></Field>

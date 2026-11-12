@@ -8,6 +8,8 @@ import type { FeatureCtx, FeatureHandler } from "./index.ts";
  *
  *   GET    /api/github        { connected, login, last4, repos, canManage }
  *   PUT    /api/github        { token?, repos? }   administrators; a new token is checked with GitHub first
+ *   POST   /api/github/device/start   sign in with GitHub (OAuth device flow): { id, userCode, verificationUri, interval, expiresIn }
+ *   POST   /api/github/device/poll     { id } -> { status: "pending" | "done" | "denied" | "expired" }; on "done" the token is saved sealed
  *   DELETE /api/github        disconnect (administrators)
  *   GET    /api/github/prs    { prs, errors }      recent pull requests of the connected repositories (cached for a minute)
  */
@@ -15,6 +17,13 @@ import type { FeatureCtx, FeatureHandler } from "./index.ts";
 const API = "https://api.github.com";
 const SECRET = "github.token";
 const SETTING = "github";
+/** GitHub OAuth device flow: a person signs in on github.com and types a short code; no client secret and no pasted token. */
+const OAUTH = "https://github.com";
+const SCOPE = "repo read:user";
+/** The OAuth app's public client id (a device-flow app registered by whoever runs this device). */
+const clientId = (state: StateStore): string => (process.env.EPC_GITHUB_CLIENT_ID ?? state.getSetting<string>("githubClientId") ?? "").trim();
+interface Device { deviceCode: string; user: string; expiresAt: number; nextAt: number; interval: number }
+const devices = new Map<string, Device>();
 const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 const TOKEN = /^[A-Za-z0-9_-]{20,255}$/;
 const MAX_REPOS = 12;
@@ -119,7 +128,7 @@ export async function pullRequestsTool(state: StateStore, args: Record<string, u
 }
 
 export const handleGithub: FeatureHandler = async (ctx: FeatureCtx) => {
-  if (ctx.path !== "/api/github" && ctx.path !== "/api/github/prs") return false;
+  if (ctx.path !== "/api/github" && ctx.path !== "/api/github/prs" && ctx.path !== "/api/github/device/start" && ctx.path !== "/api/github/device/poll") return false;
   const { HttpError, method, state } = ctx;
   const s = ctx.session();
   if (s.apiToken) throw new HttpError(403, "ticket_only", "GitHub is connected in the console by a signed-in administrator.");
@@ -132,9 +141,54 @@ export const handleGithub: FeatureHandler = async (ctx: FeatureCtx) => {
   }
 
   const isAdmin = await ctx.asUser((pve) => ctx.isNodeAdmin(pve));
+
+  if (ctx.path === "/api/github/device/start" || ctx.path === "/api/github/device/poll") {
+    if (method !== "POST") throw new HttpError(405, "method", "Method not allowed");
+    ctx.sameSite();
+    if (!isAdmin) throw new HttpError(403, "forbidden", "Only Proxmox administrators (Sys.Modify on /) can connect GitHub.");
+    const cid = clientId(state);
+    if (!cid) throw new HttpError(409, "oauth_not_configured", "Signing in with GitHub isn't set up on this device yet: it needs a GitHub OAuth app with device flow turned on (docs/GITHUB-OAUTH.md). You can paste a token instead.");
+    const form = (o: Record<string, string>) => ({ method: "POST", headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "epaperclip" }, body: new URLSearchParams(o).toString(), signal: AbortSignal.timeout(10_000) });
+    for (const [k, d] of devices) if (d.expiresAt < ctx.now()) devices.delete(k);
+    if (ctx.path === "/api/github/device/start") {
+      const r = await fetch(`${OAUTH}/login/device/code`, form({ client_id: cid, scope: SCOPE })).catch(() => null);
+      if (!r) throw new HttpError(502, "github_unreachable", "GitHub didn't answer. Check the host's internet access and try again.");
+      const j = (await r.json().catch(() => ({}))) as { device_code?: string; user_code?: string; verification_uri?: string; expires_in?: number; interval?: number; error?: string; error_description?: string };
+      if (!r.ok || !j.device_code || !j.user_code || !j.verification_uri) throw new HttpError(502, "github_refused", `GitHub refused the sign-in${j.error_description ? `: ${j.error_description}` : j.error ? `: ${j.error}` : ""}. Check that the OAuth app has device flow turned on.`);
+      const id = `dv_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+      const interval = Math.max(5, Number(j.interval) || 5);
+      devices.set(id, { deviceCode: j.device_code, user: s.username, expiresAt: ctx.now() + Math.min(900, Number(j.expires_in) || 900) * 1000, nextAt: 0, interval });
+      return ctx.json(200, { id, userCode: j.user_code, verificationUri: /^https:\/\/github\.com\//.test(j.verification_uri) ? j.verification_uri : "https://github.com/login/device", interval, expiresIn: Math.min(900, Number(j.expires_in) || 900) }), true;
+    }
+    const b = await ctx.readJson(1024);
+    const d = typeof b.id === "string" ? devices.get(b.id) : undefined;
+    if (!d || d.user !== s.username) throw new HttpError(404, "not_found", "That sign-in isn't running any more. Start again.");
+    if (d.expiresAt < ctx.now()) { devices.delete(b.id as string); return ctx.json(200, { status: "expired" }), true; }
+    if (ctx.now() < d.nextAt) return ctx.json(200, { status: "pending" }), true;
+    d.nextAt = ctx.now() + d.interval * 1000;
+    const r = await fetch(`${OAUTH}/login/oauth/access_token`, form({ client_id: cid, device_code: d.deviceCode, grant_type: "urn:ietf:params:oauth:grant-type:device_code" })).catch(() => null);
+    if (!r) return ctx.json(200, { status: "pending" }), true;
+    const j = (await r.json().catch(() => ({}))) as { access_token?: string; error?: string; interval?: number };
+    if (j.error === "slow_down") { d.interval = Math.max(d.interval + 5, Number(j.interval) || 0); return ctx.json(200, { status: "pending" }), true; }
+    if (j.error === "authorization_pending") return ctx.json(200, { status: "pending" }), true;
+    if (j.error === "access_denied") { devices.delete(b.id as string); return ctx.json(200, { status: "denied" }), true; }
+    if (j.error === "expired_token") { devices.delete(b.id as string); return ctx.json(200, { status: "expired" }), true; }
+    if (!j.access_token || !TOKEN.test(j.access_token)) throw new HttpError(502, "github_refused", "GitHub answered, but not with a token. Start again.");
+    const t = j.access_token;
+    const me = await gh(t, "/user").catch(() => null);
+    if (!me || !me.ok) throw new HttpError(502, "github_refused", "GitHub gave a token it then refused. Start again.");
+    const login = String(((await me.json()) as { login?: string }).login ?? "").slice(0, 60);
+    devices.delete(b.id as string);
+    state.setSecret(SECRET, t);
+    const cur = rec();
+    state.setSetting(SETTING, { login, last4: t.slice(-4), repos: cur?.repos ?? [], updatedAt: ctx.now(), updatedBy: s.username } satisfies Record_);
+    cache.clear();
+    return ctx.json(200, { status: "done", login }), true;
+  }
+
   if (method === "GET") {
     const r = rec();
-    return ctx.json(200, { connected: !!r && token() !== null, login: r?.login ?? null, last4: r?.last4 ?? null, repos: r?.repos ?? [], canManage: isAdmin }), true;
+    return ctx.json(200, { connected: !!r && token() !== null, login: r?.login ?? null, last4: r?.last4 ?? null, repos: r?.repos ?? [], canManage: isAdmin, oauth: clientId(state) !== "" }), true;
   }
   if (method !== "PUT" && method !== "DELETE") throw new HttpError(405, "method", "Method not allowed");
   ctx.sameSite();
