@@ -62,6 +62,8 @@ In the console, run the guided Agent Containers setup. It should detect:
 On `dir` storage the first sandbox is a full clone; later leases reuse the stopped sandbox. On
 thin/SSD storage Proxmox linked-clones the template. A reused sandbox keeps its files between runs of the same organization (it is never shared with another organization); on thin/SSD storage every run gets a fresh clone.
 
+New to ZFS? [Fast storage for agent containers](FAST-STORAGE.md) explains why this matters and how to set it up on a spare disk, step by step.
+
 ## 5. Worker (optional, another machine)
 
 On the AI box (Linux or macOS). A Mac runs the worker as a per-user LaunchAgent (`deploy/worker/install-macos.sh`, needs Node 22+); Linux uses `deploy/worker/install.sh` (systemd). Either way the worker connects out to your own host and never goes through a Papercliped service:
