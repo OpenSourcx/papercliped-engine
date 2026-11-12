@@ -397,6 +397,55 @@ describe("agent containers setup", () => {
     expect(state.getSetting<Record<string, { reason: string }>>("agentSetupPaused")!["proc-1"]!.reason).toMatch(/adapter can't run in a container/);
   });
 
+  describe("an agent gets the organization's AI account without being told which (ERR-OAU-008)", () => {
+    const acct = (o: Record<string, unknown> = {}) => ({ id: "conn-1", grantId: "grant-1", provider: "anthropic", method: "subscription", name: "Owner Claude", ownership: "shared", status: "connected", isDefault: false, ...o });
+    const agent = (id: string, adapterType: string, extra: Record<string, unknown> = {}) => ({ id, name: id, role: "engineer", status: "idle", adapterType, adapterConfig: {}, runtimeConfig: { heartbeat: { enabled: false } }, lifecycleState: "ready", lifecycleError: null, lifecycleHolds: [], defaultEnvironmentId: null, ...extra });
+    async function setup(accounts: unknown[], agents: unknown[]) {
+      const sam = await admin();
+      const o = await org(sam, "Northwind");
+      expect((await runSetup(sam)).status).toBe("done");
+      await send("GET", `/engine/api/companies/${o.co}/agents`, sam);
+      eng.st.aiConnections.set(o.co, accounts as any[]);
+      eng.st.agents.set(o.co, agents as any[]);
+      return o.co;
+    }
+    const bindings = () => eng.st.agentPatches.filter((x) => (x.body.runtimeConfig as any)?.aiConnection).map((x) => ({ id: x.id, binding: (x.body.runtimeConfig as any).aiConnection }));
+
+    it("binds a Claude agent to the one shared, connected Anthropic account, once, and keeps its other runtime settings", async () => {
+      await setup([acct()], [agent("claude-1", "claude_local"), agent("codex-1", "codex_local"), agent("proc-1", "process")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([{ id: "claude-1", binding: { provider: "anthropic", method: "subscription", mode: "shared", connectionId: "conn-1", grantId: "grant-1" } }]);
+      expect((eng.st.agentPatches.find((x) => (x.body.runtimeConfig as any)?.aiConnection)!.body.runtimeConfig as any).heartbeat).toEqual({ enabled: false });
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(bindings()).toHaveLength(1); // not again every minute, which would also restart the engine's verification
+    });
+
+    it("leaves an agent alone when the choice is the person's or unclear", async () => {
+      await setup([acct(), acct({ id: "conn-2", grantId: "grant-2" })], [agent("ambiguous", "claude_local")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // two shared accounts and no default: not ours to pick
+      eng.st.aiConnections.set([...eng.st.agents.keys()][0]!, [acct({ ownership: "personal" }), acct({ id: "c3", grantId: "g3", status: "needs_attention" }), acct({ id: "c4", grantId: "g4", provider: "openai" })]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // personal, unhealthy, or another provider's accounts are never handed out
+      const co = [...eng.st.agents.keys()][0]!;
+      eng.st.agents.set(co, [agent("chosen", "claude_local", { runtimeConfig: { aiConnection: { mode: "responsible_user", provider: "anthropic", method: "subscription" } } })]);
+      eng.st.aiConnections.set(co, [acct()]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // already has a binding
+    });
+
+    it("prefers the default when several shared accounts fit, and never re-binds an agent after its binding was cleared", async () => {
+      const co = await setup([acct(), acct({ id: "conn-2", grantId: "grant-2", isDefault: true })], [agent("claude-1", "claude_local")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([{ id: "claude-1", binding: expect.objectContaining({ connectionId: "conn-2", grantId: "grant-2" }) }]);
+      // The person clears it on purpose; the host does not put it back.
+      eng.st.agents.get(co)![0].runtimeConfig = { heartbeat: { enabled: false } };
+      await app.containers.reconcile();
+      expect(bindings()).toHaveLength(1);
+    });
+  });
+
   it("does not give an organization without a resource group a shared-pool environment", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);
