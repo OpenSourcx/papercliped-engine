@@ -7,7 +7,7 @@ import { ago } from "../../../data/engine/map.ts";
 import { ISSUE_ICON, ISSUE_LABEL, PRIORITY_LABEL, isOpen } from "../../../data/engine/labels.tsx";
 import { useAddComment, useAgents, useComments, useCreateIssue, useIssue, useIssues, useProjects, useUpdateIssue } from "../../../data/engine/queries.ts";
 import { Modal } from "../../../ui/Modal.tsx";
-import { Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Select } from "../../../ui/primitives.tsx";
+import { AgentAvatar, Avatar, Button, Card, Chip, EmptyState, Input, PageFrame, PageHeader, Segmented, Select } from "../../../ui/primitives.tsx";
 import { ActionError, Field, LoadError, Loading, selectClass, textareaClass, useLiveOrg } from "./common.tsx";
 import { useNames } from "./names.ts";
 import { TaskExtras } from "./LiveTaskExtras.tsx";
@@ -130,6 +130,7 @@ export function LiveTaskDetail() {
   const agents = useAgents(companyId);
   const names = useNames(companyId);
   const update = useUpdateIssue(companyId);
+  const projects = useProjects(companyId);
   const comment = useAddComment(companyId, taskId);
   const [text, setText] = useState("");
   const t = issue.data;
@@ -163,7 +164,7 @@ export function LiveTaskDetail() {
                     const who = c.authorAgentId ? names.agent(c.authorAgentId) : names.user(c.authorUserId);
                     return (
                       <div key={c.id} className="px-5 py-3 flex gap-3">
-                        <Avatar name={who} hue={c.authorAgentId ? org.hue + 40 : 210} size={28} />
+                        {c.authorAgentId ? <AgentAvatar name={who} hue={org.hue + 40} size={28} /> : <Avatar name={who} hue={210} size={28} />}
                         <div className="min-w-0 flex-1">
                           <div className="text-compact"><span className="font-medium">{who}</span> <span className="text-ink-3">{ago(c.createdAt)}</span></div>
                           <p className="text-sm text-ink-2 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
@@ -199,6 +200,13 @@ export function LiveTaskDetail() {
                 </Select>
               </Field>
               <ActionError error={update.error} />
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-compact border-t border-line pt-3">
+                <dt className="text-ink-3">Project</dt><dd className="truncate">{(projects.data ?? []).find((p) => p.id === (t as unknown as { projectId?: string | null }).projectId)?.name ?? "None"}</dd>
+                <dt className="text-ink-3">Parent</dt><dd className="truncate">{(t as unknown as { parentId?: string | null }).parentId ? <Link className="text-accent" to={`${b}/tasks/${(t as unknown as { parentId: string }).parentId}`}>Open parent</Link> : "None"}</dd>
+                <dt className="text-ink-3">Created</dt><dd>{ago(t.createdAt)}</dd>
+                {(t as unknown as { startedAt?: string | null }).startedAt && <><dt className="text-ink-3">Started</dt><dd>{ago((t as unknown as { startedAt: string }).startedAt)}</dd></>}
+                {(t as unknown as { completedAt?: string | null }).completedAt && <><dt className="text-ink-3">Completed</dt><dd>{ago((t as unknown as { completedAt: string }).completedAt)}</dd></>}
+              </dl>
               <p className="text-xs text-ink-3">Updated {ago(t.updatedAt)}</p>
             </Card>
           </div>
