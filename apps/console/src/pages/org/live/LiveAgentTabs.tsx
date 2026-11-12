@@ -6,7 +6,7 @@ import { engine, useAdapterModels, useAdapters, useAgents, useEngineReady } from
 import { tapEvents } from "../../../data/engine/events.ts";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { useAgentSettingsWrites, useAgentSkills, useBudgetWrites, useCreateSecret, useInstructions, useInstructionsFile, useInstructionsHistory, useSecrets, useSkills, useSkillWrites } from "../../../data/engine/more.ts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../../data/engine/keys.ts";
 import { BarMeter } from "../../../ui/meters.tsx";
 import { Modal } from "../../../ui/Modal.tsx";
@@ -25,6 +25,38 @@ function readEnv(config: Record<string, unknown> | undefined): EnvRow[] {
     if (b?.type === "secret_ref" && b.secretId) return { key, kind: "secret", value: "", secretId: b.secretId };
     return { key, kind: "plain", value: b?.value ?? "", secretId: "" };
   });
+}
+
+// ---- Test the agent
+
+/** Runs the engine's own readiness check for this agent's harness inside the organization's container, and says what it found. */
+function TestAgentCard({ agent }: { agent: Agent }) {
+  const { companyId } = useLiveOrg();
+  const envId = (agent as unknown as { defaultEnvironmentId?: string | null }).defaultEnvironmentId ?? null;
+  const test = useMutation({ mutationFn: () => engine.agentAuth.test(companyId, agent.adapterType, envId as string) });
+  const r = test.data;
+  const tone = !r ? "idle" : r.status === "pass" ? "good" : r.status === "warn" ? "warning" : "critical";
+  const title = test.isPending ? "Testing in the container…" : !r ? "Test your agent" : r.status === "pass" ? "Connection successful" : r.status === "warn" ? "Works, with warnings" : "The test didn't pass";
+  const body = test.isPending ? "Starting the container and asking the harness to answer. This takes about 20 seconds." : !r ? "Check that this agent's runtime and model can answer, before you give it work." : r.status === "pass" ? "Your runtime checks passed. Review the details below." : "Read the details below; each line says what to change.";
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex items-center gap-3">
+        <Status kind={tone === "idle" ? "idle" : tone === "good" ? "good" : tone === "warning" ? "warning" : "critical"} label="" />
+        <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{title}</div><div className="text-compact text-ink-3">{body}</div></div>
+        <Button size="sm" loading={test.isPending} disabled={!envId} onClick={() => test.mutate()}>{r ? "Test again" : "Run test"}</Button>
+      </div>
+      {!envId && <p className="text-compact text-ink-3">This agent has no container environment yet. Set up Agent containers first (Settings), then test.</p>}
+      <ActionError error={test.error} />
+      {r && r.checks.length > 0 && (
+        <details className="text-compact">
+          <summary className="cursor-pointer text-ink-2">Test details</summary>
+          <ul className="mt-2 space-y-1.5">
+            {r.checks.map((c, i) => <li key={`${c.code}-${i}`} className="flex gap-2"><span className={c.level === "error" ? "text-critical" : c.level === "warn" ? "text-warning" : "text-good"}>{c.level === "error" ? "✕" : c.level === "warn" ? "!" : "✓"}</span><span className="min-w-0"><span className="text-ink-2">{c.message}</span>{c.hint && <span className="block text-ink-3">{c.hint}</span>}</span></li>)}
+          </ul>
+        </details>
+      )}
+    </Card>
+  );
 }
 
 // ---- Configuration
@@ -143,6 +175,8 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
         ))}
         {env.some((r) => r.kind === "plain") && <Notice tone="warning">Plain text values are stored as typed. Use a secret for anything sensitive.</Notice>}
       </Card>
+
+      <TestAgentCard agent={agent} />
 
       <PermissionsCard agent={agent} />
 
