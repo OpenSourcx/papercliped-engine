@@ -145,7 +145,10 @@ doctor() {
   [ "${free:-0}" -ge 4 ] && ok "free disk for the program ${free} GiB" || bad "free disk for the program ${free:-0} GiB (needs about 3.1)"
   if command -v zpool >/dev/null 2>&1 && zpool list -H -o name 2>/dev/null | grep -q .; then ok "ZFS pool found ($(zpool list -H -o name | paste -sd, -)): sandboxes can start in seconds. See docs/FAST-STORAGE.md"
   else warn "no ZFS pool: sandboxes still work, but each new one takes about two minutes to copy. docs/FAST-STORAGE.md explains the fast option"; fi
-  if ip link show vmbr1 >/dev/null 2>&1; then ok "private sandbox network vmbr1 exists"; else warn "no private sandbox network yet (setup creates it)"; fi
+  if ip link show vmbr1 >/dev/null 2>&1; then
+    if [ -f /usr/local/sbin/epaperclip-sandbox-firewall.sh ]; then ok "private sandbox network vmbr1 exists, with the sandbox firewall"
+    else warn "vmbr1 exists but has no sandbox firewall (not made by ePaperclip): containers on it could reach your LAN. Use another bridge name with EPC_SANDBOX_BRIDGE, or remove vmbr1 if nothing uses it"; fi
+  else warn "no private sandbox network yet (setup creates it)"; fi
   if [ -f "$PREFIX/VERSION" ]; then ok "ePaperclip $(tr -d '[:space:]' <"$PREFIX/VERSION") installed"; else warn "ePaperclip isn't installed yet"; fi
   curl -fsS --max-time 5 -o /dev/null https://github.com 2>/dev/null && ok "internet reachable" || bad "no internet access (the installer and container templates need it)"
   return "$DOCTOR_BAD"

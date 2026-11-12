@@ -23,6 +23,14 @@ const STATE_TEXT: Record<ContainersStatus["state"], { kind: "good" | "warning" |
   not_set_up: { kind: "off", label: "Not set up" },
 };
 
+/** The template build is the slow step: say so, how long it has been, and that the page can be closed. */
+function TemplateWait({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(t); }, []);
+  const min = Math.max(0, Math.floor((now - since) / 60_000));
+  return <div className="text-xs mt-0.5 text-ink-2" role="status">Working for {min < 1 ? "under a minute" : `${min} min`}. This is the slow step: about 8 minutes on an SSD and up to 20 on a hard drive. It installs Claude Code, Codex and the other agent tools once, and every agent container after this starts from it in seconds. You can close this page.</div>;
+}
+
 function StepIcon({ state }: { state: "done" | "running" | "failed" | "pending" }) {
   if (state === "done") return <CheckCircle2 className="h-4 w-4 text-good shrink-0" aria-label="Done" />;
   if (state === "running") return <Loader2 className="h-4 w-4 animate-spin text-accent shrink-0" aria-label="Working" />;
@@ -171,6 +179,7 @@ export function AgentContainers() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm">{s.label}</div>
                     {note && <div className={`text-xs mt-0.5 ${st === "failed" ? "text-critical" : "text-ink-3"}`}>{note}</div>}
+                    {s.id === "template" && st === "running" && j?.startedAt && <TemplateWait since={j.startedAt} />}
                     {s.id === "grant" && !s.done && (status.grantMissing?.length ?? 0) > 0 && (
                       <ul aria-label="Missing rights" className="mt-1 text-xs text-ink-2 font-mono space-y-0.5">
                         {status.grantMissing!.map((g, i) => <li key={i}>{g.role} on {g.path} for the {g.who}{g.lacking?.length ? ` (lacking ${g.lacking.join(", ")})` : ""}</li>)}
