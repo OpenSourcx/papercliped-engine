@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import WebSocket, { WebSocketServer } from "ws";
 
 /**
@@ -89,6 +90,9 @@ export function createConsoleRelay(opts: {
           binary = !!target.binary;
           pve = opts.connect(target);
           let greeted = !target.handshake;
+          // Proxmox sends terminal output in chunks that can end inside a multi-byte character. Browsers drop a connection
+          // whose text frame isn't valid UTF-8 (seen as "Couldn't connect"), so an incomplete character waits for the rest.
+          const utf8 = new StringDecoder("utf8");
           pve.on("open", () => {
             if (target.handshake) return void pve!.send(target.handshake);
             ready = true;
@@ -99,7 +103,7 @@ export function createConsoleRelay(opts: {
               if (browser.readyState === WebSocket.OPEN) browser.send(data, { binary: isBinary || true });
               return;
             }
-            const text = data.toString();
+            const text = utf8.write(Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer));
             // Proxmox answers the handshake with "OK" before any terminal output.
             if (!greeted) {
               greeted = true;
@@ -112,7 +116,7 @@ export function createConsoleRelay(opts: {
               if (rest) browser.send(rest);
               return;
             }
-            if (browser.readyState === WebSocket.OPEN) browser.send(data, { binary: false });
+            if (text && browser.readyState === WebSocket.OPEN) browser.send(text);
           });
           pve.on("close", () => browser.readyState === WebSocket.OPEN && browser.close(1000, "Session ended"));
           pve.on("error", (e) => fail(`Can't reach the console (${(e as NodeJS.ErrnoException).code ?? e.message}).`));

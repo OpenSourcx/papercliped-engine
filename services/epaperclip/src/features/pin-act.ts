@@ -720,6 +720,7 @@ export const READ_TOOLS = [
   { name: "list_container_templates", description: "Container templates available: the ones already on this node's storages, and the OS names Proxmox can download.", parameters: noProps({}) },
   { name: "list_isos", description: "ISO images on this node's storages (volume ids to install a virtual machine from).", parameters: noProps({}) },
   { name: "list_bridges", description: "This node's network bridges and their addresses.", parameters: noProps({}) },
+  { name: "firewall_overview", description: "Whether the Proxmox firewall is on for the cluster and this node, the default policies and how many rules there are; with a vmid, that machine's firewall too. Read only.", parameters: noProps({ vmid: { type: "integer" } }) },
   { name: "list_snapshots", description: "A machine's snapshots.", parameters: noProps({ vmid: { type: "integer" } }, ["vmid"]) },
   { name: "list_backups", description: "Backups on this node's storages, optionally for one machine.", parameters: noProps({ vmid: { type: "integer" } }) },
   { name: "task_status", description: "Whether a Proxmox task (its UPID) is still running, how it ended, and the end of its log.", parameters: noProps({ upid: { type: "string" } }, ["upid"]) },
@@ -758,6 +759,25 @@ export async function runRead(name: string, args: Args, h: ActHost): Promise<unk
   if (name === "list_bridges") {
     const n = await pve.network(node);
     return { bridges: n.interfaces.filter((i) => /bridge/i.test(i.type)).map((i) => ({ name: i.iface, address: i.cidr ?? i.address ?? null, ports: i.bridge_ports ?? null })) };
+  }
+  if (name === "firewall_overview") {
+    const get = async <T,>(path: string): Promise<T | null> => pve.call<T>("GET", path).catch(() => null);
+    const describe = (o: Record<string, unknown> | null, rules: unknown[] | null) => ({
+      enabled: o === null ? null : Number(o.enable ?? 0) === 1,
+      policyIn: o === null ? null : String(o.policy_in ?? "DROP"),
+      policyOut: o === null ? null : String(o.policy_out ?? "ACCEPT"),
+      rules: Array.isArray(rules) ? rules.length : null,
+    });
+    const out: Record<string, unknown> = {
+      cluster: describe(await get("/cluster/firewall/options"), await get("/cluster/firewall/rules")),
+      node: describe(await get(`/nodes/${node}/firewall/options`), await get(`/nodes/${node}/firewall/rules`)),
+    };
+    if (args.vmid !== undefined) {
+      const vmid = vmidOf(args.vmid);
+      const g = await locate(pve, node, vmid);
+      out.machine = { vmid, ...describe(await get(`/nodes/${g.where}/${g.type}/${vmid}/firewall/options`), await get(`/nodes/${g.where}/${g.type}/${vmid}/firewall/rules`)) };
+    }
+    return out;
   }
   if (name === "list_snapshots") {
     const vmid = vmidOf(args.vmid);

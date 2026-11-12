@@ -42,7 +42,7 @@ beforeEach(async () => {
     secureCookies: false,
     state,
     engine: { url: eng.url, installDir, sleep: async () => {} },
-    containers: { pluginDir, ssh: ssh.runner, paceMs: 0 },
+    containers: { pluginDir, ssh: ssh.runner, paceMs: 0, arch: "amd64" },
   });
   server = createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));

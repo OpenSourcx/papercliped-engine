@@ -98,7 +98,7 @@ Each phase ends with something that runs on a real Proxmox host.
 
 - [ ] Installer ISO on top of upstream Proxmox VE packages, with our own name and branding (the APT repository for ePaperclip itself exists)
 - [ ] Vault root key, unlock and recovery
-- [ ] Kill switch and emergency console documentation
+- [x] Kill switch and emergency console documentation (docs/SAFETY.md)
 
 ## v2 goals (deferred on purpose; v1 is the main engine working and the UI correct)
 

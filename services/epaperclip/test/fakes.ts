@@ -212,6 +212,17 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       }
       return json(res, 404, { error: "Agent not found" });
     }
+    const agentAct = p.match(/^\/api\/agents\/([\w-]+)\/(pause|resume)$/);
+    if (agentAct && req.method === "POST") {
+      for (const list of st.agents.values()) {
+        const a = list.find((x) => x.id === agentAct[1]);
+        if (a) {
+          a.status = agentAct[2] === "pause" ? "paused" : "idle";
+          return json(res, 200, a);
+        }
+      }
+      return json(res, 404, { error: "Agent not found" });
+    }
     if (p === "/api/cli-auth/me") return json(res, 200, { user: { id: uid }, userId: uid, isInstanceAdmin: st.admins.has(uid!), companyIds: memberships(uid).map((m) => m.companyId), memberships: memberships(uid), source: "session" });
     if (p === "/api/companies" && req.method === "POST") {
       // Like the real engine: only instance admins create organizations; the creator owns it.

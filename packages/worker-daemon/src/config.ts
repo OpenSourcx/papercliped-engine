@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { generateIdentity, type Identity } from "@papercliped-engine/worker-fabric";
+import { defaultDirs } from "./platform.ts";
 
 /** The worker's files: `identity.json` (secret, 0600) and `config.json`, in one directory owned by the service user. */
 
@@ -23,10 +24,10 @@ export interface WorkerConfig {
   pairing: { id: string; secret: string } | null;
 }
 
-export const DEFAULT_DIR = "/var/lib/epaperclip-worker";
+export const DEFAULT_DIR = defaultDirs().data;
 
 export const defaults = (dir: string): WorkerConfig => ({
-  version: 1, hostKey: null, endpoints: [], workerId: null, name: "", workspaceRoot: process.env.EPW_WORKSPACES || "/workspaces", prefer: null, ollamaUrl: "",
+  version: 1, hostKey: null, endpoints: [], workerId: null, name: "", workspaceRoot: process.env.EPW_WORKSPACES || defaultDirs().workspaces, prefer: null, ollamaUrl: "",
   inference: { gatePort: 11435, slots: 1, maxContext: null }, revoked: false, setupMode: null, pairing: null,
 });
 

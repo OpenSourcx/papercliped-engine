@@ -18,7 +18,7 @@ beforeEach(async () => {
   eng = await fakeEngine();
   const pve = fakePve();
   const transport: typeof pve.transport = async (req) => (req.url.includes("/access/roles") ? { status, body: "" } : pve.transport(req));
-  server = createServer(createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport }, sessions: new SessionStore(), staticDir: null, secureCookies: false, state: new StateStore(mkdtempSync(join(tmpdir(), "epc-err-"))), engine: { url: eng.url, sleep: async () => {} }, containers: { paceMs: 0 } }));
+  server = createServer(createApp({ pve: { baseUrl: "https://127.0.0.1:8006", node: "pve", transport }, sessions: new SessionStore(), staticDir: null, secureCookies: false, state: new StateStore(mkdtempSync(join(tmpdir(), "epc-err-"))), engine: { url: eng.url, sleep: async () => {} }, containers: { paceMs: 0, arch: "amd64" } }));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });

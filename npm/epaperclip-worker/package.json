@@ -16,7 +16,7 @@
     "epaperclip-worker": "bin/epaperclip-worker.js"
   },
   "files": ["bin/epaperclip-worker.js", "worker/", "README.md", "LICENSE"],
-  "os": ["linux"],
+  "os": ["linux", "darwin"],
   "engines": { "node": ">=22" },
   "scripts": {
     "prepack": "node scripts/prepack.mjs"

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bot, Cable, Container, KeyRound, LogIn, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
+import { Bot, Cable, Container, KeyRound, LogIn, OctagonX, Palette, Plug, Settings as Gear, ShieldCheck } from "lucide-react";
 import { CommunityPlugins } from "../pages/access/CommunityPlugins.tsx";
 import { AccessHub } from "../pages/access/AccessHub.tsx";
 import { Appearance } from "../pages/Appearance.tsx";
@@ -23,6 +23,7 @@ import { BackupJobModal, BackupNowModal, RestoreModal } from "../pages/backups/B
 import { StoreItemModal } from "../pages/store/Store.tsx";
 import { Settings } from "../pages/Settings.tsx";
 import { NewAutomationModal } from "../pages/pin/runtime.tsx";
+import { Safety } from "../pages/Safety.tsx";
 import { Vault } from "../pages/Vault.tsx";
 import { AdoptWorkerModal } from "../pages/workers/AdoptWorker.tsx";
 import { UseWorkerModal } from "../pages/workers/UseWorker.tsx";
@@ -39,6 +40,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "agent-models", group: "Connectors", label: "Providers", icon: <Bot className="h-4 w-4" />, hidden: true, render: () => <LiveConnections /> },
   { id: "agent-signin", group: "Access", label: "Agent sign-in", icon: <LogIn className="h-4 w-4" />, render: () => <AgentSignIn /> },
   { id: "vault", group: "Access", label: "Vault", icon: <KeyRound className="h-4 w-4" />, render: () => <Vault /> },
+  { id: "safety", group: "Access", label: "Safety", icon: <OctagonX className="h-4 w-4" />, render: () => <Safety /> },
   { id: "agent-containers", group: "Access", label: "Agent containers", icon: <Container className="h-4 w-4" />, render: () => <AgentContainersSettings /> },
   { id: "appearance", group: "You", label: "Appearance", icon: <Palette className="h-4 w-4" />, render: () => <Appearance /> },
 ];

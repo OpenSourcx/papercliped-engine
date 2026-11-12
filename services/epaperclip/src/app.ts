@@ -86,7 +86,7 @@ export interface AppDeps {
   /** Outbound HTTP to model providers (connector tests, Pin); tests inject a fake. */
   fetch?: HttpFetch;
   /** Agent containers: where the built provider plugin is installed, and how ssh runs. Tests inject fakes. */
-  containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number };
+  containers?: { pluginDir?: string; ssh?: SshRunner; paceMs?: number; /** Override the architecture used to pick the sandbox template. Tests pin it so the suite passes on arm64 machines too. */ arch?: "amd64" | "arm64" };
   /** The address people reach this device at (EPC_PUBLIC_URL), used in OAuth metadata. Without it, the request's Host header is used. */
   publicUrl?: string;
   /** Local broker policy authority. Omit it until the broker has been configured on this device. */
@@ -553,7 +553,7 @@ export function createApp(d: AppDeps) {
   }
   const broker = d.broker ? new BrokerAdmin({ url: d.broker.url, token: d.broker.managementToken, fetch: d.broker.fetch }) : null;
 
-  const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
+  const containers = new AgentContainers({ gateway, state, node: d.pve.node, pveUrl: d.pve.baseUrl, caPem: d.pve.caPem, now, ssh: d.containers?.ssh, pluginDir: d.containers?.pluginDir, paceMs: d.containers?.paceMs, arch: d.containers?.arch, sleep: d.containers?.paceMs === 0 ? async () => {} : undefined });
 
   /** Stable, non-overlapping high VMID ranges for broker-managed organization leases. The broker validates collisions again. */
   const brokerRange = (companyId: string): [number, number] => {
