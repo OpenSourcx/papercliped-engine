@@ -425,14 +425,19 @@ describe("agent containers setup", () => {
       await setup([acct(), acct({ id: "conn-2", grantId: "grant-2" })], [agent("ambiguous", "claude_local")]);
       await app.containers.reconcile();
       expect(bindings()).toEqual([]); // two shared accounts and no default: not ours to pick
-      eng.st.aiConnections.set([...eng.st.agents.keys()][0]!, [acct({ ownership: "personal" }), acct({ id: "c3", grantId: "g3", status: "needs_attention" }), acct({ id: "c4", grantId: "g4", provider: "openai" })]);
+      eng.st.aiConnections.set([...eng.st.agents.keys()][0]!, [acct({ id: "c3", grantId: "g3", status: "needs_attention" }), acct({ id: "c4", grantId: "g4", provider: "openai" }), acct({ id: "c5", ownership: "personal", status: "needs_attention" })]);
       await app.containers.reconcile();
-      expect(bindings()).toEqual([]); // personal, unhealthy, or another provider's accounts are never handed out
+      expect(bindings()).toEqual([]); // unhealthy, unconnected or another provider's accounts are never handed out
+      eng.st.aiConnections.set([...eng.st.agents.keys()][0]!, [acct({ ownership: "personal" })]);
+      await app.containers.reconcile();
+      // A connected personal account of the right provider: the agent uses the responsible person's account (the engine's own default).
+      expect(bindings()).toHaveLength(1);
+      expect((eng.st.agentPatches.find((x) => (x.body.runtimeConfig as any)?.aiConnection)!.body.runtimeConfig as any).aiConnection).toEqual({ provider: "anthropic", method: "subscription", mode: "responsible_user" });
       const co = [...eng.st.agents.keys()][0]!;
       eng.st.agents.set(co, [agent("chosen", "claude_local", { runtimeConfig: { aiConnection: { mode: "responsible_user", provider: "anthropic", method: "subscription" } } })]);
       eng.st.aiConnections.set(co, [acct()]);
       await app.containers.reconcile();
-      expect(bindings()).toEqual([]); // already has a binding
+      expect(bindings()).toHaveLength(1); // only the earlier one: this agent already has a binding
     });
 
     it("binds before the guard looks at the agent, so a fixable agent is never paused for it", async () => {
