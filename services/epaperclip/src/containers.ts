@@ -1635,8 +1635,8 @@ export class AgentContainers {
     const getAccounts = async () => (accounts ??= await this.orgAccounts(cid));
     for (const a of agents) {
       if (a.status === "terminated" || a.id === pinIdentity) continue;
-      await this.guardSetupLoop(a, companyId, name, warnings);
-      await this.bindAccount(a, name, getAccounts, warnings);
+      // A tick that just gave the agent its account does not count as a failed tick: the cause of the failure is gone.
+      if (!(await this.bindAccount(a, companyId, name, getAccounts, warnings))) await this.guardSetupLoop(a, companyId, name, warnings);
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.
@@ -1706,21 +1706,34 @@ export class AgentContainers {
    * when exactly one fits (or one is the default). Never personal or unhealthy accounts, never an agent that already has a
    * binding, and never an agent the host already bound once, so a person who clears it keeps it cleared.
    */
-  private async bindAccount(a: { id: string; name: string; adapterType?: string; runtimeConfig?: Record<string, unknown> | null }, org: string, getAccounts: () => Promise<EngineAccount[]>, warnings: string[]): Promise<void> {
+  private async bindAccount(a: { id: string; name: string; adapterType?: string; lifecycleState?: string | null; runtimeConfig?: Record<string, unknown> | null }, companyId: string, org: string, getAccounts: () => Promise<EngineAccount[]>, warnings: string[]): Promise<boolean> {
     const provider = a.adapterType ? ACCOUNT_PROVIDER[a.adapterType] : undefined;
-    if (!provider || a.runtimeConfig?.aiConnection !== undefined) return;
+    if (!provider || a.runtimeConfig?.aiConnection !== undefined) return false;
     const done = this.d.state.getSetting<Record<string, string>>("agentAccountBound") ?? {};
-    if (a.id in done) return;
+    if (a.id in done) return false;
     const fits = (await getAccounts()).filter((c) => c.provider === provider && c.ownership === "shared" && c.status === "connected" && typeof c.grantId === "string");
     const pick = fits.length === 1 ? fits[0] : fits.find((c) => c.isDefault);
-    if (!pick) return;
+    if (!pick) return false;
     try {
       await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: { provider, method: pick.method ?? "subscription", mode: "shared", connectionId: pick.id, grantId: pick.grantId } } });
       this.d.state.setSetting("agentAccountBound", { ...done, [a.id]: pick.grantId });
+      this.stuckAgents.delete(a.id); // the cause of its failing test run is gone; count again from now
       activity.info("engine", "agent.account", `Gave ${a.name} the organization's ${provider} account${pick.name ? ` "${pick.name}"` : ""}`, { agentId: a.id });
+      // If the guard paused it for failing before there was an account to give, bring it back: only an agent this host paused.
+      if (a.lifecycleState === "paused" && this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused")?.[a.id]) {
+        try {
+          await this.eng("POST", `/api/agents/${encodeURIComponent(a.id)}/resume`, {});
+          this.forgetSetupPause(a.id);
+          activity.info("engine", "agent.resume", `Resumed ${a.name} after giving it the account`, { agentId: a.id, companyId });
+        } catch (e) {
+          warnings.push(`${org}: gave ${a.name} the account but couldn't resume it: ${errText(e)}`);
+        }
+      }
     } catch (e) {
       warnings.push(`${org}: couldn't give ${a.name} the organization's ${provider} account: ${errText(e)}`);
+      return false;
     }
+    return true;
   }
 
   private forgetSetupPause(agentId: string) {

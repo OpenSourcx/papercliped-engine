@@ -227,7 +227,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
         const a = list.find((x) => x.id === agentAct[1]);
         if (a) {
           a.status = agentAct[2] === "pause" ? "paused" : "idle";
-          if (agentAct[2] === "pause") { a.lifecycleState = "paused"; a.lifecycleError = null; }
+          if (agentAct[2] === "pause") { a.lifecycleState = "paused"; a.lifecycleError = null; } else a.lifecycleState = "resuming";
           st.agentActs.push(`${agentAct[2]} ${a.id}`);
           return json(res, 200, a);
         }

@@ -435,6 +435,35 @@ describe("agent containers setup", () => {
       expect(bindings()).toEqual([]); // already has a binding
     });
 
+    it("binds before the guard looks at the agent, so a fixable agent is never paused for it", async () => {
+      await setup([acct()], [agent("claude-1", "claude_local", { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation." })]);
+      // Three ticks would pause a still-failing agent under the old order (guard first, counter never reset by a bind).
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(bindings().map((b) => b.id)).toEqual(["claude-1"]);
+      expect(eng.st.agentActs).toEqual([]);
+    });
+
+    it("resumes an agent the guard paused once it has given it the account, because the cause is gone", async () => {
+      const co = await setup([], [agent("claude-1", "claude_local", { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation." })]);
+      // No account yet: the agent keeps failing and the guard pauses it after three ticks.
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["pause claude-1"]);
+      // Someone signs in. The next tick binds the account and brings the agent back.
+      eng.st.aiConnections.set(co, [acct()]);
+      await app.containers.reconcile();
+      expect(bindings().map((b) => b.id)).toEqual(["claude-1"]);
+      expect(eng.st.agentActs).toEqual(["pause claude-1", "resume claude-1"]);
+      expect(state.getSetting<Record<string, unknown>>("agentSetupPaused")!["claude-1"]).toBeUndefined();
+      // An agent a person paused on purpose is not resumed.
+      eng.st.agents.get(co)!.push(agent("chosen", "claude_local", { status: "paused", lifecycleState: "paused" }));
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["pause claude-1", "resume claude-1"]);
+    });
+
     it("prefers the default when several shared accounts fit, and never re-binds an agent after its binding was cleared", async () => {
       const co = await setup([acct(), acct({ id: "conn-2", grantId: "grant-2", isDefault: true })], [agent("claude-1", "claude_local")]);
       await app.containers.reconcile();
