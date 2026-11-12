@@ -1,3 +1,4 @@
+import { useAgentSkills, useSkills } from "../../../data/engine/more.ts";
 import { PinOrb } from "../../../pin/PinIsland.tsx";
 import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
@@ -176,6 +177,11 @@ export function LiveAgentDetail() {
   const a = agent.data;
   const readiness = useAgentReadiness(companyId, a ? [a] : []);
   const current = a ? readiness.get(a.id) : undefined;
+  const everyone = useAgents(companyId);
+  const skillSnap = useAgentSkills(companyId, agentId);
+  const skillList = useSkills(companyId);
+  const skillNames = (skillSnap.data?.supported ? skillSnap.data.desiredSkills : []).map((key) => (skillList.data ?? []).find((k) => k.key === key)?.name ?? key.split("/").pop() ?? key);
+  const directReports = (everyone.data ?? []).filter((x) => x.reportsTo === agentId && x.status !== "terminated").length;
   const [params, setParams] = useSearchParams();
   type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
@@ -241,13 +247,19 @@ export function LiveAgentDetail() {
             <div className="grid md:grid-cols-2 gap-4">
             <Card className="p-5">
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
+                <dt className="text-ink-3">Role</dt><dd>{names.role(a)}</dd>
+                <dt className="text-ink-3">Title</dt><dd>{a.title || "Not set"}</dd>
+                <dt className="text-ink-3">Direct reports</dt><dd>{directReports}</dd>
                 <dt className="text-ink-3">Runs with</dt><dd>{a.adapterType}{typeof a.adapterConfig?.model === "string" ? ` · ${a.adapterConfig.model}` : ""}</dd>
                 <dt className="text-ink-3">Reports to</dt><dd>{a.reportsTo ? names.agent(a.reportsTo) : "You"}</dd>
                 <dt className="text-ink-3">Last ran</dt><dd>{ago(a.lastHeartbeatAt)}</dd>
                 <dt className="text-ink-3">Spend</dt><dd>{a.budgetMonthlyCents ? `${dollars(a.spentMonthlyCents)} of ${dollars(a.budgetMonthlyCents)} this month` : `${dollars(a.spentMonthlyCents)} this month, no budget set`}</dd>
                 {a.errorReason && <><dt className="text-ink-3">Error</dt><dd className="text-critical">{a.errorReason}</dd></>}
               </dl>
-              {a.capabilities && <p className="text-compact text-ink-2 mt-4 whitespace-pre-wrap">{a.capabilities}</p>}
+              <div className="mt-4"><div className="text-compact font-semibold uppercase tracking-label text-ink-3 mb-2">Capabilities</div>{a.capabilities ? <p className="text-compact text-ink-2 whitespace-pre-wrap">{a.capabilities}</p> : <p className="text-compact text-ink-3">No capability summary has been added.</p>}</div>
+              <div className="mt-4"><div className="flex items-center justify-between mb-2"><div className="text-compact font-semibold uppercase tracking-label text-ink-3">Skills</div><button type="button" className="text-compact text-accent" onClick={() => setTab("skills")}>Manage</button></div>
+                {skillNames.length === 0 ? <p className="text-compact text-ink-3">No skills turned on.</p> : <div className="flex flex-wrap gap-1.5">{skillNames.map((n) => <span key={n} className="rounded-full border border-line px-2.5 py-0.5 text-compact text-ink-2">{n}</span>)}</div>}
+              </div>
             </Card>
             <Card>
               <div className="px-5 pt-4 pb-2 text-compact font-semibold uppercase tracking-label text-ink-3">Recent runs</div>

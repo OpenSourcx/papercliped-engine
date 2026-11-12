@@ -44,6 +44,12 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const [adapter, setAdapter] = useState(agent.adapterType);
   const [model, setModel] = useState(typeof cfg.model === "string" ? cfg.model : "");
   const [command, setCommand] = useState(typeof cfg.command === "string" ? cfg.command : "");
+  const rt = (agent as unknown as { runtimeConfig?: { heartbeat?: { enabled?: boolean; intervalSec?: number } } }).runtimeConfig ?? {};
+  const [effort, setEffort] = useState(typeof cfg.effort === "string" ? cfg.effort : "");
+  const [maxTurns, setMaxTurns] = useState(typeof cfg.maxTurnsPerRun === "number" ? String(cfg.maxTurnsPerRun) : "");
+  const [timeoutSec, setTimeoutSec] = useState(typeof cfg.timeoutSec === "number" ? String(cfg.timeoutSec) : "");
+  const [beat, setBeat] = useState(rt.heartbeat?.enabled === true);
+  const [beatSec, setBeatSec] = useState(typeof rt.heartbeat?.intervalSec === "number" ? String(rt.heartbeat.intervalSec) : "300");
   const [env, setEnv] = useState<EnvRow[]>(() => readEnv(cfg));
   const [creating, setCreating] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
@@ -54,6 +60,9 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const setRow = (i: number, patch: Partial<EnvRow>) => setEnv(env.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const badKey = env.some((r) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(r.key.trim()));
   const incomplete = env.some((r) => (r.kind === "secret" ? !r.secretId : false));
+  const wholeOrBlank = (v: string, min: number) => v.trim() === "" || (/^\d{1,7}$/.test(v.trim()) && Number(v) >= min);
+  const badRun = !wholeOrBlank(maxTurns, 1) || !wholeOrBlank(timeoutSec, 0) || !wholeOrBlank(beatSec, 30);
+  const hasEffort = adapter === "claude_local";
 
   const save = () => {
     const nextEnv: Record<string, unknown> = {};
@@ -62,8 +71,13 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
     if (model) adapterConfig.model = model; else delete adapterConfig.model;
     if (adapter === "process") { if (command) adapterConfig.command = command; else delete adapterConfig.command; }
     if (env.length) adapterConfig.env = nextEnv; else delete adapterConfig.env;
+    if (hasEffort) { if (effort) adapterConfig.effort = effort; else delete adapterConfig.effort; }
+    if (maxTurns.trim()) adapterConfig.maxTurnsPerRun = Number(maxTurns); else delete adapterConfig.maxTurnsPerRun;
+    if (timeoutSec.trim()) adapterConfig.timeoutSec = Number(timeoutSec); else delete adapterConfig.timeoutSec;
+    const prevBeat = (rt.heartbeat ?? {}) as Record<string, unknown>;
+    const runtimeConfig = { ...(rt as Record<string, unknown>), heartbeat: { ...prevBeat, enabled: beat, intervalSec: Number(beatSec) || 300 } };
     setSaved(false);
-    w.update.mutate({ name: name.trim(), title: title.trim() || null, role, reportsTo: reportsTo || null, capabilities: capabilities.trim() || null, adapterType: adapter, adapterConfig }, { onSuccess: () => setSaved(true) });
+    w.update.mutate({ name: name.trim(), title: title.trim() || null, role, reportsTo: reportsTo || null, capabilities: capabilities.trim() || null, adapterType: adapter, adapterConfig, runtimeConfig }, { onSuccess: () => setSaved(true) });
   };
 
   return (
@@ -85,6 +99,22 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
           ) : null}
         </div>
         <p className="text-xs text-ink-3">Agents run in containers, not on the host. Changing how an agent runs takes effect on its next run.</p>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <h3 className="text-compact font-semibold uppercase tracking-label text-ink-3">How it runs</h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {hasEffort && (
+            <Field label="Thinking effort" htmlFor="ag-effort" hint="How hard the model thinks before it answers. Auto lets the model decide."><Select id="ag-effort" value={effort} onChange={(e) => setEffort(e.target.value)}><option value="">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option></Select></Field>
+          )}
+          <Field label="Most turns in one run" htmlFor="ag-turns" hint="Leave empty for the default. A run stops here instead of looping."><Input id="ag-turns" inputMode="numeric" placeholder="1000" value={maxTurns} onChange={(e) => setMaxTurns(e.target.value)} /></Field>
+          <Field label="Time limit for a run (seconds)" htmlFor="ag-timeout" hint="0 or empty means no limit."><Input id="ag-timeout" inputMode="numeric" placeholder="0" value={timeoutSec} onChange={(e) => setTimeoutSec(e.target.value)} /></Field>
+        </div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={beat} onChange={(e) => setBeat(e.target.checked)} /> Wake this agent on a timer</label>
+          {beat && <Field label="Every (seconds)" htmlFor="ag-beat" hint="At least 30. The agent checks for work, and does nothing when there is none."><div className="w-40"><Input id="ag-beat" inputMode="numeric" value={beatSec} onChange={(e) => setBeatSec(e.target.value)} /></div></Field>}
+        </div>
+        {badRun && <p role="alert" className="text-compact text-critical">Use whole numbers: turns at least 1, the timer at least 30 seconds.</p>}
       </Card>
 
       <Card className="p-5 space-y-3">
@@ -119,7 +149,7 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
       <div className="flex items-center justify-end gap-3">
         {saved && !w.update.isPending && <span className="text-compact text-good">Saved</span>}
         <ActionError error={w.update.error} />
-        <Button variant="primary" loading={w.update.isPending} disabled={!name.trim() || badKey || incomplete} onClick={save}>Save configuration</Button>
+        <Button variant="primary" loading={w.update.isPending} disabled={!name.trim() || badKey || incomplete || badRun} onClick={save}>Save configuration</Button>
       </div>
       {creating !== null && <CreateSecretModal onClose={() => setCreating(null)} onCreated={(id) => { setRow(creating, { secretId: id }); setCreating(null); }} />}
     </div>
