@@ -110,6 +110,7 @@ export function useSkillWrites(companyId: string) {
   return {
     syncAgent: useWrite(({ agentId, mode, desired }: { agentId: string; mode: "add" | "remove" | "replace"; desired: string[] }) => engine.skills.syncAgent(agentId, mode, desired), [qk.agentSkills(companyId, ""), ["engine", "co", companyId, "agent-skills"], ["engine", "co", companyId, "skill"], ...keys]),
     installCatalog: useWrite((catalogSkillId: string) => engine.skills.installCatalog(companyId, { catalogSkillId }), keys),
+    createSkill: useWrite((b: { name: string; slug?: string; description?: string; markdown?: string; tagline?: string; authorName?: string; categories?: string[] }) => engine.skills.create(companyId, b), keys),
     refreshSource: useWrite((sourceId: string) => engine.skills.refreshSource(companyId, sourceId), keys),
   };
 }

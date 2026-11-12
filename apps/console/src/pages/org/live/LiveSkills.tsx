@@ -5,6 +5,7 @@ import { useAgents } from "../../../data/engine/queries.ts";
 import { useSkill, useSkillCatalog, useSkillFile, useSkills, useSkillSources, useSkillWrites } from "../../../data/engine/more.ts";
 import { Modal } from "../../../ui/Modal.tsx";
 import { Button, Card, Chip, EmptyState, Input, Notice, PageFrame, PageHeader, Tabs, Toggle } from "../../../ui/primitives.tsx";
+import { EPAPERCLIP_SKILLS } from "../../../data/epaperclipSkills.ts";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
 
 type Tab = "installed" | "catalog" | "sources";
@@ -122,6 +123,24 @@ export function LiveSkills() {
         </Card>
       )}
 
+      {tab === "catalog" && (
+        <div className="mb-6">
+          <div className="text-compact font-semibold uppercase tracking-label text-ink-3 mb-2">Made for ePaperclip</div>
+          <p className="text-compact text-ink-3 mb-3">Skills written by the ePaperclip project. Adding one puts it in this organization only; other organizations are not affected.</p>
+          <Card className="divide-y divide-line">
+            {EPAPERCLIP_SKILLS.map((k) => {
+              const have = (skills.data ?? []).some((x) => x.slug === k.slug || x.key.endsWith(`/${k.slug}`));
+              return (
+                <div key={k.slug} className="flex items-center gap-3 px-5 py-3">
+                  <div className="flex-1 min-w-0"><div className="text-sm font-medium">{k.name}</div><div className="text-xs text-ink-3">{k.tagline}</div></div>
+                  {have ? <Chip tone="good">Added</Chip> : <Button size="sm" loading={w.createSkill.isPending && w.createSkill.variables?.slug === k.slug} onClick={() => w.createSkill.mutate({ name: k.name, slug: k.slug, description: k.description, markdown: k.markdown, tagline: k.tagline, authorName: "ePaperclip", categories: k.categories })}>Add to this organization</Button>}
+                </div>
+              );
+            })}
+          </Card>
+          <ActionError error={w.createSkill.error} />
+        </div>
+      )}
       {tab === "catalog" && (
         <Card className="divide-y divide-line">
           {catalog.isPending && <Loading label="Loading the catalog" />}
