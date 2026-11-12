@@ -53,7 +53,8 @@ function OrgCard({ org, device }: { org: Org; device: string }) {
 }
 
 export function Home() {
-  const { setup, host, data, live } = useEngine();
+  const { setup, host, data, live, ready } = useEngine();
+  const hostKnown = !live || host.memTotal > 0 || ready;
   const pin = usePin();
   const device = setup?.deviceName ?? "pve";
   const name = (setup?.ownerName || "there").split(" ")[0];
@@ -75,7 +76,7 @@ export function Home() {
             {greeting()}, {name}. <span className="text-ink-2">What's on your mind?</span>
           </h1>
           <p className="text-ink-3 mt-4 text-body fade-in">
-            {device} {deviceCondition(host, live ? containers.data : null)} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
+            {device} {hostKnown ? deviceCondition(host, live ? containers.data : null) : "is loading"} · {data.orgs.length === 0 ? ((n) => `${n} machine${n === 1 ? "" : "s"} running`)(data.guests.filter((g) => g.status === "running").length) : working ? `${working} agent${working === 1 ? "" : "s"} working` : "all agents idle"} · up {formatUptime(host.uptimeSec)}
           </p>
           <div className="mt-9 text-left">
             <PinComposer />
@@ -96,14 +97,12 @@ export function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <Card className="p-4 sm:p-6 flex flex-col">
               <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-6 items-center justify-items-center">
-                <ArcMeter label="CPU" pct={host.cpuPct} caption={`of ${host.cpus} CPUs`} />
-                <ArcMeter label="Memory" pct={(host.memUsed / host.memTotal) * 100} caption={`${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}`} />
-                <ArcMeter label="Root disk" pct={host.diskTotal ? (host.diskUsed / host.diskTotal) * 100 : 0} caption={`${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}`} />
+                <ArcMeter label="CPU" pct={host.cpuPct} caption={hostKnown ? `of ${host.cpus} CPUs` : "Reading…"} />
+                <ArcMeter label="Memory" pct={(host.memUsed / host.memTotal) * 100} caption={hostKnown ? `${formatBytes(host.memUsed)} of ${formatBytes(host.memTotal)}` : "Reading…"} />
+                <ArcMeter label="Root disk" pct={host.diskTotal ? (host.diskUsed / host.diskTotal) * 100 : 0} caption={hostKnown ? `${formatBytes(host.diskUsed)} of ${formatBytes(host.diskTotal)}` : "Reading…"} />
               </div>
               <div className="mt-5 pt-4 border-t border-line flex flex-wrap gap-x-6 gap-y-1 text-compact text-ink-3">
-                <span>{host.cpuModel}</span>
-                <span>Proxmox VE {proxmoxVersion(host.version)}</span>
-                <span>{host.ip}</span>
+                {hostKnown ? <><span>{host.cpuModel}</span><span>Proxmox VE {proxmoxVersion(host.version)}</span><span>{host.ip}</span></> : <span>Reading this device…</span>}
               </div>
             </Card>
             <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">

@@ -26,6 +26,14 @@ export function demoHost(deviceName: string): HostMetrics {
   };
 }
 
+/**
+ * What a live console holds before the host has answered: no numbers at all, so nothing made up is ever shown. (The demo host
+ * above has an address, a disk and an uptime; showing those for a moment on a real device was wrong.)
+ */
+export function unknownHost(deviceName: string): HostMetrics {
+  return { hostname: deviceName, ip: "", version: "", cpuModel: "", cpus: 0, cpuPct: 0, memUsed: 0, memTotal: 0, diskUsed: 0, diskTotal: 0, uptimeSec: 0 };
+}
+
 const agents = (list: [string, string, Agent["status"], string | null, Agent["engine"]?][]): Agent[] =>
   list.map(([name, role, status, task, engine], i) => ({ id: `${slugify(name)}-${i}`, name, role, adapter: i % 2 ? "Codex" : "Claude Code", engine: engine ?? (i === 0 ? "native" : "container"), status, task }));
 

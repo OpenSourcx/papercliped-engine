@@ -6,7 +6,7 @@ import { useSession } from "../auth/session.tsx";
 import { readJson, removeKey, slugify, writeJson } from "../lib/storage.ts";
 import { api, ApiError, type HardwareChange, type MachineSpec, type RestoreSpec, type VmSpec } from "./api.ts";
 import { demoBackend, liveBackend, parseBackupName, type Backend } from "./backend.ts";
-import { demoData, demoHost, liveData, newOrg } from "./demo.ts";
+import { demoData, demoHost, liveData, newOrg, unknownHost } from "./demo.ts";
 import { liveGuests, liveHostMetrics, liveStorage } from "./live.ts";
 import { withUsage } from "./engine/map.ts";
 import { useLiveOrgs } from "./engine/orgs.ts";
@@ -127,7 +127,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
     if (saved.apps && saved.host && saved.orgs.every((o) => Array.isArray(o.goals))) return saved;
     return demoData(saved.orgs[0]?.name ?? null);
   });
-  const [host, setHost] = useState<HostMetrics>(() => demoHost(setup?.deviceName ?? "pve"));
+  const [host, setHost] = useState<HostMetrics>(() => (live ? unknownHost(setup?.deviceName ?? "pve") : demoHost(setup?.deviceName ?? "pve")));
   const [guests, setGuests] = useState<Guest[] | null>(null);
   const [storage, setStorage] = useState<HostStorage[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
