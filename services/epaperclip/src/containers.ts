@@ -380,6 +380,15 @@ const CLI_LANE = new Set(["claude_local", "codex_local", "gemini_local", "kimi_l
 /** How many one-minute ticks in a row an agent may fail verification before it is paused (ERR-CTR-001). */
 export const SETUP_LOOP_LIMIT = 3;
 
+/** The AI accounts an organization has, as the engine lists them (only what binding needs). */
+interface EngineAccount { id: string; grantId?: string; provider?: string; method?: string; name?: string; ownership?: string; status?: string; isDefault?: boolean }
+
+/** Which provider's account an adapter uses. Only the harnesses that sign in with a subscription. */
+const ACCOUNT_PROVIDER: Record<string, string> = { claude_local: "anthropic", codex_local: "openai" };
+
+/** An agent the host gave an account to: the grant, and when. (Older records were just the grant id.) */
+type BoundRecord = string | { grantId: string; at: number };
+
 /** An agent the host paused because its setup kept failing; kept so the console can say why. */
 export interface SetupPause { companyId: string; name: string; at: number; attempts: number; reason: string }
 
@@ -1620,14 +1629,19 @@ export class AgentContainers {
     this.save({ environments: { ...(this.stored().environments ?? {}), [companyId]: { environmentId: env.id } } });
 
     // The organization's agents default to it, unless someone chose a different non-local environment on purpose.
-    const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null; lifecycleState?: string | null; lifecycleError?: string | null; lifecycleHolds?: unknown[] | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
+    const agents = await this.eng<{ id: string; name: string; status?: string; adapterType?: string; adapterConfig?: Record<string, unknown> | null; defaultEnvironmentId?: string | null; lifecycleState?: string | null; lifecycleError?: string | null; lifecycleHolds?: unknown[] | null; runtimeConfig?: Record<string, unknown> | null }[]>("GET", `/api/companies/${cid}/agents`).catch(() => []);
     const known = new Map(envs.map((e) => [e.id, e]));
     // Pin's own identity in this organization is only a subject for tool policy (src/pin-apps.ts). It never runs, so it must
     // not be given the organization's container environment, which would let a wake-up allocate a container for it.
     const pinIdentity = (this.d.state.getSetting<Record<string, string>>("pin.appIdentities") ?? {})[companyId];
+    let accounts: EngineAccount[] | undefined;
+    const getAccounts = async () => (accounts ??= await this.orgAccounts(cid));
     for (const a of agents) {
       if (a.status === "terminated" || a.id === pinIdentity) continue;
-      await this.guardSetupLoop(a, companyId, name, warnings);
+      // A tick that just gave the agent its account does not count as a failed tick: the cause of the failure is gone.
+      const justBound = await this.bindAccount(a, companyId, name, getAccounts, warnings);
+      await this.reviveAfterBinding(justBound ? { ...a, runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: true } } : a, companyId, name, warnings);
+      if (!justBound) await this.guardSetupLoop(a, companyId, name, warnings);
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.
@@ -1681,6 +1695,61 @@ export class AgentContainers {
     this.stuckAgents.delete(a.id);
     this.d.state.setSetting("agentSetupPaused", { ...(this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused") ?? {}), [a.id]: { companyId, name: a.name, at: Date.now(), attempts: n, reason: why } });
     warnings.push(`${org}: paused ${a.name} after ${n} failed setup attempts because ${why}, so it stops cloning containers. Fix that, then resume the agent.`);
+  }
+
+  private async orgAccounts(cid: string): Promise<EngineAccount[]> {
+    const r = await this.eng<{ connections?: EngineAccount[] } | EngineAccount[]>("GET", `/api/companies/${cid}/ai-connections`).catch(() => null);
+    const list = Array.isArray(r) ? r : Array.isArray(r?.connections) ? r.connections : [];
+    return list.filter((c) => c && typeof c === "object" && typeof c.id === "string");
+  }
+
+  /**
+   * Signing in creates an account for the organization but does not attach it to any agent, and the engine verifies and runs
+   * an agent with the account in its own `runtimeConfig.aiConnection`. Without one the agent's test run says "login
+   * required" forever (observed on a real host: an agent created after a successful sign-in failed verification until its
+   * binding was set by hand). So an agent that has none gets the organization's shared, connected account for its provider,
+   * when exactly one fits (or one is the default). Never personal or unhealthy accounts, never an agent that already has a
+   * binding, and never an agent the host already bound once, so a person who clears it keeps it cleared.
+   */
+  private async bindAccount(a: { id: string; name: string; adapterType?: string; lifecycleState?: string | null; runtimeConfig?: Record<string, unknown> | null }, companyId: string, org: string, getAccounts: () => Promise<EngineAccount[]>, warnings: string[]): Promise<boolean> {
+    const provider = a.adapterType ? ACCOUNT_PROVIDER[a.adapterType] : undefined;
+    if (!provider || a.runtimeConfig?.aiConnection !== undefined) return false;
+    const done = this.d.state.getSetting<Record<string, BoundRecord>>("agentAccountBound") ?? {};
+    if (a.id in done) return false;
+    const fits = (await getAccounts()).filter((c) => c.provider === provider && c.ownership === "shared" && c.status === "connected" && typeof c.grantId === "string");
+    const pick = fits.length === 1 ? fits[0] : fits.find((c) => c.isDefault);
+    if (!pick) return false;
+    try {
+      await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: { provider, method: pick.method ?? "subscription", mode: "shared", connectionId: pick.id, grantId: pick.grantId } } });
+      this.d.state.setSetting("agentAccountBound", { ...done, [a.id]: { grantId: pick.grantId as string, at: Date.now() } });
+      this.stuckAgents.delete(a.id); // the cause of its failing test run is gone; count again from now
+      activity.info("engine", "agent.account", `Gave ${a.name} the organization's ${provider} account${pick.name ? ` "${pick.name}"` : ""}`, { agentId: a.id });
+    } catch (e) {
+      warnings.push(`${org}: couldn't give ${a.name} the organization's ${provider} account: ${errText(e)}`);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * An agent this host paused because its test run kept failing, and which was given an AI account after that, is brought
+   * back: the usual cause (no account) is gone. Only ever an agent in the host's own pause record, only once per pause, and
+   * only when the binding is newer than the pause, so one that fails for another reason is not resumed in a loop.
+   */
+  private async reviveAfterBinding(a: { id: string; name: string; lifecycleState?: string | null; runtimeConfig?: Record<string, unknown> | null }, companyId: string, org: string, warnings: string[]): Promise<void> {
+    if (a.lifecycleState !== "paused" || a.runtimeConfig?.aiConnection === undefined) return;
+    const rec = this.d.state.getSetting<Record<string, SetupPause>>("agentSetupPaused")?.[a.id];
+    const bound = this.d.state.getSetting<Record<string, BoundRecord>>("agentAccountBound")?.[a.id];
+    if (!rec || !bound) return;
+    const boundAt = typeof bound === "string" ? Number.MAX_SAFE_INTEGER : bound.at; // an older record: bound at some point, assume after
+    if (boundAt <= rec.at) return;
+    try {
+      await this.eng("POST", `/api/agents/${encodeURIComponent(a.id)}/resume`, {});
+      this.forgetSetupPause(a.id);
+      activity.info("engine", "agent.resume", `Resumed ${a.name} after giving it the account`, { agentId: a.id, companyId });
+    } catch (e) {
+      warnings.push(`${org}: gave ${a.name} the account but couldn't resume it: ${errText(e)}`);
+    }
   }
 
   private forgetSetupPause(agentId: string) {

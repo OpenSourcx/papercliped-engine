@@ -21,7 +21,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
   const users = new Map<string, { id: string; password: string; name: string }>();
   const sessions = new Map<string, string>(); // token -> user id
   const companies = new Map<string, { name: string; members: Map<string, string> }>();
-  const st = { refusedEnv: [] as string[], agentActs: [] as string[], archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
+  const st = { aiConnections: new Map<string, any[]>(), agentPatches: [] as { id: string; body: Record<string, unknown> }[], refusedEnv: [] as string[], agentActs: [] as string[], archivedCompanies: new Set<string>(), strictMembers: false, bootstrap: opts.bootstrap ?? "pending", admin: null as string | null, limitSignIns: 0, signIns: 0, signUps: 0, claims: 0, admins: new Set<string>(), archived: new Set<string>(), invites: 0, inviteTokens: new Map<string, { companyId: string; role: string }>(), plugins: [] as { id: string; pluginKey: string; status: string; lastError: string | null; packageName: string }[], pluginInstallError: null as string | null, managedSandboxOnly: false, envs: new Map<string, any>(), secrets: new Map<string, { companyId: string; name: string; value: string }>(), agents: new Map<string, any[]>(), envBodies: [] as string[], envPatches: [] as Record<string, unknown>[], pendingCleanup: [] as { providerLeaseId: string; failureReason: string | null }[], workerDownPolls: 0, workerProbes: 0, secretBodies: 0, authSignals: new Map<string, string>(), authSignalCalls: [] as string[] };
   const seen: SeenRequest[] = [];
   const sockets: { url: string; headers: IncomingMessage["headers"] }[] = [];
   let publicUrl = "";
@@ -207,6 +207,7 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
         const a = list.find((x) => x.id === agentOne[1]);
         if (a) {
           const patch = b();
+          st.agentPatches.push({ id: a.id, body: patch });
           // The real engine refuses a sandbox environment for an adapter that can't run in one (the plain process adapter).
           if (patch.defaultEnvironmentId && a.adapterType === "process") {
             st.refusedEnv.push(a.id);
@@ -218,13 +219,15 @@ export async function fakeEngine(opts: { bootstrap?: "pending" | "ready" } = {})
       }
       return json(res, 404, { error: "Agent not found" });
     }
+    const aiList = p.match(/^\/api\/companies\/([\w-]+)\/ai-connections$/);
+    if (aiList && req.method === "GET") return json(res, 200, { currentUserId: uid, pools: [], canManageConnections: true, connections: st.aiConnections.get(aiList[1]!) ?? [] });
     const agentAct = p.match(/^\/api\/agents\/([\w-]+)\/(pause|resume)$/);
     if (agentAct && req.method === "POST") {
       for (const list of st.agents.values()) {
         const a = list.find((x) => x.id === agentAct[1]);
         if (a) {
           a.status = agentAct[2] === "pause" ? "paused" : "idle";
-          if (agentAct[2] === "pause") { a.lifecycleState = "paused"; a.lifecycleError = null; }
+          if (agentAct[2] === "pause") { a.lifecycleState = "paused"; a.lifecycleError = null; } else a.lifecycleState = "resuming";
           st.agentActs.push(`${agentAct[2]} ${a.id}`);
           return json(res, 200, a);
         }

@@ -397,6 +397,98 @@ describe("agent containers setup", () => {
     expect(state.getSetting<Record<string, { reason: string }>>("agentSetupPaused")!["proc-1"]!.reason).toMatch(/adapter can't run in a container/);
   });
 
+  describe("an agent gets the organization's AI account without being told which (ERR-OAU-008)", () => {
+    const acct = (o: Record<string, unknown> = {}) => ({ id: "conn-1", grantId: "grant-1", provider: "anthropic", method: "subscription", name: "Owner Claude", ownership: "shared", status: "connected", isDefault: false, ...o });
+    const agent = (id: string, adapterType: string, extra: Record<string, unknown> = {}) => ({ id, name: id, role: "engineer", status: "idle", adapterType, adapterConfig: {}, runtimeConfig: { heartbeat: { enabled: false } }, lifecycleState: "ready", lifecycleError: null, lifecycleHolds: [], defaultEnvironmentId: null, ...extra });
+    async function setup(accounts: unknown[], agents: unknown[]) {
+      const sam = await admin();
+      const o = await org(sam, "Northwind");
+      expect((await runSetup(sam)).status).toBe("done");
+      await send("GET", `/engine/api/companies/${o.co}/agents`, sam);
+      eng.st.aiConnections.set(o.co, accounts as any[]);
+      eng.st.agents.set(o.co, agents as any[]);
+      return o.co;
+    }
+    const bindings = () => eng.st.agentPatches.filter((x) => (x.body.runtimeConfig as any)?.aiConnection).map((x) => ({ id: x.id, binding: (x.body.runtimeConfig as any).aiConnection }));
+
+    it("binds a Claude agent to the one shared, connected Anthropic account, once, and keeps its other runtime settings", async () => {
+      await setup([acct()], [agent("claude-1", "claude_local"), agent("codex-1", "codex_local"), agent("proc-1", "process")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([{ id: "claude-1", binding: { provider: "anthropic", method: "subscription", mode: "shared", connectionId: "conn-1", grantId: "grant-1" } }]);
+      expect((eng.st.agentPatches.find((x) => (x.body.runtimeConfig as any)?.aiConnection)!.body.runtimeConfig as any).heartbeat).toEqual({ enabled: false });
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(bindings()).toHaveLength(1); // not again every minute, which would also restart the engine's verification
+    });
+
+    it("leaves an agent alone when the choice is the person's or unclear", async () => {
+      await setup([acct(), acct({ id: "conn-2", grantId: "grant-2" })], [agent("ambiguous", "claude_local")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // two shared accounts and no default: not ours to pick
+      eng.st.aiConnections.set([...eng.st.agents.keys()][0]!, [acct({ ownership: "personal" }), acct({ id: "c3", grantId: "g3", status: "needs_attention" }), acct({ id: "c4", grantId: "g4", provider: "openai" })]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // personal, unhealthy, or another provider's accounts are never handed out
+      const co = [...eng.st.agents.keys()][0]!;
+      eng.st.agents.set(co, [agent("chosen", "claude_local", { runtimeConfig: { aiConnection: { mode: "responsible_user", provider: "anthropic", method: "subscription" } } })]);
+      eng.st.aiConnections.set(co, [acct()]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([]); // already has a binding
+    });
+
+    it("binds before the guard looks at the agent, so a fixable agent is never paused for it", async () => {
+      await setup([acct()], [agent("claude-1", "claude_local", { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation." })]);
+      // Three ticks would pause a still-failing agent under the old order (guard first, counter never reset by a bind).
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(bindings().map((b) => b.id)).toEqual(["claude-1"]);
+      expect(eng.st.agentActs).toEqual([]);
+    });
+
+    it("resumes an agent the guard paused once it has given it the account, because the cause is gone", async () => {
+      const co = await setup([], [agent("claude-1", "claude_local", { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation." })]);
+      // No account yet: the agent keeps failing and the guard pauses it after three ticks.
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["pause claude-1"]);
+      // Someone signs in. The next tick binds the account and brings the agent back.
+      eng.st.aiConnections.set(co, [acct()]);
+      await app.containers.reconcile();
+      expect(bindings().map((b) => b.id)).toEqual(["claude-1"]);
+      expect(eng.st.agentActs).toEqual(["pause claude-1", "resume claude-1"]);
+      expect(state.getSetting<Record<string, unknown>>("agentSetupPaused")!["claude-1"]).toBeUndefined();
+      // An agent a person paused on purpose is not resumed.
+      eng.st.agents.get(co)!.push(agent("chosen", "claude_local", { status: "paused", lifecycleState: "paused" }));
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["pause claude-1", "resume claude-1"]);
+    });
+
+    it("resumes an agent that was paused by the guard and bound afterwards, even by an earlier build, and not one that fails for another reason", async () => {
+      const bound = { mode: "shared", provider: "anthropic", method: "subscription", connectionId: "conn-1", grantId: "grant-1" };
+      const co = await setup([acct()], [
+        agent("old-bound", "claude_local", { status: "paused", lifecycleState: "paused", runtimeConfig: { aiConnection: bound } }),
+        agent("bound-first", "claude_local", { status: "paused", lifecycleState: "paused", runtimeConfig: { aiConnection: bound } }),
+      ]);
+      // An earlier build recorded the pause and, later, the binding as a bare grant id; the other agent was bound BEFORE it was paused.
+      state.setSetting("agentSetupPaused", { "old-bound": { companyId: co, name: "old-bound", at: 1000, attempts: 3, reason: "its test run keeps failing" }, "bound-first": { companyId: co, name: "bound-first", at: Date.now(), attempts: 3, reason: "its test run keeps failing" } });
+      state.setSetting("agentAccountBound", { "old-bound": "grant-1", "bound-first": { grantId: "grant-1", at: 5 } });
+      await app.containers.reconcile();
+      expect(eng.st.agentActs).toEqual(["resume old-bound"]);
+      expect(Object.keys(state.getSetting<Record<string, unknown>>("agentSetupPaused")!)).toEqual(["bound-first"]);
+    });
+
+    it("prefers the default when several shared accounts fit, and never re-binds an agent after its binding was cleared", async () => {
+      const co = await setup([acct(), acct({ id: "conn-2", grantId: "grant-2", isDefault: true })], [agent("claude-1", "claude_local")]);
+      await app.containers.reconcile();
+      expect(bindings()).toEqual([{ id: "claude-1", binding: expect.objectContaining({ connectionId: "conn-2", grantId: "grant-2" }) }]);
+      // The person clears it on purpose; the host does not put it back.
+      eng.st.agents.get(co)![0].runtimeConfig = { heartbeat: { enabled: false } };
+      await app.containers.reconcile();
+      expect(bindings()).toHaveLength(1);
+    });
+  });
+
   it("does not give an organization without a resource group a shared-pool environment", async () => {
     const sam = await admin();
     const o = await org(sam, "Plain", false);
