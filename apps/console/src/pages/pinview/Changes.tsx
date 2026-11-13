@@ -74,7 +74,7 @@ export function ConnectGithub({ status, onDone }: { status: GithubStatus | undef
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
       {viaGithub && <GithubSignIn onDone={() => { void qc.invalidateQueries({ queryKey: STATUS_KEY }); }} />}
       {!viaGithub && (
-        <Field label={status?.connected ? `Connected${status.login ? ` as ${status.login}` : ""} (ending ${status.last4}). Paste a token to replace it, or leave blank to keep it` : "GitHub token"} htmlFor="gh-token" hint={status?.connected ? undefined : "Signing in with GitHub isn't set up on this device, so paste a fine-grained token with read access to pull requests and checks."}>
+        <Field label={status?.connected ? `Connected${status.login ? ` as ${status.login}` : ""} (ending ${status.last4}). Paste a token to replace it, or leave blank to keep it` : "GitHub token"} htmlFor="gh-token" hint={status?.connected ? undefined : "Signing in with GitHub isn't available on this build yet, so paste a fine-grained token with read access to pull requests and checks."}>
           <Input id="gh-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
         </Field>
       )}
