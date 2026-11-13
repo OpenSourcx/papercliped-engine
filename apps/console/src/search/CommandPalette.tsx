@@ -80,7 +80,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     return out.filter((h) => (seen.has(h.id) ? false : (seen.add(h.id), true))).slice(0, 30);
   }, [needle, org, found.data, agents.data, projects.data, data.guests, base, d]);
 
-  useEffect(() => setActive(0), [needle]);
+  useEffect(() => { setActive(0); }, [needle]);
   const go = (h: Hit) => {
     onClose();
     navigate(h.to);

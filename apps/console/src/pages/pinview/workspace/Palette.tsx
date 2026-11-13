@@ -14,7 +14,7 @@ export function Palette({ commands, onClose }: { commands: Command[]; onClose: (
     const scored = commands.filter((c) => !t || `${c.label} ${c.group} ${c.hint ?? ""}`.toLowerCase().includes(t));
     return scored.slice(0, 50);
   }, [commands, q]);
-  useEffect(() => setActive(0), [q]);
+  useEffect(() => { setActive(0); }, [q]);
   const run = (c: Command) => { onClose(); c.run(); };
   let lastGroup = "";
   return (

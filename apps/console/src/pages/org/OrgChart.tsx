@@ -68,7 +68,7 @@ export function OrgChart() {
     const k = Math.min(1.2, Math.max(0.35, Math.min((el.clientWidth - 48) / bounds.w, (el.clientHeight - 48) / bounds.h)));
     setView({ k, x: (el.clientWidth - bounds.w * k) / 2, y: Math.max(24, (el.clientHeight - bounds.h * k) / 2) });
   }, [bounds]);
-  useLayoutEffect(() => fit(), [fit]);
+  useLayoutEffect(() => { fit(); }, [fit]);
 
   // Wheel zooms around the cursor. Registered by hand so it can prevent the page from scrolling.
   useEffect(() => {

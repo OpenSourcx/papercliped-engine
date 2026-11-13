@@ -86,6 +86,14 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const [effort, setEffort] = useState(typeof cfg.effort === "string" ? cfg.effort : "");
   const [maxTurns, setMaxTurns] = useState(typeof cfg.maxTurnsPerRun === "number" ? String(cfg.maxTurnsPerRun) : "");
   const [timeoutSec, setTimeoutSec] = useState(typeof cfg.timeoutSec === "number" ? String(cfg.timeoutSec) : "");
+  const hb = (rt.heartbeat ?? {}) as { enabled?: boolean; intervalSec?: number; wakeOnDemand?: boolean; maxConcurrentRuns?: number; cooldownSec?: number; skipTimerWhenNoActionableWork?: boolean };
+  const [chrome, setChrome] = useState(cfg.chrome === true);
+  const [skipPerms, setSkipPerms] = useState(cfg.dangerouslySkipPermissions !== false);
+  const [grace, setGrace] = useState(typeof cfg.graceSec === "number" ? String(cfg.graceSec) : "");
+  const [wakeOnDemand, setWakeOnDemand] = useState(hb.wakeOnDemand !== false);
+  const [maxConc, setMaxConc] = useState(typeof hb.maxConcurrentRuns === "number" ? String(hb.maxConcurrentRuns) : "");
+  const [cooldown, setCooldown] = useState(typeof hb.cooldownSec === "number" ? String(hb.cooldownSec) : "");
+  const [skipIdle, setSkipIdle] = useState(hb.skipTimerWhenNoActionableWork !== false);
   const [beat, setBeat] = useState(rt.heartbeat?.enabled === true);
   const [beatSec, setBeatSec] = useState(typeof rt.heartbeat?.intervalSec === "number" ? String(rt.heartbeat.intervalSec) : "300");
   const [env, setEnv] = useState<EnvRow[]>(() => readEnv(cfg));
@@ -99,7 +107,8 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
   const badKey = env.some((r) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(r.key.trim()));
   const incomplete = env.some((r) => (r.kind === "secret" ? !r.secretId : false));
   const wholeOrBlank = (v: string, min: number) => v.trim() === "" || (/^\d{1,7}$/.test(v.trim()) && Number(v) >= min);
-  const badRun = !wholeOrBlank(maxTurns, 1) || !wholeOrBlank(timeoutSec, 0) || !wholeOrBlank(beatSec, 30);
+  const badRun = !wholeOrBlank(maxTurns, 1) || !wholeOrBlank(timeoutSec, 0) || !wholeOrBlank(beatSec, 30) || !wholeOrBlank(grace, 0) || !wholeOrBlank(maxConc, 1) || !wholeOrBlank(cooldown, 0);
+  const isClaude = adapter === "claude_local";
   const hasEffort = adapter === "claude_local";
   const provider = accountProviderOf(adapter);
   const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), retry: 1 });
@@ -121,10 +130,12 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
     if (env.length) adapterConfig.env = nextEnv; else delete adapterConfig.env;
     if (engineLane) adapterConfig.engine = engineLane; else if (adapterConfig.engine !== "cli") delete adapterConfig.engine;
     if (hasEffort) { if (effort) adapterConfig.effort = effort; else delete adapterConfig.effort; }
+    if (isClaude) { if (chrome) adapterConfig.chrome = true; else delete adapterConfig.chrome; adapterConfig.dangerouslySkipPermissions = skipPerms; }
+    if (grace.trim()) adapterConfig.graceSec = Number(grace); else delete adapterConfig.graceSec;
     if (maxTurns.trim()) adapterConfig.maxTurnsPerRun = Number(maxTurns); else delete adapterConfig.maxTurnsPerRun;
     if (timeoutSec.trim()) adapterConfig.timeoutSec = Number(timeoutSec); else delete adapterConfig.timeoutSec;
     const prevBeat = (rt.heartbeat ?? {}) as Record<string, unknown>;
-    const runtimeConfig = { ...(rt as Record<string, unknown>), heartbeat: { ...prevBeat, enabled: beat, intervalSec: Number(beatSec) || 300 } };
+    const runtimeConfig = { ...(rt as Record<string, unknown>), heartbeat: { ...prevBeat, enabled: beat, intervalSec: Number(beatSec) || 300, wakeOnDemand, skipTimerWhenNoActionableWork: skipIdle, ...(maxConc.trim() ? { maxConcurrentRuns: Number(maxConc) } : {}), ...(cooldown.trim() ? { cooldownSec: Number(cooldown) } : {}) } };
     setSaved(false);
     w.update.mutate({ name: name.trim(), title: title.trim() || null, role, reportsTo: reportsTo || null, capabilities: capabilities.trim() || null, adapterType: adapter, adapterConfig, runtimeConfig }, { onSuccess: () => setSaved(true) });
   };
@@ -182,6 +193,24 @@ export function AgentConfigTab({ agent }: { agent: Agent }) {
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={beat} onChange={(e) => setBeat(e.target.checked)} /> Wake this agent on a timer</label>
           {beat && <Field label="Every (seconds)" htmlFor="ag-beat" hint="At least 30. The agent checks for work, and does nothing when there is none."><div className="w-40"><Input id="ag-beat" inputMode="numeric" value={beatSec} onChange={(e) => setBeatSec(e.target.value)} /></div></Field>}
         </div>
+        {isClaude && (
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 pt-1">
+            <label className="flex items-start justify-between gap-3 text-sm"><span><span className="block">Enable Chrome</span><span className="block text-compact text-ink-3">Lets the agent use a browser inside its container.</span></span><Toggle label="Enable Chrome" checked={chrome} onChange={setChrome} /></label>
+            <label className="flex items-start justify-between gap-3 text-sm"><span><span className="block">Skip permission prompts</span><span className="block text-compact text-ink-3">Nobody is there to approve each step, so runs go ahead. The container is the safety boundary.</span></span><Toggle label="Skip permission prompts" checked={skipPerms} onChange={setSkipPerms} /></label>
+          </div>
+        )}
+        <details className="rounded-lg border border-line px-4 py-3">
+          <summary className="cursor-pointer text-sm text-ink-2">Advanced</summary>
+          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+            <Field label="Wait before stopping a run (seconds)" htmlFor="ag-grace" hint="How long a run may finish up after it is asked to stop. Default 15."><Input id="ag-grace" inputMode="numeric" placeholder="15" value={grace} onChange={(e) => setGrace(e.target.value)} /></Field>
+            <Field label="Runs at the same time" htmlFor="ag-conc" hint="Most runs this agent may have going at once. Default 20."><Input id="ag-conc" inputMode="numeric" placeholder="20" value={maxConc} onChange={(e) => setMaxConc(e.target.value)} /></Field>
+            <Field label="Pause between runs (seconds)" htmlFor="ag-cool" hint="A short gap so a busy agent doesn't restart instantly. Default 10."><Input id="ag-cool" inputMode="numeric" placeholder="10" value={cooldown} onChange={(e) => setCooldown(e.target.value)} /></Field>
+            <div className="space-y-2 self-end">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wakeOnDemand} onChange={(e) => setWakeOnDemand(e.target.checked)} /> Start a run when someone asks (a task, a message)</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={skipIdle} onChange={(e) => setSkipIdle(e.target.checked)} /> Skip the timer when there is nothing to do</label>
+            </div>
+          </div>
+        </details>
         {badRun && <p role="alert" className="text-compact text-critical">Use whole numbers: turns at least 1, the timer at least 30 seconds.</p>}
       </Card>
 

@@ -6,7 +6,8 @@ import { PinOrb } from "../../../pin/PinIsland.tsx";
 import { agentIdentity } from "../../../ui/agentIdentity.ts";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ban, Bot, Pause, Play, Plus, RefreshCw, Search, Zap } from "lucide-react";
+import { ArrowLeft, Ban, Bot, Crown, MoreHorizontal, Pause, Play, Plus, RefreshCw, Search, Zap } from "lucide-react";
+import { Menu } from "../../../ui/Menu.tsx";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
@@ -169,7 +170,7 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
   }, [adapter, usable, sandbox.data, sandbox.isPending, sandbox.isError]);
   const info = usable.find((a) => a.type === adapter);
   const models = useAdapterModels(companyId, info && info.modelsCount > 0 ? adapter : null);
-  useEffect(() => setModel(""), [adapter]);
+  useEffect(() => { setModel(""); }, [adapter]);
 
   const save = () => {
     if (!name.trim() || !adapter || create.isPending) return;
@@ -258,6 +259,11 @@ export function LiveAgentDetail() {
   const settingUp = a ? setupState(a) : null;
   const blockers = (current?.checks ?? []).filter((c) => c.state === "blocked");
   const latestRun = runs.data?.[0] ?? null;
+  const adaptersList = useAdapters();
+  const adapterLabel = (adaptersList.data ?? []).find((x) => x.type === a?.adapterType)?.label || a?.adapterType || "";
+  const isLead = !!a && !a.reportsTo && String(a.role) === "ceo";
+  // One chip when the two say the same thing, two (with room between them) when they don't.
+  const statusLine = a ? (current?.state === "ready" ? <Status kind="good" label={`${label}, ready to run`} /> : <><Status kind={kind} label={label} /><ReadinessPill readiness={current} /></>) : null;
   const latestRunStatus = latestRunStatusOf(latestRun);
   return (
     <PageFrame width="4xl">
@@ -267,26 +273,29 @@ export function LiveAgentDetail() {
       {a && isPinIdentity(a) && <PinTeammate orgName={org.name} base={b} />}
       {a && !isPinIdentity(a) && (
         <>
-          <div className="mb-8 flex flex-wrap items-start justify-between gap-x-4 gap-y-4">
+          <div className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
             <div className="flex min-w-0 flex-1 basis-72 items-start gap-4">
               <AgentAvatar name={a.name} hue={org.hue + 40} size={64} className="mt-0.5" />
-              <div className="min-w-0">
-                <h1 className="text-heading sm:text-display font-semibold tracking-tight text-balance">{a.name}</h1>
-                <p className="mt-1 text-compact text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-2"><Status kind={kind} label={label} /><ReadinessPill readiness={current} /><span className="text-ink-3">{names.role(a)}</span></div>
+              <div className="min-w-0 space-y-1.5">
+                <h1 className="flex items-center gap-2 text-heading sm:text-display font-semibold tracking-tight text-balance">{a.name}{isLead && <span title="Leads this organization" className="text-ink-3"><Crown className="h-5 w-5" aria-label="Leads this organization" /></span>}</h1>
+                <p className="flex flex-wrap items-center gap-x-2 text-compact text-ink-3"><span>{adapterLabel}</span><span aria-hidden>·</span><span>{names.role(a)}</span></p>
+                <p className="text-compact text-ink-3">{agentIdentity(a.name).mood} · {agentIdentity(a.name).trait}</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1.5 text-sm text-ink-2">{statusLine}</div>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-
-                {settingUp ? (
-                  <Button onClick={() => act.mutate({ id: a.id, action: "retry" })} loading={act.isPending && act.variables?.action === "retry"} disabled={act.isPending}><RefreshCw className="h-4 w-4" />Check again</Button>
-                ) : a.status === "paused" ? (
-                  <Button onClick={() => act.mutate({ id: a.id, action: "resume" })} disabled={act.isPending}><Play className="h-4 w-4" />Resume</Button>
-                ) : (
-                  <Button onClick={() => act.mutate({ id: a.id, action: "pause" })} disabled={act.isPending || a.status === "terminated" || a.status === "pending_approval"}><Pause className="h-4 w-4" />Pause</Button>
-                )}
-                {a.status !== "terminated" && <Button variant="danger" onClick={() => terminate.ask({ title: `Terminate ${a.name}?`, body: "The agent stops for good and can't be brought back. Its tasks, comments and history stay.", label: "Terminate", danger: true, run: () => act.mutateAsync({ id: a.id, action: "terminate" }).catch(() => {}) })} disabled={act.isPending}><Ban className="h-4 w-4" />Terminate</Button>}
-                <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={!canRun || act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"} disabledReason={canRun ? undefined : "Agents can't run until agent containers are set up"}><Zap className="h-4 w-4" />Wake up</Button>
+              <Link to={`${b}/tasks?new=1&assignee=${a.id}`}><Button><Plus className="h-4 w-4" />Assign task</Button></Link>
+              <Button onClick={() => act.mutate({ id: a.id, action: "wakeup" })} disabled={!canRun || act.isPending || a.status === "paused" || a.status === "terminated" || a.status === "pending_approval"} disabledReason={canRun ? undefined : "Agents can't run until agent containers are set up"}><Zap className="h-4 w-4" />Run now</Button>
+              {settingUp ? (
+                <Button onClick={() => act.mutate({ id: a.id, action: "retry" })} loading={act.isPending && act.variables?.action === "retry"} disabled={act.isPending}><RefreshCw className="h-4 w-4" />Check again</Button>
+              ) : a.status === "paused" ? (
+                <Button variant="primary" onClick={() => act.mutate({ id: a.id, action: "resume" })} disabled={act.isPending}><Play className="h-4 w-4" />Resume</Button>
+              ) : (
+                <Button onClick={() => act.mutate({ id: a.id, action: "pause" })} disabled={act.isPending || a.status === "terminated" || a.status === "pending_approval"}><Pause className="h-4 w-4" />Pause</Button>
+              )}
+              {a.status !== "terminated" && (
+                <Menu label="More actions" icon={<MoreHorizontal className="h-4 w-4" />} items={[{ label: "Terminate…", danger: true, icon: <Ban className="h-4 w-4" />, onSelect: () => terminate.ask({ title: `Terminate ${a.name}?`, body: "The agent stops for good and can't be brought back. Its tasks, comments and history stay.", label: "Terminate", danger: true, run: () => act.mutateAsync({ id: a.id, action: "terminate" }).catch(() => undefined) }) }]} />
+              )}
             </div>
           </div>
           {terminate.dialog}

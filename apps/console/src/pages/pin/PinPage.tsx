@@ -357,7 +357,7 @@ function DemoPinFiles() {
   const saved = engine.pin[which];
   const [text, setText] = useState(saved);
   const [preview, setPreview] = useState(false);
-  useEffect(() => setText(engine.pin[which]), [which]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setText(engine.pin[which]); }, [which]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = text !== saved;
   const file = which === "soul" ? "SOUL.md" : "MEMORY.md";
   return (

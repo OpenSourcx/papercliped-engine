@@ -150,7 +150,7 @@ function UserChip({ name, expanded }: { name: string; expanded?: boolean }) {
 export function AppShell() {
   const [drawer, setDrawer] = useState(false);
   const loc = useLocation();
-  useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
+  useEffect(() => { setDrawer(false); }, [loc.pathname, loc.search]);
   return (
     <div className="min-h-dvh flex">
       <aside className="hidden md:block w-18 shrink-0 glass-bar border-r border-line sticky top-0 h-dvh z-(--z-rail)">

@@ -146,7 +146,7 @@ export function StartCompany({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), [step]);
+  useEffect(() => { heading.current?.focus(); }, [step]);
 
   const ctx: Ctx = { eng, device, modals, pin, gate, canCreate, create, draft, patch, name, setName, error, setError, warning, setWarning, busy, setBusy, suggested, pinDecides, setPinDecides, size, setSize, goToOrg };
   const body = step === "name" ? <NameStep c={ctx} /> : step === "ceo" ? <CeoStep c={ctx} /> : step === "model" ? <ModelStep c={ctx} /> : <TaskStep c={ctx} />;

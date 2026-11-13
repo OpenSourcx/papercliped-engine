@@ -7,6 +7,7 @@ import { PinCardView, ToolCard } from "./PinCards.tsx";
 import type { PinMessage } from "./PinContext.tsx";
 import { useThreadApi } from "./ThreadContext.tsx";
 import { PinOrb } from "./PinOrb.tsx";
+import { AgentAvatar } from "../ui/primitives.tsx";
 import { Markdown } from "../pages/pin/notes/Markdown.tsx";
 
 /**
@@ -90,7 +91,7 @@ function Message({ m, inPlace }: { m: PinMessage; inPlace?: boolean }) {
   return (
     <div className="group relative flex gap-2.5 fade-in">
       {m.text && !m.streaming && <MessageMenu text={m.text} />}
-      {inPlace && <span className="mt-0.5"><PinOrb size={22} thinking={m.streaming} /></span>}
+      {inPlace && <span className="mt-0.5">{m.from === "agent" && m.name ? <AgentAvatar name={m.name} hue={m.hue ?? 72} size={22} /> : <PinOrb size={22} thinking={m.streaming} />}</span>}
       <div className="min-w-0 flex-1 text-sm leading-relaxed">
         {m.name && <div className="text-xs text-ink-3 mb-0.5">{m.name}</div>}
         {waiting ? (

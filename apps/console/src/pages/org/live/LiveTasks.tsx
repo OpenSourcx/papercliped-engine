@@ -78,7 +78,8 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   const create = useCreateIssue(companyId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignee, setAssignee] = useState("");
+  const [params0] = useSearchParams();
+  const [assignee, setAssignee] = useState(params0.get("assignee") ?? "");
   const [priority, setPriority] = useState<IssuePriority>("medium");
   const [project, setProject] = useState("");
   const save = () => {

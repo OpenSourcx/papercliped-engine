@@ -256,7 +256,7 @@ function TasksBody() {
   });
   const { ask, dialog } = useConfirm();
   const stop = useMutation({ mutationFn: (t: TaskRow) => nodeApi.stopTask(t.upid), onSuccess: () => void qc.invalidateQueries({ queryKey: ["node", "tasks"] }) });
-  useEffect(() => setType(params.get("type") ?? ""), [params]);
+  useEffect(() => { setType(params.get("type") ?? ""); }, [params]);
   return (
     <>
       {dialog}
