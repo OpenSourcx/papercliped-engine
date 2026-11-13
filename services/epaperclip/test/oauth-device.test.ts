@@ -12,9 +12,11 @@ describe("device-flow harness: which client ID a device uses", () => {
     expect(clientIdFor(P, { EPC_GITHUB_CLIENT_ID: "Iv1.mine" })).toBe("Iv1.mine");
     expect(clientIdFor(P, { EPC_GITHUB_CLIENT_ID: "  " })).toBe("");
   });
-  it("is empty (sign-in unavailable) until the OpenSourcx app's client ID is built in", () => {
-    // The shipped default is filled in once the OAuth app is registered; until then this is the honest state.
-    expect(clientIdFor(DEVICE_PROVIDERS.github!, {})).toBe(DEVICE_PROVIDERS.github!.defaultClientId);
+  it("ships the OpenSourcx app's public client ID, so sign-in works on every device without any setting", () => {
+    expect(clientIdFor(DEVICE_PROVIDERS.github!, {})).toBe("Ov23limskUWybL3oLifO");
+  });
+  it("keeps secrets out: a provider entry has no client secret field", () => {
+    for (const p of Object.values(DEVICE_PROVIDERS)) expect(Object.keys(p).some((k) => /secret/i.test(k))).toBe(false);
   });
 });
 

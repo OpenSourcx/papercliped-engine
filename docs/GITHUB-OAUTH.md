@@ -32,7 +32,7 @@ Register **one OAuth App**, not a GitHub App for now (a GitHub App's user tokens
 3. Tick **Enable Device Flow** and leave **Expire user access tokens unticked** (refreshing a token needs the client secret, which devices never hold, so an expiring token would stop working after 8 hours). Then **Register application**.
 4. On the app page copy the **Client ID** (it looks like `Ov23li…`). **Do not generate a client secret**; device flow needs none, and ePaperclip never stores one.
 5. Upload the ePaperclip logo (so the approval screen shows it).
-6. Put the Client ID between the quotes of `defaultClientId` for `github` in `services/epaperclip/src/oauth-device.ts` and release. It is a public value.
+6. Put the Client ID between the quotes of `defaultClientId` for `github` in `services/epaperclip/src/oauth-device.ts` and release. It is a public value. **Done:** the OpenSourcx app "Papercliped" has Client ID `Ov23limskUWybL3oLifO`. The app's client secret is never used: if one was ever generated, delete or regenerate it on the app page (it must not be committed anywhere).
 
 Check it before releasing:
 
@@ -42,7 +42,7 @@ curl -s -X POST https://github.com/login/device/code -d client_id=<CLIENT_ID> -d
 
 You should get `device_code`, `user_code` and `verification_uri`. An error `device_flow_disabled` means the box in step 3 is not ticked.
 
-Until the Client ID is built in (or `EPC_GITHUB_CLIENT_ID` is set), the Connect form says so and offers the fine-grained token.
+If the built-in Client ID were ever removed and `EPC_GITHUB_CLIENT_ID` were unset, the Connect form would say so and offer the fine-grained token.
 
 ## What it asks GitHub for
 
