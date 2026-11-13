@@ -19,7 +19,8 @@ describe("secure channel", () => {
     expect(auth.pub).toBe(worker.publicKey);
     expect(auth.pairing).toEqual({ id: "p", secret: "x" });
     const f = cs.seal({ ev: "hb", n: 1 });
-    expect(f).not.toContain("hb");
+    // A sealed frame is random base64url text, so the bare letters "hb" can appear by chance (about 1 run in 80). The plaintext would carry the event as a JSON string with quotes, which base64url never contains.
+    expect(f).not.toContain('"hb"');
     expect(ss.open(f)).toEqual({ ev: "hb", n: 1 });
     expect(cs.open(ss.seal({ ok: true }))).toEqual({ ok: true });
   });
