@@ -30,7 +30,7 @@ async function req<T>(method: "GET" | "PUT" | "POST" | "DELETE", path: string, b
 
 export interface GithubStatus { connected: boolean; login: string | null; last4: string | null; repos: string[]; canManage: boolean; oauth?: boolean }
 export interface GithubDevice { id: string; userCode: string; verificationUri: string; interval: number; expiresIn: number }
-export type GithubDevicePoll = { status: "pending" | "denied" | "expired" } | { status: "done"; login: string }
+export type GithubDevicePoll = { status: "pending" | "denied" | "expired" } | { status: "done"; login: string; connectionId?: string | null; connectError?: string | null }
 export interface PullRequest {
   repo: string;
   number: number;
@@ -49,7 +49,7 @@ export const githubApi = {
   status: () => req<GithubStatus>("GET", "/api/github"),
   connect: (b: { token?: string; repos?: string[] }) => req<GithubStatus>("PUT", "/api/github", b),
   deviceStart: () => req<GithubDevice>("POST", "/api/github/device/start", {}),
-  devicePoll: (id: string) => req<GithubDevicePoll>("POST", "/api/github/device/poll", { id }),
+  devicePoll: (id: string, companyId?: string) => req<GithubDevicePoll>("POST", "/api/github/device/poll", { id, ...(companyId ? { companyId } : {}) }),
   disconnect: () => req<GithubStatus>("DELETE", "/api/github"),
   prs: () => req<PullRequests>("GET", "/api/github/prs"),
 };

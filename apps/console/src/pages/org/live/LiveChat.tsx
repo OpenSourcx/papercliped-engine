@@ -1,3 +1,4 @@
+import { Markdown } from "../../pin/notes/Markdown.tsx";
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, Send } from "lucide-react";
 import type { Agent } from "@papercliped-engine/engine-client";
@@ -138,7 +139,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
               <Avatar name={who} hue={mine ? 210 : org.hue + 40} size={28} />
               <div className={`max-w-[80%] min-w-0 ${mine ? "text-right" : ""}`}>
                 <div className="text-xs text-ink-3 mb-0.5">{who} · {ago(c.createdAt)}</div>
-                <p className={`inline-block text-left text-sm whitespace-pre-wrap break-words rounded-xl px-3.5 py-2 ${mine ? "bg-surface-3 text-ink" : "text-ink-2"}`}>{c.body}</p>
+                <div className={`inline-block text-left text-sm break-words rounded-xl px-3.5 py-2 ${mine ? "bg-surface-3 text-ink" : "text-ink-2"}`}><Markdown text={c.body} chat /></div>
               </div>
             </div>
           );

@@ -1,3 +1,4 @@
+import { Markdown } from "../../pin/notes/Markdown.tsx";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, MessageSquare, Plus, Search } from "lucide-react";
@@ -168,7 +169,7 @@ export function LiveTaskDetail() {
                         {c.authorAgentId ? <AgentAvatar name={who} hue={org.hue + 40} size={28} /> : <Avatar name={who} hue={210} size={28} />}
                         <div className="min-w-0 flex-1">
                           <div className="text-compact"><span className="font-medium">{who}</span> <span className="text-ink-3">{ago(c.createdAt)}</span></div>
-                          <p className="text-sm text-ink-2 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
+                          <div className="text-sm text-ink-2 break-words mt-0.5"><Markdown text={c.body} chat /></div>
                         </div>
                       </div>
                     );

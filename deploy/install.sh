@@ -654,6 +654,21 @@ fi
 
 # ---- swap it in, with the way back ready --------------------------------------------------------------------------
 first_install=1; [ -d "$PREFIX" ] && first_install=0
+# Stopping the engine cleans up its agent containers, so an upgrade interrupts any agent that is working right now (its task
+# is retried afterwards, but the run in flight is lost). Say so, and on a terminal let the person wait.
+if [ "$first_install" -eq 0 ] && command -v pct >/dev/null 2>&1; then
+  busy=0
+  for ct in $(pct list 2>/dev/null | awk 'NR>1 && $2=="running" {print $1}'); do
+    pct config "$ct" 2>/dev/null | grep -Eq '^tags:.*epaperclip' && busy=$((busy+1))
+  done
+  if [ "$busy" -gt 0 ]; then
+    warn "$busy agent container(s) are running. Upgrading now interrupts the work in them; their tasks are retried afterwards."
+    if [ -t 0 ] && [ -t 1 ] && [ "${EPC_ASSUME_YES:-0}" != 1 ]; then
+      printf '  Continue and interrupt them? [y/N] '; read -r answer
+      case "$answer" in y|Y|yes|YES) ;; *) die "not upgraded: wait for the agents to finish, then run it again (or set EPC_ASSUME_YES=1)";; esac
+    fi
+  fi
+fi
 stop_all
 # Nothing is changed yet, so if the old engine can't be fully stopped the old version just carries on.
 drain_engine quarantine || { start_all; healthy_all >/dev/null 2>&1 || true; die "the engine still has processes running after it was stopped, so nothing was upgraded (the old and the new engine must never write to the same data at once). Nothing was changed; the old version was started again."; }
