@@ -20,7 +20,7 @@ A device may still override it with `EPC_GITHUB_CLIENT_ID` (for someone running 
 
 ## What the maintainers register (once), under OpenSourcx
 
-Register **one OAuth App**, not a GitHub App (a GitHub App's user tokens expire after 8 hours and need an installation per organization; the OAuth App is a single step for the person).
+Register **one OAuth App**, not a GitHub App for now (a GitHub App's user tokens expire after 8 hours and need an installation per organization; the OAuth App is a single step for the person). A GitHub App becomes sensible once the Papercliped account broker can refresh tokens.
 
 1. Sign in to github.com as an owner of the **OpenSourcx** organization and open
    `https://github.com/organizations/OpenSourcx/settings/applications` → **OAuth Apps** → **New OAuth App**.
@@ -28,8 +28,8 @@ Register **one OAuth App**, not a GitHub App (a GitHub App's user tokens expire 
    - **Application name:** `ePaperclip`
    - **Homepage URL:** `https://papercliped.co`
    - **Application description:** `Follow pull requests and checks from your own Proxmox host. Runs on your hardware; nothing is sent to us.`
-   - **Authorization callback URL:** `https://papercliped.co/` (required by the form, never used by device flow)
-3. Tick **Enable Device Flow**, then **Register application**.
+   - **Authorization callback URL:** `https://auth.papercliped.co/oauth/github/callback` (GitHub requires one and will not register the app without it. Device flow never uses it; the Papercliped account broker will, see `papercliped-docs/decisions/2026-11-13-papercliped-account-connections.md`)
+3. Tick **Enable Device Flow** and leave **Expire user access tokens unticked** (refreshing a token needs the client secret, which devices never hold, so an expiring token would stop working after 8 hours). Then **Register application**.
 4. On the app page copy the **Client ID** (it looks like `Ov23li…`). **Do not generate a client secret**; device flow needs none, and ePaperclip never stores one.
 5. Upload the ePaperclip logo (so the approval screen shows it).
 6. Put the Client ID between the quotes of `defaultClientId` for `github` in `services/epaperclip/src/oauth-device.ts` and release. It is a public value.
