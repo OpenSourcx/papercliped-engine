@@ -22,6 +22,8 @@ export interface ThreadMessage {
   from: Author;
   /** For agents and other people: the name to show. */
   name?: string;
+  /** The identity hue of the organization an agent belongs to, so its face matches the rest of the console. */
+  hue?: number;
   text: string;
   card?: PinCard;
   done?: boolean; // a card the user already acted on

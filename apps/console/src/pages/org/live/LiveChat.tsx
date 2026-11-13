@@ -78,7 +78,8 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   const [text, setText] = useState("");
   const [error, setError] = useState<unknown>(null);
   const end = useRef<HTMLDivElement>(null);
-  const messages = conversationId ? comments.data ?? [] : [];
+  // The engine lists comments newest first; a conversation reads oldest first.
+  const messages = conversationId ? [...(comments.data ?? [])].sort((a, b) => new Date(a.createdAt as unknown as string).getTime() - new Date(b.createdAt as unknown as string).getTime()) : [];
   const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState);
   const containers = useAgentContainers();
   const runs = useRuns(conversationId ? companyId : null, agent.id);
@@ -92,7 +93,7 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
     canManageContainers: containers.data?.canManage,
   });
   const writing = working && !block;
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [messages.length, writing, block?.code]);
+  useEffect(() => { void end.current?.scrollIntoView?.({ block: "end" }); }, [messages.length, writing, block?.code]);
   const base = `/${setup?.deviceName ?? "pve"}/${org.slug}`;
   const [checking, setChecking] = useState(false);
   const retrying = act.isPending || checking;

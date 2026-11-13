@@ -199,7 +199,7 @@ function EngineStateProvider({ children }: { children: ReactNode }) {
       clearInterval(t);
     };
   }, [live, refreshTick]);
-  useEffect(() => (setup ? writeJson("epc.setup", setup) : removeKey("epc.setup")), [setup]);
+  useEffect(() => { if (setup) writeJson("epc.setup", setup); else removeKey("epc.setup"); }, [setup]);
   // First-run setup belongs to the device, not one browser. Read it from the host; migrate an existing browser-local
   // setup once, so the owner does not repeat onboarding after this upgrade.
   useEffect(() => {

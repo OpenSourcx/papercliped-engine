@@ -169,7 +169,7 @@ function NewAgentModal({ onClose }: { onClose: () => void }) {
   }, [adapter, usable, sandbox.data, sandbox.isPending, sandbox.isError]);
   const info = usable.find((a) => a.type === adapter);
   const models = useAdapterModels(companyId, info && info.modelsCount > 0 ? adapter : null);
-  useEffect(() => setModel(""), [adapter]);
+  useEffect(() => { setModel(""); }, [adapter]);
 
   const save = () => {
     if (!name.trim() || !adapter || create.isPending) return;

@@ -515,8 +515,12 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
   const block = chatBlock({ agent, run: runs.data?.[0] ?? null, conversationStartedAt: conv?.createdAt ?? null, containersReady: containers.data ? containers.data.state === "ready" : undefined, canManageContainers: containers.data?.canManage });
   const writing = conv?.conversationState === "active" && !block && canRun && agent.status !== "error";
 
-  const messages: ThreadMessage[] = (comments.data ?? []).map((c) => (c.authorAgentId ? { id: c.id, from: "agent" as const, name: names.agent(c.authorAgentId), text: c.body } : { id: c.id, from: "you" as const, text: c.body }));
-  if (writing) messages.push({ id: "writing", from: "agent", name: agent.name, text: "", streaming: true });
+  const { data: appData } = useEngine();
+  const hue = (appData.orgs.find((o) => o.name === org || o.slug === org)?.hue ?? 32) + 40;
+  // The engine lists comments newest first; a conversation reads oldest first.
+  const oldestFirst = [...(comments.data ?? [])].sort((a, b) => new Date(a.createdAt as unknown as string).getTime() - new Date(b.createdAt as unknown as string).getTime());
+  const messages: ThreadMessage[] = oldestFirst.map((c) => (c.authorAgentId ? { id: c.id, from: "agent" as const, name: names.agent(c.authorAgentId), hue, text: c.body } : { id: c.id, from: "you" as const, text: c.body }));
+  if (writing) messages.push({ id: "writing", from: "agent", name: agent.name, hue, text: "", streaming: true });
 
   const api: ThreadApi = {
     messages,

@@ -41,7 +41,7 @@ export function FileEditor({ vmid, path, machineName, expanded, onExpand, onClos
   });
   const conflict = (save.error as { status?: number } | null)?.status === 409;
   const editable = !!file.data && file.data.content !== null;
-  useEffect(() => onDirty?.(dirty), [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onDirty?.(dirty); }, [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = path.split("/").pop() || path;
 
   const reload = () => { setDraft(null); save.reset(); void file.refetch(); };
