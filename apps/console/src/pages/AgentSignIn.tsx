@@ -6,7 +6,8 @@ import { LOGIN_ADAPTERS, type LoginAdapter, type LoginSession } from "@paperclip
 import { useEngine } from "../data/store.tsx";
 import { cn } from "../lib/storage.ts";
 import { useModals } from "../modals/useModals.ts";
-import { engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
+import { accountProviderOf, engine, errorText, useAgentContainers, useOrgs } from "../data/engine/queries.ts";
+import { connectApi } from "../data/engine/connectApi.ts";
 import { failureCode, signInFailureHelp } from "../data/engine/signInHelp.ts";
 import { vaultApi } from "../data/engine/vaultApi.ts";
 import { Modal } from "../ui/Modal.tsx";
@@ -107,11 +108,17 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
   const adapter = h.adapter === "gemini_local" ? null : h.adapter;
   // Claude and Codex can say whether an account is already signed in; for the others the engine answers "unknown".
   const signal = useQuery({ queryKey: ["agent-auth", companyId, h.adapter, environmentId], enabled: !!adapter && !!environmentId, retry: false, queryFn: () => engine.agentAuth.signal(companyId, adapter!, environmentId ?? undefined) });
-  const signed = signal.data?.status === "authenticated";
+  // Two things can mean "signed in": the container itself is logged in (the older check above), or the organization has a connected
+  // account for this harness's provider (what the Connectors sign-in creates). Either one is a sign-in; the screen must say so.
+  const provider = accountProviderOf(h.adapter);
+  const accounts = useQuery({ queryKey: ["connect", "org-ai", companyId], queryFn: () => connectApi.orgAi(companyId), enabled: !!provider, retry: 1 });
+  const account = provider ? (accounts.data?.connections ?? []).find((c) => c.provider === provider && c.status === "connected") : undefined;
+  const signed = signal.data?.status === "authenticated" || !!account;
+  const who = account ? (account.ownership === "personal" ? "your account" : account.ownership === "shared" ? "shared with the organization" : null) : null;
   return (
     <div className="flex flex-wrap items-center gap-3 py-3">
       <div className="min-w-0 flex-1 basis-64">
-        <div className="flex items-center gap-2 font-medium text-compact">{h.name}{signed && <Chip tone="good">Signed in</Chip>}</div>
+        <div className="flex items-center gap-2 font-medium text-compact">{h.name}{signed && <Chip tone="good">Signed in{who ? ` · ${who}` : ""}</Chip>}</div>
         <p className="text-compact text-ink-3 mt-0.5 text-pretty">{h.how}</p>
       </div>
       <Button size="sm" variant="ghost" onClick={onKey}><KeyRound className="h-4 w-4" />Use an API key</Button>
