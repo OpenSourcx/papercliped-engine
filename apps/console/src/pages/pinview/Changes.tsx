@@ -27,20 +27,26 @@ export function useGithub() {
 const parseRepos = (text: string) => text.split(/[\s,]+/).map((r) => r.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "")).filter(Boolean);
 
 /** Sign in with GitHub: a short code to type at github.com, no token to paste. Polls until the person approves. */
-function GithubSignIn({ onDone }: { onDone: () => void }) {
+export function GithubSignIn({ onDone, companyId }: { onDone: (r?: { connectionId?: string | null; connectError?: string | null }) => void; companyId?: string }) {
   const [dev, setDev] = useState<{ id: string; userCode: string; verificationUri: string; interval: number } | null>(null);
   const [state, setState] = useState<"idle" | "waiting" | "denied" | "expired">("idle");
+  const [problem, setProblem] = useState<string | null>(null);
   const start = useMutation({ mutationFn: () => githubApi.deviceStart(), onSuccess: (d) => { setDev(d); setState("waiting"); } });
   useEffect(() => {
     if (!dev || state !== "waiting") return;
     const t = setInterval(() => {
-      githubApi.devicePoll(dev.id).then((r) => {
-        if (r.status === "done") { setDev(null); setState("idle"); onDone(); }
+      githubApi.devicePoll(dev.id, companyId).then((r) => {
+        if (r.status === "done") { setDev(null); setState("idle"); setProblem(null); onDone(r); }
         else if (r.status === "denied" || r.status === "expired") { setDev(null); setState(r.status); }
-      }, () => undefined);
+      }, (e) => {
+        // A refusal from the host (the sign-in is gone, GitHub said no, saving failed) ends it with the reason. Only a network blip is retried.
+        const status = (e as { status?: number }).status ?? 0;
+        if (status === 0) return;
+        setDev(null); setState("idle"); setProblem(errorText(e));
+      });
     }, Math.max(5, dev.interval) * 1000);
     return () => clearInterval(t);
-  }, [dev, state, onDone]);
+  }, [dev, state, onDone, companyId]);
   return (
     <div className="space-y-2" aria-live="polite">
       {state !== "waiting" && <Button type="button" variant="primary" size="sm" loading={start.isPending} onClick={() => start.mutate()}>Connect with GitHub</Button>}
@@ -54,6 +60,7 @@ function GithubSignIn({ onDone }: { onDone: () => void }) {
       )}
       {state === "denied" && <p role="alert" className="text-compact text-critical">GitHub says you declined. You can start again.</p>}
       {state === "expired" && <p role="alert" className="text-compact text-critical">The code ran out. Start again.</p>}
+      {problem && <p role="alert" className="text-compact text-critical">GitHub sign-in stopped: {problem}</p>}
       {start.error && <p role="alert" className="text-compact text-critical">{errorText(start.error)}</p>}
     </div>
   );
@@ -78,6 +85,8 @@ export function ConnectGithub({ status, onDone }: { status: GithubStatus | undef
           <Input id="gh-token" type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
         </Field>
       )}
+      {viaGithub ? <p className="text-compact text-ink-3">After you connect, choose the repositories to follow.</p> : (
+        <>
       <Field label="Repositories" htmlFor="gh-repos" hint="owner/name, one per line, up to 12.">
         <Textarea id="gh-repos" rows={3} spellCheck={false} value={repos} onChange={(e) => setRepos(e.target.value)} className="font-mono" placeholder="opensourcx/papercliped-engine" />
       </Field>
@@ -86,6 +95,8 @@ export function ConnectGithub({ status, onDone }: { status: GithubStatus | undef
         <Button type="submit" size="sm" variant="primary" disabled={!ready} loading={save.isPending}>{status?.connected ? "Save" : "Connect GitHub"}</Button>
         {onDone && status?.connected && <Button type="button" size="sm" variant="ghost" onClick={onDone}>Cancel</Button>}
       </div>
+        </>
+      )}
     </form>
   );
 }

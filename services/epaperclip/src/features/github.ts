@@ -1,3 +1,4 @@
+import { activity } from "../activity.ts";
 import type { StateStore } from "../state.ts";
 import { clientIdFor, DEVICE_PROVIDERS, DeviceError, DeviceSessions } from "../oauth-device.ts";
 import type { FeatureCtx, FeatureHandler } from "./index.ts";
@@ -145,7 +146,11 @@ export const handleGithub: FeatureHandler = async (ctx: FeatureCtx) => {
     const cid = clientIdFor(provider);
     if (!cid) throw new HttpError(409, "oauth_not_configured", "Signing in with GitHub isn't available on this build. Paste a fine-grained token instead, or set EPC_GITHUB_CLIENT_ID to the client ID of your own GitHub OAuth app (docs/GITHUB-OAUTH.md).");
     try {
-      if (ctx.path === "/api/github/device/start") return ctx.json(200, await devices.start(provider, cid, s.username, ctx.now())), true;
+      if (ctx.path === "/api/github/device/start") {
+        const started = await devices.start(provider, cid, s.username, ctx.now());
+        activity.info("host", "github.device.start", `${s.username} started signing in with GitHub`);
+        return ctx.json(200, started), true;
+      }
       const b = await ctx.readJson(1024);
       const r = await devices.poll(provider, cid, typeof b.id === "string" ? b.id : "", s.username, ctx.now());
       if (r.status !== "done") return ctx.json(200, { status: r.status }), true;
@@ -158,8 +163,23 @@ export const handleGithub: FeatureHandler = async (ctx: FeatureCtx) => {
       const cur = rec();
       state.setSetting(SETTING, { login, last4: t.slice(-4), repos: cur?.repos ?? [], updatedAt: ctx.now(), updatedBy: s.username } satisfies Record_);
       cache.clear();
-      return ctx.json(200, { status: "done", login }), true;
+      activity.info("host", "github.device.done", `${s.username} connected GitHub as ${login}`);
+      // Signing in from an organization's GitHub card also gives that organization's agents the connection (the engine's "key"
+      // method, with this token as the key). It is handed to the engine here, on the host: the token never goes back to the browser.
+      const cid2 = typeof b.companyId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(b.companyId) ? b.companyId : null;
+      let connectionId: string | null = null;
+      let connectError: string | null = null;
+      if (cid2 && ctx.gateway) {
+        try {
+          const made = await ctx.gateway.userJson<{ connectionId?: string }>(s, "POST", `/api/companies/${encodeURIComponent(cid2)}/tools/apps/connect`, { galleryKey: "github", connectionMethodKey: "mcp-key", grantKind: "organization", credentialValues: { authorization: t }, configValues: {} });
+          connectionId = typeof made?.connectionId === "string" ? made.connectionId : null;
+        } catch (e) {
+          connectError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+        }
+      }
+      return ctx.json(200, { status: "done", login, connectionId, connectError }), true;
     } catch (e) {
+      activity.warn("host", "github.device.failed", `GitHub sign-in failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
       if (e instanceof DeviceError) throw new HttpError(e.status, e.code === "provider_refused" ? "github_refused" : e.code === "provider_unreachable" ? "github_unreachable" : e.code, e.message);
       throw e;
     }

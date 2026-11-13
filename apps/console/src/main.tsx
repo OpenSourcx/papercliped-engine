@@ -6,10 +6,15 @@ import { SessionProvider } from "./auth/session.tsx";
 import { EngineProvider } from "./data/store.tsx";
 import { PinProvider } from "./pin/PinContext.tsx";
 import { ThemeProvider } from "./theme/theme.tsx";
+import { ErrorBoundary } from "./ui/ErrorBoundary.tsx";
+import { installStaleAssetHandler } from "./lib/staleAssets.ts";
 import "./index.css";
+
+installStaleAssetHandler();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <ErrorBoundary>
     <ThemeProvider>
       <SessionProvider>
         <EngineProvider>
@@ -21,5 +26,6 @@ createRoot(document.getElementById("root")!).render(
         </EngineProvider>
       </SessionProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

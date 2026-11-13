@@ -1,3 +1,4 @@
+import { GithubSignIn } from "../../pinview/Changes.tsx";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
@@ -49,6 +50,7 @@ export function AppSetup({ companyId, picked: { app, method }, onClose, onReview
   const [checked, setChecked] = useState(false);
   const [result, setResult] = useState<ConnectToolAppResult | null>(null);
   const [client, setClient] = useState({ clientId: "", clientSecret: "" });
+  const [oauthNote, setOauthNote] = useState<string | null>(null);
   const problem = firstFieldError(tenantFields, config) ?? firstFieldError(credentialFields, credentials);
   const connect = useMutation({
     mutationFn: () => engine.apps.connect(companyId, {
@@ -63,6 +65,15 @@ export function AppSetup({ companyId, picked: { app, method }, onClose, onReview
   const finished = result && !manual;
   return <Modal title={`Connect ${app.name}`} icon={<ProviderMark id={app.slug} name={app.name} />} onClose={onClose} footer={<><Button onClick={onClose}>Close</Button>{finished ? <Button variant="primary" onClick={() => onReview(result.connectionId)}>Review agent access</Button> : <Button variant="primary" disabled={!oauthReady} loading={connect.isPending} onClick={submit}>{manual ? "Save client and continue" : method.auth === "oauth" ? `Sign in with ${app.name}` : "Connect"}</Button>}</>}>
     <div className="space-y-4"><p className="text-sm text-ink-2">{method.whenToUse}</p><p className="text-compact text-ink-3">{method.guidanceMd}</p>
+      {app.slug === "github" && method.key === "mcp-key" && !result && (
+        <div className="rounded-lg border border-line p-3 space-y-2">
+          <p className="text-compact font-medium">Sign in with GitHub (recommended)</p>
+          <p className="text-compact text-ink-3">Approve once on github.com. There is no token to paste: this organization's agents get access through your sign-in.</p>
+          <GithubSignIn companyId={companyId} onDone={(r) => { if (r?.connectionId) onReview(r.connectionId); else setOauthNote(r?.connectError ? `GitHub signed in, but the organization connection failed: ${r.connectError}` : "GitHub signed in, but no organization connection was made."); }} />
+          {oauthNote && <p role="alert" className="text-compact text-critical">{oauthNote}</p>}
+          <p className="text-xs text-ink-3">Or use a token below instead.</p>
+        </div>
+      )}
       <ProviderLink url={method.consoleLinks?.register ?? method.consoleLinks?.keys ?? method.consoleLinks?.docs}>Open {app.name} setup</ProviderLink>
       {method.auth === "oauth" && !oauthReady && address.data && <Notice tone="warning">This device’s provider sign-in address does not match the console address. A device administrator must configure its public address before browser sign-in can work.</Notice>}
       <ActionError error={address.error} />
