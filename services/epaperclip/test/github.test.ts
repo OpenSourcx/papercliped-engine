@@ -132,8 +132,10 @@ describe("GitHub sign-in (OAuth device flow)", () => {
   };
   afterEach(() => { delete process.env.EPC_GITHUB_CLIENT_ID; });
 
-  it("says it isn't set up until the device has an OAuth app, and never shows the device code", async () => {
+  it("is available on every device by default (the built-in client ID), and says so plainly if it is switched off", async () => {
     const sam = await signIn("sam");
+    expect((await send("GET", "/api/github", sam)).json.oauth).toBe(true);
+    process.env.EPC_GITHUB_CLIENT_ID = " ";
     expect((await send("GET", "/api/github", sam)).json.oauth).toBe(false);
     const r = await send("POST", "/api/github/device/start", sam, {});
     expect(r.status).toBe(409);

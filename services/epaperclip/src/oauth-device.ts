@@ -33,9 +33,9 @@ export const DEVICE_PROVIDERS: Readonly<Record<string, DeviceProvider>> = {
     deviceCodeUrl: "https://github.com/login/device/code",
     tokenUrl: "https://github.com/login/oauth/access_token",
     scope: "repo read:user",
-    // The Client ID of the "ePaperclip" OAuth app registered under the OpenSourcx organization (device flow enabled). A public value;
-    // see docs/GITHUB-OAUTH.md for exactly how it is registered. Paste it between the quotes.
-    defaultClientId: "",
+    // The Client ID of the "Papercliped" OAuth app registered under the OpenSourcx organization (device flow enabled, expiring tokens off).
+    // A public value. There is NO client secret in this repository or on any device: device flow does not use one. See docs/GITHUB-OAUTH.md.
+    defaultClientId: "Ov23limskUWybL3oLifO",
     envVar: "EPC_GITHUB_CLIENT_ID",
     verificationHosts: ["github.com"],
     fallbackVerificationUri: "https://github.com/login/device",
