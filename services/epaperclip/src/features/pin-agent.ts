@@ -88,7 +88,7 @@ const KEYS: Record<StepKind, string[]> = {
 };
 
 /** Strict check of one step; returns what to store. */
-export function parseStep(raw: unknown): StepInput {
+export function parseStep(raw: unknown, opts: { direct?: boolean } = {}): StepInput {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw bad("each step must be an object");
   const r = raw as Record<string, unknown>;
   const kind = r.kind as StepKind;
@@ -113,6 +113,7 @@ export function parseStep(raw: unknown): StepInput {
     case "act": {
       const def = typeof r.tool === "string" && Object.hasOwn(ACTS, r.tool) ? ACTS[r.tool] : null;
       if (!def) throw bad(`an act step needs a tool: one of ${ACT_NAMES.join(", ")}`);
+      if (def.directOnly && !opts.direct) throw bad(`${def.name} can only be proposed by calling it directly in Agent mode, not inside a plan`);
       if (!r.params || typeof r.params !== "object" || Array.isArray(r.params)) throw bad("an act step needs params");
       try {
         return { kind, args: { tool: def.name, params: def.parse(r.params as Record<string, unknown>) } };
@@ -167,12 +168,12 @@ export function describeStep(s: StepInput, names?: ReadonlyMap<number, string>):
   }
 }
 
-export function createPlan(rt: PinRuntime, p: { owner: string; title: string; summary?: string; steps: unknown[]; createdBy: Plan["createdBy"]; automationId?: string; names?: ReadonlyMap<number, string> }): Plan {
+export function createPlan(rt: PinRuntime, p: { owner: string; title: string; summary?: string; steps: unknown[]; createdBy: Plan["createdBy"]; automationId?: string; /** Set only by Pin's own action path, after it has bound what the step touches. */ direct?: boolean; names?: ReadonlyMap<number, string> }): Plan {
   const title = clean(p.title, 120);
   if (!title) throw bad("a plan needs a title");
   if (!Array.isArray(p.steps) || p.steps.length === 0 || p.steps.length > MAX_PLAN_STEPS) throw bad(`a plan has 1 to ${MAX_PLAN_STEPS} steps`);
   const steps: PlanStep[] = p.steps.map((raw) => {
-    const s = parseStep(raw);
+    const s = parseStep(raw, { direct: p.direct === true });
     const d = describeStep(s, p.names);
     return { id: newId(4), kind: s.kind, args: s.args, label: d.label, destructive: d.destructive, confirmPhrase: d.confirmPhrase, state: "pending" };
   });
@@ -227,6 +228,7 @@ const reasonOf = (e: unknown): string => {
     if (e.status === 403) return "Proxmox says you don't have permission for this.";
     return e.detail ? `Proxmox: ${e.detail.slice(0, 300)}` : "Proxmox couldn't do it.";
   }
+  if (e instanceof ActProblem) return e.message.slice(0, 300);
   if (e instanceof Error && "code" in e && "status" in e) return e.message.slice(0, 300);
   return "It failed.";
 };
@@ -240,7 +242,7 @@ async function execute(step: PlanStep, pve: ProxmoxClient, s: Session, node: str
     return { result: `Created task ${issue.identifier ?? issue.id ?? ""}`.trim() };
   }
   if (step.kind === "act") {
-    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, connect, sleep: rt.sleep, maxWaitMs: 100_000, ...(gw ? { apps: { pin: new PinApps(rt.state), call: (m, p, b) => gw.userJson(s, m, p, b) } } : {}) }, a.params as Record<string, unknown>);
+    const r = await ACTS[a.tool as string].run({ node, username: s.username, pve: async () => pve, connect, sleep: rt.sleep, maxWaitMs: 100_000, state: rt.state, ...(gw ? { apps: { pin: new PinApps(rt.state), call: (m, p, b) => gw.userJson(s, m, p, b) } } : {}) }, a.params as Record<string, unknown>);
     return { ...(r.upid ? { upid: r.upid } : {}), result: r.result };
   }
   const vmid = a.vmid as number;
@@ -296,7 +298,7 @@ export async function decide(rt: PinRuntime, ctx: { pve: ProxmoxClient; session:
   try {
     const r = await execute(step, ctx.pve, ctx.session, ctx.node, ctx.gateway, rt, ctx.connect);
     Object.assign(step, { state: "done", finishedAt: rt.now(), result: r.result, ...(r.upid ? { upid: r.upid } : {}) });
-    rt.audit(who, "pin.plan.step.done", plan.id, `step ${index + 1}: ${step.label}`);
+    rt.audit(who, "pin.plan.step.done", plan.id, `step ${index + 1}: ${step.label}: ${r.result}`.slice(0, 400));
   } catch (e) {
     const error = reasonOf(e);
     Object.assign(step, { state: "failed", finishedAt: rt.now(), error });

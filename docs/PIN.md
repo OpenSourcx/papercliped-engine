@@ -163,3 +163,7 @@ Everything is in `state.json` in the host service's state directory (written ato
 ## Context from the page
 
 Beyond the page name, Pin can be given a run, container, worker or organization the person is looking at. The host reads the facts as the person and checks their access; see [PIN-CONTEXT.md](PIN-CONTEXT.md).
+
+## Stopping a run
+
+In Agent mode Pin can propose stopping one run, approved by typing a phrase and revalidated at approval; see [PIN-STOP-RUN.md](PIN-STOP-RUN.md).

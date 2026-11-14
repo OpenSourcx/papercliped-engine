@@ -1,6 +1,8 @@
 import { ProxmoxError, type GuestType, type ProxmoxClient } from "@papercliped-engine/proxmox-client";
 import { WizardError, buildCt, buildVm, type WizardContext } from "@papercliped-engine/proxmox-client/wizard-schema";
 import type { Connect } from "../console.ts";
+import type { StateStore } from "../state.ts";
+import { STOP_RUN } from "./pin-stop-run.ts";
 import { MAX_OUTPUT, SENSITIVE, commandRisk, execInGuest } from "./guest-exec.ts";
 
 /**
@@ -54,6 +56,8 @@ export interface ActHost {
   apps?: { pin: import("../pin-apps.ts").PinApps; call: import("../pin-apps.ts").EngineCall };
   /** Longest an action may hold its caller waiting for Proxmox (an approval request must answer in time); longer tasks keep running and are reported as such. */
   maxWaitMs?: number;
+  /** The host's state, for actions that read its own records (the placement ledger). */
+  state?: StateStore;
 }
 
 export interface ActResult {
@@ -74,6 +78,13 @@ export interface ActDef {
   /** One line a person can read, and what must be typed to approve it when it can't be undone. */
   describe(a: Args, names?: ReadonlyMap<number, string>): { label: string; phrase: string | null };
   run(h: ActHost, a: Args): Promise<ActResult>;
+  /**
+   * Runs when Pin proposes the action, before anyone is asked: reads what the action will touch (as the person) and binds it
+   * into the arguments, so the approval is for exactly that and `run` can refuse if it has changed since. Throws to refuse.
+   */
+  prepare?(h: ActHost, a: Args, names: ReadonlyMap<number, string>): Promise<Args>;
+  /** Only proposable by calling the tool directly in Agent mode (never inside a written plan, an automation or a connected app), because `prepare` must have bound it. */
+  directOnly?: boolean;
 }
 
 // ---- Strict value checks
@@ -270,6 +281,7 @@ export const ACTS: Record<string, ActDef> = {
       throw bad(`Refused: ${out.message}`);
     },
   },
+  stop_run: STOP_RUN,
   power_machine: {
     name: "power_machine",
     description: "Start, shut down (clean), stop (cut power) or reboot a machine.",

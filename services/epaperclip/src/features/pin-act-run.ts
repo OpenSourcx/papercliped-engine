@@ -86,6 +86,11 @@ export async function handleActCall(env: ActEnv, call: { id: string; name: strin
   try {
     if (def) {
       parsed = def.parse(call.args);
+      // An action that binds what it touches is told that here, on the server: whatever binding the model supplied is dropped.
+      if (def.prepare) {
+        const { expect: _supplied, ...plain } = parsed;
+        parsed = await def.prepare({ node: env.host.node, username: who, pve: env.host.pve, sleep: rt.sleep, apps: env.host.apps, state: rt.state }, plain, names);
+      }
       risk = def.risk(parsed);
       const d = def.describe(parsed, names);
       label = d.label;
@@ -108,7 +113,7 @@ export async function handleActCall(env: ActEnv, call: { id: string; name: strin
     const step = def ? { kind: "act", tool: def.name, params: parsed } : { kind: "create_task", ...parsed };
     let plan;
     try {
-      plan = createPlan(rt, { owner: who, title: label, steps: [step], createdBy: "pin", names });
+      plan = createPlan(rt, { owner: who, title: label, steps: [step], createdBy: "pin", names, ...(def?.prepare ? { direct: true } : {}) });
     } catch (e) {
       return fail(actFailure(e));
     }
@@ -141,7 +146,7 @@ export async function handleActCall(env: ActEnv, call: { id: string; name: strin
     let upid: string | undefined;
     let vmid: number | undefined;
     if (def) {
-      const host: ActHost = { node: env.host.node, username: who, pve: env.host.pve, connect: env.host.connect, sleep: rt.sleep, apps: env.host.apps };
+      const host: ActHost = { node: env.host.node, username: who, pve: env.host.pve, connect: env.host.connect, sleep: rt.sleep, apps: env.host.apps, state: rt.state };
       const r = await def.run(host, parsed);
       result = r.result;
       upid = r.upid;
