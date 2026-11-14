@@ -1,4 +1,5 @@
 import { ProxmoxError, type ProxmoxClient, type GuestType } from "@papercliped-engine/proxmox-client";
+import { STOP_RUN_PROPOSAL } from "./pin-stop-run.ts";
 import type { Connect } from "../console.ts";
 import type { EngineGateway } from "../engine.ts";
 import type { Session } from "../sessions.ts";
@@ -52,7 +53,7 @@ export const AGENT_TOOLS = [
             type: "object",
             properties: {
               kind: { type: "string", enum: ["power", "snapshot", "snapshot_delete", "snapshot_rollback", "create_task", "act"] },
-              tool: { type: "string", enum: [...ACT_NAMES], description: "For act steps: which action (the same names as the action tools)" },
+              tool: { type: "string", enum: ACT_NAMES.filter((n) => !ACTS[n].directOnly), description: "For act steps: which action (the same names as the action tools)" },
               params: { type: "object", description: "For act steps: that action's arguments (for example create_container takes hostname, template, cores, memory_mb, disk_gb)" },
               vmid: { type: "integer" },
               action: { type: "string", enum: [...POWER], description: "For power steps" },
@@ -70,6 +71,7 @@ export const AGENT_TOOLS = [
       additionalProperties: false,
     },
   },
+  STOP_RUN_PROPOSAL,
 ] as const;
 
 export interface StepInput {

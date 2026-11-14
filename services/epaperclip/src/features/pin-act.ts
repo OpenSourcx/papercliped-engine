@@ -2,6 +2,7 @@ import { ProxmoxError, type GuestType, type ProxmoxClient } from "@papercliped-e
 import { WizardError, buildCt, buildVm, type WizardContext } from "@papercliped-engine/proxmox-client/wizard-schema";
 import type { Connect } from "../console.ts";
 import type { StateStore } from "../state.ts";
+import { ActProblem } from "./act-problem.ts";
 import { STOP_RUN } from "./pin-stop-run.ts";
 import { MAX_OUTPUT, SENSITIVE, commandRisk, execInGuest } from "./guest-exec.ts";
 
@@ -37,12 +38,7 @@ export function gate(permission: Permission, risk: Risk): "run" | "ask" | "plan"
   return "ask";
 }
 
-export class ActProblem extends Error {
-  readonly code = "bad_action";
-  constructor(message: string) {
-    super(message);
-  }
-}
+export { ActProblem };
 const bad = (m: string) => new ActProblem(m);
 
 export interface ActHost {

@@ -1,8 +1,20 @@
 # Pin: stop a run
 
-Pin's first run-level action. In Agent mode, "stop this run" becomes a proposal for exactly one run, which the owner approves
-by typing a phrase; the host then cancels it only if it is still that run, in that state, and the owner can still see it.
-Code: `services/epaperclip/src/features/pin-stop-run.ts`. Tests: `services/epaperclip/test/pin-stop-run.test.ts` (17).
+Pin's first run-level action, available in **every mode**. Pin proposes stopping exactly one run, the owner approves by typing
+a phrase, and the host then cancels it only if it is still that run, in that state, and the owner can still see it.
+Code: `services/epaperclip/src/features/pin-stop-run.ts`. Tests: `services/epaperclip/test/pin-stop-run.test.ts` (30).
+
+## Which mode does what
+
+| Mode | What Pin does with "stop this run" | Where the owner approves |
+| --- | --- | --- |
+| Agent, permission `ask` / `accept` / `auto` / `bypass` | Calls `stop_run`; the chat shows the approval and waits | In the chat, by typing the phrase (`bypass` skips the question, not the checks) |
+| Assistant | Calls `stop_run` as a **proposal**: a one-step plan is written, the chat carries on | On Pin's Plans tab, by typing the phrase |
+| Agent, permission `plan` | Same proposal as Assistant | On Pin's Plans tab, by typing the phrase |
+
+The binding and the checks are identical in all three: only where the approval happens differs. A plan can sit on the Plans
+tab for a long time, so the recheck at approval matters most there (a run that finished in the meantime is simply not
+stopped).
 
 ## The flow
 
@@ -33,9 +45,10 @@ Code: `services/epaperclip/src/features/pin-stop-run.ts`. Tests: `services/epape
 
 ## It can't be smuggled in
 
-`stop_run` is `directOnly`: it can be proposed only by Pin calling the tool in Agent mode, because only that path binds the
-run. A `propose_plan` step, an automation or a connected app's plan that names it is refused ("can only be proposed by
-calling it directly"). There is no REST route that creates plans.
+`stop_run` is `directOnly`: it can be proposed only by Pin calling the `stop_run` tool itself (in any mode), because only that
+path binds the run. A `propose_plan` step (it is left out of that tool's list of actions), an automation or a connected app's
+plan that names it is refused ("can only be proposed by calling it directly"). There is no REST route that creates plans.
+The device MCP exposes only Pin's read tools, so it never offers it.
 
 ## Checked with real models (OpenRouter, through the owner's Composio connection)
 
@@ -55,8 +68,6 @@ field, runId: the run's id."
 
 ## Not done
 
-- Agent mode only. In Assistant mode and with the `plan` permission Pin cannot stop a run (it says so); only `propose_plan`
-  exists there, and this action is deliberately not allowed in a plan.
 - The kill switch does not gate this: it blocks starting things (resume, wake, routines), and stopping a run is what it is
   for. Pin's actions are otherwise not gated by it, which is unchanged.
 - Pin does not re-read the run after the owner approves to report it later; the receipt is what the engine said at that moment.

@@ -338,3 +338,113 @@ describe("Pin stops a run, end to end", () => {
     expect(stub.st.cancels).toEqual([]);
   });
 });
+
+// ---- Assistant mode, and Agent mode with the "plan" permission: nothing runs in the chat, the plan is approved on the Plans tab
+
+const plans = async () => ((await (await h.call("GET", "/api/pin/plans", { cookie: sam })).json()) as { plans: { id: string; title: string; status: string; steps: { id: string; label: string; destructive: boolean; confirmPhrase: string | null; state: string; result?: string; error?: string }[] }[] }).plans;
+const MODES = [
+  ["Assistant mode", { mode: "assistant" }],
+  ["Agent mode with the plan permission", { mode: "agent", permission: "plan" }],
+] as const;
+
+describe.each(MODES)("%s", (_name, settings) => {
+  beforeEach(async () => {
+    await h.call("PUT", "/api/pin/settings", { cookie: sam }, { provider: "anthropic", model: "m-1", ...settings });
+  });
+
+  it("offers stop_run as a proposal, and tells the model it is approved on the Plans tab", async () => {
+    script({ runId: RUN });
+    await (await startChat()).done;
+    const first = JSON.parse(prov.asked[0]!.body);
+    const tool = first.tools.find((t: { name: string }) => t.name === "stop_run");
+    expect(tool.description).toMatch(/^Propose stopping one agent run/);
+    expect(tool.description).toMatch(/Plans tab/);
+    expect(first.system).toMatch(/stop_run proposes stopping one agent run by id/);
+    if (settings.mode === "agent") {
+      // the written-plan tool can't carry it: the tool names it may use for act steps leave stop_run out
+      const planTool = first.tools.find((t: { name: string }) => t.name === "propose_plan");
+      expect(JSON.stringify(planTool.input_schema)).not.toContain("stop_run");
+    }
+  });
+
+  it("binds the run into a plan the chat doesn't wait for, and stops nothing until the owner approves with the phrase", async () => {
+    script({ runId: RUN });
+    const ev = await (await startChat()).done;
+    expect(ev.some((e) => e.event === "approval")).toBe(false); // the chat did not wait
+    const proposed = ev.find((e) => e.event === "tool" && e.data.status === "proposed")!.data;
+    expect(proposed.name).toBe("stop_run");
+    expect(proposed.args.steps).toEqual([{ label: `Stop run ${SHORT}: Forge's running run, started ${T0}`, destructive: true }]);
+    expect(ev.at(-1)!.event).toBe("done");
+    expect(JSON.parse(prov.asked.at(-1)!.body).messages.at(-1).content[0].content).toMatch(/NOTHING was stopped.*Plans tab by typing \\"stop run r1234567\\"/);
+    expect(stub.st.cancels).toEqual([]);
+
+    const [plan] = await plans();
+    expect(plan!.steps[0]).toMatchObject({ destructive: true, confirmPhrase: `stop run ${SHORT}`, state: "pending" });
+    expect((await decide(plan!.id, plan!.steps[0]!.id, "approve")).status).toBe(409);
+    expect(stub.st.cancels).toEqual([]);
+    expect((await decide(plan!.id, plan!.steps[0]!.id, "approve", `stop run ${SHORT}`)).status).toBe(200);
+    expect(stub.st.cancels).toEqual([RUN]);
+    const [after] = await plans();
+    expect(after!.steps[0]!.state).toBe("done");
+    expect(after!.steps[0]!.result).toBe(`Cancelled run ${SHORT} (Forge's running run, started ${T0}). Status before: running. Status now: cancelled.`);
+    const trail = await audit();
+    expect(trail).toContain("pin.plan.propose");
+    expect(trail).toContain("(typed confirmation)");
+    expect(trail).toContain(`Cancelled run ${SHORT}`);
+  });
+
+  it("checks the run again when the owner finally approves, which may be long after: a run that has finished is not stopped", async () => {
+    script({ runId: RUN });
+    await (await startChat()).done;
+    const [plan] = await plans();
+    stub.st.runs.set(RUN, run({ status: "succeeded" })); // while the plan sat on the Plans tab
+    expect((await decide(plan!.id, plan!.steps[0]!.id, "approve", `stop run ${SHORT}`)).status).toBe(200);
+    expect(stub.st.cancels).toEqual([]);
+    expect((await plans())[0]!.steps[0]!.result).toBe(`Run ${SHORT} is no longer active (it is succeeded), so NOTHING was stopped.`);
+  });
+
+  it("rejects a plan whose run restarted or whose owner lost access, with the reason, and stops nothing", async () => {
+    script({ runId: RUN });
+    await (await startChat()).done;
+    let [plan] = await plans();
+    stub.st.runs.set(RUN, run({ startedAt: "2026-11-14T13:00:00.000Z" }));
+    await decide(plan!.id, plan!.steps[0]!.id, "approve", `stop run ${SHORT}`);
+    [plan] = await plans();
+    expect(plan!.steps[0]).toMatchObject({ state: "failed" });
+    expect(plan!.steps[0]!.error).toMatch(/changed after it was proposed.*NOTHING was stopped/);
+    expect(stub.st.cancels).toEqual([]);
+  });
+
+  it("refuses a run the person can't see or that has finished, at the proposal, with no plan written", async () => {
+    stub.st.runs.set("r-foreign", run({ id: "r-foreign", companyId: "co-b" }));
+    script({ runId: "r-foreign" });
+    const foreign = await (await startChat()).done;
+    expect(foreign.find((e) => e.event === "tool" && e.data.status === "error")!.data.error).toBe("There is no run r-foreign that you can see.");
+    stub.st.runs.set(RUN, run({ status: "cancelled" }));
+    script({ runId: RUN });
+    const done = await (await startChat()).done;
+    expect(done.find((e) => e.event === "tool" && e.data.status === "error")!.data.error).toMatch(/already cancelled/);
+    expect(await plans()).toHaveLength(0);
+  });
+
+  it("ignores a binding the model makes up", async () => {
+    script({ runId: RUN, expect: { companyId: "co-a", agentId: "ag-1", status: "running", startedAt: T0, summary: "A harmless cleanup" } });
+    const ev = await (await startChat()).done;
+    const label = ev.find((e) => e.event === "tool" && e.data.status === "proposed")!.data.args.steps[0].label as string;
+    expect(label).toContain("Forge's running run");
+    expect(label).not.toContain("harmless");
+  });
+});
+
+describe("Agent mode still acts in the chat", () => {
+  it("keeps the action tool, not the proposal, when the permission lets Pin act", async () => {
+    script({ runId: RUN });
+    const { out, done } = await startChat();
+    await waitFor(() => out.some((e) => e.event === "approval"));
+    const first = JSON.parse(prov.asked[0]!.body);
+    expect(first.tools.find((t: { name: string }) => t.name === "stop_run").description).toMatch(/^Cancel one agent run/);
+    const a = out.find((e) => e.event === "approval")!.data;
+    await decide(a.planId, a.stepId, "reject");
+    await done;
+  });
+});

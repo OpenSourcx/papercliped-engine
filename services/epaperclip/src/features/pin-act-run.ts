@@ -1,6 +1,6 @@
 import type { Connect } from "../console.ts";
 import type { ProxmoxClient } from "@papercliped-engine/proxmox-client";
-import { ACTS, actFailure, gate, type ActHost, type Permission } from "./pin-act.ts";
+import { ACTS, ActProblem, actFailure, gate, type ActHost, type Permission } from "./pin-act.ts";
 import { cancelPlan, createPlan } from "./pin-agent.ts";
 import type { PinRuntime, PlanStep } from "./pin-core.ts";
 
@@ -64,6 +64,22 @@ async function awaitStep(env: ActEnv, planId: string, stepId: string): Promise<P
     }
     await new Promise<void>((r) => setTimeout(r, approvalWait.pollMs));
   }
+}
+
+/**
+ * Writes a direct-only action (stop_run) down as a one-step plan, for the modes where nothing runs inside the chat. The
+ * run is read and bound here, as in Agent mode, and the person approves the step on the Plans tab. Throws with a message the
+ * model and the person can use.
+ */
+export async function proposeActPlan(env: Pick<ActEnv, "rt" | "host">, name: string, args: Record<string, unknown>) {
+  const def = Object.hasOwn(ACTS, name) ? ACTS[name] : null;
+  if (!def || !def.directOnly || !def.prepare) throw new ActProblem(`${name} can't be proposed this way.`);
+  const who = env.host.username;
+  const names = await namesOf(env as ActEnv);
+  const parsed = def.parse(args);
+  const { expect: _supplied, ...plain } = parsed;
+  const bound = await def.prepare({ node: env.host.node, username: who, pve: env.host.pve, sleep: env.rt.sleep, apps: env.host.apps, state: env.rt.state }, plain, names);
+  return createPlan(env.rt, { owner: who, title: def.describe(bound, names).label, steps: [{ kind: "act", tool: def.name, params: bound }], createdBy: "pin", names, direct: true });
 }
 
 /** Runs or asks. Returns what the model should be told, or null when this isn't an action tool. */

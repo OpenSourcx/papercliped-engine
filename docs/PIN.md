@@ -166,4 +166,4 @@ Beyond the page name, Pin can be given a run, container, worker or organization 
 
 ## Stopping a run
 
-In Agent mode Pin can propose stopping one run, approved by typing a phrase and revalidated at approval; see [PIN-STOP-RUN.md](PIN-STOP-RUN.md).
+In every mode Pin can propose stopping one run, approved by typing a phrase and revalidated at approval (in the chat in Agent mode, on the Plans tab in Assistant mode and with the plan permission); see [PIN-STOP-RUN.md](PIN-STOP-RUN.md).

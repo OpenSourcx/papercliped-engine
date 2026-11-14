@@ -1,5 +1,6 @@
 import { PlacementLedger } from "../placements.ts";
-import { ActProblem, type ActDef, type ActHost } from "./pin-act.ts";
+import { ActProblem } from "./act-problem.ts";
+import type { ActDef, ActHost } from "./pin-act.ts";
 
 /**
  * Pin's `stop_run`: cancel one of the person's agent runs (docs/PIN-STOP-RUN.md).
@@ -159,3 +160,16 @@ function whereOf(state: NonNullable<ActHost["state"]>, runId: string, companies:
   const name = p.resource.kind === "lxc" ? `container ${p.resource.vmid}` : `worker ${p.resource.workerId}`;
   return live ? `in ${name}` : `it was in ${name}`;
 }
+
+/**
+ * `stop_run` as Pin offers it in Assistant mode and in Agent mode with the "plan" permission, where nothing runs inside the
+ * chat: the call writes a one-step plan, bound to the run exactly as in Agent mode, which the person approves on Pin's Plans
+ * tab by typing the phrase. The run is checked again when they approve, which may be much later.
+ */
+export const STOP_RUN_PROPOSAL = {
+  name: "stop_run",
+  action: true as const,
+  description:
+    "Propose stopping one agent run that is queued or running, by its run id. It is written down as a plan for the person to approve on Pin's Plans tab by typing a phrase; nothing is stopped until they do, and the run is checked again then. A run that has already finished can't be stopped. Use only when the person asks to stop a specific run.",
+  parameters: STOP_RUN.parameters,
+};
