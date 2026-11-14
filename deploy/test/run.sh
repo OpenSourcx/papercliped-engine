@@ -462,6 +462,7 @@ s_npm() {
   check "epaperclip version reads the signed manifest" eval '[ "$RC" -eq 0 ] && has "^1.0.0$"'
   epc install
   check "epaperclip install (exit 0)" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.0 ] && host_health && engine_health'
+  check "the npm command records that it installed the host" eval '[ "$(cat "$H/prefix/CHANNEL")" = npm ]'
   epc status
   check "epaperclip status" eval '[ "$RC" -eq 0 ] && has "epaperclip-engine.service: running"'
   epc rollback
@@ -670,7 +671,60 @@ s_get() {
   install --uninstall >/dev/null 2>&1
 }
 
-ALL=(public_url update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall deb npm real_engine)
+s_channel() {
+  # Who installed the host (apt, npm or the release download), and the rule that keeps them from fighting over it.
+  new_host channel; make_release 1.0.0 2026.1005.0; install
+  check "a first install records its channel" eval '[ "$RC" -eq 0 ] && [ "$(cat "$H/prefix/CHANNEL")" = release ]'
+  install --status
+  check "status says who installed it" has "installed by: release"
+
+  # npm and the release download install the same files, so they may take over from each other.
+  make_release 1.0.1 2026.1005.0; export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "npm may install over a release install, and says so" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.1 ] && [ "$(cat "$H/prefix/CHANNEL")" = npm ] && has "installed from the release channel; it is now installed from the npm channel"'
+
+  # Once apt has the package registered, npm and the release download must not install over it.
+  echo 1.0.1 >"$H/stub/dpkg-version"
+  make_release 1.0.2 2026.1005.0; before="$(host_state)"
+  export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "npm is refused over an apt-registered host, with nothing changed" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 1.0.1 ] && [ "$(host_state)" = "$before" ] && has "nothing was changed"'
+  check "and is told who has it, why, and both ways forward" eval 'has "apt manages ePaperclip on this host (package epaperclip 1.0.1)" && has "apt update && apt install --only-upgrade epaperclip" && has "apt-get remove epaperclip (it stops and removes the services but keeps your data and settings)"'
+  check "naming npm, not the release download" eval 'has "installing from npm over it" && ! has "the release download"'
+  install
+  check "the release download is refused the same way" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 1.0.1 ] && [ "$(host_state)" = "$before" ] && has "installing from the release download over it"'
+  install --status
+  check "status shows what apt has registered" has "apt has epaperclip 1.0.1 registered"
+  install --rollback >/dev/null 2>&1; true
+
+  # apt takes over from npm or the release download, and says that it now owns upgrades.
+  export EPC_CHANNEL=apt; install; unset EPC_CHANNEL
+  check "apt may install over an npm install, and says it now manages the host" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.2 ] && [ "$(cat "$H/prefix/CHANNEL")" = apt ] && has "apt now manages it"'
+  make_release 1.0.3 2026.1005.0; export EPC_CHANNEL=apt; install; unset EPC_CHANNEL
+  check "apt upgrading its own install is quiet" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.3 ] && ! has "now manages"'
+
+  # The way off apt, as the refusal spells it: remove the package (keeps data), then install from the other channel.
+  make_release 1.0.4 2026.1005.0; export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "still refused while apt has it registered" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 1.0.3 ]'
+  install --uninstall >/dev/null 2>&1; rm -f "$H/stub/dpkg-version"   # what apt-get remove's prerm and dpkg do
+  check "apt-get remove keeps the data and settings" eval '[ -d "$H/engine-home" ] && [ -f "$H/etc/engine.env" ]'
+  export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "after that, npm installs and owns it" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.4 ] && [ "$(cat "$H/prefix/CHANNEL")" = npm ] && host_health'
+
+  # A host installed before the channel was recorded: apt's registration still decides, and otherwise it is adopted.
+  rm -f "$H/prefix/CHANNEL"; echo 1.0.4 >"$H/stub/dpkg-version"; make_release 1.0.5 2026.1005.0
+  export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "an unmarked host that apt has registered is refused too" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 1.0.4 ] && has "apt manages ePaperclip"'
+  rm -f "$H/stub/dpkg-version"; export EPC_CHANNEL=npm; install; unset EPC_CHANNEL
+  check "an unmarked host apt doesn't have is adopted and marked, with no handover notice" eval '[ "$RC" -eq 0 ] && [ "$(version)" = 1.0.5 ] && [ "$(cat "$H/prefix/CHANNEL")" = npm ] && ! has "this host was installed from"'
+  install --status
+  check "status says unknown for an unmarked host" eval 'rm -f "$H/prefix/CHANNEL"; install --status; has "installed by: unknown"'
+
+  # Nothing but the three channels is accepted.
+  before="$(host_state)"; export EPC_CHANNEL=snap; install; unset EPC_CHANNEL
+  check "an unknown channel is refused before anything changes" eval '[ "$RC" -ne 0 ] && has "EPC_CHANNEL must be apt, npm or release" && [ "$(host_state)" = "$before" ]'
+  install --uninstall >/dev/null 2>&1
+}
+
+ALL=(public_url update_helper signing get fresh upgrade drain rollback broken service_fails first_fails from_pre_engine preflight uninstall channel deb npm real_engine)
 want=("$@"); [ "${#want[@]}" -gt 0 ] || want=("${ALL[@]}")
 for SCEN in "${want[@]}"; do
   SCEN="${SCEN//-/_}"

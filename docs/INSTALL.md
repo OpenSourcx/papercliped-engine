@@ -103,6 +103,35 @@ From a branch, building on the host (a few minutes):
 curl -fsSL https://raw.githubusercontent.com/OpenSourcx/papercliped-engine/<branch>/deploy/from-source.sh | EPC_REF=<branch> bash
 ```
 
+### Which channel owns this host
+
+apt, npm and the release download all run the same installer and put the same files in the same places, so the result is the
+same. What differs is who upgrades it afterwards, and mixing them carelessly leaves apt's records out of step with what is
+running. So the installer writes the channel that last installed to `/opt/epaperclip/CHANNEL` (`epaperclip status` shows it as
+"installed by") and checks it before changing anything:
+
+| Installing from | Over a host that apt has registered | Over an npm or release install |
+| --- | --- | --- |
+| apt | Upgrades it, quietly | Allowed. apt manages upgrades from then on, and the installer says so |
+| npm | **Refused**, nothing changed | Allowed (same files); the installer notes the handover |
+| release download | **Refused**, nothing changed | Allowed (same files); the installer notes the handover |
+
+Why npm and the release download are refused over apt: apt would then disagree with what runs, and a later `apt remove` runs
+the package's own removal and takes out the copy that is running. The refusal names the package and its version and gives
+both ways forward:
+
+- **Keep using apt:** `apt update && apt install --only-upgrade epaperclip`.
+- **Move to npm (or the release download) on purpose:** `apt-get remove epaperclip`, which stops and removes the services but
+  keeps your data and settings (it does not purge), then run the other install again. It takes the existing data and
+  settings over as they are.
+
+A host installed before the channel was recorded is treated the same way: apt's registration decides, and a host apt does not
+have is adopted and marked by the next install. Only `apt`, `npm` and `release` are accepted as `EPC_CHANNEL`; the npm
+command sets `npm` itself and the Debian package is recognised by where it installs from.
+
+Tested with a simulated host: `bash deploy/test/run.sh channel` (17 checks, including that nothing changes on a refusal).
+Not run on a real Proxmox host or against a real `.deb` and `dpkg`.
+
 ### What the installer promises
 
 - It checks everything it needs first, and changes nothing if something is missing. It checks Proxmox VE 8+, memory, disk, that ports 443 and 3100 are free, pveproxy, and the node certificate.

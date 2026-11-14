@@ -267,9 +267,26 @@ case "$ACTION" in ""|--install|--status|--rollback|--uninstall|--purge|--set-pub
 case "$ACTION" in ""|--install) banner "installing on this Proxmox host" ;; --rollback) banner "going back to the previous version" ;; esac
 if [ "$ACTION" = "--set-public-url" ]; then [ "$#" -eq 2 ] || die "usage: --set-public-url https://name.example[:port]   (or --set-public-url --clear)"; else [ "$#" -le 1 ] || die "one option at a time, please (got: $*)"; fi
 
+# ---- which channel installs this host ---------------------------------------------------------------------------
+# Three channels run this same installer: apt (the Debian package's postinst, /usr/share/epaperclip), npm (the npm package's
+# command, which sets EPC_CHANNEL=npm) and the release download (get.sh, a tarball, a checkout). The one that last installed is
+# written to $PREFIX/CHANNEL. The rule (docs/INSTALL.md, "Which channel owns this host"):
+#   - apt over an npm or release install: allowed. apt takes over upgrades from then on.
+#   - npm and release over each other: allowed. They install the same files.
+#   - npm or release over a host apt has registered: refused, with nothing changed. apt would then disagree with what runs,
+#     and a later `apt remove` would run its prerm and remove the copy that is running.
+CHANNEL="${EPC_CHANNEL:-}"
+if [ -z "$CHANNEL" ]; then case "$ROOT" in /usr/share/epaperclip) CHANNEL=apt ;; *) CHANNEL=release ;; esac; fi
+case "$CHANNEL" in apt|npm|release) ;; *) die "EPC_CHANNEL must be apt, npm or release (got '$CHANNEL')" ;; esac
+installed_channel() { local c; c="$(tr -d '[:space:]' <"${1:-$PREFIX}/CHANNEL" 2>/dev/null || true)"; case "$c" in apt|npm|release) echo "$c" ;; esac; }
+# The version apt has registered for epaperclip, or nothing. (`dpkg-query` is a stand-in in deploy/test.)
+apt_registered() { local st; st="$(dpkg-query -W -f='${Status}' epaperclip 2>/dev/null || true)"; [ "$st" = "install ok installed" ] && dpkg-query -W -f='${Version}' epaperclip 2>/dev/null; }
+
 # ---- --status ---------------------------------------------------------------------------------------------------
 if [ "$ACTION" = "--status" ]; then
   say "version: $(installed_version)$([ -d "$PREV" ] && echo " (previous: $(installed_version "$PREV"))")"
+  ch="$(installed_channel || true)"; reg="$(apt_registered || true)"
+  say "installed by: ${ch:-unknown (installed before this was recorded)}${reg:+; apt has epaperclip $reg registered}"
   say "engine: paperclipai $(engine_version "$PREFIX/engine")$([ -d "$PREV" ] && echo " (previous: $(engine_version "$PREV/engine"))")"
   say "agent container provider: $(plugin_version || echo none) ($PREFIX/$PLUGIN_REL)"
   for u in "${UNITS[@]}"; do if active "$u"; then say "$u.service: running"; else say "$u.service: not running"; fi; done
@@ -374,6 +391,12 @@ if command -v pveversion >/dev/null; then
   pvemajor="$(pveversion 2>/dev/null | sed -n 's|^pve-manager/\([0-9]*\)\..*|\1|p' || true)"
   { [ -n "$pvemajor" ] && [ "$pvemajor" -ge 8 ]; } || need "Proxmox VE 8 or newer is needed (found: $(pveversion 2>&1 | head -n1))"
 fi
+# Channel: don't install over a host apt has registered from any other channel (see "which channel installs this host").
+apt_ver="$(apt_registered || true)"; was="$(installed_channel || true)"
+if [ "$CHANNEL" != apt ] && [ -n "$apt_ver" ]; then
+  how="$([ "$CHANNEL" = npm ] && echo "npm" || echo "the release download")"
+  need "apt manages ePaperclip on this host (package epaperclip $apt_ver), so installing from $how over it would leave apt out of step with what runs, and a later 'apt remove' would remove this copy. To keep using apt: apt update && apt install --only-upgrade epaperclip. To move to $how on purpose: apt-get remove epaperclip (it stops and removes the services but keeps your data and settings), then run this again"
+fi
 case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64) ARCH=arm64 ;; *) ARCH=""; need "unsupported processor: $(uname -m) (x86_64 and aarch64 are supported)" ;; esac
 for c in curl tar xz sha256sum useradd setpriv setsid ss systemctl; do command -v "$c" >/dev/null || need "the '$c' command is missing (apt-get install -y curl xz-utils util-linux iproute2)"; done
 [ -f "$SRC_BUNDLE" ] || need "the service isn't built (expected $SRC_BUNDLE). From a checkout: pnpm install && pnpm build"
@@ -434,6 +457,11 @@ if [ "${#problems[@]}" -gt 0 ]; then
   for p in "${problems[@]}"; do echo "  - $p" >&2; done
   echo "epaperclip: nothing was changed." >&2
   exit 1
+fi
+
+if [ -n "$was" ] && [ "$was" != "$CHANNEL" ]; then
+  if [ "$CHANNEL" = apt ]; then say "this host was installed from the $was channel; apt now manages it. Upgrade with: apt update && apt install --only-upgrade epaperclip"
+  else say "this host was installed from the $was channel; it is now installed from the $CHANNEL channel (the same installer and files, so nothing else changes)"; fi
 fi
 
 # ---- from here on, anything that fails before the swap is undone ---------------------------------------------------
@@ -536,6 +564,7 @@ install -m 0644 "$SRC_BROKER" "$STAGE/broker/epaperclip-broker.mjs"
 cp -r "$SRC_CONSOLE/." "$STAGE/console/"
 VERSION_OUT="$(cd "$ROOT" && { cat VERSION 2>/dev/null || git describe --tags --always 2>/dev/null || echo dev; })"
 echo "$VERSION_OUT" > "$STAGE/VERSION"
+echo "$CHANNEL" > "$STAGE/CHANNEL"
 install -d -m 0755 "$STAGE/exec"
 install -m 0644 "$ROOT/deploy/epaperclip-exec.mjs" "$STAGE/exec/epaperclip-exec.mjs"
 install -d -m 0755 "$STAGE/publish"

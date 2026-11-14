@@ -71,7 +71,9 @@ const x = spawnSync("tar", ["-xzf", join(payload, "epaperclip.tar.gz"), "--no-sa
 if (x.error || x.status !== 0) { cleanup(); fail("couldn't unpack the release"); }
 const installer = join(work, "epaperclip", "deploy", "install.sh");
 try { accessSync(installer, constants.R_OK); } catch { cleanup(); fail("the release is incomplete (deploy/install.sh is missing)"); }
-const r = spawnSync("bash", [installer, ...args], { stdio: "inherit" });
+// The installer records which channel installed the host (apt, npm or the release download) and refuses to install over a
+// host apt has registered, so it needs to know this is the npm one.
+const r = spawnSync("bash", [installer, ...args], { stdio: "inherit", env: { ...process.env, EPC_CHANNEL: "npm" } });
 cleanup();
 if (r.error) fail(`couldn't run the installer: ${r.error.message}`);
 if (cmd === "setup" && r.status === 0) {
