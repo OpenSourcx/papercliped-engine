@@ -274,6 +274,18 @@ describe("the agent page", () => {
     await waitFor(() => expect(screen.getByLabelText("Run output").textContent).toBe("first line\nsecond line\n"));
   });
 
+  it("shows which container a run used, next to its output", async () => {
+    const run = { id: "run1", status: "running", invocationSource: "on_demand", createdAt: "2026-10-01T00:00:00Z", startedAt: "2026-10-01T00:00:00Z", error: null };
+    state.routes["GET /engine/api/companies/c1/heartbeat-runs"] = () => [200, [run]];
+    state.routes["GET /engine/api/heartbeat-runs/run1/log"] = () => [200, { content: "" }];
+    state.routes["GET /api/placements/runs/run1"] = () => [200, { runId: "run1", status: "active", hidden: 0, lastSyncAt: Date.now(), placements: [{ leaseId: "l1", runId: "run1", companyId: "c1", issueId: null, provider: "proxmox", state: "active", acquiredAt: Date.now() - 60_000, releasedAt: null, resource: { kind: "lxc", device: "pve", node: "pve", vmid: 104 } }] }];
+    renderOrg("/pve/acme/agents/a1?tab=runs");
+    fireEvent.click(await screen.findByText(/on demand/));
+    expect(await screen.findByText("Running in container 104.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open container 104" }).getAttribute("href")).toBe("/pve/machines/104");
+    expect(callsTo("GET", "/api/placements/runs/run1")).toHaveLength(1);
+  });
+
   it("turns NDJSON log text into what the agent printed", () => {
     expect(logText(`${JSON.stringify({ chunk: "a\n" })}\n${JSON.stringify({ chunk: "b" })}\n`)).toBe("a\nb");
   });

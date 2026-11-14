@@ -57,10 +57,23 @@ GET /api/placements/resources?kind=worker&workerId=<id>
 `restricted` (matches exist, none in an organization the caller may see). For a machine the answer lists every run it
 served, oldest first, and `status` describes the current one.
 
+## In the console
+
+- **A run's output** (an agent's Runs tab) has a "Where it ran" card above the log: the state, one plain sentence, and a link
+  to the container or worker. A finished or failed container is never linked (its id may belong to something else by now);
+  a worker always is. A stale answer says "may be out of date" instead of claiming the run is still going.
+- **A container's Overview** and **a worker's Overview** have an "Agent runs" card, newest first: the organization, a link to
+  the task when the person can open it, and the time window. It appears only when there is something to show, and says how
+  many runs belong to organizations the person can't see (a count, nothing else).
+- If the lookup fails the run page says so quietly and carries on; the run itself is unaffected.
+
+Code: `apps/console/src/pages/placements/PlacementViews.tsx`, `src/data/engine/placements.ts`. Tests:
+`apps/console/test/placements-ui.test.tsx` and one through the run tab in `engine-screens.test.tsx`.
+
 ## What is not done yet
 
-- Nothing in the console reads these routes yet (no link from a run to its machine, or back).
 - The routes check organization membership, not the caller's Proxmox permission on the guest.
 - `device` is this host's node name; a cluster with several devices needs a stable device id.
+- Not yet seen in a browser against a real host; the screens are tested with stubbed responses (desktop and 390 px captures, light and dark, are still owed).
 - Verified against fakes and the engine's lease schema (`paperclipai@2026.1023.0`, `environment_leases`), not against a real
   run on a real host: label `tested`, not `real-host`.

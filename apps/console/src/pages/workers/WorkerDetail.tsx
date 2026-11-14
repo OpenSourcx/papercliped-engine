@@ -9,6 +9,7 @@ import { ConfirmModal } from "../../ui/Confirm.tsx";
 import { Button, Card, Chip, EmptyState, Field, Input, Notice, PageFrame, PageHeader, SectionTitle, Select, Status, Tabs } from "../../ui/primitives.tsx";
 import { CapabilityFacts, Fact } from "./Hardware.tsx";
 import { FabricGate } from "./Gate.tsx";
+import { MachineRuns } from "../placements/PlacementViews.tsx";
 import { ago, clock, healthOf, providerLabel } from "./util.ts";
 
 type Tab = "overview" | "leases" | "activity";
@@ -98,6 +99,7 @@ function Overview({ w }: { w: Worker }) {
   return (
     <div className="grid gap-5">
       <AiSetup w={w} />
+      <MachineRuns target={{ kind: "worker", workerId: w.id }} />
       <Card className="p-4 sm:p-5">
         <SectionTitle>Capabilities</SectionTitle>
         <CapabilityFacts c={c} />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RunPlacement } from "../../placements/PlacementViews.tsx";
 import { KeyRound, Plus, Square, Trash2 } from "lucide-react";
 import type { Agent, HeartbeatRun } from "@papercliped-engine/engine-client";
 import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
@@ -435,6 +436,7 @@ export function AgentRunsTab({ agent }: { agent: Agent }) {
           );
         })}
       </Card>
+      {sel && <RunPlacement key={`where-${sel.id}`} runId={sel.id} />}
       {sel && <RunLog key={sel.id} run={sel} />}
     </div>
   );
