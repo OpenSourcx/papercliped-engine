@@ -34,15 +34,15 @@ Status: draft. This describes the target system and marks which parts exist in t
 | `services/host-broker` | Holds the Proxmox token. Exposes a small allowlisted API with two kinds of caller: Pin (system scope) and companies (resource-group scope). Enforces hard limits and protected guests. Audit log. | Yes (core logic) |
 | `packages/automations` | Deterministic trigger engine. Evaluates rules against host metrics and decides actions. Mode-aware: Assistant proposes, Agent acts. | Yes |
 | `services/epaperclip` | The host service: serves the console, signs users in through Proxmox's own login, and calls Proxmox as the signed-in user. | Yes |
-| `apps/console` | The single UI: Paperclip's style as a system manager, Pin's island, onboarding, IAC screens, design framework. Routes are `/<device>/home` and `/<device>/<org>`. | Yes (live host data; org data still demo) |
-| ePaperclip (`upstream/paperclip` fork) | Paperclip, redesigned and extended. | Planned |
-| Pin | Copilot runtime: modes, skills, `SOUL.md`/`MEMORY.md`, turns language into rules and tasks. | Planned |
-| Installer | ISO and apt repository on top of upstream Proxmox VE packages. | Planned |
+| `apps/console` | The single UI: Paperclip's style as a system manager, Pin's island, onboarding, IAC screens, design framework. Routes are `/<device>/home` and `/<device>/<org>`. | Yes (live host data; organizations, agents and tasks from the engine; demo data only in the standalone `dev` mode) |
+| Paperclip engine (`paperclipai@2026.1023.0`) | Organizations, agents, tasks, runs, approvals and budgets. The published package at an exact version, installed from a lockfile, unmodified; ePaperclip adds behavior through the host service, the console and provider plugins. | Pinned, not forked (`engine/`, [ENGINE.md](ENGINE.md)) |
+| Pin | Copilot runtime: modes, skills, `SOUL.md`/`MEMORY.md`, turns language into rules and tasks. | Yes (`services/epaperclip/src/pin*.ts`; not yet exercised with a real model on a host) |
+| Installer | A signed apt repository, the `epaperclip` npm package and `get.sh` install onto an existing Proxmox VE host (`deploy/`). An installer ISO is future work. | Packages: yes. ISO: planned |
 
-## Fork strategy
+## Upstream strategy
 
 - **Proxmox:** keep upstream packages unchanged (hypervisor, API daemons, storage, cluster). Replace what the user sees: the web UI entry point, branding, installer. This is how other Proxmox derivatives stay maintainable. The name cannot contain "Proxmox" (registered trademark). Shipping Proxmox packages means meeting their AGPL-3.0 obligations for those packages.
-- **Paperclip:** fork `paperclipai/paperclip` (MIT) into ePaperclip, keeping its history so upstream changes can be merged. Keep every existing feature; add host awareness, resource groups, Pin and the design framework.
+- **Paperclip:** do not fork it. Run the published `paperclipai` package (MIT) at an exact version, unmodified, behind the host service. Treat the lockfile, the package version and the matching plugin SDK as one compatibility set. Add host awareness, resource groups and Pin through the host service, the console and provider plugins, and move to a new upstream version only on a dedicated upgrade branch that passes the same checks (see [ENGINE.md](ENGINE.md)).
 
 ## Trust model
 

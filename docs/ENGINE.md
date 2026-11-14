@@ -112,7 +112,7 @@ Paperclip ships an MCP server, an OAuth-scoped public MCP endpoint, and a "board
 
 1. Install the engine from the lockfile, as its own locked-down service on loopback.
 2. Host service: vault, managed accounts, proxy for `/engine/api` and the events WebSocket.
-3. Console: organizations, agents, tasks, goals, approvals, costs from the engine, replacing the demo data.
+3. Console: organizations, agents, tasks, goals, approvals, costs from the engine; demo data stays only in the standalone `dev` mode.
 4. The `proxmox` sandbox provider, with an agent template.
 5. Pin on the engine's MCP and API.
 6. IAC: Proxmox users and permissions become engine memberships and roles.

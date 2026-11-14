@@ -61,14 +61,14 @@ Each phase ends with something that runs on a real Proxmox host.
 - [x] Broker usage-history endpoints (`/v1/stats`) and Proxmox client `rrddata` calls
 - [x] Live consoles: the host service relays Proxmox's terminal proxy (containers, VM serial consoles, host shell) over a WebSocket, as the signed-in user, behind the same transport
 - [x] Pin's own page: mode, what Pin may do, SOUL.md and MEMORY.md, automations, activity log, skills, full chat
-- [ ] Paperclip pages still to come from the fork: chat, artifacts, workspaces, skills
+- [ ] Paperclip pages still to come through the engine's API: chat, artifacts, workspaces, skills
 - [x] Host service (`services/epaperclip`): Proxmox sign-in with two-factor, sessions, acting as the user, console serving with a strict CSP
 - [x] Console on live data: host metrics, machines, power, usage graphs, every storage and the root file system, creating containers
 - [x] Pin's island shows every suggestion for the page you're on: up to three in the row (actions first), the rest grouped under More
 - [x] Installer and systemd unit for a Proxmox VE host (`deploy/`)
-- [ ] Connect the console to the host broker and ePaperclip for organizations, agents and tasks (still demo data)
+- [x] Console on the engine for organizations, agents and tasks, through the host service (tested against fakes; qualification on a real host is tracked in the status ledger)
 - [ ] IAC backend: create and update Proxmox users, roles and ACLs from ePaperclip users and policies
-- [x] Store: one place for operating systems (newest installers resolved from each vendor's own checksum list and downloaded verified), ready-made container apps, driver disks and plugins; installed/update status, install to a chosen storage, "Create machine" from an installed item. Plugin installs (connectors, agent adapters, Pin skills) are saved on this device; their runtime arrives with the ePaperclip fork
+- [x] Store: one place for operating systems (newest installers resolved from each vendor's own checksum list and downloaded verified), ready-made container apps, driver disks and plugins; installed/update status, install to a chosen storage, "Create machine" from an installed item. Plugin installs (connectors, agent adapters, Pin skills) are saved on this device; their runtime is not wired to the engine yet
 - [x] Store plugins mirror Paperclip's built-in adapter types (enable/disable) with bundled, licensed logos and monogram fallbacks
 - [x] Store: signed marketplace index (Ed25519, expiry, no rollback, strict entry formats, npm entries pinned by integrity hash), fetched only by the host service; publish and key scripts in `scripts/`, rotation documented in `marketplace/README.md`
 - [x] Installer hardening: preflight checks, pinned and verified private Node.js, staged install with automatic rollback, `--status`/`--rollback`/`--uninstall`, release packaging and workflow, `get.sh` and `from-source.sh`

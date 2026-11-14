@@ -17,12 +17,12 @@ Read [docs/VISION.md](docs/VISION.md) for the product, [docs/ARCHITECTURE.md](do
 | `packages/automations` | Pin's deterministic trigger engine: rule validation, plain-language read-back, mode-aware decisions | Working, tested |
 | `services/host-broker` | The only holder of the Proxmox token: resource groups for companies, system scope for Pin, protected guests, lease expiry, audit log, HTTP API | Working, tested against a fake Proxmox; not yet run against a real host |
 | `services/epaperclip` | The host service: serves the console on port 443 with the node's own certificate, signs people in with their Proxmox accounts (Integrated Access Control) and acts on Proxmox as them | Working, tested against a fake Proxmox |
-| `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island and page-aware quick actions, org dashboards, machines, drives, automations, Integrated Access Control, connectors, appearance | Live host, machines, drives and graphs through the host service; organizations and agents still on demo data |
+| `apps/console` | The ePaperclip web UI: onboarding, home with the Ask Pin bar, Pin's floating island and page-aware quick actions, org dashboards, machines, drives, automations, Integrated Access Control, connectors, appearance | Live host, machines, drives and graphs through the host service; organizations, agents and tasks from the pinned engine through the host service (demo data only in the standalone `dev` mode) |
 | `deploy/`, `engine/` | Installer, systemd units for the host service and the engine, the engine's pinned lockfile, and the installer's tests (`deploy/test/run.sh`); packaged as a release download, a `.deb` with a signed APT repository, and the `epaperclip` npm package | Ready to try; not yet run on a real Proxmox host |
 
 Agents run in unprivileged Proxmox containers, never on the host: after installing, a Proxmox administrator sets this up from Settings, Agent containers (a guided setup, [docs/ENGINE.md](docs/ENGINE.md#agent-containers)). Until then the engine refuses to run agents.
 
-Not built yet: the ePaperclip fork (organizations, agents and tasks on the console are demo data until then), the model-backed Pin runtime, live consoles, the installer ISO. See the roadmap.
+There is no fork of Paperclip: the engine is the published `paperclipai` package at an exact version, unmodified (see [docs/ENGINE.md](docs/ENGINE.md)). Not built yet: the installer ISO (PinOS is future work). Built but not yet qualified on real hardware, a model-backed Pin chat among them: see the status ledger in the docs repository and the [roadmap](docs/ROADMAP.md).
 
 ## Develop
 
