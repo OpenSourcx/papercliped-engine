@@ -116,5 +116,67 @@ nocheck "user program gone" test -e "$HOME/.local/epaperclip-worker"
 check "user settings kept" test -f "$HOME/.local/share/epaperclip-worker/config.json"
 nocheck "no Node and no --fetch-node: refused" env PATH="$H/bin:/nonexistent" EPW_NODE=/no/node bash "$PKG/install.sh" --user --check
 
+echo "scenario: epaperclip --worker (the npm command): verify the signed worker release, install it, pair"
+# A throwaway signing key (made fresh, never kept) and the worker release signed with it, laid out the way
+# npm/epaperclip/scripts/prepack.mjs packs it.
+KD="$WORK/wkeys"; mkdir -p "$KD"
+node --input-type=module -e '
+import { generateReleaseKey } from "'"$REPO"'/scripts/release-lib.mjs";
+import { writeFileSync } from "node:fs";
+for (const n of ["k", "other"]) { const g = generateReleaseKey(); writeFileSync(process.argv[1] + "/" + n + ".pem", g.privatePem); writeFileSync(process.argv[1] + "/" + n + ".pub", g.publicPem); }
+' "$KD"
+RELEASE_SIGNING_KEY="$(cat "$KD/k.pem")" node "$REPO/scripts/sign-worker-release.mjs" --dir "$WORK/release" --public "$KD/k.pub" >"$WORK/sign.out" 2>&1 && ok "the worker release signs" || { bad "the worker release signs"; cat "$WORK/sign.out"; }
+NW="$WORK/npmw"; mkdir -p "$NW/bin" "$NW/payload"; cp "$REPO/npm/epaperclip/bin/epaperclip.js" "$NW/bin/"
+TARNAME="$(basename "$TAR")"
+for f in "$TARNAME" epaperclip-worker.manifest.json epaperclip-worker.manifest.sig; do cp "$WORK/release/$f" "$NW/payload/"; done; cp "$KD/k.pub" "$NW/payload/release-signing.pub"
+new_host npmworker
+wk() { node "$NW/bin/epaperclip.js" --worker "$@" >"$H/out" 2>&1; RC=$?; }
+refused() { check "$1" bash -c "[ '$RC' -ne 0 ] && grep -q -- \"\$2\" '$H/out' && [ ! -e '$H/opt' ] && [ ! -e '$H/usrbin/epaperclip-worker' ]" _ "$2"; }
+echo tampered >>"$NW/payload/$TARNAME"; wk
+refused "a tampered worker release is refused, nothing installed" "doesn.t match its signed checksum"
+cp "$WORK/release/$TARNAME" "$NW/payload/"
+mv "$NW/payload/epaperclip-worker.manifest.sig" "$WORK/sig.bak"; wk
+refused "a worker release with no signature is refused" "incomplete or unsigned"
+mv "$WORK/sig.bak" "$NW/payload/epaperclip-worker.manifest.sig"
+cp "$KD/other.pub" "$NW/payload/release-signing.pub"; wk
+refused "a worker release signed by another key is refused" "signature is not valid"
+cp "$KD/k.pub" "$NW/payload/release-signing.pub"
+# A manifest the project really signed, but for the host release: it must not pass as the worker's.
+node --input-type=module -e '
+import { buildManifest, privateKeyFrom, signManifest } from "'"$REPO"'/scripts/release-lib.mjs";
+import { readFileSync, writeFileSync } from "node:fs";
+const m = buildManifest({ version: "1.0.0", tarball: Buffer.from("host release") });
+writeFileSync(process.argv[1] + "/epaperclip-worker.manifest.json", m);
+writeFileSync(process.argv[1] + "/epaperclip-worker.manifest.sig", signManifest(m, privateKeyFrom(readFileSync(process.argv[2], "utf8"))));
+' "$NW/payload" "$KD/k.pem"; wk
+refused "a manifest signed for the host release does not pass as the worker's" "not for this worker release file"
+for f in epaperclip-worker.manifest.json epaperclip-worker.manifest.sig; do cp "$WORK/release/$f" "$NW/payload/"; done
+rm "$NW/payload/release-signing.pub"; wk
+refused "a package with no pinned key says to run release-keygen" "release-keygen"
+cp "$KD/k.pub" "$NW/payload/release-signing.pub"
+wk --bogus; check "an unknown option is refused before anything happens" bash -c "[ '$RC' -eq 2 ] && grep -q 'unknown option --bogus' '$H/out' && [ ! -e '$H/opt' ]"
+wk --name; check "an option missing its value is refused" bash -c "[ '$RC' -eq 2 ] && grep -q -- '--name needs a value' '$H/out'"
+
+wk --name Orion --max-context 4096 --slots 1
+check "a verified worker release installs, passing the options to the installer" bash -c "[ '$RC' -eq 0 ] && grep -q 'worker release .* verified (signature and checksum)' '$H/out' && test -s '$H/opt/epaperclip-worker.mjs' && grep -q '\"name\": \"Orion\"' '$H/data/config.json' && grep -q '\"maxContext\": 4096' '$H/data/config.json'"
+check "it leads into pairing: says exactly what to run next" grep -q "epaperclip --worker connect <code>" "$H/out"
+check "and the installed service account is the unprivileged one the installer makes" grep -q "useradd --system --user-group" "$H/log/calls"
+calls_before="$(wc -l <"$H/log/calls")"
+wk
+check "running it again doesn't reinstall: it says so and points at upgrade" bash -c "[ '$RC' -eq 0 ] && grep -q 'already installed' '$H/out' && ! grep -q 'verified' '$H/out' && [ \"\$(wc -l <'$H/log/calls')\" = '$calls_before' ]"
+wk install
+check "install upgrades on request, verifying again" bash -c "[ '$RC' -eq 0 ] && grep -q 'verified (signature and checksum)' '$H/out'"
+wk --check
+check "--check runs the installer's checks only" bash -c "[ '$RC' -eq 0 ] && ! grep -q 'Installed. Next' '$H/out'"
+
+echo "scenario: epaperclip --worker connect (per-user): installs if needed, then hands over to the real pairing command"
+new_host npmworkeruser
+unset EPW_PREFIX EPW_UNIT_DIR EPW_DATA EPW_WORKSPACES EPW_BIN_DIR EPW_USER
+export HOME="$H/home"; mkdir -p "$HOME"
+wk connect --user not-a-real-pairing-code
+check "it installs for the user, then runs the worker's own connect (which rejects a bad code)" bash -c "[ '$RC' -ne 0 ] && grep -q 'worker release .* verified' '$H/out' && grep -q '1/4  Looking at this machine' '$H/out' && test -s '$HOME/.local/epaperclip-worker/epaperclip-worker.mjs'"
+wk connect --user not-a-real-pairing-code
+check "a second connect doesn't reinstall, and still reaches the pairing step" bash -c "[ '$RC' -ne 0 ] && grep -q 'already installed' '$H/out' && ! grep -q 'verified' '$H/out' && grep -q '1/4  Looking at this machine' '$H/out'"
+
 echo; echo "worker installer: $pass passed, $fail failed"
 [ "$fail" = 0 ]

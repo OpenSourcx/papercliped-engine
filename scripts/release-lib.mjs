@@ -8,14 +8,23 @@ export const MANIFEST = "epaperclip.manifest.json";
 export const SIGNATURE = "epaperclip.manifest.sig";
 export const VERSION_RE = /^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.]{1,40})?$/;
 
+// The worker release is signed with the same key, over its own manifest. The manifest's `name` is what keeps the two apart: a
+// host manifest can't pass as a worker one, or the reverse, because each installer checks the name it expects.
+export const WORKER_MANIFEST = "epaperclip-worker.manifest.json";
+export const WORKER_SIGNATURE = "epaperclip-worker.manifest.sig";
+export const WORKER_TARBALL_RE = /^epaperclip-worker-([0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(?:-[0-9A-Za-z.]{1,40})?)\.tar\.gz$/;
+export const workerTarballName = (version) => `epaperclip-worker-${normalizeVersion(version)}.tar.gz`;
+
 export const normalizeVersion = (v) => String(v).trim().replace(/^v/, "");
 export const isPrerelease = (v) => normalizeVersion(v).includes("-");
 
 /** The signed manifest. Fixed field order and layout, because deploy/verify-release.sh reads it line by line. */
-export function buildManifest({ version, tarball }) {
+export function buildManifest({ version, tarball, name = TARBALL }) {
   const v = normalizeVersion(version);
   if (!VERSION_RE.test(v)) throw new Error(`"${version}" is not a release version (expected 1.2.3 or 1.2.3-rc1)`);
-  return `${JSON.stringify({ format: 1, name: TARBALL, version: v, sha256: createHash("sha256").update(tarball).digest("hex"), size: tarball.length }, null, 2)}\n`;
+  // Only the two file names this project releases, and a worker's name must carry the version it is signed as.
+  if (name !== TARBALL && WORKER_TARBALL_RE.exec(name)?.[1] !== v) throw new Error(`"${name}" is not a release file name for version ${v}`);
+  return `${JSON.stringify({ format: 1, name, version: v, sha256: createHash("sha256").update(tarball).digest("hex"), size: tarball.length }, null, 2)}\n`;
 }
 
 /** Accepts the PEM exactly as stored in a CI secret (also with its newlines written as backslash-n). */

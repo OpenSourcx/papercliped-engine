@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MANIFEST, SIGNATURE, buildGetSh, buildManifest, fingerprint, generateReleaseKey, isPrerelease, normalizeVersion, privateKeyFrom, signManifest, verifyManifest } from "./release-lib.mjs";
+import { MANIFEST, SIGNATURE, WORKER_MANIFEST, WORKER_SIGNATURE, buildGetSh, buildManifest, fingerprint, generateReleaseKey, isPrerelease, normalizeVersion, privateKeyFrom, signManifest, verifyManifest } from "./release-lib.mjs";
 
 const root = new URL("../", import.meta.url).pathname;
 const script = (n) => `${root}scripts/${n}`;
@@ -123,4 +123,52 @@ test("the repository holds no private key material", () => {
     let t; try { t = readFileSync(`${root}${f}`, "utf8"); } catch { continue; }
     if (f !== "scripts/release-signing.test.mjs") assert.ok(!body.test(t), `${f} contains a private key`);
   }
+});
+
+// ---- the worker release: same key, its own manifest
+
+/** A release folder holding a real (tiny) worker tarball: epaperclip-worker-<fileVersion>.tar.gz whose VERSION is <inside>. */
+function fakeWorkerRelease(fileVersion, inside = fileVersion) {
+  const d = tmp(); mkdirSync(`${d}/src/epaperclip-worker-${fileVersion}`, { recursive: true }); mkdirSync(`${d}/release`);
+  writeFileSync(`${d}/src/epaperclip-worker-${fileVersion}/VERSION`, `${inside}\n`);
+  execFileSync("tar", ["-czf", `${d}/release/epaperclip-worker-${fileVersion}.tar.gz`, "-C", `${d}/src`, `epaperclip-worker-${fileVersion}`]);
+  return d;
+}
+const signWorker = (d, env, extra = []) => spawnSync("node", [script("sign-worker-release.mjs"), "--dir", `${d}/release`, ...extra], { encoding: "utf8", env: cleanEnv(env) });
+
+test("a worker manifest names its file and carries the version it is signed as; nothing else can be signed", () => {
+  const m = JSON.parse(buildManifest({ version: "0.1.0", tarball: Buffer.from("abc"), name: "epaperclip-worker-0.1.0.tar.gz" }));
+  assert.equal(m.name, "epaperclip-worker-0.1.0.tar.gz");
+  assert.equal(m.version, "0.1.0");
+  assert.throws(() => buildManifest({ version: "0.2.0", tarball: Buffer.from("x"), name: "epaperclip-worker-0.1.0.tar.gz" }), /not a release file name for version 0.2.0/);
+  assert.throws(() => buildManifest({ version: "0.1.0", tarball: Buffer.from("x"), name: "evil.tar.gz" }), /not a release file name/);
+  assert.throws(() => buildManifest({ version: "0.1.0", tarball: Buffer.from("x"), name: "../epaperclip-worker-0.1.0.tar.gz" }), /not a release file name/);
+});
+
+test("sign-worker-release signs the worker tarball, verifies its own output, and the host and worker manifests stay apart", () => {
+  const k = generateReleaseKey(); const d = fakeWorkerRelease("0.1.0"); writeFileSync(`${d}/pub.pem`, k.publicPem);
+  const r = signWorker(d, { RELEASE_SIGNING_KEY: k.privatePem }, ["--public", `${d}/pub.pem`]);
+  assert.equal(r.status, 0, r.stderr);
+  const man = readFileSync(`${d}/release/${WORKER_MANIFEST}`, "utf8");
+  assert.ok(verifyManifest(man, readFileSync(`${d}/release/${WORKER_SIGNATURE}`, "utf8"), k.publicPem));
+  assert.equal(JSON.parse(man).name, "epaperclip-worker-0.1.0.tar.gz");
+  assert.notEqual(WORKER_MANIFEST, MANIFEST);
+  assert.notEqual(WORKER_SIGNATURE, SIGNATURE);
+  // The signature covers the name, so it can't be moved onto another file name: a host-named copy of this manifest doesn't verify.
+  const swapped = man.replace("epaperclip-worker-0.1.0.tar.gz", "epaperclip.tar.gz");
+  assert.ok(!verifyManifest(swapped, readFileSync(`${d}/release/${WORKER_SIGNATURE}`, "utf8"), k.publicPem));
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("sign-worker-release refuses without the key, with the wrong key, and when the file and its contents disagree", () => {
+  const k = generateReleaseKey(); const other = generateReleaseKey();
+  const d = fakeWorkerRelease("0.1.0"); writeFileSync(`${d}/pub.pem`, k.publicPem);
+  const none = signWorker(d, {}, ["--public", `${d}/pub.pem`]); assert.notEqual(none.status, 0); assert.match(none.stderr, /RELEASE_SIGNING_KEY is not set/); assert.ok(!existsSync(`${d}/release/${WORKER_MANIFEST}`));
+  const wrong = signWorker(d, { RELEASE_SIGNING_KEY: other.privatePem }, ["--public", `${d}/pub.pem`]); assert.notEqual(wrong.status, 0); assert.match(wrong.stderr, /not the private half/); assert.ok(!existsSync(`${d}/release/${WORKER_MANIFEST}`));
+  const junk = signWorker(d, { RELEASE_SIGNING_KEY: "not a key" }, ["--public", `${d}/pub.pem`]); assert.notEqual(junk.status, 0); assert.match(junk.stderr, /not a PEM private key/); assert.ok(!junk.stderr.includes("not a key\n\n"));
+  const lying = fakeWorkerRelease("0.1.0", "0.9.9"); writeFileSync(`${lying}/pub.pem`, k.publicPem);
+  const mism = signWorker(lying, { RELEASE_SIGNING_KEY: k.privatePem }, ["--public", `${lying}/pub.pem`]); assert.notEqual(mism.status, 0); assert.match(mism.stderr, /says version 0.1.0 but the build inside is 0.9.9/); assert.ok(!existsSync(`${lying}/release/${WORKER_MANIFEST}`));
+  const empty = tmp(); mkdirSync(`${empty}/release`); writeFileSync(`${empty}/pub.pem`, k.publicPem);
+  const missing = signWorker(empty, { RELEASE_SIGNING_KEY: k.privatePem }, ["--public", `${empty}/pub.pem`]); assert.notEqual(missing.status, 0); assert.match(missing.stderr, /expected exactly one epaperclip-worker-<version>.tar.gz/);
+  for (const x of [d, lying, empty]) rmSync(x, { recursive: true, force: true });
 });

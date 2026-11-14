@@ -1,7 +1,8 @@
 name: release
 
 # Pushing a tag like v0.1.0 builds and tests everything, then publishes:
-#   - a GitHub release with epaperclip.tar.gz, its checksum, the signed manifest and signature, get.sh and the .deb
+#   - a GitHub release with epaperclip.tar.gz, its checksum, the signed manifest and signature, the signed worker release
+#     (epaperclip-worker-<version>.tar.gz and its manifest and signature), get.sh and the .deb
 #   - the signed APT repository at apt.papercliped.co, when its signing key and R2 upload credentials are configured
 #   - the epaperclip npm package, over npm Trusted Publishing (OIDC, no token); a failure there never fails the release
 # A tag needs the RELEASE_SIGNING_KEY secret (see docs/RELEASING.md): without it the build FAILS, so nothing unsigned is ever
@@ -63,6 +64,13 @@ jobs:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
           EPC_RELEASE_VERSION: ${{ github.ref_name }}
         run: node scripts/sign-release.mjs
+      - name: Build the worker release (deterministic; the same bytes for the same commit)
+        run: bash scripts/package-worker.sh release
+      - name: Sign the worker release (same Ed25519 key, its own manifest; the build fails if it can't)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: node scripts/sign-worker-release.mjs
       - name: Build the Debian package
         run: bash scripts/build-deb.sh
       - name: Installer tests (simulated Proxmox hosts, the .deb, the npm command)
@@ -78,7 +86,7 @@ jobs:
           # generated notes (a bare compare link, since our commits aren't pull requests) are only the fallback.
           if node scripts/release-notes.mjs --tag "${GITHUB_REF_NAME}" --out release/notes.md; then flags=(--notes-file release/notes.md); else flags=(--generate-notes); fi
           case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
-          gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/epaperclip.manifest.json release/epaperclip.manifest.sig release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" "${flags[@]}"
+          gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/epaperclip.manifest.json release/epaperclip.manifest.sig release/epaperclip-worker-*.tar.gz release/epaperclip-worker.manifest.json release/epaperclip-worker.manifest.sig release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" "${flags[@]}"
       - name: Publish the APT repository to Cloudflare R2 (stable releases only)
         if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
         env:

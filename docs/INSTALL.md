@@ -60,22 +60,46 @@ or `npm install -g epaperclip`, then `epaperclip install`. Host Node.js only sta
 
 ### Worker machines (not the Proxmox host)
 
-A worker adds AI compute on another machine. Node 22 or newer:
+A worker adds compute on another machine: it connects out to your own ePaperclip host, opens no port, and holds no Proxmox or
+account credentials. On a Linux machine with Node 22 or newer:
 
 ```sh
-npm install -g epaperclip-worker
-epaperclip-worker setup
+npm install -g epaperclip
+sudo epaperclip --worker                 # verify, install and start the worker service
+sudo epaperclip --worker connect <code>  # pair it: Workers, then Add worker in the console gives the code
 ```
 
-`setup` detects CPU/RAM/GPU/VRAM/disk, recommends models that fit, and prints the plan. It installs nothing without an explicit flag:
+or in one step, with the code from the console: `sudo epaperclip --worker <code>`.
 
-```sh
-sudo epaperclip-worker setup --install-ollama
-epaperclip-worker setup --pull --model llama3.1:8b
-epaperclip-worker setup --adopt <code from Workers>
-```
+What `epaperclip --worker` does, in order:
 
-`epaperclip --worker ...` delegates to the same command when both packages are installed. The worker only connects out to the host and never opens a port. For a persistent systemd service use the worker tarball installer; see [WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md).
+1. **Verifies** the signed worker release this package carries (an Ed25519 signature over its manifest, checked against the
+   public key pinned in the package, then the file's SHA-256 and size). It refuses and installs nothing if the signature is
+   missing or invalid, was made by another key, or belongs to the host release (the manifest names its file, and each
+   installer checks the name it expects). What it unpacks is exactly the bytes it checked.
+2. **Installs** it with the worker installer: one unprivileged system user, one state folder, a systemd service, the previous
+   version kept for `--rollback`. It never reimages, repartitions or changes anything else on the machine.
+3. **Pairs** it by handing over to `epaperclip-worker connect`, which looks at the machine, asks for or takes the code, and waits
+   for you to approve it in the console. Run without a code it stops after step 2 and tells you the next command.
+
+| Command | Does |
+| --- | --- |
+| `epaperclip --worker [code]` | install if needed, then pair when given a code |
+| `epaperclip --worker install` | install or upgrade to this package's worker version, no pairing |
+| `epaperclip --worker connect [code]` | pair, installing first if the worker isn't there; pairing alone never reinstalls |
+| `epaperclip --worker --check` | check the prerequisites and change nothing |
+| `epaperclip --worker --user` | install for your own account only, no root (add `--fetch-node` if the machine has no Node) |
+| `--name`, `--ollama-url`, `--max-context`, `--slots`, `--workspaces` | passed to the installer |
+| `epaperclip worker status` (also `config`, `diagnose`, `caps`, ...) | run the installed worker CLI |
+
+macOS is not handled by this command yet: use the signed worker release's `install-macos.sh` until its install is qualified
+([WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md)). Without the `epaperclip` package, `npm install -g epaperclip-worker` and
+`epaperclip-worker setup` still work, and `setup` installs nothing without an explicit flag (`--install-ollama`, `--pull`,
+`--adopt <code>`). For a persistent service without npm, use the worker tarball installer; see
+[WORKER-FABRIC-GUIDE.md](WORKER-FABRIC-GUIDE.md).
+
+Tested with simulated machines (`bash deploy/worker/test/run.sh`: 77 checks, including every refusal above and the hand-over to
+the real `connect`). Not run on a real worker machine, Orion, or a Mac.
 
 ### With one command
 

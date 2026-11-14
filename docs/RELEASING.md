@@ -29,6 +29,19 @@ release can be built (CI stops on a tag) and no build of the code installs anyth
 Also worth doing once: restrict who can push `v*` tags (Settings, Rules), and attach the secret to a `release` environment with
 required reviewers.
 
+## What a release contains
+
+| Artifact | Signed with | Published to |
+| --- | --- | --- |
+| `epaperclip.tar.gz`, `.sha256`, `epaperclip.manifest.json`, `epaperclip.manifest.sig`, `get.sh` | the release key (`scripts/sign-release.mjs`) | GitHub release |
+| `epaperclip-worker-<worker version>.tar.gz`, `epaperclip-worker.manifest.json`, `epaperclip-worker.manifest.sig` | the same key, its own manifest (`scripts/sign-worker-release.mjs`) | GitHub release, and inside the npm package |
+| the `.deb` | the APT repository's own key (`scripts/publish-apt.sh`) | the APT repository (stable releases only) |
+| the npm package `epaperclip` | npm provenance (Trusted Publishing) | npm (`latest`, or `next` for a candidate) |
+
+The worker release keeps its own version (`packages/worker-daemon/package.json`), not the tag's. A manifest names the file it
+signs, so the host's and the worker's can't stand in for each other. `npm/epaperclip/scripts/prepack.mjs` refuses to pack
+without both signed releases.
+
 ## Cutting a release candidate
 
 ```sh
