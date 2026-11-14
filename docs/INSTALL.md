@@ -27,7 +27,7 @@ apt update
 apt install epaperclip
 ```
 
-The key's fingerprint is `B8A0 77BE 1EB3 B107 D11A  15DF 3A07 D686 6306 BE32` (ePaperclip Releases &lt;releases@papercliped.co&gt;). It is also in this repository at [`deploy/apt/epaperclip-archive-keyring.asc`](../deploy/apt/epaperclip-archive-keyring.asc). apt only accepts packages signed with it, and only from this repository: `signed-by=` keeps the key from vouching for anything else.
+The key's fingerprint is `2DC0 0D1A 1A87 1018 F797  E7CE F565 5E1B 9FA7 5813` (ePaperclip Releases &lt;releases@papercliped.co&gt;). It is also in this repository at [`deploy/apt/epaperclip-archive-keyring.asc`](../deploy/apt/epaperclip-archive-keyring.asc). apt only accepts packages signed with it, and only from this repository: `signed-by=` keeps the key from vouching for anything else.
 
 Updates come with the rest of the system: `apt update && apt upgrade`. The package also adds an `epaperclip` command: `epaperclip status`, `epaperclip rollback`, `epaperclip uninstall`.
 

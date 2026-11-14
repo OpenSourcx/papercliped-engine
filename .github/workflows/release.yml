@@ -197,9 +197,17 @@ jobs:
           trap 'rm -rf "$feed"' EXIT
           bash scripts/publish-update-feed.sh --local "$feed"
           aws s3 sync "$feed/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+      - name: Take the APT public key from main (the tag may predate a key change; the script refuses a key that isn't the published one)
+        if: ${{ !contains(inputs.republish_tag, '-') }}
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-checkout
+          sparse-checkout: deploy/apt
       - name: Publish the APT repository to Cloudflare R2 (stable releases only)
         if: ${{ !contains(inputs.republish_tag, '-') }}
         env:
+          EPC_APT_PUBLIC_KEY: ${{ github.workspace }}/main-checkout/deploy/apt/epaperclip-archive-keyring.asc
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
           APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
           AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
