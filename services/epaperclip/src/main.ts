@@ -9,6 +9,7 @@ import { TlsReloader } from "./features/nodeTls.ts";
 import { startPinRuntime } from "./features/pin-automations.ts";
 import { SessionStore } from "./sessions.ts";
 import { controlListener, workerListener } from "./fabric/listener.ts";
+import { PlacementLedger } from "./placements.ts";
 import { StateStore } from "./state.ts";
 
 /**
@@ -145,9 +146,17 @@ void handle.engine?.start((m) => activity.info("engine", "engine.start", m)).the
     if (!r.ok) activity.warn("engine", "engine.policy", `Couldn't set the engine's managed-sandbox-only policy: ${r.error}`);
   };
   await enforce();
+  // Keep the run-to-machine ledger in step with the engine's leases (docs/PLACEMENTS.md). A failed read leaves it as it was.
+  const device = env.EPC_PVE_NODE ?? hostname().split(".")[0]!;
+  const syncPlacements = async () => {
+    const r = await handle.containers.leaseRows();
+    new PlacementLedger(state).sync(device, r.rows, { complete: r.complete });
+  };
   const tick = setInterval(() => {
     void enforce().then(() => handle.containers.reconcile()).catch(() => {});
+    void syncPlacements().catch(() => {});
   }, 60_000);
+  void syncPlacements().catch(() => {});
   tick.unref();
 });
 for (const sig of ["SIGINT", "SIGTERM"] as const)

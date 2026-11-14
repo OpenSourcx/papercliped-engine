@@ -38,6 +38,7 @@ import { routerRoutes } from "./router.ts";
 import { nativeAppRoutes } from "./native-apps.ts";
 import { fabricRoutes } from "./fabric.ts";
 import { taskRouterRoutes } from "./task-router.ts";
+import { handlePlacements } from "./placements.ts";
 
 /**
  * Where new areas of the host service go. A feature is one file in this folder that exports a handler; adding it to
@@ -114,4 +115,5 @@ export const FEATURES: { name: string; handle: FeatureHandler }[] = [
   { name: "router", handle: routerRoutes },
   { name: "fabric", handle: fabricRoutes },
   { name: "task-router", handle: taskRouterRoutes },
+  { name: "placements", handle: handlePlacements },
 ];

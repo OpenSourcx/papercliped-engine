@@ -523,6 +523,39 @@ export class AgentContainers {
   private async engineEnvs(companyId: string): Promise<EngineEnv[]> {
     return this.eng<EngineEnv[]>("GET", `/api/companies/${encodeURIComponent(companyId)}/environments`);
   }
+  /**
+   * Every environment lease the engine holds, for the placement ledger (placements.ts). `complete` is false when any
+   * organization or environment could not be read, so the caller does not treat a partial read as a full one.
+   */
+  async leaseRows(): Promise<{ rows: unknown[]; complete: boolean }> {
+    const rows: unknown[] = [];
+    let complete = true;
+    let companies: Company[] = [];
+    try {
+      companies = await this.companies();
+    } catch {
+      return { rows, complete: false };
+    }
+    for (const c of companies) {
+      let envs: EngineEnv[] = [];
+      try {
+        envs = await this.engineEnvs(c.id);
+      } catch {
+        complete = false;
+        continue;
+      }
+      for (const e of Array.isArray(envs) ? envs : []) {
+        try {
+          const l = await this.eng<unknown>("GET", `/api/environments/${encodeURIComponent(e.id)}/leases`);
+          if (Array.isArray(l)) rows.push(...l);
+          else complete = false;
+        } catch {
+          complete = false;
+        }
+      }
+    }
+    return { rows, complete };
+  }
   private ours(e: EngineEnv): string | null {
     const m = e.metadata as { epaperclip?: string; companyId?: string } | null | undefined;
     return m?.epaperclip === "agent-containers" && typeof m.companyId === "string" ? m.companyId : null;

@@ -144,3 +144,7 @@ The `/api/connect/*` routes are for a signed-in browser session; ePaperclip API 
 ### Engine
 
 `/engine/api/*` forwards to the engine as your managed engine account, but only the routes the console uses (an allow-list; anything else answers 404, whatever the engine offers). The same rules apply: changes from a cookie session need `X-EPC-Request` and a same-site `Origin`; a Bearer token needs neither.
+
+## Where a run ran
+
+`GET /api/placements/runs/<runId>` and `GET /api/placements/resources?kind=lxc&node=…&vmid=…` (or `kind=worker&workerId=…`) follow a run to its container or worker and back, limited to the organizations the signed-in person belongs to. See [PLACEMENTS.md](PLACEMENTS.md).
