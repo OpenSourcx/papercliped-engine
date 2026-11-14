@@ -68,6 +68,35 @@ its own output before it writes it).
 Before tagging: the version in the tag is what gets signed, so it must be the one you mean. Versions are `MAJOR.MINOR.PATCH`,
 optionally `-rc1`, `-beta1`. After it is out, check one release by hand (see SECURITY.md) or run `get.sh` on a test host.
 
+## When one platform fails after the release exists
+
+The publish order is GitHub release, npm, the update feed, then APT. APT is a hard failure (a half-published repository is worse
+than none) but runs last, so it can't stop the others. If a step fails after the GitHub release was created, a re-run of the
+job can't repair it (it would create the release again). Use the repair job instead, from `main`:
+
+```sh
+gh workflow run release.yml --ref main -f republish_tag=v1.0.0
+```
+
+It re-runs only npm, the update feed and APT for that tag, from that release's own signed assets (`gh release download`), with
+the same rules: `latest` or `next` by the tag, APT for stable tags only. npm Trusted Publishing is bound to `release.yml`, which
+is why this lives in the same file. A new npm version appears in the registry about four to five minutes after npm reports it
+published; check `npm view epaperclip dist-tags` before deciding it failed.
+
+**The APT secrets.** `APT_SIGNING_KEY` must be the ASCII-armored *private* key whose public half is
+`deploy/apt/epaperclip-archive-keyring.asc`, and `APT_SIGNING_PASSPHRASE` its passphrase if it has one. Set them from the machine
+that holds the key, never by pasting them anywhere else:
+
+```sh
+gpg --armor --export-secret-keys <KEYID> | gh secret set APT_SIGNING_KEY
+gh secret set APT_SIGNING_PASSPHRASE        # only if the key has a passphrase
+```
+
+`scripts/publish-apt.sh` imports the key with `gpg --batch --import` and stops with "APT_SIGNING_KEY isn't a key gpg can import"
+if the secret holds anything else (a public key, a file name, a key with its line breaks turned into `\n`). v1.0.0 hit exactly
+that: the other R2 and signing secrets were fine. The APT step also exits quietly, reporting success, when a secret is
+*missing*, so after the first stable tag check the repository itself, not the green mark.
+
 ## What users get from a release
 
 A release is not only the tag. After the GitHub release is published, CI:
