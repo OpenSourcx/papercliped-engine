@@ -63,6 +63,25 @@ Adding a provider that supports device flow is one entry plus its registration.
 | Linear, Slack, Notion, Atlassian, most web-only providers | No | Need an authorization-code flow with a redirect. A self-hosted device has no registered address for that, so it goes through a broker, as Paperclip does with Paperclip Cloud: Papercliped Connect is the place for it. Until then they use a key or token. |
 | Cloudflare, Tailscale | No OAuth for these uses | Scoped API token or auth key, as today. |
 
+## The organization's GitHub card (checked against the pinned engine)
+
+"Sign in with GitHub" on an organization's card also hands the token to the engine so that organization's agents get the
+connection. It posts to `/api/companies/{id}/tools/apps/connect` with `galleryKey: "github"`, the `mcp-key` method,
+`grantKind: "organization"` and `credentialValues: { authorization: <token> }` (`services/epaperclip/src/features/github.ts`).
+
+Checked on 2026-11-14 against `paperclipai@2026.1023.0` (its bundled `github` app definition, and a disposable engine
+started from the same package with a new company):
+
+- `mcp-key` exists for `github`: provider-hosted MCP, API-key auth, customer-owned. Its one credential field is
+  `authorization`, and the engine puts it in the `Authorization: Bearer` header itself, so the token is sent without a prefix.
+- The engine accepted the request body (company, method, `grantKind` and credential) and went on to contact
+  `api.githubcopilot.com`. A wrong method key answers 422 and a `grantKind` outside `organization`, `user`, `agent` answers 400,
+  so those two are really validated. Leaving `grantKind` out gave the same result as sending `organization`.
+- **Not verified:** a connection actually created. The disposable engine ran in a sandbox that cannot resolve
+  `api.githubcopilot.com`, so every attempt ended at `remote_http_dns_failed`. A wrong credential field name was not
+  rejected before that step either, so the field name rests on the engine's definition, not on a runtime check. A real
+  GitHub sign-in on a host with internet access is still the proof (label `unverified` until then).
+
 ## Notes
 
 - Only Proxmox administrators can connect or disconnect GitHub.
