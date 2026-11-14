@@ -12,6 +12,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      republish_tag:
+        description: "An existing release tag (for example v1.0.0): re-run ONLY the npm, update feed and APT steps for it, from that release's own signed assets. Leave empty to build and test without publishing."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -23,6 +28,7 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name != 'workflow_dispatch' || inputs.republish_tag == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,26 +93,15 @@ jobs:
           if node scripts/release-notes.mjs --tag "${GITHUB_REF_NAME}" --out release/notes.md; then flags=(--notes-file release/notes.md); else flags=(--generate-notes); fi
           case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
           gh release create "${GITHUB_REF_NAME}" release/epaperclip.tar.gz release/epaperclip.tar.gz.sha256 release/epaperclip.manifest.json release/epaperclip.manifest.sig release/epaperclip-worker-*.tar.gz release/epaperclip-worker.manifest.json release/epaperclip-worker.manifest.sig release/get.sh release/epaperclip_*_all.deb --title "${GITHUB_REF_NAME}" "${flags[@]}"
-      - name: Publish the APT repository to Cloudflare R2 (stable releases only)
-        if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
-        env:
-          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
-          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-          CLOUDFLARE_R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || secrets.CLOUDFLARE_R2_ENDPOINT }}
-          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET || 'epaperclip-releases' }}
+      - name: Publish the npm package (Trusted Publishing; the GitHub release above is the artifact, so this never fails the run)
+        if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
+        working-directory: npm/epaperclip
         run: |
-          for name in APT_SIGNING_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_R2_ENDPOINT; do
-            [ -n "${!name}" ] || { echo "::notice::APT repository was not published: ${name} is not configured."; exit 0; }
-          done
-          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev >/dev/null; }
-          repo="$(mktemp -d)"
-          trap 'rm -rf "$repo"' EXIT
-          aws s3 sync "s3://${CLOUDFLARE_R2_BUCKET}/" "$repo/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
-          bash scripts/publish-apt.sh --local "$repo"
-          aws s3 sync "$repo/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+          npm install -g npm@^11.5.1
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
+          tag=latest; case "${GITHUB_REF_NAME}" in *-*) tag=next ;; esac
+          npm publish --access public --tag "$tag"
       - name: Publish the signed update feed (what installed devices read to find updates)
         if: startsWith(github.ref, 'refs/tags/')
         # A failure here never fails the release: devices fall back to GitHub's own release list.
@@ -127,12 +122,98 @@ jobs:
           trap 'rm -rf "$feed"' EXIT
           bash scripts/publish-update-feed.sh --local "$feed"
           aws s3 sync "$feed/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+      - name: Publish the APT repository to Cloudflare R2 (stable releases only)
+        if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          CLOUDFLARE_R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || secrets.CLOUDFLARE_R2_ENDPOINT }}
+          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET || 'epaperclip-releases' }}
+        run: |
+          for name in APT_SIGNING_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_R2_ENDPOINT; do
+            [ -n "${!name}" ] || { echo "::notice::APT repository was not published: ${name} is not configured."; exit 0; }
+          done
+          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev >/dev/null; }
+          repo="$(mktemp -d)"
+          trap 'rm -rf "$repo"' EXIT
+          aws s3 sync "s3://${CLOUDFLARE_R2_BUCKET}/" "$repo/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+          bash scripts/publish-apt.sh --local "$repo"
+          aws s3 sync "$repo/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+
+  # Re-runs only the publish steps for a tag that already has a GitHub release, from that release's own signed assets, when one of
+  # them failed after the release was created (a re-run of the release job can't: it would try to create the release again).
+  # npm Trusted Publishing is bound to this workflow file, so this is where it has to live. Dispatch it from main with the tag.
+  republish:
+    if: github.event_name == 'workflow_dispatch' && inputs.republish_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only an existing release tag
+        env:
+          TAG: ${{ inputs.republish_tag }}
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::republish_tag must be a release tag like v1.0.0"; exit 1 ;; esac
+      - uses: actions/checkout@v4
+        with: { ref: "${{ inputs.republish_tag }}", fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - name: Fetch that release's own assets (the signed files the npm package and the APT repository are made from)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.republish_tag }}
+        run: |
+          mkdir -p release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir release
+          ls -l release
       - name: Publish the npm package (Trusted Publishing; the GitHub release above is the artifact, so this never fails the run)
-        if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true
         working-directory: npm/epaperclip
+        env:
+          TAG: ${{ inputs.republish_tag }}
         run: |
           npm install -g npm@^11.5.1
-          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
-          tag=latest; case "${GITHUB_REF_NAME}" in *-*) tag=next ;; esac
+          npm version "${TAG#v}" --no-git-tag-version
+          tag=latest; case "${TAG}" in *-*) tag=next ;; esac
           npm publish --access public --tag "$tag"
+      - name: Publish the signed update feed (what installed devices read to find updates)
+        # A failure here never fails the release: devices fall back to GitHub's own release list.
+        continue-on-error: true
+        env:
+          TAG: ${{ inputs.republish_tag }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          CLOUDFLARE_R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || secrets.CLOUDFLARE_R2_ENDPOINT }}
+          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET || 'epaperclip-releases' }}
+        run: |
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_R2_ENDPOINT; do
+            [ -n "${!name}" ] || { echo "::notice::Update feed was not published: ${name} is not configured."; exit 0; }
+          done
+          feed="$(mktemp -d)"
+          trap 'rm -rf "$feed"' EXIT
+          bash scripts/publish-update-feed.sh --local "$feed"
+          aws s3 sync "$feed/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+      - name: Publish the APT repository to Cloudflare R2 (stable releases only)
+        if: ${{ !contains(inputs.republish_tag, '-') }}
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          CLOUDFLARE_R2_ENDPOINT: ${{ vars.CLOUDFLARE_R2_ENDPOINT || secrets.CLOUDFLARE_R2_ENDPOINT }}
+          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET || 'epaperclip-releases' }}
+        run: |
+          for name in APT_SIGNING_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_R2_ENDPOINT; do
+            [ -n "${!name}" ] || { echo "::notice::APT repository was not published: ${name} is not configured."; exit 0; }
+          done
+          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev >/dev/null; }
+          repo="$(mktemp -d)"
+          trap 'rm -rf "$repo"' EXIT
+          aws s3 sync "s3://${CLOUDFLARE_R2_BUCKET}/" "$repo/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
+          bash scripts/publish-apt.sh --local "$repo"
+          aws s3 sync "$repo/" "s3://${CLOUDFLARE_R2_BUCKET}/" --endpoint-url "$CLOUDFLARE_R2_ENDPOINT" --no-progress
