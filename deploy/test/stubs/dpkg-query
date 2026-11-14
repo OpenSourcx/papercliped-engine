@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stand-in for dpkg-query: apt "has epaperclip registered" when $STUB_STATE/dpkg-version holds a version (tests write it), and
+# knows nothing otherwise. Understands only what install.sh asks: -W -f='${Status}' or -f='${Version}' for the package epaperclip.
+v="$(cat "$STUB_STATE/dpkg-version" 2>/dev/null)"
+[ -n "$v" ] || { echo "dpkg-query: no packages found matching epaperclip" >&2; exit 1; }
+for a in "$@"; do
+  case "$a" in
+    *'${Status}'*) printf 'install ok installed' ;;
+    *'${Version}'*) printf '%s' "$v" ;;
+  esac
+done
