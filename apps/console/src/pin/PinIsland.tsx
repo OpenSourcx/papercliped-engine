@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { PinSubjects } from "./PinSubjects.tsx";
 import { Link } from "react-router-dom";
 import { Bell, Maximize2, MessageSquarePlus, NotebookPen, Settings2, Sparkles, X } from "lucide-react";
 import { useEngine } from "../data/store.tsx";
@@ -280,6 +281,7 @@ function PinPanel({ modelLabel, unread }: { modelLabel: string; unread: number }
           ]}
         />
       </div>
+      {!noting && pin.tab === "chat" && <PinSubjects />}
       {noting ? (
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4">
           <div className="text-sm font-medium mb-1">Quick note</div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePinSubject } from "../../pin/PinContext.tsx";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Ban, KeyRound, Pause, Play, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
@@ -24,6 +25,7 @@ function Detail({ id }: { id: string }) {
   const back = `/${setup?.deviceName ?? "pve"}/datacenter/workers`;
   const q = useWorker(id);
   const [tab, setTab] = useState<Tab>("overview");
+  usePinSubject(q.data ? { kind: "machine", id: id, label: `Worker ${q.data.worker.name}`, context: { resource: { kind: "worker", workerId: id } } } : null);
   const backLink = <Link to={back} className="inline-flex items-center gap-1.5 min-h-11 -my-2 text-compact text-ink-2 hover:text-ink rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)"><ArrowLeft className="h-4 w-4" aria-hidden />All workers</Link>;
   if (q.isPending) return <PageFrame><PageHeader title="Worker" eyebrow={backLink} /><p className="text-ink-3" role="status" aria-busy="true">Loading worker</p></PageFrame>;
   if (q.error) {

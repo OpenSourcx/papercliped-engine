@@ -145,11 +145,16 @@ export interface PinChatError {
   fix?: { label: string; to: string };
 }
 
-export type PinStreamEvent = { type: "delta"; text: string } | { type: "tool"; tool: PinToolEvent } | { type: "chat"; id: string; title: string } | { type: "done" } | { type: "error"; error: PinChatError };
+/** A run, container or worker the person is looking at, named by id. The host checks it against their own organizations. */
+export type PinResource = { kind: "lxc"; node: string; vmid: number } | { kind: "worker"; workerId: string };
+/** What the host verified Pin may be told about, sent back before the answer starts. "unavailable" covers both "not there" and "not yours". */
+export interface PinContextItem { kind: "organization" | "run" | "machine"; id: string; label: string; status: "ok" | "unavailable" }
+
+export type PinStreamEvent = { type: "delta"; text: string } | { type: "tool"; tool: PinToolEvent } | { type: "chat"; id: string; title: string } | { type: "context"; items: PinContextItem[] } | { type: "done" } | { type: "error"; error: PinChatError };
 
 export interface PinChatRequest {
   messages: { role: "user" | "assistant"; content: string }[];
-  context: { page: string; device: string; org?: string };
+  context: { page: string; device: string; org?: string; companyId?: string; runId?: string; resource?: PinResource };
   /** Keep this conversation on the device: `save` starts a saved chat, `chatId` continues one (then only the new message is sent). */
   save?: boolean;
   chatId?: string;
@@ -221,6 +226,13 @@ export function toStreamEvent(e: { event: string; data: string }): PinStreamEven
           confirmPhrase: typeof j.confirmPhrase === "string" ? j.confirmPhrase : null,
         },
       };
+    }
+    case "context": {
+      const items = Array.isArray(j?.items) ? (j!.items as unknown[]).flatMap((x): PinContextItem[] => {
+        const o = x && typeof x === "object" ? (x as Record<string, unknown>) : null;
+        return o && (o.kind === "organization" || o.kind === "run" || o.kind === "machine") && typeof o.id === "string" && typeof o.label === "string" ? [{ kind: o.kind, id: o.id, label: o.label, status: o.status === "ok" ? "ok" : "unavailable" }] : [];
+      }) : [];
+      return { type: "context", items };
     }
     case "chat":
       return j && typeof j.id === "string" ? { type: "chat", id: j.id, title: typeof j.title === "string" ? j.title : "" } : null;

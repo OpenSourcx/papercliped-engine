@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Archive, Box, Camera, Cloud, Copy, Shield, Cpu, ListChecks, Pause, Stethoscope, Loader2, Lock, Monitor, Play, Power, RotateCw, Route, SearchX, Sparkles, Square, SquareTerminal, Trash2, Users } from "lucide-react";
-import { usePin, usePinActions } from "../../pin/PinContext.tsx";
+import { usePin, usePinActions, usePinSubject } from "../../pin/PinContext.tsx";
 import { UsageGraphs } from "../../ui/UsageGraphs.tsx";
 import { BackupTable, useBackupFiles } from "../backups/Backups.tsx";
 import { Hardware } from "./Hardware.tsx";
@@ -93,6 +93,8 @@ export function MachinePage() {
     const el = tablist.current?.querySelector<HTMLElement>('[aria-selected="true"]');
     el?.scrollIntoView?.({ inline: "center", block: "nearest" });
   }, [tab, g?.vmid]);
+  // A container's agent runs are something Pin can be asked about (a plain VM has none).
+  usePinSubject(live && g && g.type === "lxc" ? { kind: "machine", id: String(g.vmid), label: `Container ${g.vmid}`, context: { resource: { kind: "lxc", node: device, vmid: g.vmid } } } : null);
   usePinActions(g ? {
     context: `${g.name} #${g.vmid}`,
     items: [

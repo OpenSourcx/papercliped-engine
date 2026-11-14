@@ -35,7 +35,7 @@ vi.mock("../src/data/store.tsx", () => ({
     changeHardware: async () => ({ ok: true }),
   }),
 }));
-vi.mock("../src/pin/PinContext.tsx", () => ({ usePin: () => ({ send: vi.fn(), setMode: vi.fn() }), usePinActions: () => undefined }));
+vi.mock("../src/pin/PinContext.tsx", () => ({ usePin: () => ({ send: vi.fn(), setMode: vi.fn() }), usePinActions: () => undefined, usePinSubject: () => undefined }));
 vi.mock("../src/auth/session.tsx", () => ({ useSession: () => ({ session: { mode: "demo", user: { username: "sam@pve" } }, signOut: vi.fn() }) }));
 vi.mock("../src/ui/UsageGraphs.tsx", () => ({ UsageGraphs: () => <div /> }));
 vi.mock("../src/terminal/LazyTerminal.tsx", () => ({ Terminal: () => <div /> }));

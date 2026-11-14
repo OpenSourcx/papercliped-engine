@@ -159,3 +159,7 @@ Everything is in `state.json` in the host service's state directory (written ato
 ## Testing
 
 `services/epaperclip/test/pin-runtime.test.ts`, `pin-model.test.ts` with `fakes-pin.ts` (a Proxmox that checks privileges per token, flaky and refusing on demand; a controllable clock); `deploy/test/run.sh update_helper` for the root helper; `apps/console/test/pin-runtime.test.tsx` for the page. Screenshots: `services/epaperclip/scripts/pin-shots.mts`.
+
+## Context from the page
+
+Beyond the page name, Pin can be given a run, container, worker or organization the person is looking at. The host reads the facts as the person and checks their access; see [PIN-CONTEXT.md](PIN-CONTEXT.md).

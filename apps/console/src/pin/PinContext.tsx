@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { QuickAction, QuickActions } from "./quickActions.ts";
 import { useEngine } from "../data/store.tsx";
 import { think } from "./brain.ts";
-import { fixFor, streamChat, type PinPermission, type PinSettings } from "./live.ts";
+import { fixFor, streamChat, type PinContextItem, type PinPermission, type PinResource, type PinSettings } from "./live.ts";
 import { newId, useThread, wait, type ThreadMessage, type ToolState } from "./useThread.ts";
 import { pinRt } from "../data/engine/pinRuntimeApi.ts";
 import { pinLibrary, type ChatMeta, type StoredMessage } from "../data/engine/pinLibraryApi.ts";
@@ -16,6 +16,26 @@ export type PinToolState = ToolState;
 export type PinMessage = ThreadMessage;
 
 export type IslandState = "rest" | "peek" | "actions" | "open";
+
+/**
+ * Something the page is showing that Pin can be told about: a run, a container, a worker. The page names it by id; the host
+ * reads the facts itself and checks the person's access (docs/PIN-CONTEXT.md). The person can take it out of what Pin sees.
+ */
+export interface PinSubject {
+  kind: "organization" | "run" | "machine";
+  /** The id of the run, container or worker (the key is `${kind}:${id}`). */
+  id: string;
+  label: string;
+  context: { companyId?: string; runId?: string; resource?: PinResource };
+}
+export interface PinSubjectView extends PinSubject {
+  key: string;
+  /** Whether it is sent with the next message. */
+  included: boolean;
+  /** What the host said about it the last time Pin was asked something with it attached. */
+  status?: "ok" | "unavailable";
+}
+export const subjectKey = (s: Pick<PinSubject, "kind" | "id">) => `${s.kind}:${s.id}`;
 
 interface PinCtx {
   state: IslandState;
@@ -61,6 +81,10 @@ interface PinCtx {
   setMode: (m: "assistant" | "agent") => void;
   /** Changes how much Agent mode may do without asking. Bypass needs the typed word. Rejects (and keeps the old value) when the host refuses. */
   setPermission: (p: PinPermission, confirmBypass?: string) => Promise<void>;
+  /** What the page is showing that Pin can be given, and the person's choice to include each. */
+  subjects: PinSubjectView[];
+  registerSubject: (source: string, subject: PinSubject | null) => void;
+  toggleSubject: (key: string) => void;
 }
 
 const Ctx = createContext<PinCtx | null>(null);
@@ -96,6 +120,26 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const [loadingChat, setLoadingChat] = useState(false);
   const locRef = useRef(loc.pathname);
   locRef.current = loc.pathname;
+  // What the page is showing (by source), which of it the person took out, and what the host said about it last time.
+  const subjectMap = useRef(new Map<string, PinSubject>());
+  const [subjectList, setSubjectList] = useState<PinSubject[]>([]);
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  const excludedRef = useRef(excluded);
+  excludedRef.current = excluded;
+  const [checked, setChecked] = useState<Record<string, "ok" | "unavailable">>({});
+  const registerSubject = useCallback((source: string, subject: PinSubject | null) => {
+    const prev = subjectMap.current.get(source);
+    if (subject) subjectMap.current.set(source, subject);
+    else subjectMap.current.delete(source);
+    // Leaving a page forgets the person's choice about what was on it, so coming back includes it again.
+    if (prev && (!subject || subjectKey(prev) !== subjectKey(subject))) {
+      setExcluded((x) => { if (!x.has(subjectKey(prev))) return x; const n = new Set(x); n.delete(subjectKey(prev)); return n; });
+    }
+    setSubjectList([...subjectMap.current.values()]);
+  }, []);
+  const toggleSubject = useCallback((key: string) => {
+    setExcluded((x) => { const n = new Set(x); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  }, []);
 
   const register = useCallback((source: string, a: QuickActions | null, priority: number) => {
     if (a) registry.current.set(source, { priority, actions: a });
@@ -214,15 +258,23 @@ export function PinProvider({ children }: { children: ReactNode }) {
       const ref = pageOf(locRef.current, e.data.orgs.map((o) => o.slug));
       // The device keeps the conversation: it already has what was said, so only the new message is sent.
       const saved = chatIdRef.current;
+      // The ids of what the person left included. The host decides what Pin is told about each.
+      const typedContext = () => {
+        const out: { companyId?: string; runId?: string; resource?: PinResource } = {};
+        for (const sub of subjectMap.current.values()) if (!excludedRef.current.has(subjectKey(sub))) Object.assign(out, sub.context);
+        return out;
+      };
       run(clean, async ({ emit, signal, history }) => {
         try {
           await streamChat(
-            { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}) }, ...(saved ? { chatId: saved } : { save: true }) },
+            { messages: saved ? [{ role: "user", content: clean }] : [...history, { role: "user", content: clean }], context: { page: locRef.current, device, ...(ref.org ? { org: ref.org } : {}), ...typedContext() }, ...(saved ? { chatId: saved } : { save: true }) },
             (ev) => {
               if (signal.aborted) return;
               if (ev.type === "chat") {
                 setChatId(ev.id);
                 void refreshChats();
+              } else if (ev.type === "context") {
+                setChecked(Object.fromEntries(ev.items.map((i: PinContextItem) => [`${i.kind}:${i.id}`, i.status])));
               } else if (ev.type === "delta" || ev.type === "tool" || ev.type === "error") {
                 emit(ev);
                 if (ev.type === "error" && ev.error.code === "chat_not_found") {
@@ -290,6 +342,8 @@ export function PinProvider({ children }: { children: ReactNode }) {
       state, setState, messages, thinking, streaming, stop, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat,
       markDone, resolveTool,
       tab, setTab, actions, register, findLatest, latestBySource, confirm, setConfirm, settings, setSettings, settingsSource,
+      subjects: subjectList.map((x): PinSubjectView => ({ ...x, key: subjectKey(x), included: !excluded.has(subjectKey(x)), ...(checked[subjectKey(x)] ? { status: checked[subjectKey(x)] } : {}) })),
+      registerSubject, toggleSubject,
       providerName: settings?.provider ? names[settings.provider] ?? settings.provider : null,
       setPermission: async (p, confirmBypass) => {
         if (!settings) return;
@@ -312,7 +366,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [state, messages, thinking, streaming, stop, markDone, resolveTool, peek, send, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
+    [state, messages, thinking, streaming, stop, markDone, resolveTool, peek, send, subjectList, excluded, checked, registerSubject, toggleSubject, chats, chatId, loadingChat, newChat, openChat, deleteChat, renameChat, tab, actions, register, findLatest, confirm, settings, settingsSource, names],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -336,6 +390,23 @@ export function usePinActions(actions: QuickActions | null, priority = 10) {
     pin?.latestBySource.current.delete(source);
     pin?.register(source, null, priority);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/**
+ * Tells Pin what this page is showing (a run, a container, a worker), so the person can ask about it and see, and remove, what
+ * Pin is given. Does nothing outside Pin's provider. Cleared when the page goes away.
+ */
+export function usePinSubject(subject: PinSubject | null) {
+  const pin = useContext(Ctx);
+  const source = useId();
+  const ref = useRef(subject);
+  ref.current = subject;
+  const key = subject ? `${subjectKey(subject)}|${subject.label}` : "";
+  useEffect(() => {
+    pin?.registerSubject(source, ref.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(() => () => pin?.registerSubject(source, null), []); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export function usePin(): PinCtx {

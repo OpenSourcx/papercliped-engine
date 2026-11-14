@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePinSubject } from "../../../pin/PinContext.tsx";
 import { RunPlacement } from "../../placements/PlacementViews.tsx";
 import { KeyRound, Plus, Square, Trash2 } from "lucide-react";
 import type { Agent, HeartbeatRun } from "@papercliped-engine/engine-client";
@@ -419,6 +420,8 @@ export function AgentRunsTab({ agent }: { agent: Agent }) {
   const [open, setOpen] = useState<string | null>(null);
   const list = runs.data ?? [];
   const sel = list.find((r) => r.id === open) ?? null;
+  // The run on screen is something Pin can be asked about; the host reads its facts and checks access itself.
+  usePinSubject(sel ? { kind: "run", id: sel.id, label: `Run: ${(RUN_STATUS[sel.status] ?? ["idle", sel.status])[1].toLowerCase()}`, context: { runId: sel.id, companyId } } : null);
   return (
     <div className="space-y-4">
       <Card className="divide-y divide-line">
