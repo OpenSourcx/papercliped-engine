@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Runner } from "../src/runner.ts";
 
-const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// A killed process that nothing has reaped yet is a zombie: it still answers kill(pid, 0) but is dead. Where /proc
+// exists, read its state so the test does not depend on the machine's init reaping orphans.
+const alive = (pid: number) => {
+  try { process.kill(pid, 0); } catch { return false; }
+  try { return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return true; }
+};
 
 describe("Runner.cancel by owner", () => {
   it("also kills a process the command detached from its group", async () => {

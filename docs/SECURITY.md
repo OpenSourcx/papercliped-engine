@@ -58,7 +58,7 @@ a shell on the host, or findings in Proxmox, the engine or Node.js themselves (r
 
 | Rule | Where | Test |
 | --- | --- | --- |
-| Sessions: 256-bit random id, `HttpOnly; SameSite=Strict; Secure`, `__Host-` prefix over HTTPS, 2 h idle / 12 h absolute, never reused across sign-ins, ended when the person's access is removed or their password changes | `sessions.ts`, `app.ts` | `security.test.ts`, `iac.test.ts` |
+| Sessions: 256-bit random id, `HttpOnly; SameSite=Strict; Secure`, `__Host-` prefix over HTTPS, 2 h idle / 12 h absolute, never reused across sign-ins, ended when the person's access is removed or their password changes; kept sealed in the vault so a restart or upgrade does not sign anyone out (expiry and every way of ending a session still apply and are written at once; API-token principals are never stored) | `sessions.ts`, `app.ts` | `security.test.ts`, `iac.test.ts`, `sessions-persist.test.ts` |
 | Every POST, PUT, PATCH and DELETE under `/api` needs `X-EPC-Request: 1` and a same-host `Origin` (or a valid Bearer token), enforced centrally before routing; read-only tokens can't pass it | `app.ts` (`handle`, `requireSameSite`), `access-tokens.ts` (`guard`) | `security.test.ts` |
 | WebSockets (consoles, engine events): same-host `Origin` and a session cookie before the upgrade; VNC sessions are one-time, 30 s, bound to the session | `app.ts` (`socketPrecheck`), `console.ts`, `engine.ts` | `security.test.ts`, `app.test.ts`, `engine.test.ts` |
 | Sign-in limits: 8 failures per address or per person (however the name is typed) in 15 minutes; wrong second-factor codes count too and aren't reset by starting over; 5 tries per two-factor step; body must arrive within 30 s | `app.ts` (`LoginLimiter`, `userKey`), `http.ts` | `security.test.ts` |

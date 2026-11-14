@@ -52,9 +52,10 @@ try {
   console.warn(`epaperclip: no Proxmox CA at ${caPath}; using the system trust store`);
 }
 
-const sessions = new SessionStore();
 // The state directory must be usable: it holds the only copy of the managed engine passwords, so a fallback would strand them.
 const state = new StateStore(env.EPC_STATE_DIR || "/var/lib/epaperclip");
+// Sessions are kept sealed in the state, so a routine restart or upgrade does not sign everyone out. Expiry and revocation still apply.
+const sessions = new SessionStore(Date.now, { load: () => state.getSecret("sessions.v1"), save: (v) => state.setSecret("sessions.v1", v) });
 const engineUrl = env.EPC_ENGINE_URL || "http://127.0.0.1:3100";
 const routerListen = env.EPC_ROUTER_LISTEN === "off" ? null : env.EPC_ROUTER_LISTEN || "127.0.0.1:3120";
 const fabricListen = env.EPC_FABRIC_LISTEN === "off" ? null : env.EPC_FABRIC_LISTEN || "0.0.0.0:7843";
@@ -154,6 +155,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     handle.link.unwatch();
     handle.identity.unwatch();
     handle.engine?.stop();
+    sessions.flush();
     routerServer?.close();
     handle.fabric?.close();
     for (const f of fabricServers) f.close();

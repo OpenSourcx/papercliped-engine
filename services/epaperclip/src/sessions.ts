@@ -4,6 +4,11 @@ import { createHash, randomBytes } from "node:crypto";
  * Signed-in sessions. The browser holds only an opaque, random session id in an HttpOnly cookie; the user's Proxmox
  * ticket and CSRF token stay here, on the host. Proxmox tickets live two hours, so a session renews its ticket while
  * it is in use and ends after two hours of inactivity or twelve hours in total.
+ *
+ * Sessions are kept in the host's sealed state (see SessionPersistence), so a restart or an upgrade does not sign
+ * anyone out. The limits above, the 8 h federated cap and every way of ending a session (sign-out, a removed or
+ * disabled user, an unlinked identity, a password change) still apply, and are written at once. API-token principals
+ * are never stored.
  */
 
 export interface Session {
@@ -69,21 +74,83 @@ const TFA_MS = 5 * 60_000;
 
 const newId = () => randomBytes(32).toString("base64url");
 
+/** Where sessions survive a restart: one sealed value (the vault encrypts it; tickets are credentials). */
+export interface SessionPersistence {
+  load(): string | null;
+  save(value: string): void;
+}
+
+/** How often plain use ("last seen") is written to disk; creating, ending and renewing a session are written at once. */
+export const PERSIST_TOUCH_MS = 60_000;
+
 export class SessionStore {
   private readonly sessions = new Map<string, Session>();
+  private readonly persistence: SessionPersistence | null;
+  private lastSaved = 0;
   private readonly pending = new Map<string, PendingTfa>();
   private readonly now: () => number;
   /** Bumped whenever someone's sessions are ended, so API-token principals of that person are re-checked at once. */
   private readonly epochs = new Map<string, number>();
 
-  constructor(now: () => number = Date.now) {
+  constructor(now: () => number = Date.now, persistence: SessionPersistence | null = null) {
     this.now = now;
+    this.persistence = persistence;
+    this.restore();
+  }
+
+  private expired(s: Session, t: number): boolean {
+    return t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt);
+  }
+
+  /** Brings back the sessions saved by an earlier run, dropping any that have expired since. Damaged data starts empty. */
+  private restore() {
+    if (!this.persistence) return;
+    let raw: string | null = null;
+    try {
+      raw = this.persistence.load();
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as { v?: number; sessions?: Session[]; epochs?: Record<string, number> };
+      if (parsed.v !== 1 || !Array.isArray(parsed.sessions)) return;
+      const t = this.now();
+      for (const s of parsed.sessions) {
+        if (s && typeof s.id === "string" && typeof s.username === "string" && typeof s.ticket === "string" && typeof s.csrf === "string" && !this.expired(s, t)) this.sessions.set(s.id, s);
+      }
+      for (const [u, n] of Object.entries(parsed.epochs ?? {})) if (Number.isInteger(n)) this.epochs.set(u, n);
+    } catch {
+      /* unreadable: nobody is signed in, which is safe */
+    }
+  }
+
+  /** Writes the live sessions. A failed write never breaks a request: the session just won't outlive this process. */
+  private save() {
+    if (!this.persistence) return;
+    const t = this.now();
+    try {
+      this.persistence.save(JSON.stringify({ v: 1, sessions: [...this.sessions.values()].filter((s) => !s.apiToken && !this.expired(s, t)), epochs: Object.fromEntries(this.epochs) }));
+      this.lastSaved = t;
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** Writes now (for shutdown), so the last few seconds of use are not lost. */
+  flush() {
+    this.save();
+  }
+
+  private touched() {
+    if (this.now() - this.lastSaved >= PERSIST_TOUCH_MS) this.save();
   }
 
   create(username: string, ticket: string, csrf: string, meta: { ip?: string; agent?: string; via?: "password" | "openid"; link?: string; maxAt?: number } = {}): Session {
     const t = this.now();
     const s: Session = { id: newId(), username, ticket, csrf, createdAt: t, renewedAt: t, lastSeen: t, ...(meta.ip ? { ip: meta.ip } : {}), ...(meta.agent ? { agent: meta.agent.slice(0, 200) } : {}), ...(meta.via ? { via: meta.via } : {}), ...(meta.link ? { link: meta.link } : {}), ...(meta.maxAt ? { maxAt: meta.maxAt } : {}) };
     this.sessions.set(s.id, s);
+    this.save();
     return s;
   }
 
@@ -93,11 +160,13 @@ export class SessionStore {
     const s = this.sessions.get(id);
     if (!s) return null;
     const t = this.now();
-    if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt)) {
+    if (this.expired(s, t)) {
       this.sessions.delete(id);
+      this.save();
       return null;
     }
     s.lastSeen = t;
+    this.touched();
     return s;
   }
 
@@ -117,10 +186,11 @@ export class SessionStore {
     s.ticket = ticket;
     s.csrf = csrf;
     s.renewedAt = this.now();
+    this.save();
   }
 
   destroy(id: string | undefined) {
-    if (id) this.sessions.delete(id);
+    if (id && this.sessions.delete(id)) this.save();
   }
 
   /** Ends every session of one Proxmox user (their access was removed or disabled). Returns how many ended. */
@@ -128,6 +198,7 @@ export class SessionStore {
     this.epochs.set(username, (this.epochs.get(username) ?? 0) + 1);
     let n = 0;
     for (const [id, s] of this.sessions) if (s.username === username) (this.sessions.delete(id), n++);
+    this.save();
     return n;
   }
 
@@ -141,6 +212,7 @@ export class SessionStore {
   destroyLink(linkId: string): number {
     let n = 0;
     for (const [id, s] of this.sessions) if (s.link === linkId) (this.sessions.delete(id), n++);
+    if (n) this.save();
     return n;
   }
 
@@ -151,6 +223,7 @@ export class SessionStore {
       this.sessions.delete(id);
       // API tokens of that person are re-checked at once, as when all their sessions end.
       this.epochs.set(s.username, (this.epochs.get(s.username) ?? 0) + 1);
+      this.save();
       return s.username;
     }
     return null;
@@ -160,6 +233,7 @@ export class SessionStore {
   destroyUserExcept(username: string, keepId: string | undefined): number {
     let n = 0;
     for (const [id, s] of this.sessions) if (s.username === username && id !== keepId) (this.sessions.delete(id), n++);
+    if (n) this.save();
     return n;
   }
 
@@ -191,8 +265,10 @@ export class SessionStore {
 
   sweep() {
     const t = this.now();
-    for (const [id, s] of this.sessions) if (t - s.lastSeen > IDLE_MS || t - s.createdAt > MAX_MS || (s.maxAt !== undefined && t >= s.maxAt)) this.sessions.delete(id);
+    let ended = 0;
+    for (const [id, s] of this.sessions) if (this.expired(s, t)) (this.sessions.delete(id), ended++);
     for (const [id, p] of this.pending) if (p.expiresAt < t) this.pending.delete(id);
+    if (ended) this.save();
   }
 
   get size() {
