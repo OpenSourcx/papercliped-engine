@@ -10,6 +10,9 @@
 #                                   follows release candidates too; --pre does that from a stable version, --tag picks one
 #   epaperclip rollback             put the previous version back
 #   epaperclip uninstall [--purge]  remove it (keeps its data and settings; --purge removes those too)
+#   epaperclip login [--name N]     link this computer to your Papercliped account (shows a code to enter at link.papercliped.co)
+#   epaperclip logout               unlink it
+#   epaperclip whoami               which account and device name this computer is linked as
 #   epaperclip device ...           operate ePaperclip's own services on this host
 set -euo pipefail
 
@@ -29,6 +32,9 @@ ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
   ${B}version${R}              the installed version
   ${B}update${R} [--pre]       install the newest release (candidates too while you run one, or with --pre); signature-checked
   ${B}update${R} --tag vX      install a particular release, such as v1.0.0-rc5
+  ${B}login${R} [--name N]     link this computer to your Papercliped account: shows a code to enter at https://link.papercliped.co
+  ${B}logout${R}               unlink this computer from Papercliped
+  ${B}whoami${R}               show the account and device name this computer is linked as
   ${B}rollback${R}             put the previous version back
   ${B}uninstall${R} [--purge]  remove it; your data and settings stay unless you add --purge
   ${B}device status${R}        show installed versions and service health
@@ -183,6 +189,11 @@ case "$cmd" in
   doctor) doctor ;;
   status) exec bash "$INSTALLER" --status ;;
   version) tr -d '[:space:]' <"$PREFIX/VERSION" 2>/dev/null && echo || die "not installed" ;;
+  login|logout|whoami)
+    need_root "$cmd"
+    [ -x "$PREFIX/node/bin/node" ] || die "the bundled Node.js isn't at $PREFIX/node/bin/node; reinstall with: epaperclip update"
+    [ -f "$PREFIX/login/epaperclip-login.mjs" ] || die "this ePaperclip is too old to have $cmd; update it first: epaperclip update"
+    exec "$PREFIX/node/bin/node" "$PREFIX/login/epaperclip-login.mjs" "$cmd" "$@" ;;
   rollback) need_root rollback; exec bash "$INSTALLER" --rollback ;;
   uninstall) need_root uninstall; if [ "${1:-}" = "--purge" ]; then exec bash "$INSTALLER" --purge; else exec bash "$INSTALLER" --uninstall; fi ;;
   worker|--worker)

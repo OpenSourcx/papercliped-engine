@@ -11,6 +11,7 @@ import { SessionStore } from "./sessions.ts";
 import { controlListener, workerListener } from "./fabric/listener.ts";
 import { PlacementLedger } from "./placements.ts";
 import { StateStore } from "./state.ts";
+import { ctlHandler, listenCtl } from "./ctl.ts";
 
 /**
  * Starts the ePaperclip host service. On a Proxmox host it listens on 443 with the node's own certificate
@@ -133,6 +134,13 @@ if (handle.fabric && fabricAddr) {
   cl.listen(controlAddr.port, controlAddr.host);
   fabricServers.push(wl, cl);
 }
+// The control socket for `epaperclip login | logout | whoami` (root on this host; see ctl.ts). Off with EPC_CTL_SOCKET=off.
+const ctlPath = env.EPC_CTL_SOCKET === "off" ? null : env.EPC_CTL_SOCKET || `${env.EPC_STATE_DIR || "/var/lib/epaperclip"}/ctl.sock`;
+let ctlServer: ReturnType<typeof listenCtl> | null = null;
+if (ctlPath) {
+  ctlServer = listenCtl(ctlPath, ctlHandler({ link: handle.link, revokeIdentityLinks: () => handle.identity.revokeAll("device", "unpair") }));
+  ctlServer.on("error", (e) => activity.error("host", "host.ctl", `The control socket couldn't start at ${ctlPath}: ${e.message}`));
+}
 // Papercliped Connect: in Connect mode fetch the tunnel credentials now and keep them fresh; otherwise remove any leftover Connect tunnel.
 handle.link.watch();
 // Identity links reconcile independently of the remote-access mode, so a cloud-side unlink reaches an offline device.
@@ -166,6 +174,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     handle.engine?.stop();
     sessions.flush();
     routerServer?.close();
+    ctlServer?.close();
     handle.fabric?.close();
     for (const f of fabricServers) f.close();
     server.close(() => process.exit(0));

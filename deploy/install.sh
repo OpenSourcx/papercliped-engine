@@ -569,6 +569,11 @@ install -d -m 0755 "$STAGE/exec"
 install -m 0644 "$ROOT/deploy/epaperclip-exec.mjs" "$STAGE/exec/epaperclip-exec.mjs"
 install -d -m 0755 "$STAGE/publish"
 install -m 0644 "$ROOT/deploy/epaperclip-publish.mjs" "$STAGE/publish/epaperclip-publish.mjs"
+# `epaperclip login | logout | whoami`: root-run, talks to the service's control socket (releases before this simply lack it).
+if [ -f "$ROOT/deploy/epaperclip-login.mjs" ]; then
+  install -d -m 0755 "$STAGE/login"
+  install -m 0644 "$ROOT/deploy/epaperclip-login.mjs" "$STAGE/login/epaperclip-login.mjs"
+fi
 
 # The update helper the console's "Update" button uses (root-owned, outside the sandboxed host service): this installer
 # is kept beside it so a rollback can be asked for the same way. Releases from before the helper simply don't have it.

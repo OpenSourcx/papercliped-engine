@@ -48,6 +48,16 @@ epaperclip device publish status
 
 `device start`, `stop`, and `restart` accept only `console`, `engine`, `cloudflared`, or `all`. The Cloudflare publishing helper reports its configuration state without printing a token. The command never restarts Proxmox itself; use the Proxmox interface or its own tools for host and virtual-machine operations.
 
+### Link this computer to your Papercliped account
+
+```sh
+epaperclip login                  # shows a code; approve it at https://link.papercliped.co
+epaperclip whoami                 # the account and device name this computer is linked as
+epaperclip logout                 # unlink it
+```
+
+`epaperclip login` starts the same pairing the console's **Access, Remote access, Link to Papercliped** button does. It prints a short code (for example `K7MQ-4XW2`); you open **https://link.papercliped.co**, sign in with your Papercliped account and enter it; the command then shows which account approved it and asks you to confirm before anything is linked. Linking records this computer on your account (and is what Papercliped Connect needs); it never changes a Proxmox permission, and the computer keeps working locally if Papercliped is unreachable. `--name "Rack 4"` sets the name shown on your account (default: the host name); `--yes` skips the confirmation question for scripts, and the owner still has to approve on the website. The code lasts 10 minutes and the commands need root: they talk to the running service over a private socket (`/var/lib/epaperclip/ctl.sock`, readable only by root and the service; `EPC_CTL_SOCKET=off` in `/etc/default/epaperclip` turns it off).
+
 ### With npm
 
 If the host has Node.js 18 or newer:

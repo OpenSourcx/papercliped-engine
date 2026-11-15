@@ -1,6 +1,6 @@
 import { HttpError } from "./http.ts";
 import type { HttpFetch } from "./connectors.ts";
-import { PaperclipedDeviceIdentity, pairingApprovalUrl } from "./paperclipedAccount.ts";
+import { LINK_PORTAL, PaperclipedDeviceIdentity, USER_CODE, linkPortalUrl, pairingApprovalUrl } from "./paperclipedAccount.ts";
 import type { StateStore } from "./state.ts";
 import { socketTunnelHelper, type TunnelHelper, type TunnelHelperStatus } from "./tunnelHelper.ts";
 import { createHash } from "node:crypto";
@@ -22,7 +22,7 @@ const MODES: readonly PublishMode[] = ["local", "cloudflare-self", "connect"];
 const KEY = "connect.link";
 const TOKEN = "connect.pairing.token";
 
-interface PairingRecord { id: string; startedAt: number; expiresAt: number; state: "pending" | "approved" | "denied"; accountId?: string }
+interface PairingRecord { id: string; startedAt: number; expiresAt: number; state: "pending" | "approved" | "denied"; accountId?: string; userCode?: string }
 interface DeviceRecord { deviceId: string; accountId: string; name: string; pairedAt: number }
 /** What Connect last said about this device's tunnel. The run token itself is never kept here: the root helper owns it. */
 export type TunnelResult = "ok" | "not_ready" | "no_entitlement" | "not_available" | "unreachable" | "invalid" | "helper_error" | "conflict";
@@ -34,7 +34,9 @@ export interface ConnectStatus {
   mode: PublishMode;
   paired: boolean;
   device?: DeviceRecord;
-  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string };
+  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string;
+    /** The short code to enter at `linkUrl` (older Connect servers send none; then use approvalUrl). */
+    userCode?: string; linkUrl: string };
   tunnel?: TunnelStatus;
 }
 export interface TunnelStatus {
@@ -149,7 +151,7 @@ export class ConnectLink {
     const r = this.rec();
     if (r.device) throw new HttpError(409, "already_paired", "This machine is already paired. Unpair it first.");
     const id = this.identity.publicIdentity();
-    const b = await this.call<{ pairingId: string; token: string; expiresAt: number }>("/api/v1/pairings", { publicKeyJwk: id.publicKeyJwk });
+    const b = await this.call<{ pairingId: string; token: string; expiresAt: number; userCode?: unknown }>("/api/v1/pairings", { publicKeyJwk: id.publicKeyJwk });
     pairingApprovalUrl(b.pairingId); // throws unless Connect returned a well-formed id
     this.state.setSecret(TOKEN, b.token);
     try {
@@ -158,7 +160,8 @@ export class ConnectLink {
       this.state.deleteSecret(TOKEN); // a challenge that was never proved cannot be used
       throw e;
     }
-    this.save({ ...r, pairing: { id: b.pairingId, startedAt: this.now(), expiresAt: Number(b.expiresAt), state: "pending" } });
+    const userCode = typeof b.userCode === "string" && USER_CODE.test(b.userCode) ? b.userCode : undefined; // shown to people: only ever a well-formed code
+    this.save({ ...r, pairing: { id: b.pairingId, startedAt: this.now(), expiresAt: Number(b.expiresAt), state: "pending", ...(userCode ? { userCode } : {}) } });
     return this.status();
   }
 
@@ -230,7 +233,7 @@ export class ConnectLink {
     const r = this.rec(), p = r.pairing;
     const out: ConnectStatus = { mode: r.mode, paired: !!r.device, ...(r.device ? { device: r.device } : {}) };
     if (r.mode === "connect") out.tunnel = this.tunnelStatus(r.tunnel);
-    if (p) out.pairing = { id: p.id, state: this.now() > p.expiresAt ? "expired" : p.state, approvalUrl: pairingApprovalUrl(p.id), expiresAt: p.expiresAt, ...(p.accountId ? { selectedOwner: p.accountId } : {}) };
+    if (p) out.pairing = { id: p.id, state: this.now() > p.expiresAt ? "expired" : p.state, approvalUrl: pairingApprovalUrl(p.id), expiresAt: p.expiresAt, linkUrl: p.userCode ? linkPortalUrl(p.userCode) : LINK_PORTAL, ...(p.userCode ? { userCode: p.userCode } : {}), ...(p.accountId ? { selectedOwner: p.accountId } : {}) };
     return out;
   }
 

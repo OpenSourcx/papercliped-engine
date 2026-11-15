@@ -42,7 +42,11 @@ case "${1:-}" in
   status) shift; set -- --status "$@" ;;
   rollback) shift; set -- --rollback "$@" ;;
   uninstall) shift; if [ "${1:-}" = "--purge" ]; then shift; set -- --purge "$@"; else set -- --uninstall "$@"; fi ;;
-  *) echo "usage: epaperclip install | status | rollback | uninstall [--purge]" >&2; exit 2 ;;
+  login|logout|whoami)
+    [ "$(id -u)" -eq 0 ] || { echo "epaperclip: run as root: epaperclip $1" >&2; exit 1; }
+    [ -f /opt/epaperclip/login/epaperclip-login.mjs ] && [ -x /opt/epaperclip/node/bin/node ] || { echo "epaperclip: ePaperclip isn't installed yet; run: epaperclip install" >&2; exit 1; }
+    exec /opt/epaperclip/node/bin/node /opt/epaperclip/login/epaperclip-login.mjs "$@" ;;
+  *) echo "usage: epaperclip install | status | rollback | uninstall [--purge] | login | logout | whoami" >&2; exit 2 ;;
 esac
 exec bash /usr/share/epaperclip/deploy/install.sh "$@"
 EOF

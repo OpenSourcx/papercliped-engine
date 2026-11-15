@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **`epaperclip login`.** Link a computer to your Papercliped account from its shell: it shows a short code to enter at https://link.papercliped.co, waits for you to approve it there, shows which account approved it and asks you to confirm. `epaperclip whoami` shows what it is linked as; `epaperclip logout` unlinks it. The console's "Link to Papercliped" panel now shows the same code instead of a long address (older Papercliped servers still use the approval link).
+- **No error line on a fresh install.** The installer no longer prints "No such file or directory" for the channel marker before it has written one.
+
 ## 1.0.0
 
 The first final release of ePaperclip: a Proxmox-native console, its pinned Paperclip engine and agents that run in

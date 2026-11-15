@@ -11,6 +11,22 @@ const make = () => {
 };
 
 describe("Papercliped Connect pairing (device side)", () => {
+  it("shows the short code and the link portal, and ignores a code that is not well formed or absent from an older Connect", async () => {
+    const { fc, link } = make();
+    const s = await link.start();
+    expect(s.pairing).toMatchObject({ userCode: "K7MQ-4XW2", linkUrl: "https://link.papercliped.co/?code=K7MQ4XW2" });
+    expect(s.pairing!.approvalUrl).toContain("console.papercliped.co"); // the older link stays available
+    link.cancel();
+    for (const bad of ["<script>", "ABCD-EFG1", "abcd-efgh", "K7MQ4XW2", "K7MQ-4XW2-9"]) {
+      fc.state.userCode = bad;
+      const r = await link.start();
+      expect(r.pairing!.userCode).toBeUndefined(); expect(r.pairing!.linkUrl).toBe("https://link.papercliped.co/");
+      link.cancel();
+    }
+    fc.state.userCode = null; // an older Connect: no code at all, pairing still works by the approval link
+    expect((await link.start()).pairing).toMatchObject({ state: "pending", linkUrl: "https://link.papercliped.co/" });
+  });
+
   it("pairs end to end: proof, owner approval, administrator confirmation, device-signed completion", async () => {
     const { fc, link, state } = make();
     expect(link.status()).toEqual({ mode: "local", paired: false });

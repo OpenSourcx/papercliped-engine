@@ -56,6 +56,7 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
   const err = start.error ?? poll.error ?? confirm.error ?? cancel.error ?? unpair.error;
   const pairing = status.pairing;
   const href = pairing && httpUrl(pairing.approvalUrl);
+  const linkHref = pairing?.linkUrl ? httpUrl(pairing.linkUrl) : null;
   return <Card className="p-5 space-y-4">
     <h2 className="font-medium">Papercliped Connect</h2>
     {err && <Notice tone="warning" title="Connect could not be reached or refused the request">{err instanceof Error ? err.message : "Try again."} Nothing changed on this device.</Notice>}
@@ -65,13 +66,17 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
       <p className="text-xs text-ink-3">Having a Papercliped account or subscription never gives anyone Proxmox administrator rights. Local sign-in keeps working if Connect is offline.</p>
       {removing ? <Notice tone="warning" title="Unlink this device?" action={<><Button onClick={() => setRemoving(false)}>Keep linked</Button><Button variant="danger" loading={unpair.isPending} onClick={() => unpair.mutate()}>Unlink</Button></>}>The public address stops working. This device is removed locally now and from Connect as soon as it can be reached.</Notice> : <Button variant="ghost" onClick={() => setRemoving(true)}>Unlink this device</Button>}
     </> : !pairing || pairing.state === "expired" || pairing.state === "denied" ? <>
-      {pairing?.state === "expired" && <Notice tone="warning" title="That approval expired">Start again to get a new approval page.</Notice>}
+      {pairing?.state === "expired" && <Notice tone="warning" title="That approval expired">Start again to get a new code.</Notice>}
       {pairing?.state === "denied" && <Notice tone="warning" title="This machine was not approved">The account owner declined it, or the request was withdrawn. Start again if that was a mistake.</Notice>}
       <p className="text-compact text-ink-3">Link this device to your Papercliped account. You will sign in on Papercliped’s site, approve this device, then confirm the account here.</p>
       <Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Link to Papercliped</Button>
     </> : <>
       <ol className="list-decimal pl-5 space-y-2 text-compact text-ink-2">
-        <li>Open the approval page and sign in with your Papercliped account. {href ? <a className="inline-flex items-center gap-1 text-accent hover:underline" href={httpUrl(pairing.approvalUrl) ?? undefined} target="_blank" rel="noopener noreferrer">Open approval page<ExternalLink className="h-3.5 w-3.5" /></a> : <span className="text-warning">The approval address was not a safe web address.</span>}</li>
+        {pairing.userCode && linkHref
+          ? <li>Open <a className="inline-flex items-center gap-1 text-accent hover:underline" href={httpUrl(pairing.linkUrl ?? "") ?? undefined} target="_blank" rel="noopener noreferrer">link.papercliped.co<ExternalLink className="h-3.5 w-3.5" /></a>, sign in with your Papercliped account and enter this code:
+            <div className="mt-2 inline-block rounded-md border border-line bg-surface-2 px-3 py-2 font-mono text-lg tracking-widest text-ink" aria-label={`Link code ${pairing.userCode.split("").join(" ")}`}>{pairing.userCode}</div>
+            <p className="mt-1 text-xs text-ink-3">The code works for 10 minutes. Or run <span className="font-mono">epaperclip login</span> in this host's shell.</p></li>
+          : <li>Open the approval page and sign in with your Papercliped account. {href ? <a className="inline-flex items-center gap-1 text-accent hover:underline" href={httpUrl(pairing.approvalUrl) ?? undefined} target="_blank" rel="noopener noreferrer">Open approval page<ExternalLink className="h-3.5 w-3.5" /></a> : <span className="text-warning">The approval address was not a safe web address.</span>}</li>}
         <li>Approve this device there. This page updates by itself.</li>
         <li>Confirm the account shown below.</li>
       </ol>

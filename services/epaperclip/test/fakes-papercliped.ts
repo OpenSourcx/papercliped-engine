@@ -9,7 +9,7 @@ export function fakeConnect() {
   const identity = new Map<string, { deviceId: string; jwk: JsonWebKey; challenge: string; kind: "association" | "federated"; principal: { userid: string; realm: string }; sessionBinding: string; userCodeHash: string; accountId?: string; role?: "owner" | "member"; state: "pending" | "approved" | "active" | "revoked" | "denied"; expiresAt: number }>();
   const oidcClients = new Map<string, { clientId: string; clientSecret: string; redirectUris: string[] }>();
   /** `tunnel`: what the credentials endpoint answers once the signature checks out. */
-  const state = { down: false, now: () => Date.now(), tunnel: "ok" as "ok" | "not_ready" | "no_entitlement" | "not_available" | "error" | "garbage", hostname: "lab-1a2b3c.connect.papercliped.co", token: "eyJhIjoiYWNjdCIsInQiOiJ0dW5uZWwiLCJzIjoic2VjcmV0In0=", tunnelCalls: 0, revoke: "ok" as "ok" | "error", revokedDevices: [] as string[] };
+  const state = { down: false, now: () => Date.now(), tunnel: "ok" as "ok" | "not_ready" | "no_entitlement" | "not_available" | "error" | "garbage", hostname: "lab-1a2b3c.connect.papercliped.co", token: "eyJhIjoiYWNjdCIsInQiOiJ0dW5uZWwiLCJzIjoic2VjcmV0In0=", tunnelCalls: 0, revoke: "ok" as "ok" | "error", revokedDevices: [] as string[], /** undefined: a well-formed code; null: an older Connect with no code; a string: whatever that server sends */ userCode: undefined as string | null | undefined };
   const ok = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
   const check = (jwk: JsonWebKey, msg: string, sig: unknown) =>
     typeof sig === "string" && verify("sha256", Buffer.from(msg), { key: createPublicKey({ key: jwk, format: "jwk" }), dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url"));
@@ -101,7 +101,7 @@ export function fakeConnect() {
     if (path === "/api/v1/pairings") {
       const id = randomUUID(), token = randomBytes(32).toString("base64url");
       pairings.set(id, { token, jwk: b.publicKeyJwk, proven: false, expiresAt: state.now() + 600_000 });
-      return ok({ pairingId: id, token, expiresAt: pairings.get(id)!.expiresAt }, 201);
+      return ok({ pairingId: id, token, expiresAt: pairings.get(id)!.expiresAt, ...(state.userCode === null ? {} : { userCode: state.userCode ?? "K7MQ-4XW2" }) }, 201);
     }
     const m = /^\/api\/v1\/pairings\/([^/]+)\/(proof|poll|complete)$/.exec(path);
     const p = m && pairings.get(m[1]!);

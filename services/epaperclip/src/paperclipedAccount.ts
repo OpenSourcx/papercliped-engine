@@ -94,6 +94,14 @@ export class PaperclipedDeviceIdentity {
   }
 }
 
+/** Where the owner enters the short code their device shows (Papercliped Connect: docs/LINK-PROTOCOL.md). */
+export const LINK_PORTAL = "https://link.papercliped.co/";
+/** The short code as Connect shows it: 8 characters without I, L, O, 0 or 1, in two groups of four. */
+export const USER_CODE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
+export function linkPortalUrl(code?: string): string {
+  return code && USER_CODE.test(code) ? `${LINK_PORTAL}?code=${code.replace("-", "")}` : LINK_PORTAL;
+}
+
 /** Share only a handle, never a raw pairing challenge in the browser URL. */
 export function pairingApprovalUrl(pairingId: string): string {
   if (!UUID.test(pairingId)) throw new Error("Invalid pairing id");
