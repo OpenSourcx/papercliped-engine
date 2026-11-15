@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
 
 - **The pairing screens show the device key.** `epaperclip login` and the console panel print the start of this computer's key; the approval page on link.papercliped.co shows the same characters, so the owner can check they are approving the right computer.
 - **`epaperclip login`.** Link a computer to your Papercliped account from its shell: it shows a short code to enter at https://link.papercliped.co, waits for you to approve it there, shows which account approved it and asks you to confirm. `epaperclip whoami` shows what it is linked as; `epaperclip logout` unlinks it. The console's "Link to Papercliped" panel now shows the same code instead of a long address (older Papercliped servers still use the approval link).
