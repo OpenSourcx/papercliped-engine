@@ -71,6 +71,12 @@ export function useAgentsOf(companyIds: string[]) {
   return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agents(id), queryFn: () => engine.agents.list(id).then((l) => l.filter((a) => !isPinIdentity(a))), enabled: ready, refetchInterval: 30_000 })) });
 }
 
+/** The latest runs of several organizations at once (same cache as useRuns without an agent). */
+export function useRunsOf(companyIds: string[]) {
+  const ready = useEngineReady();
+  return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.runs(id), queryFn: () => engine.agents.runs(id, undefined, 10), enabled: ready, refetchInterval: 15_000 })) });
+}
+
 /** Every resource group the person can see (one list from the host service); an organization without an entry has none yet. */
 export function useResourceGroups() {
   const ready = useEngineReady();
