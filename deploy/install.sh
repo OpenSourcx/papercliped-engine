@@ -358,6 +358,17 @@ fi
 if [ "$ACTION" = "--rollback" ]; then
   [ -d "$PREV" ] || die "there is no previous version to go back to"
   cur_engine="$(engine_version "$PREFIX/engine")"; prev_engine="$(engine_version "$PREV/engine")"
+  # A different engine version means a different database schema. Check the copy from before the upgrade BEFORE anything is
+  # swapped or stopped: without it, the older engine would start on a database the newer one already migrated.
+  if [ "$prev_engine" != "$cur_engine" ] && [ "$prev_engine" != "none" ] && [ -d "$DB_DIR" ]; then
+    if ! { [ -d "$SNAPSHOT/db" ] && [ "$(cat "$SNAPSHOT/ENGINE_VERSION" 2>/dev/null)" = "$prev_engine" ]; }; then
+      if [ "${EPC_ROLLBACK_WITHOUT_DB_COPY:-0}" = 1 ]; then
+        warn "no copy of the engine's database from before $cur_engine was found; going on anyway because EPC_ROLLBACK_WITHOUT_DB_COPY=1. Engine $prev_engine will start on the newer database."
+      else
+        die "not rolled back: there is no copy of the engine's database from before the upgrade to $cur_engine (engine $prev_engine would start on a database the newer engine already migrated). Nothing was changed. Restore a backup from $BACKUPS first, or set EPC_ROLLBACK_WITHOUT_DB_COPY=1 to roll back anyway."
+      fi
+    fi
+  fi
   stop_all
   drain_engine || { start_all; healthy_all >/dev/null 2>&1 || true; die "the engine still has processes running after it was stopped, so it was not rolled back (the old and the new engine must never write to the same data at once). Nothing was changed."; }
   rm -rf "${PREFIX:?}.failed"
@@ -779,7 +790,9 @@ warn "the new version didn't become healthy; putting things back."
   echo "--- console log (last 20 lines) ---"; journalctl -u epaperclip -n 20 --no-pager -o cat 2>/dev/null | cut -c1-220 || true
 } >&2
 stop_all
-drain_engine || warn "the engine still has processes running; going on with the restore anyway"
+# The database is only put back once the engine is confirmed gone: replacing it under a live process would corrupt it.
+# If something survives, leave everything as it is (still stopped, the copy and the previous version kept) for epaperclip rollback.
+drain_engine || die "the new version didn't become healthy, and an engine process is still running after it was stopped, so the database was NOT put back and nothing was started. The copy from before the upgrade and the previous version are kept. Once that process is gone (reboot, or end it), run: epaperclip rollback"
 if [ "$snapshot_taken" -eq 1 ]; then rm -rf "${DB_DIR:?}"; mv "$SNAPSHOT/db" "$DB_DIR"; rm -rf "${SNAPSHOT:?}"; fi
 if [ "$first_install" -eq 0 ]; then
   rm -rf "${PREFIX:?}"; mv "$PREV" "$PREFIX"

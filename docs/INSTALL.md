@@ -224,7 +224,7 @@ If an apt upgrade fails, the installer has already put the previous version back
 
 ### Rollback
 
-`--rollback` (or `epaperclip rollback`) swaps the previous version and its units back in. If the engine version changes with it, the database copy from before the upgrade is put back. The newer database is kept beside it, as `instances/default/db.from-<version>-<date>`, not deleted. There is one step of history: after a rollback there is no "previous" until the next upgrade.
+`--rollback` (or `epaperclip rollback`) swaps the previous version and its units back in. If the engine version changes with it, the database copy from before the upgrade is put back. If that copy is missing or belongs to another engine version, the rollback is refused before anything changes (restore a backup first, or set `EPC_ROLLBACK_WITHOUT_DB_COPY=1` to go back anyway). The newer database is kept beside it, as `instances/default/db.from-<version>-<date>`, not deleted. There is one step of history: after a rollback there is no "previous" until the next upgrade.
 
 ### Uninstall
 

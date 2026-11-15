@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Safer rollback.** `epaperclip rollback` now checks for the database copy from before the upgrade first, and refuses (changing nothing) if it is missing or from a different engine version, instead of starting the older engine on a database the newer one already migrated. `EPC_ROLLBACK_WITHOUT_DB_COPY=1` goes back anyway.
+- **Failed upgrades never replace a live database.** If an upgrade fails to start and an engine process is still running after the stop, the automatic recovery now leaves the database, the copy and the previous version as they are and stops, telling you to run `epaperclip rollback` once that process is gone.
+
 ## 1.0.1
 
 - **The pairing screens show the device key.** `epaperclip login` and the console panel print the start of this computer's key; the approval page on link.papercliped.co shows the same characters, so the owner can check they are approving the right computer.

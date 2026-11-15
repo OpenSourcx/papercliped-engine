@@ -304,6 +304,17 @@ s_rollback() {
   check "units are the previous version's" eval 'cmp "$H/units/epaperclip-engine.service" "$REPO/deploy/epaperclip-engine.service"'
   install --rollback
   check "a second --rollback has nowhere to go" eval '[ "$RC" -ne 0 ] && has "no previous version"'
+
+  # Without the matching database copy, rollback is refused before anything is touched (not started on the newer database).
+  make_release 3.0.0 2026.1200.0; install
+  rm -rf "$H/engine-home/pre-upgrade"
+  local before; before="$(host_state)"
+  install --rollback
+  check "rollback with no database copy is refused, nothing changed" eval '[ "$RC" -ne 0 ] && has "there is no copy of the engine.s database" && [ "$(version)" = 3.0.0 ] && [ "$(host_state)" = "$before" ] && engine_health | grep -q 2026.1200.0'
+  make_release 4.0.0 2026.1300.0; install
+  echo 2026.0001.0 >"$H/engine-home/pre-upgrade/ENGINE_VERSION" 2>/dev/null || true
+  install --rollback
+  check "rollback with a copy from a different engine version is refused too" eval '[ "$RC" -ne 0 ] && [ "$(version)" = 4.0.0 ]'
 }
 
 s_broken() {
