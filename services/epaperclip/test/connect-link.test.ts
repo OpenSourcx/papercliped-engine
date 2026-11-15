@@ -15,6 +15,7 @@ describe("Papercliped Connect pairing (device side)", () => {
     const { fc, link } = make();
     const s = await link.start();
     expect(s.pairing).toMatchObject({ userCode: "K7MQ-4XW2", linkUrl: "https://link.papercliped.co/?code=K7MQ4XW2" });
+    expect(s.pairing!.deviceKey).toMatch(/^[A-Za-z0-9_-]{10}$/); // what Papercliped shows the owner, so the two can be compared
     expect(s.pairing!.approvalUrl).toContain("console.papercliped.co"); // the older link stays available
     link.cancel();
     for (const bad of ["<script>", "ABCD-EFG1", "abcd-efgh", "K7MQ4XW2", "K7MQ-4XW2-9"]) {

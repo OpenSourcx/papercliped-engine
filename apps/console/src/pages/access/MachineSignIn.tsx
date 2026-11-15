@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { host, type IdentityLinkKind, type IdentityLinkView, type IdentityStartView } from "../../data/engine/host.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
+import { useSession } from "../../auth/session.tsx";
 import { Button, Card, Notice } from "../../ui/primitives.tsx";
 
 const KEY = ["papercliped", "identity", "links"];
@@ -27,7 +28,10 @@ export function MachineSignIn() {
   const cancel = useMutation({ mutationFn: (id: string) => host.identity.cancel(id), onSuccess: () => { setStarted(null); refresh(); } });
   const unlink = useMutation({ mutationFn: (id: string) => host.identity.unlink(id), onSuccess: () => { setRemoving(null); refresh(); } });
 
-  const mine = links.data?.links ?? [];
+  const { session } = useSession();
+  const me = session.mode === "live" ? session.user.username : null;
+  // An administrator's list holds everyone's links (the administrator section below shows those); this card is about the person using the console.
+  const mine = (links.data?.links ?? []).filter((l) => !me || who(l.principal) === me || who(l.requestedBy) === me);
   const open = mine.find((l) => OPEN.has(l.state));
   const active = mine.filter((l) => l.state === "active");
   // While the owner has not approved yet, ask Connect (the host does) so the state moves on by itself.

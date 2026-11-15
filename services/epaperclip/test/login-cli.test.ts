@@ -43,6 +43,7 @@ describe("epaperclip login | logout | whoami", () => {
     expect(text).toContain("https://link.papercliped.co");
     expect(text).not.toContain("?code=");                       // the typed code is the interface; the deep link stays in the web UI
     expect(text).toContain("K7MQ-4XW2");
+    expect(text).toMatch(/approve only if it starts with [A-Za-z0-9_-]{10}\./);      // the key Papercliped shows the owner, to compare
     expect(text).toMatch(/Approved by Papercliped account acct_one/);
     expect(c.asked[0]).toContain("acct_one");
     expect(text).toMatch(/Linked as "pve-lab" to Papercliped account acct_one/);

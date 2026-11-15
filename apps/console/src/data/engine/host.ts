@@ -196,7 +196,7 @@ export interface ConnectStatusView {
   mode: RemoteMode;
   paired: boolean;
   device?: { deviceId: string; accountId: string; name: string; pairedAt: number };
-  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string; userCode?: string; linkUrl?: string };
+  pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string; userCode?: string; linkUrl?: string; deviceKey?: string };
   tunnel?: { state: string; message: string; hostname?: string };
 }
 
@@ -218,6 +218,8 @@ export interface IdentityLinkView {
   linkedAt?: number;
   needsAdminApproval: boolean;
 }
+/** A standing permission for a Proxmox user to link without a second consent, expiring on its own (administrators only). */
+export interface IdentityPreapproval { id: string; principal: { userid: string; realm: string }; kind: IdentityLinkKind; boundAccountId?: string; createdBy: string; createdAt: number; expiresAt: number }
 export interface IdentityStartView extends IdentityLinkView { userCode: string; approvalUrl: string; linkUrl?: string }
 
 export const host = {
@@ -255,6 +257,15 @@ export const host = {
     confirm: (id: string, accountId: string) => call<IdentityLinkView>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/confirm`, { accountId }),
     cancel: (id: string) => call<unknown>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/cancel`, {}),
     unlink: (id: string) => call<unknown>("DELETE", `/api/papercliped/connect/identity/links/${enc(id)}`),
+    // Administrators only (the host enforces it): the realm, links waiting for approval, and pre-approvals.
+    oidcEnable: () => call<{ enabled: boolean }>("POST", "/api/papercliped/connect/identity/oidc/enable", {}),
+    oidcDisable: () => call<{ enabled: boolean }>("POST", "/api/papercliped/connect/identity/oidc/disable", {}),
+    requests: () => call<{ requests: IdentityLinkView[] }>("GET", "/api/papercliped/connect/identity/link-requests").then((r) => r.requests ?? []),
+    adminApprove: (id: string, accountId: string) => call<IdentityLinkView>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/admin-approve`, { accountId }),
+    adminDeny: (id: string, reason?: string) => call<{ ok: true }>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/admin-deny`, reason ? { reason } : {}),
+    preapprovals: () => call<{ preapprovals: IdentityPreapproval[] }>("GET", "/api/papercliped/connect/identity/preapprovals").then((r) => r.preapprovals ?? []),
+    addPreapproval: (p: { principal: { userid: string; realm: string }; kind: IdentityLinkKind; boundAccountId?: string; ttlHours: number }) => call<{ preapproval: IdentityPreapproval }>("POST", "/api/papercliped/connect/identity/preapprovals", p).then((r) => r.preapproval),
+    removePreapproval: (id: string) => call<unknown>("DELETE", `/api/papercliped/connect/identity/preapprovals/${enc(id)}`),
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),

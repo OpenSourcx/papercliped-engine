@@ -36,7 +36,9 @@ export interface ConnectStatus {
   device?: DeviceRecord;
   pairing?: { id: string; state: "pending" | "approved" | "denied" | "expired"; approvalUrl: string; expiresAt: number; selectedOwner?: string;
     /** The short code to enter at `linkUrl` (older Connect servers send none; then use approvalUrl). */
-    userCode?: string; linkUrl: string };
+    userCode?: string; linkUrl: string;
+    /** The first 10 characters of this device's key fingerprint: the owner compares it with the one Papercliped shows before approving. */
+    deviceKey: string };
   tunnel?: TunnelStatus;
 }
 export interface TunnelStatus {
@@ -233,7 +235,7 @@ export class ConnectLink {
     const r = this.rec(), p = r.pairing;
     const out: ConnectStatus = { mode: r.mode, paired: !!r.device, ...(r.device ? { device: r.device } : {}) };
     if (r.mode === "connect") out.tunnel = this.tunnelStatus(r.tunnel);
-    if (p) out.pairing = { id: p.id, state: this.now() > p.expiresAt ? "expired" : p.state, approvalUrl: pairingApprovalUrl(p.id), expiresAt: p.expiresAt, linkUrl: p.userCode ? linkPortalUrl(p.userCode) : LINK_PORTAL, ...(p.userCode ? { userCode: p.userCode } : {}), ...(p.accountId ? { selectedOwner: p.accountId } : {}) };
+    if (p) out.pairing = { id: p.id, state: this.now() > p.expiresAt ? "expired" : p.state, approvalUrl: pairingApprovalUrl(p.id), expiresAt: p.expiresAt, linkUrl: p.userCode ? linkPortalUrl(p.userCode) : LINK_PORTAL, deviceKey: this.identity.publicIdentity().deviceKeyThumbprint.slice(0, 10), ...(p.userCode ? { userCode: p.userCode } : {}), ...(p.accountId ? { selectedOwner: p.accountId } : {}) };
     return out;
   }
 

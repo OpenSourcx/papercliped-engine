@@ -7,6 +7,7 @@ import { httpUrl } from "../../lib/safeUrl.ts";
 import { Button, Card, Input, Notice } from "../../ui/primitives.tsx";
 import { CloudflareAccess } from "./CloudflareAccess.tsx";
 import { MachineSignIn } from "./MachineSignIn.tsx";
+import { MachineSignInAdmin } from "./MachineSignInAdmin.tsx";
 
 const KEY = ["papercliped", "connect", "status"];
 
@@ -40,6 +41,7 @@ export function RemoteAccess() {
       {current === "cloudflare-self" && <CloudflareAccess />}
       {current === "connect" && status.data && <ConnectPanel status={status.data} onChange={set} />}
       {status.data?.paired && <MachineSignIn />}
+      {status.data?.paired && <AdminSection />}
       <ProviderAddress />
       {current === "local" && <Card className="p-5"><p className="text-compact text-ink-3">Remote access is off. People on your network sign in at this device’s own address.</p></Card>}
     </div>
@@ -77,7 +79,7 @@ function ConnectPanel({ status, onChange }: { status: ConnectStatusView; onChang
         {pairing.userCode && linkHref
           ? <li>Open <a className="inline-flex items-center gap-1 text-accent hover:underline" href={httpUrl(pairing.linkUrl ?? "") ?? undefined} target="_blank" rel="noopener noreferrer">link.papercliped.co<ExternalLink className="h-3.5 w-3.5" /></a>, sign in with your Papercliped account and enter this code:
             <div className="mt-2 inline-block rounded-md border border-line bg-surface-2 px-3 py-2 font-mono text-lg tracking-widest text-ink" aria-label={`Link code ${pairing.userCode.split("").join(" ")}`}>{pairing.userCode}</div>
-            <p className="mt-1 text-xs text-ink-3">The code works for 10 minutes. Or run <span className="font-mono">epaperclip login</span> in this host's shell.</p></li>
+            <p className="mt-1 text-xs text-ink-3">The code works for 10 minutes.{pairing.deviceKey && <> The page shows this device's key; approve only if it starts with <span className="font-mono">{pairing.deviceKey}</span>.</>} Or run <span className="font-mono">epaperclip login</span> in this host's shell.</p></li>
           : <li>Open the approval page and sign in with your Papercliped account. {href ? <a className="inline-flex items-center gap-1 text-accent hover:underline" href={httpUrl(pairing.approvalUrl) ?? undefined} target="_blank" rel="noopener noreferrer">Open approval page<ExternalLink className="h-3.5 w-3.5" /></a> : <span className="text-warning">The approval address was not a safe web address.</span>}</li>}
         <li>Approve this device there. This page updates by itself.</li>
         <li>Confirm the account shown below.</li>
@@ -107,4 +109,10 @@ export function ProviderAddress() {
       : <Notice tone="warning" title="Does not match this console’s address">Provider sign-in would return to a place this browser cannot reach. A device administrator sets the address once, on the Proxmox host:
         <span className="mt-2 block font-mono text-xs break-all">sudo /opt/epaperclip/update/install.sh --set-public-url {here}</span></Notice>}
   </Card>;
+}
+
+/** Only administrators get the administrator card; everyone else's console never asks the host for it. */
+function AdminSection() {
+  const oidc = useQuery({ queryKey: ["papercliped", "identity", "links", "oidc"], queryFn: host.identity.oidc, retry: false });
+  return oidc.data?.canManage ? <MachineSignInAdmin canManage={oidc.data.canManage} /> : null;
 }

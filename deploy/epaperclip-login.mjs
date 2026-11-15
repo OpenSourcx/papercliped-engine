@@ -134,6 +134,7 @@ export async function run(argv, io) {
       io.out(`    2. Enter  ${p.userCode}`);
       io.out("");
       io.out("  Sign in there if asked. The code works for 10 minutes.");
+      if (p.deviceKey) io.out(`  The page shows this computer's key; approve only if it starts with ${p.deviceKey}.`);
     } else {
       io.out(`    Open ${p.approvalUrl} and approve this computer.`);
     }

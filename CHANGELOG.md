@@ -2,8 +2,9 @@
 
 ## Unreleased
 
+- **The pairing screens show the device key.** `epaperclip login` and the console panel print the start of this computer's key; the approval page on link.papercliped.co shows the same characters, so the owner can check they are approving the right computer.
 - **`epaperclip login`.** Link a computer to your Papercliped account from its shell: it shows a short code to enter at https://link.papercliped.co, waits for you to approve it there, shows which account approved it and asks you to confirm. `epaperclip whoami` shows what it is linked as; `epaperclip logout` unlinks it. The console's "Link to Papercliped" panel now shows the same code instead of a long address (older Papercliped servers still use the approval link).
-- **Link your Papercliped account to your Proxmox user, with a code.** A new panel under Access, Remote access (once this computer is linked) starts a machine sign-in link, shows a code to enter at https://link.papercliped.co, and asks the administrator to confirm the account that approved it before anything is linked. Administrators can also offer "Sign in with Papercliped" when that realm is enabled.
+- **Link your Papercliped account to your Proxmox user, with a code.** A new panel under Access, Remote access (once this computer is linked) starts a machine sign-in link, shows a code to enter at https://link.papercliped.co, and asks the administrator to confirm the account that approved it before anything is linked. Administrators get a matching card: turn Sign in with Papercliped on or off, approve or deny requests from other people (shown with the account they would use), hand out short-lived pre-approvals, and unlink other people's links.
 - **No error line on a fresh install.** The installer no longer prints "No such file or directory" for the channel marker before it has written one.
 
 ## 1.0.0

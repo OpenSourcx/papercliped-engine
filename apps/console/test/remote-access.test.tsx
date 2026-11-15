@@ -50,11 +50,12 @@ describe("Access, Remote access", () => {
     await waitFor(() => expect(confirm).toHaveBeenCalledWith("acc-123", "ePaperclip"));
   });
   it("shows the short code and the link portal while waiting, and still falls back to the approval page for an older Connect", async () => {
-    vi.spyOn(host.connect, "status").mockResolvedValue(status({ mode: "connect", pairing: { id: "p1", state: "pending", approvalUrl: "https://console.papercliped.co/devices/pair?pairing_id=p1", expiresAt: Date.now() + 60000, userCode: "K7MQ-4XW2", linkUrl: "https://link.papercliped.co/?code=K7MQ4XW2" } }));
+    vi.spyOn(host.connect, "status").mockResolvedValue(status({ mode: "connect", pairing: { id: "p1", state: "pending", approvalUrl: "https://console.papercliped.co/devices/pair?pairing_id=p1", expiresAt: Date.now() + 60000, userCode: "K7MQ-4XW2", linkUrl: "https://link.papercliped.co/?code=K7MQ4XW2", deviceKey: "q3Zr8wYt0A" } }));
     wrap(<RemoteAccess />);
     expect(await screen.findByText("K7MQ-4XW2")).toBeTruthy();
     expect((screen.getByRole("link", { name: /link\.papercliped\.co/ }) as HTMLAnchorElement).href).toBe("https://link.papercliped.co/?code=K7MQ4XW2");
     expect(screen.getByText(/epaperclip login/)).toBeTruthy();
+    expect(screen.getByText("q3Zr8wYt0A")).toBeTruthy(); // to compare with the key the website shows
     expect(screen.queryByRole("link", { name: /Open approval page/ })).toBeNull();
   });
   it("refuses to render an unsafe approval address as a link", async () => {
