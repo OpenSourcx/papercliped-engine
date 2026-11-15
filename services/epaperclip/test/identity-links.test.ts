@@ -35,6 +35,7 @@ describe("identity links (device side, fake Connect)", () => {
     const s = await start(identity);
     expect(s).toMatchObject({ kind: "association", principal: { userid: "sam", realm: "pve" }, state: "awaiting_account", needsAdminApproval: false });
     expect(s.userCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(s.linkUrl).toBe("https://link.papercliped.co/"); // the owner enters the code here; approvalUrl stays for older flows
     expect(s.approvalUrl).toContain("/devices/link?lid=");
     expect(JSON.stringify(s)).not.toContain("verifier");
     expect(state.getSecret(`identity.link.${s.linkId}.verifier`)).toBeTruthy();

@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { HttpError } from "./http.ts";
 import type { HttpFetch } from "./connectors.ts";
 import type { StateStore } from "./state.ts";
-import { PaperclipedDeviceIdentity } from "./paperclipedAccount.ts";
+import { LINK_PORTAL, PaperclipedDeviceIdentity } from "./paperclipedAccount.ts";
 import { newVerifier, sessionBinding, type IdentityAction } from "./identityLinkCrypto.ts";
 
 /**
@@ -82,6 +82,8 @@ export interface LinkView {
 export interface StartView extends LinkView {
   userCode: string;
   approvalUrl: string;
+  /** Where the owner enters the code (https://link.papercliped.co/); approvalUrl is the older direct link. */
+  linkUrl: string;
 }
 
 const LINKS = "identity.links";
@@ -357,7 +359,7 @@ export class IdentityLinks {
       throw e;
     }
     this.audit("identity.link.start", linkId, `${kind} ${starter.userid}@${starter.realm}`);
-    return { ...this.view(record), userCode, approvalUrl: this.approvalUrl(out.body.approvalPath, linkId) };
+    return { ...this.view(record), userCode, approvalUrl: this.approvalUrl(out.body.approvalPath, linkId), linkUrl: LINK_PORTAL };
   }
 
   // ---- Poll / confirm

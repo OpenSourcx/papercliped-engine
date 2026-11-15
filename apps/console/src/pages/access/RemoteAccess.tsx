@@ -6,6 +6,7 @@ import { nativeAppApi } from "../../data/engine/connectApi.ts";
 import { httpUrl } from "../../lib/safeUrl.ts";
 import { Button, Card, Input, Notice } from "../../ui/primitives.tsx";
 import { CloudflareAccess } from "./CloudflareAccess.tsx";
+import { MachineSignIn } from "./MachineSignIn.tsx";
 
 const KEY = ["papercliped", "connect", "status"];
 
@@ -38,6 +39,7 @@ export function RemoteAccess() {
       </div>
       {current === "cloudflare-self" && <CloudflareAccess />}
       {current === "connect" && status.data && <ConnectPanel status={status.data} onChange={set} />}
+      {status.data?.paired && <MachineSignIn />}
       <ProviderAddress />
       {current === "local" && <Card className="p-5"><p className="text-compact text-ink-3">Remote access is off. People on your network sign in at this device’s own address.</p></Card>}
     </div>

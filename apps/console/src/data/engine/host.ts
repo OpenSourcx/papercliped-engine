@@ -200,6 +200,26 @@ export interface ConnectStatusView {
   tunnel?: { state: string; message: string; hostname?: string };
 }
 
+
+/** Machine sign-in links (Papercliped account <-> a person on this machine). The code is shown once, at start. */
+export type IdentityLinkKind = "association" | "federated";
+export type IdentityLinkState = "starting" | "awaiting_account" | "awaiting_confirm" | "awaiting_admin" | "active" | "orphaned" | "revoked" | "denied" | "expired" | "canceled";
+export interface IdentityLinkView {
+  linkId: string;
+  kind: IdentityLinkKind;
+  principal: { userid: string; realm: string };
+  requestedBy: { userid: string; realm: string };
+  state: IdentityLinkState;
+  account?: { id: string; displayName?: string; idSuffix?: string };
+  role?: "owner" | "member";
+  approvedBy?: string;
+  requestedAt: number;
+  expiresAt: number;
+  linkedAt?: number;
+  needsAdminApproval: boolean;
+}
+export interface IdentityStartView extends IdentityLinkView { userCode: string; approvalUrl: string; linkUrl?: string }
+
 export const host = {
   engineStatus: () => call<EngineStatus>("GET", "/api/engine/status"),
   connectors: {
@@ -225,6 +245,16 @@ export const host = {
     pairingConfirm: (accountId: string, deviceName: string) => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/confirm", { accountId, deviceName }),
     pairingCancel: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/pairing/cancel", {}),
     unpair: () => call<ConnectStatusView>("POST", "/api/papercliped/connect/unpair", {}),
+  },
+  /** Machine sign-in links: start, follow, confirm and remove. Any signed-in Proxmox person manages their own; the host enforces who may do what. */
+  identity: {
+    oidc: () => call<{ enabled: boolean; canManage: boolean }>("GET", "/api/papercliped/connect/identity/oidc"),
+    links: () => call<{ links: IdentityLinkView[]; canManageAll: boolean }>("GET", "/api/papercliped/connect/identity/links"),
+    start: (kind: IdentityLinkKind) => call<IdentityStartView>("POST", "/api/papercliped/connect/identity/link/start", { kind }),
+    poll: (id: string) => call<IdentityLinkView>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/poll`, {}),
+    confirm: (id: string, accountId: string) => call<IdentityLinkView>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/confirm`, { accountId }),
+    cancel: (id: string) => call<unknown>("POST", `/api/papercliped/connect/identity/link/${enc(id)}/cancel`, {}),
+    unlink: (id: string) => call<unknown>("DELETE", `/api/papercliped/connect/identity/links/${enc(id)}`),
   },
   agentContainers: {
     get: () => call<ContainersStatus>("GET", "/api/agent-containers"),
