@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, CheckCheck, Circle, CircleX, ClipboardList, FileText, FolderOpen, FolderTree, GitPullRequest, ListChecks, ListTree, Loader2, MessageCircle, MessagesSquare, MoreHorizontal, Package, PanelLeft, PanelRight, RefreshCw, Share, Sparkles, SquareTerminal } from "lucide-react";
 import type { Agent, CompanyArtifact } from "@papercliped-engine/engine-client";
 import { useAgentsCanRun } from "../containers/Banner.tsx";
 import { chatBlock, useSendChat } from "../../data/engine/chat.ts";
 import { useChats, useChatsOf, useChatWrites } from "../../data/engine/more.ts";
+import { qk } from "../../data/engine/keys.ts";
 import { agentStatusOf } from "../../data/engine/labels.tsx";
 import { pinRt } from "../../data/engine/pinRuntimeApi.ts";
-import { engine as engineApi, errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useRuns } from "../../data/engine/queries.ts";
+import { engine as engineApi, errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useOrgs, useRuns } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, readJson, writeJson } from "../../lib/storage.ts";
 import { settingsHref } from "../../modals/useModals.ts";
@@ -20,7 +21,7 @@ import { PinThread } from "../../pin/PinThread.tsx";
 import { ThreadProvider, type ThreadApi } from "../../pin/ThreadContext.tsx";
 import type { ThreadMessage } from "../../pin/useThread.ts";
 import { ConfirmModal } from "../../ui/Confirm.tsx";
-import { Menu, Notice, ResizeHandle, Select, type MenuEntry } from "../../ui/primitives.tsx";
+import { Menu, Notice, ResizeHandle, Select, Spinner, type MenuEntry } from "../../ui/primitives.tsx";
 import { Preview } from "../org/live/LiveArtifacts.tsx";
 import { useNames } from "../org/live/names.ts";
 import { ChangesBody, PullRequestList, useGithub } from "./Changes.tsx";
@@ -101,6 +102,7 @@ export function PinView() {
   const [seenAt, setSeenAt] = useState<Record<string, number>>(() => readJson<Record<string, number>>(SEEN, {}));
   const orgs = data.orgs.flatMap((o) => (o.engine ? [{ name: o.name, slug: o.slug, companyId: o.engine.companyId }] : []));
   const ids = orgs.map((o) => o.companyId);
+  const organizations = useOrgs();
   const agents = useAgentsOf(ids);
   const chats = useChatsOf(ids);
   const plans = useQuery({ queryKey: ["pin", "plans"], queryFn: pinRt.plans, enabled: live, refetchInterval: 15_000, retry: false });
@@ -201,7 +203,10 @@ export function PinView() {
   const [deleting, setDeleting] = useState<SideRow | null>(null);
 
   const current = view.kind === "agent" ? allAgents.find((a) => a.companyId === view.companyId && a.agentId === view.agentId) : null;
-  const currentAgent = current ? agents[ids.indexOf(current.companyId)]?.data?.find((a) => a.id === current.agentId) ?? null : null;
+  const selectedAgents = view.kind === "agent" ? agents[ids.indexOf(view.companyId)] : undefined;
+  const currentAgent = current ? selectedAgents?.data?.find((a) => a.id === current.agentId) ?? null : null;
+  const lookupFailed = selectedAgents?.isError || (!selectedAgents && organizations.isError);
+  const lookupPending = live && !lookupFailed && (selectedAgents?.isPending ?? organizations.isPending);
   const permission = PERMISSION_INFO.find((p) => p.id === pin.settings?.permission)?.label;
   const title = view.kind === "pin" ? (pin.chats.find((c) => c.id === pin.chatId)?.title ?? "New chat") : current?.name ?? "Agent";
   const messages = view.kind === "pin" ? pin.messages : [];
@@ -459,7 +464,11 @@ export function PinView() {
             <PinThread inPlace autoFocus className="flex-1" empty={<div className="h-full flex flex-col items-center justify-center text-center gap-3 py-16 px-6"><PinOrb size={44} /><p className="text-ink-2 text-sm max-w-sm text-pretty">Ask Pin about this device, or tell it what to set up. In Agent mode it can act, inside machines too; its plan, files and commands open beside the chat.</p></div>}
               below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{pin.settings?.mode === "agent" ? permission ?? "Agent" : "Assistant"}</span><span className="flex-1" /><span className="truncate">{pin.settings?.model ?? pin.providerName ?? "No model yet"}</span></div>} />
           ) : current && currentAgent ? (
-            <AgentChat key={agentKey(current.companyId, current.agentId)} companyId={current.companyId} agent={currentAgent} org={current.org} />
+            <AgentChat key={agentKey(current.companyId, current.agentId)} companyId={current.companyId} agent={currentAgent} org={current.org} agentHref={`/${device}/${orgs[ids.indexOf(current.companyId)]!.slug}/agents/${current.agentId}`} />
+          ) : lookupPending ? (
+            <div className="p-8"><Spinner label="Loading agent" /></div>
+          ) : lookupFailed ? (
+            <div className="p-8"><Notice tone="warning">Couldn’t load this agent. <button type="button" className="underline" onClick={() => void (selectedAgents ?? organizations).refetch()}>Try again</button></Notice></div>
           ) : (
             <div className="p-8"><Notice tone="info">That agent isn't available any more. Pick another conversation.</Notice></div>
           )}
@@ -501,7 +510,7 @@ export function PinView() {
 }
 
 /** An organization's chat with one agent, drawn by the same thread as Pin's: each comment on the conversation task is a message. */
-function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent; org: string }) {
+function AgentChat({ companyId, agent, org, agentHref }: { companyId: string; agent: Agent; org: string; agentHref: string }) {
   const names = useNames(companyId);
   const chats = useChats(companyId, true);
   const w = useChatWrites(companyId);
@@ -512,8 +521,19 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
   const comments = useComments(conv ? companyId : null, conv?.id ?? "");
   const runs = useRuns(conv ? companyId : null, agent.id);
   const [error, setError] = useState<string | null>(null);
-  const block = chatBlock({ agent, run: runs.data?.[0] ?? null, conversationStartedAt: conv?.createdAt ?? null, containersReady: containers.data ? containers.data.state === "ready" : undefined, canManageContainers: containers.data?.canManage });
-  const writing = conv?.conversationState === "active" && !block && canRun && agent.status !== "error";
+  const qc = useQueryClient();
+  const run = conv ? runs.data?.find((candidate) => candidate.issueId === conv.id) : undefined;
+  const activeRun = run && (run.status === "queued" || run.status === "running") ? run : undefined;
+  const cancel = useMutation({
+    mutationFn: (id: string) => engineApi.runs.cancel(id),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: qk.runs(companyId) }),
+      qc.invalidateQueries({ queryKey: qk.chats(companyId) }),
+    ]),
+    onError: (e) => setError(errorText(e)),
+  });
+  const block = chatBlock({ agent, run: run ?? null, conversationStartedAt: conv?.createdAt ?? null, containersReady: containers.data ? containers.data.state === "ready" : undefined, canManageContainers: containers.data?.canManage });
+  const writing = !!activeRun && !block && canRun;
 
   const { data: appData } = useEngine();
   const hue = (appData.orgs.find((o) => o.name === org || o.slug === org)?.hue ?? 32) + 40;
@@ -527,7 +547,13 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
     thinking: false,
     streaming: writing,
     name: agent.name,
-    stop: () => undefined,
+    stop: () => {
+      if (activeRun && !cancel.isPending) {
+        setError(null);
+        cancel.mutate(activeRun.id);
+      }
+    },
+    canStop: !!activeRun && !cancel.isPending,
     markDone: () => undefined,
     resolveTool: () => undefined,
     send: (text) => {
@@ -548,10 +574,14 @@ function AgentChat({ companyId, agent, org }: { companyId: string; agent: Agent;
   return (
     <ThreadProvider value={api}>
       <PinThread inPlace autoFocus className="flex-1" empty={<p className="text-sm text-ink-3 py-8 text-center">No messages yet. Say hello to {agent.name}.</p>}
-        below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{agentStatusOf(agent.status)[1]}</span><span className="flex-1" /><span className="truncate">{org}</span></div>}
+        below={<div className="px-5 pb-3 -mt-1 flex items-center gap-3 text-xs text-ink-3"><span>{cancel.isPending ? "Stopping" : activeRun ? (activeRun.status === "queued" ? "Queued" : "Running") : agentStatusOf(agent.status)[1]}</span><span className="flex-1" /><span className="truncate">{org}</span></div>}
         footer={(block || error) ? (
           <div className="px-4 space-y-2">
-            {block && <Notice tone="warning" title={block.reason}>{block.todo}</Notice>}
+            {block && <Notice tone="warning" title={block.reason}>
+            {block.todo}
+            {block.fix === "agent" && <Link className="ml-2 underline" to={agentHref}>Open agent settings</Link>}
+            {block.fix === "agent-containers" && <Link className="ml-2 underline" to={settingsHref("agent-containers")}>Open Agent containers</Link>}
+          </Notice>}
             {error && <p role="alert" className="text-compact text-critical">{error}</p>}
           </div>
         ) : undefined} />

@@ -143,7 +143,7 @@ export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolea
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (pin.streaming && !draft.trim()) return pin.stop();
+    if ((pin.canStop ?? pin.streaming) && !draft.trim()) return pin.stop();
     if (!draft.trim()) return;
     pin.send(draft, { inPlace });
     setDraft("");
@@ -154,7 +154,7 @@ export function PinInput({ inPlace, autoFocus, placeholder }: { inPlace?: boolea
       submit();
     }
   };
-  const canStop = pin.streaming && !draft.trim();
+  const canStop = (pin.canStop ?? pin.streaming) && !draft.trim();
 
   return (
     <form onSubmit={submit} className="p-3 pt-2">
