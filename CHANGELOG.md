@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.2
 
 - **Safer rollback.** `epaperclip rollback` now checks for the database copy from before the upgrade first, and refuses (changing nothing) if it is missing or from a different engine version, instead of starting the older engine on a database the newer one already migrated. `EPC_ROLLBACK_WITHOUT_DB_COPY=1` goes back anyway.
 - **Failed upgrades never replace a live database.** If an upgrade fails to start and an engine process is still running after the stop, the automatic recovery now leaves the database, the copy and the previous version as they are and stops, telling you to run `epaperclip rollback` once that process is gone.
+- **Agent chat in Pin view.** An organization agent's chat now has a working Stop button (it cancels the run), shows Queued, Running or Stopping, links to the agent's settings or Agent containers when something blocks it, and shows a loading or retry state instead of "no longer available" while the agent loads.
+- **Sign-in status is honest.** An organization's connected provider account is shown as "Provider account" and no longer marks an agent container as "Signed in"; a failed check says so with a retry, and a sign-in started just before the dialog closes is cancelled instead of left running.
 
 ## 1.0.1
 
