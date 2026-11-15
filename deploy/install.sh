@@ -278,7 +278,7 @@ if [ "$ACTION" = "--set-public-url" ]; then [ "$#" -eq 2 ] || die "usage: --set-
 CHANNEL="${EPC_CHANNEL:-}"
 if [ -z "$CHANNEL" ]; then case "$ROOT" in /usr/share/epaperclip) CHANNEL=apt ;; *) CHANNEL=release ;; esac; fi
 case "$CHANNEL" in apt|npm|release) ;; *) die "EPC_CHANNEL must be apt, npm or release (got '$CHANNEL')" ;; esac
-installed_channel() { local c; c="$(tr -d '[:space:]' <"${1:-$PREFIX}/CHANNEL" 2>/dev/null || true)"; case "$c" in apt|npm|release) echo "$c" ;; esac; }
+installed_channel() { local c f="${1:-$PREFIX}/CHANNEL"; c=""; [ -r "$f" ] && c="$(tr -d '[:space:]' <"$f" 2>/dev/null || true)"; case "$c" in apt|npm|release) echo "$c" ;; esac; }
 # The version apt has registered for epaperclip, or nothing. (`dpkg-query` is a stand-in in deploy/test.)
 apt_registered() { local st; st="$(dpkg-query -W -f='${Status}' epaperclip 2>/dev/null || true)"; [ "$st" = "install ok installed" ] && dpkg-query -W -f='${Version}' epaperclip 2>/dev/null; }
 
