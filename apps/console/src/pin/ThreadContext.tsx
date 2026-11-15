@@ -12,6 +12,7 @@ export interface ThreadApi {
   streaming: boolean;
   send: (text: string, opts?: { inPlace?: boolean }) => void;
   stop: () => void;
+  canStop?: boolean;
   markDone: (id: string) => void;
   resolveTool: (id: string, patch: Pick<ToolState, "resolved" | "note">) => void;
   /** Who the person is talking to, for the composer's label ("Pin" by default). */

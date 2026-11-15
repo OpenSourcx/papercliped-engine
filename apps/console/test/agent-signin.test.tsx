@@ -31,7 +31,7 @@ beforeEach(() => {
     const call: Call = { method: init.method ?? "GET", path: url.pathname, body: init.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(call);
     const h = handlers[`${call.method} ${call.path}`];
-    const r = h ? h(call) : undefined;
+    const r = h ? await h(call) : undefined;
     return r instanceof Response ? r : r !== undefined ? json(r) : json({ error: "Not found" }, 404);
   });
   vi.spyOn(window, "open").mockReturnValue(null);
@@ -54,6 +54,31 @@ describe("agent sign-in", () => {
     expect(screen.getByText(/Gemini has no account sign-in/)).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /Use an API key/ })).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: /Sign in/ })).toHaveLength(3);
+  });
+
+  it("keeps an organization provider connection distinct from adapter sign-in", async () => {
+    handlers[`GET ${A}/adapters/claude_local/auth-signal`] = () => ({ status: "unknown" });
+    handlers["GET /api/connect/orgs/c1/ai"] = () => ({
+      connections: [{ provider: "anthropic", ownership: "shared", status: "connected" }],
+    });
+    wrap();
+    expect(await screen.findByText("Provider account · shared with the organization")).toBeTruthy();
+    expect(screen.queryByText("Signed in")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Sign in" })).toHaveLength(3);
+  });
+
+  it("cancels a login that finishes starting after the dialog closes", async () => {
+    let finishStart!: (value: unknown) => void;
+    handlers[`POST ${A}/adapters/codex_local/login-sessions`] = () => new Promise((resolve) => { finishStart = resolve; });
+    handlers[`POST ${A}/adapters/codex_local/login-sessions/late/cancel`] = () => ({ ok: true });
+    wrap();
+    await screen.findByText("Acme");
+    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" })[1]);
+    await waitFor(() => expect(finishStart).toBeTypeOf("function"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    finishStart({ sessionId: "late", status: "starting" });
+    await waitFor(() => expect(sent("POST", `${A}/adapters/codex_local/login-sessions/late/cancel`)).toHaveLength(1));
+    expect(sent("GET", `${A}/adapters/codex_local/login-sessions/late`)).toHaveLength(0);
   });
 
   it("explains a failed start (full container quota) with what to do, and lets the person try again", async () => {
