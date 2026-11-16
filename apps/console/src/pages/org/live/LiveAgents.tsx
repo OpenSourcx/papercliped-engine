@@ -12,7 +12,7 @@ import { AGENT_ROLES, type AgentRole } from "@papercliped-engine/engine-client";
 import { useEngine } from "../../../data/store.tsx";
 import { AGENT_ROLE_LABEL, ago, dollars } from "../../../data/engine/map.ts";
 import { agentStatusOf, latestRunStatusOf } from "../../../data/engine/labels.tsx";
-import { useAdapterModels, useAdapters, useAgent, useAgentAction, useAgents, accountProviderOf, hasAccountBinding, isPinIdentity, useCreateAgent, useGiveMyAccount, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
+import { useAdapterModels, useAgentsWithLiveRuns, useAdapters, useAgent, useAgentAction, useAgents, accountProviderOf, hasAccountBinding, isPinIdentity, useCreateAgent, useGiveMyAccount, useLatestRuns, usePinIdentity, useRuns, useSandboxAdapters } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { lifecycleError, setupState } from "../../../data/engine/lifecycle.ts";
 import { ReadinessPanel, ReadinessPill } from "./AgentReadiness.tsx";
@@ -68,6 +68,7 @@ export function LiveAgents() {
   const latestRuns = useLatestRuns(companyId, list.map((a) => a.id));
   const latestByAgent = new Map(list.map((agent, index) => [agent.id, latestRuns[index]?.data]));
   const readiness = useAgentReadiness(companyId, list);
+  const live = useAgentsWithLiveRuns(companyId);
   const working = all.filter((a) => a.status === "running").length;
   return (
     <PageFrame width="6xl">
@@ -111,7 +112,7 @@ export function LiveAgents() {
             </thead>
             <tbody className="divide-y divide-line">
               {list.map((a) => {
-                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
+                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState, live?.has(a.id));
                 const ready = readiness.get(a.id);
                 const rc = (a as unknown as { runtimeConfig?: { aiConnection?: { mode?: string } } }).runtimeConfig;
                 const connection = !accountProviderOf(a.adapterType) ? "Not needed" : rc?.aiConnection?.mode === "responsible_user" ? "Your account" : rc?.aiConnection ? "Organization account" : "Not connected";
@@ -255,7 +256,8 @@ export function LiveAgentDetail() {
   type AgentTab = "overview" | "runs" | "configuration" | "instructions" | "skills" | "budget";
   const tab = (["overview", "runs", "configuration", "instructions", "skills", "budget"].includes(params.get("tab") ?? "") ? params.get("tab") : "overview") as AgentTab;
   const setTab = (t: AgentTab) => setParams((p) => { const n = new URLSearchParams(p); if (t === "overview") n.delete("tab"); else n.set("tab", t); return n; }, { replace: true });
-  const [kind, label] = a ? agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState) : ["idle" as const, ""];
+  const live = useAgentsWithLiveRuns(companyId);
+  const [kind, label] = a ? agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState, live?.has(a.id)) : ["idle" as const, ""];
   const settingUp = a ? setupState(a) : null;
   const blockers = (current?.checks ?? []).filter((c) => c.state === "blocked");
   const latestRun = runs.data?.[0] ?? null;
@@ -263,7 +265,7 @@ export function LiveAgentDetail() {
   const adapterLabel = (adaptersList.data ?? []).find((x) => x.type === a?.adapterType)?.label || a?.adapterType || "";
   const isLead = !!a && !a.reportsTo && String(a.role) === "ceo";
   // One chip when the two say the same thing, two (with room between them) when they don't.
-  const statusLine = a ? (current?.state === "ready" ? <Status kind="good" label={`${label}, ready to run`} /> : <><Status kind={kind} label={label} /><ReadinessPill readiness={current} /></>) : null;
+  const statusLine = a ? (<><Status kind={kind} label={label} />{current?.state === "ready" ? <Status kind="good" label="Ready to run" /> : <ReadinessPill readiness={current} />}</>) : null;
   const latestRunStatus = latestRunStatusOf(latestRun);
   return (
     <PageFrame width="4xl">

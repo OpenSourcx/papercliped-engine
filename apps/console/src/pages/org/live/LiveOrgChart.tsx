@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { Agent, HeartbeatRun } from "@papercliped-engine/engine-client";
 import { GitBranch, Maximize2, Minus, Plus } from "lucide-react";
 import { useEngine } from "../../../data/store.tsx";
-import { useAgents, useLatestRuns } from "../../../data/engine/queries.ts";
+import { useAgents, useAgentsWithLiveRuns, useLatestRuns } from "../../../data/engine/queries.ts";
 import { useAgentSettingsWrites } from "../../../data/engine/more.ts";
 import { AgentAvatar, Card, EmptyState, IconButton, PageFrame, PageHeader, Select, Status } from "../../../ui/primitives.tsx";
 import { ActionError, LoadError, Loading, useLiveOrg } from "./common.tsx";
@@ -64,7 +64,8 @@ function Branch({ agent, all, latestByAgent, companyId, names, base, seen }: { a
 function AgentNode({ agent, all, latestRun, companyId, names, base }: { agent: Agent; all: Agent[]; latestRun: HeartbeatRun | null | undefined; companyId: string; names: ReturnType<typeof useNames>; base: string }) {
   const { org } = useLiveOrg();
   const write = useAgentSettingsWrites(companyId, agent.id);
-  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState);
+  const withRuns = useAgentsWithLiveRuns(companyId);
+  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState, withRuns?.has(agent.id));
   const latest = latestRunStatusOf(latestRun);
   return <Card className="w-64 p-4"><Link to={`${base}/agents/${agent.id}`} className="flex items-center gap-3 hover:text-ink"><AgentAvatar name={agent.name} hue={org.hue + 40} size={36} /><div className="min-w-0 flex-1"><div className="font-medium truncate">{agent.name}</div><div className="text-xs text-ink-3 truncate">{names.role(agent)}</div></div><Status kind={kind} label={label} /></Link>{latest && <div className="mt-2"><Status kind={latest[0]} label={`Latest run: ${latest[1]}`} /></div>}<label className="block mt-3 text-xs text-ink-3">Reports to<Select value={agent.reportsTo ?? ""} disabled={write.update.isPending} className="mt-1 h-8 text-xs" onChange={(e) => write.update.mutate({ reportsTo: e.target.value || null })}><option value="">You</option>{all.filter((a) => a.id !== agent.id).map((a) => <option key={a.id} value={a.id} disabled={wouldLoop(all, agent.id, a.id)}>{a.name}</option>)}</Select></label><ActionError error={write.update.error} /></Card>;
 }

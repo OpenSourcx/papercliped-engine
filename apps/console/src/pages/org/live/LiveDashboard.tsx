@@ -6,7 +6,7 @@ import { useEngine } from "../../../data/store.tsx";
 import { connectApi } from "../../../data/engine/connectApi.ts";
 import { ago, dollars } from "../../../data/engine/map.ts";
 import { ISSUE_ICON, ISSUE_LABEL, agentStatusOf, isOpen } from "../../../data/engine/labels.tsx";
-import { useActivity, useAgentContainers, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
+import { useActivity, useAgentContainers, useAgentsWithLiveRuns, useAgents, useDashboard, useIssues, useResourceGroup, useSetResourceGroup } from "../../../data/engine/queries.ts";
 import { useAgentReadiness } from "../../../data/engine/readiness.ts";
 import { ReadinessPill } from "./AgentReadiness.tsx";
 import { useModals } from "../../../modals/useModals.ts";
@@ -119,6 +119,7 @@ function SetupStep({ done, title, body, action }: { done: boolean; title: string
 
 export function LiveDashboard() {
   const { org, companyId } = useLiveOrg();
+  const withRuns = useAgentsWithLiveRuns(companyId);
   const { setup } = useEngine();
   const device = setup?.deviceName ?? "pve";
   const b = `/${device}/${org.slug}`;
@@ -180,7 +181,7 @@ export function LiveDashboard() {
             <div className="divide-y divide-line">
               {live.length === 0 && <p className="text-sm text-ink-3 py-2">No agents yet. <Link className="text-accent hover:underline" to={`${b}/agents?new=1`}>Create one</Link>.</p>}
               {live.slice(0, 6).map((a) => {
-                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState);
+                const [kind, label] = agentStatusOf(a.status, (a as { lifecycleState?: unknown }).lifecycleState, withRuns?.has(a.id));
                 return (
                   <Link key={a.id} to={`${b}/agents/${a.id}`} className="flex items-center gap-3 py-3 hover:bg-surface-2/40 -mx-2 px-2 rounded-md">
                     <AgentAvatar name={a.name} hue={org.hue + 40} size={32} />

@@ -450,6 +450,42 @@ describe("agent containers setup", () => {
       expect(eng.st.agentActs).toEqual([]);
     });
 
+    describe("an agent the engine still calls running with no live run", () => {
+      const stuck = (id = "ceo") => agent(id, "claude_local", { status: "running", lifecycleState: "ready" });
+      const idlePatches = () => eng.st.agentPatches.filter((x) => x.body.status === "idle").map((x) => x.id);
+      it("is set back to idle after three sweeps in a row, and nothing else is touched", async () => {
+        const co = await setup([], [stuck()]);
+        await app.containers.reconcile();
+        await app.containers.reconcile();
+        expect(idlePatches()).toEqual([]);
+        await app.containers.reconcile();
+        expect(idlePatches()).toEqual(["ceo"]);
+        expect(eng.st.agents.get(co)![0]!.status).toBe("idle");
+        expect(eng.st.agentActs).toEqual([]); // no pause, no resume, nothing cancelled
+      });
+      it("is left alone while a run is live, and the count starts again", async () => {
+        const co = await setup([], [stuck()]);
+        eng.st.liveRuns.set(co, [{ agentId: "ceo" }]);
+        for (let i = 0; i < 5; i++) await app.containers.reconcile();
+        expect(idlePatches()).toEqual([]);
+        eng.st.liveRuns.set(co, []);
+        await app.containers.reconcile();
+        await app.containers.reconcile();
+        expect(idlePatches()).toEqual([]); // two sweeps since the run ended, not three
+      });
+      it("does nothing when the engine can't say what is live", async () => {
+        await setup([], [stuck()]);
+        eng.st.liveRunsFail = true;
+        for (let i = 0; i < 5; i++) await app.containers.reconcile();
+        expect(idlePatches()).toEqual([]);
+      });
+      it("does not touch an agent that is not ready, paused or already idle", async () => {
+        await setup([], [agent("a", "claude_local", { status: "running", lifecycleState: "verifying" }), agent("b", "claude_local", { status: "paused", lifecycleState: "paused" }), agent("c", "claude_local", { status: "idle", lifecycleState: "ready" })]);
+        for (let i = 0; i < 5; i++) await app.containers.reconcile();
+        expect(idlePatches()).toEqual([]);
+      });
+    });
+
     it("resumes an agent the guard paused once it has given it the account, because the cause is gone", async () => {
       const co = await setup([], [agent("claude-1", "claude_local", { lifecycleState: "verifying", lifecycleError: "The lifecycle step failed. Retry the operation." })]);
       // No account yet: the agent keeps failing and the guard pauses it after three ticks.

@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.0.3
 
 - **Agents in containers can reach Paperclip's MCP servers.** Paperclip addresses the "Paperclip projects" and "Paperclip connections" MCP servers as the engine's loopback port, which inside a container is the container's own loopback, so every connection was refused (ECONNREFUSED). The provider now gives each container that port through an SSH reverse forward, held for as long as it holds the container, that ends at a small host-side relay. The relay forwards only those routes (`GET`/`POST /mcp/runtime-tools`, `POST /api/mcp/project-tools`), passes the agent's own bearer token through untouched, and drops cookies and other headers. The engine stays bound to host loopback and keeps requiring Paperclip's authentication. Existing containers are prepared the first time a command runs in them; new templates ship the sshd setting.
 - **`epaperclip mcp-check <container id> [--run <run id>]`.** A read-only check, run as root on the host, that an agent container reaches both MCP servers through that route: the engine is loopback-only, the container's sshd is set for the forward, other engine routes are refused from the container, and `tools/list` answers with the run's own token (read from its retained config, never printed). Also at `/opt/epaperclip/update/mcp-check.sh`.
+- **A stale "running" agent is reset.** When a run is cancelled while the agent is starting it, Paperclip can set the agent to "running" after the cancellation, with nothing left to clear it. ePaperclip's minute sweep now sets an agent that is ready, says "running" and has no queued or running run for three sweeps in a row back to idle, after confirming once more just before. It uses the engine's own agent update, cancels and pauses nothing, and does nothing when the engine can't say what is live.
+- **An agent with no live work no longer shows "Working".** Paperclip keeps an agent's `running` word in its record and clears it only when a run ends while the agent is ready; a run cancelled or failed during setup can leave it behind. The agent list, the agent page, the organization chart, the dashboard and the chat now show Working only while Paperclip lists a queued or running run for that agent, and Idle otherwise. The run history keeps the real outcome (Cancelled, Failed, Finished).
+- **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
+- **An agent's status and its readiness are shown separately.** The agent page no longer joins them into one green line such as "Working, ready to run"; the status keeps its own colour and "Ready to run" sits beside it.
+- **Every run state has a name.** Runs that Paperclip marks as waiting for a retry or interrupted now say "Retry scheduled" and "Interrupted".
 
 ## 1.0.2
 

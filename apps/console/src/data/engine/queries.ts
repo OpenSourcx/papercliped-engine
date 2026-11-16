@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createEngineClient, EngineError, type CreateAgentBody, type CreateGoalBody, type CreateIssueBody, type CreateProjectBody, type HeartbeatRun, type UpdateIssueBody } from "@papercliped-engine/engine-client";
 import { useSession } from "../../auth/session.tsx";
@@ -69,6 +70,18 @@ export function useOrgs() {
 export function useAgentsOf(companyIds: string[]) {
   const ready = useEngineReady();
   return useQueries({ queries: companyIds.map((id) => ({ queryKey: qk.agents(id), queryFn: () => engine.agents.list(id).then((l) => l.filter((a) => !isPinIdentity(a))), enabled: ready, refetchInterval: 30_000 })) });
+}
+
+/** The ids of this organization's agents that have a queued or running run, or undefined while that is unknown (loading or failed). */
+export function useAgentsWithLiveRuns(companyId: string | null | undefined): Set<string> | undefined {
+  const [q] = useLiveRunsOf(companyId ? [companyId] : []);
+  return useMemo(() => (q?.data ? new Set(q.data.map((r) => String(r.agentId ?? "")).filter(Boolean)) : undefined), [q?.data]);
+}
+
+/** The live (queued or running) runs of several organizations at once: the engine's own definition of live, up to 50 each. Invalidated with the runs. */
+export function useLiveRunsOf(companyIds: string[]) {
+  const ready = useEngineReady();
+  return useQueries({ queries: companyIds.map((id) => ({ queryKey: [...qk.runs(id), "live"] as const, queryFn: () => engine.liveRuns(id), enabled: ready, refetchInterval: 15_000 })) });
 }
 
 /** Every resource group the person can see (one list from the host service); an organization without an entry has none yet. */
