@@ -127,7 +127,8 @@ function HarnessRow({ companyId, h, environmentId, onSignIn, onKey }: { companyI
   );
 }
 
-const SPIN_MS = 2000;
+/** First checks come quickly (the sign-in address appears a second or two after the terminal opens), then settle down. */
+const pollDelay = (n: number, haveAddress: boolean) => (haveAddress ? 2000 : n < 4 ? 500 : 1000);
 
 /** Where the organization's machines are listed, so a full resource group has a way forward. */
 function useMachinesHref(companyId: string): string | undefined {
@@ -177,13 +178,16 @@ function useSignInSession({ companyId, adapter, environmentId, onDone }: { compa
           return;
         }
         setSession(s);
+        let polls = 0;
+        let haveAddress = false;
         while (!stopped) {
-          await sleep(SPIN_MS);
+          await sleep(pollDelay(polls++, haveAddress));
           if (stopped) return;
           const cur = await engine.agentAuth.read(companyId, adapter, s.sessionId);
           if (stopped) return;
           setSession((prev) => ({ ...prev, ...cur }));
-          if (claude) engine.agentAuth.claudeAddress(companyId, s.sessionId).then((a) => !stopped && setAddress(a.authorizationUrl)).catch(() => undefined);
+          // Ask for Claude's sign-in address only until it is known (it does not change), not on every check.
+          if (claude && !haveAddress) engine.agentAuth.claudeAddress(companyId, s.sessionId).then((a) => { if (a.authorizationUrl) haveAddress = true; if (!stopped) setAddress(a.authorizationUrl); }).catch(() => undefined);
           if (cur.status === "authenticated") {
             if (claude) await engine.agentAuth.claudeComplete(companyId, s.sessionId);
             run.over = true;
