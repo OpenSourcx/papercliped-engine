@@ -24,7 +24,7 @@ export async function until<T>(fn: () => T | Promise<T>, ms = 8000, what = "cond
 export const tmp = (p: string) => realpathSync(mkdtempSync(join(tmpdir(), `epw-${p}-`)));
 
 export const fakeCaps = (root: string, over: Partial<Capabilities> = {}): Capabilities => ({
-  os: { name: "Ubuntu", version: "24.04" }, arch: "arm64", hostname: "node-a", cpu: { model: "test", cores: 8 }, memMb: 8000, gpu: { present: true, kind: "jetson", name: "Orin" },
+  os: { name: "Ubuntu", version: "24.04" }, arch: "arm64", hostname: "node-a", cpu: { model: "test", cores: 8 }, memMb: 16384, gpu: { present: true, kind: "jetson", name: "Orin" },
   storage: [], tools: { git: "2.43", node: "22" }, inference: null, networks: [], workspaceRoot: root, ...over,
 });
 
@@ -58,7 +58,7 @@ export function newWorker(o: { dir?: string; caps?: Partial<Capabilities>; name?
   c.workspaceRoot = root;
   if (o.name) c.name = o.name;
   files.saveConfig(c);
-  const client = new WorkerClient({ files, backoff: { minMs: 50, maxMs: 300 }, detect: async (cc) => fakeCaps(cc.workspaceRoot, o.caps), version: "test" });
+  const client = new WorkerClient({ files, backoff: { minMs: 50, maxMs: 300 }, detect: async (cc) => fakeCaps(cc.workspaceRoot, o.caps), vitals: () => ({ loadAvg: 0, freeMemMb: o.caps?.memory?.availableMb ?? Math.floor((o.caps?.memMb ?? 16384) * 0.8), swapUsedMb: 0 }), version: "test" });
   return { client, files, dir, root };
 }
 
@@ -74,6 +74,6 @@ export async function adoptOnline(h: Host, w: Worker, name = "w", companies: str
   const { code } = h.hub.createPairing("tester", { name, companies });
   w.client.adopt(code);
   await w.client.start();
-  const id = await until(() => h.hub.workers().find((x) => x.online && x.name === name)?.id, 8000, "worker online");
+  const id = await until(() => h.hub.workers().find((x) => x.online && x.name === name && x.usage.freeMemMb !== null)?.id, 8000, "worker online with heartbeat");
   return id;
 }

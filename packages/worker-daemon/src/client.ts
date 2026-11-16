@@ -2,8 +2,12 @@ import { ClientHandshake, decodePairing, orderEndpoints, type Capabilities, type
 import type { Server } from "node:http";
 import { existsSync } from "node:fs";
 import { connect } from "node:net";
-import { dirname, join } from "node:path";
-import { detectCapabilities, tailscaleIp, vitals } from "./caps.ts";
+import { join } from "node:path";
+import type { AddressInfo } from "node:net";
+import { inferenceEnvironment } from "./environment.ts";
+import { codingProfile, workerLimits } from "@papercliped-engine/worker-fabric";
+import { memorySnapshot } from "./memory.ts";
+import { detectCapabilities, tailscaleIp, vitals, runningModels } from "./caps.ts";
 import { hasCommand, ollamaInstall } from "./platform.ts";
 import { WorkerFiles, type WorkerConfig } from "./config.ts";
 import { Gate } from "./gate.ts";
@@ -17,6 +21,7 @@ export interface ClientOptions {
   log?: (msg: string) => void;
   /** Injected in tests. */
   detect?: (c: WorkerConfig) => Promise<Capabilities>;
+  vitals?: typeof vitals;
   WebSocketImpl?: typeof WebSocket;
   backoff?: { minMs: number; maxMs: number };
   version?: string;
@@ -38,6 +43,8 @@ export class WorkerClient {
   private runner: Runner;
   private gate: Gate | null = null;
   private gateServer: Server | null = null;
+  private gateConfig = "";
+  private beating = false;
   private send: ((v: unknown) => void) | null = null;
   status: Status = { state: "idle" };
   private caps: Capabilities | null = null;
@@ -59,16 +66,8 @@ export class WorkerClient {
   }
   /** Added to every command: the tools the worker brought (its own Node.js) and the user's ~/.local/bin on PATH, and the inference gate. */
   private inferenceEnv(): Record<string, string> {
-    const home = process.env.HOME ?? "";
-    const extra = [dirname(process.execPath), home ? join(home, ".local", "bin") : ""].filter((d) => d && existsSync(d));
-    const path = [...extra, ...(process.env.PATH ?? "").split(":").filter(Boolean)].filter((d, i, a) => a.indexOf(d) === i).join(":");
-    const env: Record<string, string> = { PATH: path };
-    if (this.gateServer) {
-      const url = `http://127.0.0.1:${this.o.files.config().inference.gatePort}`;
-      env.OLLAMA_HOST = url;
-      env.EPAPERCLIP_INFERENCE_URL = url;
-    }
-    return env;
+    const address = this.gateServer?.address();
+    return inferenceEnvironment(address && typeof address !== "string" ? (address as AddressInfo).port : null);
   }
 
   /** Stores the pairing code's contents; the next connection adopts. */
@@ -115,13 +114,20 @@ export class WorkerClient {
 
   private async startGate() {
     const c = this.o.files.config();
-    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c);
+    const caps = await this.detect(c);
     this.caps = caps;
     if (!caps.inference) return;
     this.gate = new Gate(c.inference.slots);
-    const srv = this.gate.server(caps.inference.url, c.inference.maxContext);
+    const srv = this.gate.server(caps.inference.url, c.inference.maxContext ?? 4096, (model) => {
+      const profile = codingProfile(model);
+      if (profile && caps.memMb - workerLimits(caps).reserveMemoryMb < profile.memoryMb) return "This coding model exceeds the worker's physical-memory budget. Use a smaller model or a cloud endpoint.";
+      const available = memorySnapshot().availableMb;
+      if (available === null || available < workerLimits(caps).reserveMemoryMb) return "Worker memory is low or unavailable; retry after other work has finished.";
+      return null;
+    });
     await new Promise<void>((res, rej) => { srv.once("error", rej); srv.listen(c.inference.gatePort, "127.0.0.1", () => res()); });
     this.gateServer = srv;
+    this.gateConfig = JSON.stringify([caps.inference.url, c.inference.slots, c.inference.maxContext ?? 4096]);
     this.log(`inference gate on 127.0.0.1:${c.inference.gatePort} -> ${caps.inference.url} (${c.inference.slots} at a time)`);
   }
 
@@ -194,7 +200,7 @@ export class WorkerClient {
         void (async () => {
           try {
             if (!session) {
-              const caps = this.caps ?? (await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c));
+              const caps = this.caps ?? await this.detect(c);
               this.caps = caps;
               const f = hs.finish(text, { pairing: adopting ? c.pairing ?? undefined : undefined, name: c.name || undefined, caps: adopting ? caps : undefined });
               session = f.session;
@@ -233,14 +239,25 @@ export class WorkerClient {
   }
 
   private async announce(c: WorkerConfig) {
-    const caps = await (this.o.detect ?? ((cc) => detectCapabilities({ workspaceRoot: cc.workspaceRoot, ollamaUrl: cc.ollamaUrl, maxContext: cc.inference.maxContext, setupMode: cc.setupMode })))(c);
+    const caps = await this.detect(c);
+    if (!this.gateServer && caps.inference) await this.startGate().catch((e) => this.log(`inference unavailable: ${(e as Error).message}`));
+    if (!this.gateServer || JSON.stringify([caps.inference?.url, c.inference.slots, c.inference.maxContext ?? 4096]) !== this.gateConfig) caps.inference = null;
     this.caps = caps;
     this.send?.({ ev: "caps", caps, version: this.o.version ?? VERSION });
     this.beat();
   }
-  private beat() {
-    const g = this.gate?.stats();
-    this.send?.({ ev: "hb", hb: { at: Date.now(), ...vitals(), running: this.runner.count(), inferenceRunning: g?.running ?? 0, inferenceQueued: g?.queued ?? 0 } });
+  private detect(c: WorkerConfig) {
+    return this.o.detect ? this.o.detect(c) : detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: this.o.files.dir });
+  }
+  private async beat() {
+    if (this.beating) return;
+    this.beating = true;
+    const send = this.send;
+    try {
+      const loadedModels = await runningModels(this.caps);
+      const g = this.gate?.stats();
+      if (send === this.send) send?.({ ev: "hb", hb: { at: Date.now(), ...(this.o.vitals ?? vitals)(), loadedModels, running: this.runner.count(), inferenceRunning: g?.running ?? 0, inferenceQueued: g?.queued ?? 0 } });
+    } finally { this.beating = false; }
   }
 
   private async handle(m: { id: string; op: string; args: Json }, c: WorkerConfig) {
@@ -264,7 +281,7 @@ export class WorkerClient {
           return reply(true, { started: true });
         }
         case "cancel":
-          return reply(true, { cancelled: this.runner.cancel(m.args.owner as string | undefined, m.args.target as string | undefined) });
+          return reply(true, { cancelled: await this.runner.cancelAndWait(m.args.owner as string | undefined, m.args.target as string | undefined) });
         case "caps.refresh":
           await this.announce(c);
           return reply(true, {});

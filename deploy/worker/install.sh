@@ -166,6 +166,7 @@ do_install() {
   local new="$PREFIX/epaperclip-worker.mjs" prev="$PREFIX/epaperclip-worker.mjs.prev"
   if [ -f "$new" ] && ! cmp -s "$new" "$src/epaperclip-worker.mjs"; then cp -p "$new" "$prev"; say "kept the previous version for --rollback"; fi
   install -m 0644 "$src/epaperclip-worker.mjs" "$new.tmp" && mv -f "$new.tmp" "$new"
+  if [ -f "$src/install-aider.sh" ]; then install -m 0755 "$src/install-aider.sh" "$PREFIX/install-aider.sh"; fi
 
   local tpl="$HERE/epaperclip-worker.service"; [ "$USER_MODE" = 0 ] || tpl="$HERE/epaperclip-worker.user.service"
   sed -e "s|@USER@|$SVC_USER|g" -e "s|@DATA@|$DATA|g" -e "s|@WORKSPACES@|$WORKSPACES|g" -e "s|@NODE@|$node|g" -e "s|@PREFIX@|$PREFIX|g" "$tpl" > "$UNIT.tmp"

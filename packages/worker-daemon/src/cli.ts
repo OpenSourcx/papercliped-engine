@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Capabilities } from "@papercliped-engine/worker-fabric";
 import { WorkerClient, VERSION, type Status } from "./client.ts";
 import { detectCapabilities } from "./caps.ts";
+import { qualifyCoding, readQualifications } from "./qualification.ts";
 import { WorkerFiles } from "./config.ts";
 import { hasCommand, ollamaInstall } from "./platform.ts";
 import { bestModel, recommendModels, usableMemory } from "@papercliped-engine/worker-fabric";
@@ -48,6 +49,12 @@ function printRecommendations(caps: Capabilities) {
 
 async function main() {
   switch (cmd) {
+    case "install-aider": {
+      const script = [join(dirname(process.argv[1]!), "install-aider.sh"), resolve(dirname(process.argv[1]!), "../../../deploy/worker/install-aider.sh")].find(existsSync);
+      if (!script) throw new Error("The Aider installer is missing; upgrade the worker release.");
+      await run("bash", [script]);
+      return;
+    }
     case "run": {
       const client = new WorkerClient({ files, log });
       client.onStatus = (s: Status) => { try { writeFileSync(join(files.dir, "status.json"), JSON.stringify({ ...s, at: Date.now(), version: VERSION, pid: process.pid })); } catch { /* status is best effort */ } };
@@ -71,6 +78,7 @@ async function main() {
       const cfg = files.config();
       const s = existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as Status & { at: number; version: string }) : null;
       console.log(`ePaperclip Worker ${VERSION}`);
+      console.log(`  coding    : ${readQualifications(files.dir).map((q) => `${q.model}: ${q.passed ? "passed slug-v1" : "failed slug-v1"}`).join(", ") || "not qualified"}`);
       console.log(`  worker id : ${cfg.workerId ?? "(not adopted)"}`);
       console.log(`  state     : ${s ? s.state : "unknown (service not running?)"}${s?.detail ? ` - ${s.detail}` : ""}`);
       if (s?.verification) console.log(`  verification code: ${s.verification}`);
@@ -80,13 +88,24 @@ async function main() {
     }
     case "caps": {
       const c = files.config();
-      console.log(JSON.stringify(await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode }), null, 2));
+      console.log(JSON.stringify(await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir }), null, 2));
+      return;
+    }
+    case "qualify": {
+      const c = files.config();
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir });
+      const model = flag("model") ?? "qwen2.5-coder:3b";
+      const result = await qualifyCoding({ dir: files.dir, caps, model, gatePort: c.inference.gatePort });
+      console.log(JSON.stringify(result, null, 2));
+      console.log("Evidence: " + join(files.dir, "qualification-last.log"));
+      console.log("Refresh capabilities in Workers to publish this result. A pass covers this bounded fixture only.");
+      if (!result.passed) process.exitCode = 1;
       return;
     }
     case "recommend":
     case "models": {
       const c = files.config();
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir });
       printDevice(caps);
       printRecommendations(caps);
       return;
@@ -100,7 +119,7 @@ async function main() {
       const c = files.config();
       console.log("ePaperclip worker\n");
       console.log("1/4  Looking at this machine");
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir });
       printDevice(caps);
       const best = bestModel(caps);
       console.log(best.fit === "too_big" ? "  model     none of the catalogue fits; this worker can still run tasks" : `  model     ${best.spec.id} fits (${best.spec.note})`);
@@ -161,7 +180,7 @@ async function main() {
     }
     case "setup": {
       const c = files.config();
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir });
       const model = flag("model") ?? bestModel(caps).spec.id;
       const installOllama = rest.includes("--install-ollama");
       const pull = rest.includes("--pull");
@@ -249,7 +268,7 @@ async function main() {
         const ok = await fetch(u, { signal: AbortSignal.timeout(4000) }).then((r) => r.ok).catch(() => false);
         row(ok, `${e.provider} endpoint ${e.url} ${ok ? "reachable" : "not reachable"}`);
       }
-      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode });
+      const caps = await detectCapabilities({ workspaceRoot: c.workspaceRoot, ollamaUrl: c.ollamaUrl, maxContext: c.inference.maxContext, setupMode: c.setupMode, stateDir: files.dir });
       console.log(`     ${caps.os.name} ${caps.os.version} ${caps.arch}, ${caps.cpu.cores} cores, ${caps.memMb} MiB, gpu: ${caps.gpu.present ? caps.gpu.name : "none"}`);
       console.log(`     tools: ${Object.entries(caps.tools).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`);
       console.log(`     inference: ${caps.inference ? `${caps.inference.url} models ${caps.inference.models.map((m) => m.name).join(", ")}` : "no Ollama found"}`);
@@ -281,7 +300,7 @@ async function main() {
       console.log(VERSION);
       return;
     default:
-      console.log("epaperclip-worker <connect|run|adopt|status|config|diagnose|caps|recommend|setup|version>\n\n  connect [code]   check this machine, pair it, wait for approval; Pin guides the rest (start here)");
+      console.log("epaperclip-worker <connect|run|adopt|status|config|diagnose|caps|install-aider|qualify|recommend|setup|version>\n\n  connect [code]   check this machine, pair it, wait for approval; Pin guides the rest (start here)");
   }
 }
 void chmodSync;

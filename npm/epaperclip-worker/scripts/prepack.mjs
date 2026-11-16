@@ -12,5 +12,6 @@ if (!existsSync(bundle)) {
 rmSync(`${here}worker`, { recursive: true, force: true });
 mkdirSync(`${here}worker`);
 cpSync(bundle, `${here}worker/epaperclip-worker.mjs`);
+cpSync(`${repo}deploy/worker/install-aider.sh`, `${here}worker/install-aider.sh`);
 cpSync(`${repo}LICENSE`, `${here}LICENSE`);
 console.error("prepack: worker bundle ready");

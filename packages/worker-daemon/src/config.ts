@@ -28,7 +28,7 @@ export const DEFAULT_DIR = defaultDirs().data;
 
 export const defaults = (dir: string): WorkerConfig => ({
   version: 1, hostKey: null, endpoints: [], workerId: null, name: "", workspaceRoot: process.env.EPW_WORKSPACES || defaultDirs().workspaces, prefer: null, ollamaUrl: "",
-  inference: { gatePort: 11435, slots: 1, maxContext: null }, revoked: false, setupMode: null, pairing: null,
+  inference: { gatePort: 11435, slots: 1, maxContext: 4096 }, revoked: false, setupMode: null, pairing: null,
 });
 
 function writeAtomic(file: string, text: string, mode: number) {
@@ -47,7 +47,8 @@ export class WorkerFiles {
   config(): WorkerConfig {
     const f = join(this.dir, "config.json");
     if (!existsSync(f)) return defaults(this.dir);
-    return { ...defaults(this.dir), ...(JSON.parse(readFileSync(f, "utf8")) as Partial<WorkerConfig>) };
+    const saved = JSON.parse(readFileSync(f, "utf8")) as Partial<WorkerConfig>;
+    return { ...defaults(this.dir), ...saved, inference: { ...defaults(this.dir).inference, ...saved.inference } };
   }
   saveConfig(c: WorkerConfig) {
     writeAtomic(join(this.dir, "config.json"), JSON.stringify(c, null, 2), 0o640);

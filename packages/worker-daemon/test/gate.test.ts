@@ -86,4 +86,35 @@ describe("inference gate", () => {
     await Promise.all([1, 2, 3, 4].map(() => fetch(`${base}/api/generate`, { method: "POST", body: "{}" })));
     expect(up.seen.max).toBe(2);
   });
+  it("removes cancelled waiters immediately and bounds the queue", async () => {
+    const gate = new Gate(1, 1);
+    const release = await gate.acquire();
+    const controller = new AbortController();
+    const pending = gate.acquire(controller.signal);
+    await expect(gate.acquire()).rejects.toThrow(/full/);
+    controller.abort();
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(gate.stats()).toEqual({ running: 1, queued: 0 });
+    release();
+    expect(gate.stats()).toEqual({ running: 0, queued: 0 });
+  });
+  it("queues OpenAI-compatible and native requests through the same slot", async () => {
+    const up = await fakeOllama(100);
+    const { base } = await gateFor(up.url, 1, 4096);
+    await Promise.all(["/api/chat", "/v1/chat/completions"].map((p) => fetch(base + p, { method: "POST", body: JSON.stringify({ model: "m" }) })));
+    expect(up.seen.max).toBe(1);
+    expect(await (await fetch(base + "/epaperclip/health")).json()).toMatchObject({ gate: true, maxContext: 4096, running: 0 });
+  });
+  it("rejects unsafe contexts and failed memory admission without leaking a slot", async () => {
+    const up = await fakeOllama(1);
+    const g = new Gate(1);
+    const srv = g.server(up.url, 4096, () => "memory pressure");
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    closers.push(() => { srv.closeAllConnections(); srv.close(); });
+    const base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    expect((await fetch(base + "/api/chat", { method: "POST", body: '{"options":{"num_ctx":-1}}' })).status).toBe(400);
+    expect((await fetch(base + "/api/chat", { method: "POST", body: '{}' })).status).toBe(503);
+    expect(g.stats()).toEqual({ running: 0, queued: 0 });
+    expect(up.seen.bodies).toHaveLength(0);
+  });
 });

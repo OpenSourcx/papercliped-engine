@@ -1,7 +1,7 @@
 export const DEFAULT_CONTROL_URL = "http://127.0.0.1:3130";
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
-export interface Requirements { arch?: string; tools?: string[]; gpu?: boolean; localModel?: string; minFreeMemMb?: number }
+export interface Requirements { arch?: string; tools?: string[]; gpu?: boolean; localModel?: string; minFreeMemMb?: number; memoryMb?: number }
 
 export interface RemoteWorkerConfig {
   controlUrl: string;
@@ -23,6 +23,7 @@ export function parseConfig(raw: Record<string, unknown>): RemoteWorkerConfig {
   if (typeof r.gpu === "boolean") requirements.gpu = r.gpu;
   if (str(r.localModel)) requirements.localModel = str(r.localModel)!;
   if (typeof r.minFreeMemMb === "number") requirements.minFreeMemMb = r.minFreeMemMb;
+  if (typeof r.memoryMb === "number") requirements.memoryMb = r.memoryMb;
   return {
     controlUrl: (str(raw.controlUrl) ?? DEFAULT_CONTROL_URL).replace(/\/+$/, ""),
     controlToken: str(raw.controlToken),
@@ -51,6 +52,10 @@ export function checkConfig(c: RemoteWorkerConfig): { errors: string[]; warnings
     else if (u.protocol === "http:" && !LOOPBACK.has(u.hostname)) errors.push("controlUrl must be https unless it is on this machine (the token would cross the network in clear text).");
   }
   if (!c.controlToken) errors.push("controlToken is required: ePaperclip creates it when it makes the environment.");
+  for (const key of ["memoryMb", "minFreeMemMb"] as const) {
+    const n = c.requirements[key];
+    if (n !== undefined && (!Number.isSafeInteger(n) || n < 1)) errors.push(`${key} must be a positive integer in MiB.`);
+  }
   if (!Number.isInteger(c.timeoutMs) || c.timeoutMs < 1000 || c.timeoutMs > 86_400_000) errors.push("timeoutMs must be between 1000 and 86400000.");
   if (!c.workerId && Object.keys(c.requirements).length === 0) warnings.push("No worker and no requirements are set: any adopted worker allowed for this organization may be used.");
   return { errors, warnings };

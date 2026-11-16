@@ -33,7 +33,7 @@ const manifest: PaperclipPluginManifestV1 = {
           requirements: {
             type: "object",
             title: "Requirements",
-            description: "arch, tools (list), gpu, localModel, minFreeMemMb. The scheduler only picks workers that match.",
+            description: "arch, tools (list), gpu, localModel, memoryMb, minFreeMemMb. Memory is reserved per lease; localModel requires a passing coding qualification.",
           },
           reuseLease: { type: "boolean", title: "Keep workspaces between runs", description: "Keep each agent's workspace on the worker between runs instead of deleting it when the run ends.", default: true },
           controlUrl: { type: "string", description: "The Worker Fabric control address on the ePaperclip host.", default: DEFAULT_CONTROL_URL, ...advanced("Connection") },

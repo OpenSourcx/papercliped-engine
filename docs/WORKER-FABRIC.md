@@ -1,5 +1,7 @@
 # ePaperclip Worker Fabric
 
+Current worker setup, coding qualification, physical-memory reservations and the supported Linux boundary are specified in [Worker readiness](WORKER-READINESS.md). See [engine-agent handoff](WORKER-ENGINE-HANDOFF.md) for integration and physical-device acceptance.
+
 Status: in implementation on branch `feat/worker-fabric`. This file is the contract the console, the docs and the
 tests are built from. Evidence labels used throughout: **implemented**, **locally tested**, **CI**, **live-engine
 tested**, **real-device (Orion) validated**. The current label of every item is in the checklist in
