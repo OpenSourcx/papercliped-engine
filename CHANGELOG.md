@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Agent sign-in shows its address sooner.** The dialog now checks the new sign-in every half second at first (then every second, then every two once the address is there) instead of waiting two seconds before the first look, and asks for Claude's address only until it has it rather than on every check.
+
 - **The console loads about 4 times faster over the wire.** The host service now sends the console's text files compressed (Brotli, else gzip) when the browser accepts it, computed once per file and kept in memory. The main script drops from 2.5 MB to about 0.56 MB, and a reload of the page itself is answered with an ETag and a 304.
 
 - **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
