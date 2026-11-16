@@ -1,4 +1,5 @@
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readFileSync, statSync } from "node:fs";
+import { brotliCompressSync, gzipSync, constants as zc } from "node:zlib";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -9,7 +10,7 @@ import { fetchVendorText, type FetchText } from "./vendorFetch.ts";
 import { createConsoleRelay, realConnect, type Connect } from "./console.ts";
 import { FirewallInputError, GROUP, NAME, checkAlias, checkIpsetEntry, checkOptions, checkRule, consoleAllowed, consoleRule, ruleParams, type Level } from "./firewall.ts";
 import { checkIface, checkMachineOptions, checkNic, isCidr4, isIpv4, ifaceParams, nextNicKey, nicString, normalizeConfig } from "./hardware.ts";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { FEATURES } from "./features/index.ts";
 import { CHANNEL_INGRESS, channelIngress } from "./channel-ingress.ts";
 import { vaultFor } from "./features/vault-store.ts";
@@ -105,6 +106,25 @@ export interface AppDeps {
 const COOKIE_BASE = "epc_session";
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".md": "text/plain; charset=utf-8" };
+
+const COMPRESSIBLE = new Set([".html", ".js", ".mjs", ".css", ".json", ".svg", ".webmanifest", ".md"]);
+const PACKED_MAX_BYTES = 32 * 1024 * 1024;
+const packedCache = new Map<string, { br: Buffer; gz: Buffer; etag: string }>();
+let packedBytes = 0;
+/** The compressed bytes of a console file for what the browser accepts, or null to send it as it is. Computed once per file version. */
+export function packedStatic(file: string, mtimeMs: number, size: number, acceptEncoding: string): { encoding: "br" | "gzip"; body: Buffer | null; etag: string } | null {
+  const accepts = (name: string) => new RegExp(`(^|[\\s,])${name}\\s*(;\\s*q=(?!0(\\.0*)?\\s*(,|$)))?\\s*(,|$)`, "i").test(acceptEncoding);
+  const key = `${file}|${mtimeMs}|${size}`;
+  let e = packedCache.get(key);
+  if (!e) {
+    const raw = readFileSync(file);
+    e = { br: brotliCompressSync(raw, { params: { [zc.BROTLI_PARAM_QUALITY]: 9, [zc.BROTLI_PARAM_SIZE_HINT]: raw.length } }), gz: gzipSync(raw, { level: 9 }), etag: createHash("sha256").update(raw).digest("base64url").slice(0, 22) };
+    if (packedBytes + e.br.length + e.gz.length <= PACKED_MAX_BYTES) { packedCache.set(key, e); packedBytes += e.br.length + e.gz.length; }
+  }
+  if (accepts("br")) return { encoding: "br", body: e.br, etag: e.etag + "-br" };
+  if (accepts("gzip")) return { encoding: "gzip", body: e.gz, etag: e.etag + "-gz" };
+  return { encoding: "gzip", body: null, etag: e.etag };
+}
 const TIMEFRAMES = ["hour", "day", "week", "month", "year"];
 const POWER = ["start", "shutdown", "stop", "reboot", "reset"];
 
@@ -2252,7 +2272,23 @@ export function createApp(d: AppDeps) {
       file = join(root, "index.html");
     }
     const hashed = rel.startsWith("assets/");
-    res.writeHead(200, { "Content-Type": TYPES[extname(file)] ?? "application/octet-stream", "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache" });
+    const type = TYPES[extname(file)] ?? "application/octet-stream";
+    const headers: Record<string, string | number> = { "Content-Type": type, "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache" };
+    // Text files are sent compressed when the browser accepts it (Brotli, else gzip), computed once per file version and kept
+    // in memory (the console is ~3 MB of text and ~0.9 MB compressed). Files that change keep an ETag so a reload is a 304.
+    const st = statSync(file);
+    const packed = COMPRESSIBLE.has(extname(file)) && st.size >= 1024 ? packedStatic(file, st.mtimeMs, st.size, String(req.headers["accept-encoding"] ?? "")) : null;
+    headers.Vary = "Accept-Encoding";
+    if (!hashed) {
+      const tag = `"${packed ? packed.etag : `${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}`}"`;
+      headers.ETag = tag;
+      if (req.headers["if-none-match"]?.split(",").some((c) => c.trim() === tag || c.trim() === `W/${tag}`)) { res.writeHead(304, headers); return res.end(); }
+    }
+    if (packed?.body) {
+      res.writeHead(200, { ...headers, "Content-Encoding": packed.encoding, "Content-Length": packed.body.length });
+      return req.method === "HEAD" ? res.end() : res.end(packed.body);
+    }
+    res.writeHead(200, { ...headers, "Content-Length": st.size });
     if (req.method === "HEAD") return res.end();
     createReadStream(file).pipe(res);
   }

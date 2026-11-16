@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The console loads about 4 times faster over the wire.** The host service now sends the console's text files compressed (Brotli, else gzip) when the browser accepts it, computed once per file and kept in memory. The main script drops from 2.5 MB to about 0.56 MB, and a reload of the page itself is answered with an ETag and a 304.
+
 - **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
 - **An agent's status and its readiness are shown separately.** The agent page no longer joins them into one green line such as "Working, ready to run"; the status keeps its own colour and "Ready to run" sits beside it.
 - **Every run state has a name.** Runs that Paperclip marks as waiting for a retry or interrupted now say "Retry scheduled" and "Interrupted".

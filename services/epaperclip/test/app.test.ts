@@ -1065,6 +1065,43 @@ describe("serving the console", () => {
     expect(a.headers.get("content-type")).toContain("javascript");
   });
 
+  it("sends console text compressed when the browser accepts it, and answers a reload with 304", async () => {
+    const text = "export const x = " + JSON.stringify("ePaperclip console ".repeat(400)) + ";\n";
+    writeFileSync(join(staticDir, "assets", "big-abc.js"), text);
+    const get = (accept: string | null, path = "/assets/big-abc.js", extra: Record<string, string> = {}) =>
+      fetch(base + path, { headers: { ...(accept === null ? {} : { "Accept-Encoding": accept }), ...extra } });
+    // Node's fetch decodes for us, so ask with raw http to see the bytes on the wire.
+    const raw = async (accept: string) => {
+      const { request } = await import("node:http");
+      const u = new URL(base + "/assets/big-abc.js");
+      return new Promise<{ enc: string | undefined; vary: string | undefined; body: Buffer }>((resolve) => request({ host: u.hostname, port: u.port, path: u.pathname, headers: { "Accept-Encoding": accept } }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve({ enc: res.headers["content-encoding"] as string | undefined, vary: res.headers.vary as string | undefined, body: Buffer.concat(chunks) }));
+      }).end());
+    };
+    const { brotliDecompressSync, gunzipSync } = await import("node:zlib");
+    const br = await raw("gzip, deflate, br");
+    expect(br.enc).toBe("br"); expect(br.vary).toBe("Accept-Encoding");
+    expect(brotliDecompressSync(br.body).toString()).toBe(text);
+    expect(br.body.length).toBeLessThan(text.length / 10);
+    const gz = await raw("gzip");
+    expect(gz.enc).toBe("gzip"); expect(gunzipSync(gz.body).toString()).toBe(text);
+    const none = await raw("identity");
+    expect(none.enc).toBeUndefined(); expect(none.body.toString()).toBe(text);
+    const refused = await raw("br;q=0, gzip;q=0");
+    expect(refused.enc).toBeUndefined();
+    expect(await (await get("gzip, br")).text()).toBe(text);
+    // Small files and non-text are left alone; the page itself revalidates with an ETag.
+    expect((await get("br", "/assets/app-abc.js")).headers.get("content-encoding")).toBeNull();
+    const page = await get("br", "/");
+    const tag = page.headers.get("etag");
+    expect(tag).toBeTruthy();
+    expect(page.headers.get("cache-control")).toBe("no-cache");
+    expect((await get("br", "/", { "If-None-Match": tag! })).status).toBe(304);
+    expect((await get("br", "/", { "If-None-Match": '"other"' })).status).toBe(200);
+  });
+
   it("falls back to the app for client routes, but not for missing files", async () => {
     expect(await (await fetch(base + "/pve/home")).text()).toContain("ePaperclip");
     expect((await fetch(base + "/assets/missing.js")).status).toBe(404);
