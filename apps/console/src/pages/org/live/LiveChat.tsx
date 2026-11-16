@@ -7,7 +7,7 @@ import { useAgentsCanRun } from "../../containers/Banner.tsx";
 import { chatBlock, chatDisabled, useSendChat, type ChatBlock } from "../../../data/engine/chat.ts";
 import { ago } from "../../../data/engine/map.ts";
 import { agentStatusOf } from "../../../data/engine/labels.tsx";
-import { useAgentAction, useAgentContainers, useAgents, useComments, useMe, useRuns } from "../../../data/engine/queries.ts";
+import { useAgentAction, useAgentContainers, useAgentsWithLiveRuns, useAgents, useComments, useMe, useRuns } from "../../../data/engine/queries.ts";
 import { useEngine } from "../../../data/store.tsx";
 import { settingsHref } from "../../../modals/useModals.ts";
 import { useChats, useChatSettings, useChatWrites } from "../../../data/engine/more.ts";
@@ -81,7 +81,8 @@ function Thread({ agent, conversationId, startedAt, working }: { agent: Agent; c
   const end = useRef<HTMLDivElement>(null);
   // The engine lists comments newest first; a conversation reads oldest first.
   const messages = conversationId ? [...(comments.data ?? [])].sort((a, b) => new Date(a.createdAt as unknown as string).getTime() - new Date(b.createdAt as unknown as string).getTime()) : [];
-  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState);
+  const withRuns = useAgentsWithLiveRuns(companyId);
+  const [kind, label] = agentStatusOf(agent.status, (agent as { lifecycleState?: unknown }).lifecycleState, withRuns?.has(agent.id));
   const containers = useAgentContainers();
   const runs = useRuns(conversationId ? companyId : null, agent.id);
   const act = useAgentAction(companyId);

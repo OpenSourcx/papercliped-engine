@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **An agent with no live work no longer shows "Working".** Paperclip keeps an agent's `running` word in its record and clears it only when a run ends while the agent is ready; a run cancelled or failed during setup can leave it behind. The agent list, the agent page, the organization chart, the dashboard and the chat now show Working only while Paperclip lists a queued or running run for that agent, and Idle otherwise. The run history keeps the real outcome (Cancelled, Failed, Finished).
+
 - **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
 - **An agent's status and its readiness are shown separately.** The agent page no longer joins them into one green line such as "Working, ready to run"; the status keeps its own colour and "Ready to run" sits beside it.
 - **Every run state has a name.** Runs that Paperclip marks as waiting for a retry or interrupted now say "Retry scheduled" and "Interrupted".

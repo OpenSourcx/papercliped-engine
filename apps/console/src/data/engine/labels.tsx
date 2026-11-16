@@ -31,9 +31,17 @@ export const ENGINE_AGENT_STATUS = {
 } satisfies Record<Agent["status"], [StatusKind, string]> as Record<string, [StatusKind, string]>;
 /** A person's pause and the engine's own setup checks both read "paused"; the lifecycle tells them apart. */
 const SETUP_LABEL: Record<string, string> = { preparing: "Preparing", verifying: "Verifying", resuming: "Starting" };
-export const agentStatusOf = (s: string, lifecycleState?: unknown): [StatusKind, string] => {
+/**
+ * `hasLiveRun` is whether Paperclip lists a queued or running run for this agent right now (undefined while that is unknown).
+ * The engine's own "running" word is kept in the agent record and only cleared when a run ends cleanly while the agent is ready;
+ * a run that is cancelled or fails during setup can leave it behind. An agent with no live work is not working, so the screen says
+ * Idle and the run history keeps the outcome.
+ */
+export const agentStatusOf = (s: string, lifecycleState?: unknown, hasLiveRun?: boolean): [StatusKind, string] => {
   const setup = typeof lifecycleState === "string" ? SETUP_LABEL[lifecycleState] : undefined;
-  return setup ? ["warning", setup] : ENGINE_AGENT_STATUS[s] ?? ["idle", s];
+  if (setup) return ["warning", setup];
+  if (s === "running" && hasLiveRun === false) return ["idle", "Idle"];
+  return ENGINE_AGENT_STATUS[s] ?? ["idle", s];
 };
 
 /**
