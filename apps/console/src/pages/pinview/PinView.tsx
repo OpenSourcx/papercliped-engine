@@ -9,7 +9,7 @@ import { useChats, useChatsOf, useChatWrites } from "../../data/engine/more.ts";
 import { qk } from "../../data/engine/keys.ts";
 import { agentStatusOf } from "../../data/engine/labels.tsx";
 import { pinRt } from "../../data/engine/pinRuntimeApi.ts";
-import { engine as engineApi, errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useOrgs, useRuns, useRunsOf } from "../../data/engine/queries.ts";
+import { engine as engineApi, errorText, useAgentContainers, useAgentsOf, useComments, useConnectors, useOrgs, useLiveRunsOf, useRuns } from "../../data/engine/queries.ts";
 import { useEngine } from "../../data/store.tsx";
 import { cn, readJson, writeJson } from "../../lib/storage.ts";
 import { settingsHref } from "../../modals/useModals.ts";
@@ -105,7 +105,7 @@ export function PinView() {
   const organizations = useOrgs();
   const agents = useAgentsOf(ids);
   const chats = useChatsOf(ids);
-  const orgRuns = useRunsOf(ids);
+  const orgRuns = useLiveRunsOf(ids);
   const plans = useQuery({ queryKey: ["pin", "plans"], queryFn: pinRt.plans, enabled: live, refetchInterval: 15_000, retry: false });
 
   // ---- Which conversation is open, and the history to go back and forth through
@@ -159,8 +159,8 @@ export function PinView() {
       if (!c.conversationAgentId) return [];
       const key = agentKey(org.companyId, c.conversationAgentId);
       const at = new Date(c.updatedAt).getTime();
-      return [{ key, source: "agent", title: agentName(org.companyId, c.conversationAgentId), context: org.name, updatedAt: at, unread: unread(key, at), // "Working" means a run for this conversation is queued or running, not that the conversation was last marked active (a cancelled run leaves that flag behind).
-      status: (orgRuns[i]?.data ?? []).some((r) => r.issueId === c.id && (r.status === "queued" || r.status === "running")) ? "working" : undefined }];
+      return [{ key, source: "agent", title: agentName(org.companyId, c.conversationAgentId), context: org.name, updatedAt: at, unread: unread(key, at), // "Working" means the engine lists a live (queued or running) run for this conversation, not that the conversation was last marked active (a cancelled run leaves that flag behind).
+      status: (orgRuns[i]?.data ?? []).some((r) => r.issueId === c.id) ? "working" : undefined }];
     }).sort((a, b) => b.updatedAt - a.updatedAt) }));
     return { pinRows: pinRows.sort((a, b) => b.updatedAt - a.updatedAt), byOrg };
     // eslint-disable-next-line react-hooks/exhaustive-deps

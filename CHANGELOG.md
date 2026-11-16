@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
+- **An agent's status and its readiness are shown separately.** The agent page no longer joins them into one green line such as "Working, ready to run"; the status keeps its own colour and "Ready to run" sits beside it.
+- **Every run state has a name.** Runs that Paperclip marks as waiting for a retry or interrupted now say "Retry scheduled" and "Interrupted".
+
 ## 1.0.2
 
 - **Safer rollback.** `epaperclip rollback` now checks for the database copy from before the upgrade first, and refuses (changing nothing) if it is missing or from a different engine version, instead of starting the older engine on a database the newer one already migrated. `EPC_ROLLBACK_WITHOUT_DB_COPY=1` goes back anyway.

@@ -263,7 +263,7 @@ export function LiveAgentDetail() {
   const adapterLabel = (adaptersList.data ?? []).find((x) => x.type === a?.adapterType)?.label || a?.adapterType || "";
   const isLead = !!a && !a.reportsTo && String(a.role) === "ceo";
   // One chip when the two say the same thing, two (with room between them) when they don't.
-  const statusLine = a ? (current?.state === "ready" ? <Status kind="good" label={`${label}, ready to run`} /> : <><Status kind={kind} label={label} /><ReadinessPill readiness={current} /></>) : null;
+  const statusLine = a ? (<><Status kind={kind} label={label} />{current?.state === "ready" ? <Status kind="good" label="Ready to run" /> : <ReadinessPill readiness={current} />}</>) : null;
   const latestRunStatus = latestRunStatusOf(latestRun);
   return (
     <PageFrame width="4xl">

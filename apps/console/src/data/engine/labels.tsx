@@ -1,5 +1,5 @@
 import { Ban, Circle, CircleCheck, CircleDashed, CircleDot, Inbox, OctagonAlert } from "lucide-react";
-import type { HeartbeatRun, IssuePriority, IssueStatus } from "@papercliped-engine/engine-client";
+import type { Agent, HeartbeatRun, IssuePriority, IssueStatus } from "@papercliped-engine/engine-client";
 import type { StatusKind } from "../../ui/primitives.tsx";
 
 /** Words and icons for the engine's task (issue) and agent states. Icons always come with a label. */
@@ -18,7 +18,8 @@ export const isOpen = (s: string) => s !== "done" && s !== "cancelled";
 
 export const PRIORITY_LABEL: Record<IssuePriority, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
-export const ENGINE_AGENT_STATUS: Record<string, [StatusKind, string]> = {
+// `satisfies` makes the build fail when the pinned engine adds a status this table does not name.
+export const ENGINE_AGENT_STATUS = {
   running: ["working", "Working"],
   // "active" is the engine's lifecycle word, not a promise that the runtime, model and container are ready.
   active: ["idle", "Active"],
@@ -27,7 +28,7 @@ export const ENGINE_AGENT_STATUS: Record<string, [StatusKind, string]> = {
   pending_approval: ["warning", "Waiting for approval"],
   error: ["critical", "Error"],
   terminated: ["off", "Terminated"],
-};
+} satisfies Record<Agent["status"], [StatusKind, string]> as Record<string, [StatusKind, string]>;
 /** A person's pause and the engine's own setup checks both read "paused"; the lifecycle tells them apart. */
 const SETUP_LABEL: Record<string, string> = { preparing: "Preparing", verifying: "Verifying", resuming: "Starting" };
 export const agentStatusOf = (s: string, lifecycleState?: unknown): [StatusKind, string] => {
@@ -41,14 +42,16 @@ export const agentStatusOf = (s: string, lifecycleState?: unknown): [StatusKind,
  * Keep the two separate so a healthy agent returning to Idle never looks as
  * though a successful task vanished.
  */
-export const ENGINE_RUN_STATUS: Record<string, [StatusKind, string]> = {
+export const ENGINE_RUN_STATUS = {
   queued: ["working", "Queued"],
+  scheduled_retry: ["warning", "Retry scheduled"],
+  interrupted: ["warning", "Interrupted"],
   running: ["working", "Working"],
   succeeded: ["good", "Finished"],
   failed: ["critical", "Failed"],
   cancelled: ["off", "Cancelled"],
   timed_out: ["critical", "Timed out"],
-};
+} satisfies Record<HeartbeatRun["status"], [StatusKind, string]> as Record<string, [StatusKind, string]>;
 export const runStatusOf = (s: string): [StatusKind, string] => ENGINE_RUN_STATUS[s] ?? ["idle", s.replace(/_/g, " ")];
 export const latestRunStatusOf = (run: Pick<HeartbeatRun, "status"> | null | undefined): [StatusKind, string] | null => run ? runStatusOf(run.status) : null;
 
