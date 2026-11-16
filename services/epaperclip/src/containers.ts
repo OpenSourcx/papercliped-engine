@@ -377,6 +377,8 @@ export interface ContainersDeps {
 /** Harness adapters that have both an ACP lane (the engine's default) and a direct command-line lane. */
 const CLI_LANE = new Set(["claude_local", "codex_local", "gemini_local", "kimi_local"]);
 
+/** Sweeps in a row an agent may say "running" with no live run before it is set back to idle. */
+const STUCK_RUNNING_TICKS = 3;
 /** How many one-minute ticks in a row an agent may fail verification before it is paused (ERR-CTR-001). */
 export const SETUP_LOOP_LIMIT = 3;
 
@@ -405,6 +407,8 @@ export class AgentContainers {
   /** Consecutive ticks an agent has been seen failing verification, and adapters the engine has refused a sandbox for. */
   private readonly stuckAgents = new Map<string, number>();
   private readonly noSandbox = new Set<string>();
+  /** Agents seen as "running" with no live run, and for how many sweeps in a row (see clearStuckRunning). */
+  private readonly stuckRunning = new Map<string, number>();
   private actor: EngineActor | null = null;
   /** Set by an explicit "try the template again": allows a rebuild after repeated failures. */
   private force = false;
@@ -1669,6 +1673,8 @@ export class AgentContainers {
     const pinIdentity = (this.d.state.getSetting<Record<string, string>>("pin.appIdentities") ?? {})[companyId];
     let accounts: EngineAccount[] | undefined;
     const getAccounts = async () => (accounts ??= await this.orgAccounts(cid));
+    let liveFirst: Set<string> | null | undefined;
+    const liveNow = () => this.agentsWithLiveRuns(cid);
     for (const a of agents) {
       if (a.status === "terminated") continue;
       if (a.id === pinIdentity) {
@@ -1681,6 +1687,7 @@ export class AgentContainers {
       const justBound = await this.bindAccount(a, companyId, name, getAccounts, warnings);
       await this.reviveAfterBinding(justBound ? { ...a, runtimeConfig: { ...(a.runtimeConfig ?? {}), aiConnection: true } } : a, companyId, name, warnings);
       if (!justBound) await this.guardSetupLoop(a, companyId, name, warnings);
+      await this.clearStuckRunning(a, name, warnings, async () => (liveFirst === undefined ? (liveFirst = await liveNow()) : liveFirst), liveNow);
       // Paperclip's default lane for these harnesses is ACP, which over ssh polls the container about ten times a second.
       // The direct command-line lane needs no bridge and is quiet, so an agent that has not chosen a lane gets it. A chosen
       // lane (including "acp") is never touched.
@@ -1708,6 +1715,41 @@ export class AgentContainers {
     }
     return warnings;
   }
+  /** The ids of the organization's agents that have a queued or running run, or null when the engine can't say. */
+  private async agentsWithLiveRuns(companyId: string): Promise<Set<string> | null> {
+    try {
+      const runs = await this.eng<{ agentId?: string }[]>("GET", `/api/companies/${encodeURIComponent(companyId)}/live-runs`);
+      return Array.isArray(runs) ? new Set(runs.map((r) => String(r.agentId ?? "")).filter(Boolean)) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Paperclip keeps an agent's "running" word in its record and clears it only when a run ends. A run cancelled while the agent is
+   * starting it can end up set again after the cancellation, with nothing left to clear it (it does not block new runs, and the
+   * next run that finishes sets it right). An agent that is ready, says "running" and has no queued or running run for
+   * STUCK_RUNNING_TICKS sweeps in a row, confirmed once more just before, is set back to idle with the engine's own update. Nothing
+   * else is touched and no run is cancelled; when the engine can't say what is live, nothing is done.
+   */
+  private async clearStuckRunning(a: { id: string; name: string; status?: string; lifecycleState?: string | null }, orgName: string, warnings: string[], live: () => Promise<Set<string> | null>, liveNow: () => Promise<Set<string> | null>): Promise<void> {
+    if (a.status !== "running" || a.lifecycleState !== "ready") { this.stuckRunning.delete(a.id); return; }
+    const now = await live();
+    if (!now) return;
+    if (now.has(a.id)) { this.stuckRunning.delete(a.id); return; }
+    const seen = (this.stuckRunning.get(a.id) ?? 0) + 1;
+    this.stuckRunning.set(a.id, seen);
+    if (seen < STUCK_RUNNING_TICKS) return;
+    const again = await liveNow();
+    if (!again || again.has(a.id)) { if (again) this.stuckRunning.delete(a.id); return; }
+    try {
+      await this.eng("PATCH", `/api/agents/${encodeURIComponent(a.id)}`, { status: "idle" });
+      this.stuckRunning.delete(a.id);
+    } catch (e) {
+      warnings.push(`${orgName}: couldn't clear ${a.name}'s stale "running" status: ${errText(e)}`);
+    }
+  }
+
   /**
    * The engine re-verifies an agent that can't pass its test run every minute, forever, with no attempt cap or backoff, and
    * each try can acquire a whole sandbox (on directory storage a full clone: tens of GB of writes a day). The engine's own

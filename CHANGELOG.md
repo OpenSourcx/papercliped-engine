@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **A stale "running" agent is reset.** When a run is cancelled while the agent is starting it, Paperclip can set the agent to "running" after the cancellation, with nothing left to clear it. ePaperclip's minute sweep now sets an agent that is ready, says "running" and has no queued or running run for three sweeps in a row back to idle, after confirming once more just before. It uses the engine's own agent update, cancels and pauses nothing, and does nothing when the engine can't say what is live.
+
 - **An agent with no live work no longer shows "Working".** Paperclip keeps an agent's `running` word in its record and clears it only when a run ends while the agent is ready; a run cancelled or failed during setup can leave it behind. The agent list, the agent page, the organization chart, the dashboard and the chat now show Working only while Paperclip lists a queued or running run for that agent, and Idle otherwise. The run history keeps the real outcome (Cancelled, Failed, Finished).
 
 - **The chat list stops spinning after a run is stopped.** An agent conversation shows as working only while Paperclip lists a queued or running run for it.
