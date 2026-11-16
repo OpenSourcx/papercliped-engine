@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Agents in containers can reach Paperclip's MCP servers.** Paperclip addresses the "Paperclip projects" and "Paperclip connections" MCP servers as the engine's loopback port, which inside a container is the container's own loopback, so every connection was refused (ECONNREFUSED). The provider now gives each container that port through an SSH reverse forward, held for as long as it holds the container, that ends at a small host-side relay. The relay forwards only those routes (`GET`/`POST /mcp/runtime-tools`, `POST /api/mcp/project-tools`), passes the agent's own bearer token through untouched, and drops cookies and other headers. The engine stays bound to host loopback and keeps requiring Paperclip's authentication. Existing containers are prepared the first time a command runs in them; new templates ship the sshd setting.
+- **`epaperclip mcp-check <container id> [--run <run id>]`.** A read-only check, run as root on the host, that an agent container reaches both MCP servers through that route: the engine is loopback-only, the container's sshd is set for the forward, other engine routes are refused from the container, and `tools/list` answers with the run's own token (read from its retained config, never printed). Also at `/opt/epaperclip/update/mcp-check.sh`.
+
 ## 1.0.2
 
 - **Safer rollback.** `epaperclip rollback` now checks for the database copy from before the upgrade first, and refuses (changing nothing) if it is missing or from a different engine version, instead of starting the older engine on a database the newer one already migrated. `EPC_ROLLBACK_WITHOUT_DB_COPY=1` goes back anyway.

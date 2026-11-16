@@ -13,6 +13,8 @@
 #   epaperclip login [--name N]     link this computer to your Papercliped account (shows a code to enter at link.papercliped.co)
 #   epaperclip logout               unlink it
 #   epaperclip whoami               which account and device name this computer is linked as
+#   epaperclip mcp-check <ct> [--run <id>]
+#                                   check, read-only, that an agent container reaches Paperclip's MCP servers
 #   epaperclip device ...           operate ePaperclip's own services on this host
 set -euo pipefail
 
@@ -35,6 +37,7 @@ ${B}epaperclip${R} ${D}— manage ePaperclip on this Proxmox host${R}
   ${B}login${R} [--name N]     link this computer to your Papercliped account: shows a code to enter at https://link.papercliped.co
   ${B}logout${R}               unlink this computer from Papercliped
   ${B}whoami${R}               show the account and device name this computer is linked as
+  ${B}mcp-check${R} <ct> [--run <id>]  check that an agent container reaches Paperclip's MCP servers (read-only)
   ${B}rollback${R}             put the previous version back
   ${B}uninstall${R} [--purge]  remove it; your data and settings stay unless you add --purge
   ${B}device status${R}        show installed versions and service health
@@ -195,6 +198,7 @@ case "$cmd" in
     [ -f "$PREFIX/login/epaperclip-login.mjs" ] || die "this ePaperclip is too old to have $cmd; update it first: epaperclip update"
     exec "$PREFIX/node/bin/node" "$PREFIX/login/epaperclip-login.mjs" "$cmd" "$@" ;;
   rollback) need_root rollback; exec bash "$INSTALLER" --rollback ;;
+  mcp-check) need_root mcp-check; [ -f "$(dirname "$SELF")/mcp-check.sh" ] || die "this version has no mcp-check; update to a release that includes it"; exec bash "$(dirname "$SELF")/mcp-check.sh" "$@" ;;
   uninstall) need_root uninstall; if [ "${1:-}" = "--purge" ]; then exec bash "$INSTALLER" --purge; else exec bash "$INSTALLER" --uninstall; fi ;;
   worker|--worker)
     if command -v epaperclip-worker >/dev/null 2>&1; then exec epaperclip-worker "$@"; fi

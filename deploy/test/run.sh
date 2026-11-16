@@ -109,7 +109,7 @@ new_host() {
 #   variants: broken-host (won't start at all), host-fails-as-service, engine-fails-as-service, broken-engine
 make_release() {
   R="$H/rel-$1"; rm -rf "$R"; mkdir -p "$R/deploy" "$R/console" "$R/engine" "$R/broker" "$R/plugins/proxmox-sandbox/dist" "$R/plugins/proxmox-sandbox/template"
-  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-login.mjs,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip-broker.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
+  cp "$REPO"/deploy/{epaperclip-exec.mjs,epaperclip-exec.socket,epaperclip-exec@.service,epaperclip-publish.mjs,epaperclip-login.mjs,epaperclip-mcp-check.sh,epaperclip-publish.socket,epaperclip-publish@.service,install.sh,epaperclip.service,epaperclip-engine.service,epaperclip-broker.service,epaperclip.default,engine-links.mjs,epaperclip-update.sh,epaperclip-update.service,epaperclip-update.path,verify-release.sh,epaperclip-cli.sh} "$R/deploy/"
   cp "$HERE/fake-epaperclip.mjs" "$R/broker/epaperclip-broker.mjs"
   cp "$KEYS/fx.pub" "$R/deploy/release-signing.pub"
   cp "$HERE/fake-epaperclip.mjs" "$R/epaperclip.mjs"
@@ -165,7 +165,7 @@ install() { EPC_FAKE_ENGINE="$R/fake-engine.mjs" bash "$R/deploy/install.sh" "$@
 # ---- scenarios ----------------------------------------------------------------------------------------------------
 s_fresh() {
   new_host fresh; make_release 1.0.0 2026.1005.0; install
-  check "private helpers installed and sockets active" eval '[ -f "$H/prefix/exec/epaperclip-exec.mjs" ] && [ -f "$H/prefix/publish/epaperclip-publish.mjs" ] && [ -f "$H/prefix/login/epaperclip-login.mjs" ] && [ -f "$H/units/epaperclip-exec@.service" ] && [ -f "$H/units/epaperclip-publish@.service" ] && active epaperclip-exec.socket && active epaperclip-publish.socket'
+  check "private helpers installed and sockets active" eval '[ -f "$H/prefix/exec/epaperclip-exec.mjs" ] && [ -f "$H/prefix/publish/epaperclip-publish.mjs" ] && [ -f "$H/prefix/login/epaperclip-login.mjs" ] && [ -x "$H/prefix/update/mcp-check.sh" ] && [ -f "$H/units/epaperclip-exec@.service" ] && [ -f "$H/units/epaperclip-publish@.service" ] && active epaperclip-exec.socket && active epaperclip-publish.socket'
   check "installs (exit 0)" [ "$RC" -eq 0 ]
   check "leaves an epaperclip command behind (get.sh and npm installs have no package to provide one)" [ -x "$H/usrbin/epaperclip" ]
   check "epaperclip version says what is installed" eval '[ "$(EPC_PREFIX="$H/prefix" "$H/usrbin/epaperclip" version)" = "$(cat "$H/prefix/VERSION")" ]'
