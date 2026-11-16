@@ -6,20 +6,37 @@ export interface Capabilities {
   hostname: string;
   cpu: { model: string; cores: number };
   memMb: number;
+  /** Snapshot for setup only; scheduling uses the latest heartbeat. Never add swap to memMb. */
+  memory?: { availableMb: number | null; swapTotalMb: number; swapUsedMb: number };
+  execution?: { user: string; uid: number | null; shellSlots: number; reserveMemoryMb: number };
   gpu: { present: boolean; name?: string; kind?: "jetson" | "nvidia" | "apple" | "other"; vramMb?: number };
   storage: { path: string; totalGb: number; freeGb: number }[];
   tools: Record<string, string>;
-  inference: { runtime: "ollama"; url: string; models: { name: string; sizeMb?: number }[]; maxContext?: number } | null;
+  inference: { runtime: "ollama"; url: string; models: { name: string; sizeMb?: number; digest?: string }[]; maxContext?: number; qualifications?: CodingQualification[] } | null;
   networks: { provider: "tailscale" | "lan" | "other"; address: string }[];
   workspaceRoot: string;
   /** Who the person chose to execute setup steps: Pin through the helper, or themselves with Pin guiding. */
   setupMode?: "pin" | "self";
 }
 
+/** Evidence for one bounded coding fixture, not a claim of general coding competence. */
+export interface CodingQualification {
+  suite: "slug-v1";
+  model: string;
+  digest: string;
+  aiderVersion: string;
+  executedAs: string;
+  maxContext: number;
+  passed: boolean;
+  testedAt: number;
+}
+
 export interface Heartbeat {
   at: number;
   loadAvg: number | null;
   freeMemMb: number | null;
+  swapUsedMb?: number;
+  loadedModels?: { name: string; digest: string; ramMb: number; context: number }[];
   running: number;
   inferenceRunning: number;
   inferenceQueued: number;

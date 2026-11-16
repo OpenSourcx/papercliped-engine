@@ -33,6 +33,7 @@ echo "scenario: fresh install from a verified tarball"
 new_host fresh
 inst --tarball "$TAR" --sha256 "$SUM" --name Orion --ollama-url http://127.0.0.1:11434 --max-context 4096 --slots 1 && ok "install succeeds" || bad "install succeeds"
 check "bundle installed" test -s "$H/opt/epaperclip-worker.mjs"
+check "account-local Aider installer shipped" test -x "$H/opt/install-aider.sh"
 check "unit file filled in" grep -q "ExecStart=.*epaperclip-worker.mjs run" "$H/units/epaperclip-worker.service"
 nocheck "no unfilled placeholders in the unit" grep -q "@[A-Z]*@" "$H/units/epaperclip-worker.service"
 check "unit runs as the service user" grep -q "^User=epwtest" "$H/units/epaperclip-worker.service"

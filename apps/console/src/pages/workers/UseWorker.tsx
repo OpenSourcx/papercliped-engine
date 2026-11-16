@@ -6,7 +6,7 @@ import { Modal } from "../../ui/Modal.tsx";
 import { Button, Field, Input, Notice, Select } from "../../ui/primitives.tsx";
 import { modelNames } from "./util.ts";
 
-const TOOLS = ["git", "node", "pnpm", "python", "docker", "make"] as const;
+const TOOLS = ["git", "node", "pnpm", "python", "docker", "make", "aider", "opencode"] as const;
 
 /**
  * Where an organization's agents run: create an environment that points at the remote-worker provider, optionally pin
@@ -36,7 +36,7 @@ export function UseWorkerModal({ onClose }: { onClose: () => void }) {
     ...(arch ? { arch } : {}),
     ...(model ? { localModel: model } : {}),
     ...(tools.length ? { tools } : {}),
-    ...(minMem && Number(minMem) > 0 ? { minFreeMemMb: Math.round(Number(minMem)) } : {}),
+    ...(minMem && Number(minMem) > 0 ? { memoryMb: Math.round(Number(minMem)) } : {}),
   };
   const submit = () => create.mutate({ companyId: company, name: name.trim() || undefined, workerId: workerId || undefined, requirements, assignAgents: agentIds.length ? agentIds : undefined });
   const done = create.data?.environment;
@@ -75,11 +75,11 @@ export function UseWorkerModal({ onClose }: { onClose: () => void }) {
           <label className="flex items-center gap-3 min-h-11 text-sm"><input type="checkbox" className="h-5 w-5 accent-(--accent)" checked={gpu} onChange={(e) => setGpu(e.target.checked)} />Needs a GPU</label>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label="Architecture" htmlFor="use-arch"><Select id="use-arch" value={arch} onChange={(e) => setArch(e.target.value)}><option value="">Any</option>{arches.map((a) => <option key={a} value={a}>{a}</option>)}</Select></Field>
-            <Field label="Local model" htmlFor="use-model" hint="The worker must have this model pulled.">
+            <Field label="Local model" htmlFor="use-model" hint="Requires a passing coding check on the worker account. Leave empty for cloud models.">
               {models.length > 0 ? <Select id="use-model" value={model} onChange={(e) => setModel(e.target.value)}><option value="">None needed</option>{models.map((m) => <option key={m} value={m}>{m}</option>)}</Select> : <Input id="use-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="None needed" className="font-mono" />}
             </Field>
           </div>
-          <Field label="Minimum free memory (MB)" htmlFor="use-mem"><Input id="use-mem" type="number" inputMode="numeric" min={0} value={minMem} onChange={(e) => setMinMem(e.target.value)} placeholder="No minimum" className="font-mono" /></Field>
+          <Field label="Memory per job (MiB)" htmlFor="use-mem" hint="Reserved while the job runs, in addition to system headroom. Swap does not add capacity."><Input id="use-mem" type="number" inputMode="numeric" min={1} value={minMem} onChange={(e) => setMinMem(e.target.value)} placeholder="512, or the local model's larger minimum" className="font-mono" /></Field>
           <div role="group" aria-label="Required tools">
             <div className="text-compact font-medium text-ink-2 mb-1">Tools that must be installed</div>
             <div className="flex flex-wrap gap-x-5">

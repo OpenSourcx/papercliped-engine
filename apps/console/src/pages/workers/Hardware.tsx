@@ -27,7 +27,9 @@ export function CapabilityFacts({ c }: { c: Capabilities | null }) {
       <Fact label="Memory" mono>{gb(c.memMb)}</Fact>
       <Fact label="GPU">{gpuText(c)}</Fact>
       <Fact label="Storage">{c.storage.length === 0 ? "Not reported" : c.storage.map((s) => `${s.path}: ${Math.round(s.freeGb)} of ${Math.round(s.totalGb)} GB free`).join("; ")}</Fact>
-      <Fact label="Local models">{c.inference ? (models.length ? models.join(", ") : `${c.inference.runtime}, no models`) : "No model runtime"}</Fact>
+      <Fact label="Installed models">{c.inference ? (models.length ? models.join(", ") : `${c.inference.runtime}, no models`) : "No model runtime"}</Fact>
+      <Fact label="Worker account">{c.execution?.user ?? "Not reported"}</Fact>
+      <Fact label="Coding checks">{c.inference?.qualifications?.length ? c.inference.qualifications.map((q) => `${q.model}: ${q.passed ? "passed bounded test" : "failed"}`).join("; ") : "Not qualified"}</Fact>
       <Fact label="Workspace root" mono>{c.workspaceRoot}</Fact>
       <div className="col-span-2 sm:col-span-3 min-w-0">
         <dt className="text-micro uppercase tracking-label text-ink-3">Tools</dt>

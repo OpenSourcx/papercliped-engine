@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { LIMITS } from "@papercliped-engine/worker-fabric";
 import { pidsWithEnvTag } from "./platform.ts";
+import { commandEnvironment } from "./environment.ts";
 
 /** Runs commands for the host: streamed output, a timeout, and cancellation of the whole process group. */
 
@@ -21,7 +22,7 @@ export class Runner {
   }
   start(s: RunSpec) {
     if (this.procs.has(s.id)) throw new Error("duplicate run id");
-    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...(process.env as Record<string, string>), ...this.baseEnv(), ...s.env, EPAPERCLIP_LEASE_OWNER: s.owner }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(s.command, s.args, { cwd: s.cwd, env: { ...commandEnvironment(this.baseEnv(), s.env), EPAPERCLIP_LEASE_OWNER: s.owner }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     const rec = { child, owner: s.owner, killed: false };
     this.procs.set(s.id, rec);
     let timedOut = false;
@@ -91,6 +92,13 @@ export class Runner {
     let n = 0;
     if (owner && (!id || id === "*")) n += this.sweep(owner);
     for (const [rid, r] of this.procs) if ((!owner || r.owner === owner) && (!id || id === "*" || id === rid)) { this.kill(rid); n++; }
+    return n;
+  }
+  async cancelAndWait(owner?: string, id?: string): Promise<number> {
+    const n = this.cancel(owner, id);
+    // Include the grace period for detached descendants found by sweep(), not only direct children.
+    if (n) await new Promise((resolve) => setTimeout(resolve, 2100));
+    if ([...this.procs].some(([rid, r]) => (!owner || r.owner === owner) && (!id || id === "*" || id === rid))) throw new Error("Commands have not stopped yet; keep the lease reservation.");
     return n;
   }
 }

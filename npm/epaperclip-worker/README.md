@@ -28,3 +28,8 @@ Other commands:
 The worker only connects **out** to the host's Fabric port; it opens no port. Pairing uses a single-use code and a pinned host key. It never holds Proxmox or user OAuth credentials. For a persistent systemd service, use the worker tarball installer: [Worker Fabric guide](https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/WORKER-FABRIC-GUIDE.md).
 
 Requires Linux and Node 22 or newer. MIT licensed.
+# Coding readiness
+
+Run tool installation and qualification as the same account that runs the persistent worker. For a system install, use `sudo epaperclip-worker install-aider`, then drain the worker and run `sudo epaperclip-worker qualify --model qwen2.5-coder:3b` with enough free physical memory and the daemon's inference gate running. Refresh its capabilities in the console afterward. These commands install a pinned Aider into the worker account and record a bounded coding test separately from model inventory.
+
+See [worker readiness and supported platforms](https://github.com/OpenSourcx/papercliped-engine/blob/main/docs/WORKER-READINESS.md). Cloud-backed execution does not require a local model. Swap does not increase model capacity.

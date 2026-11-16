@@ -38,6 +38,7 @@ function requirements(v: unknown) {
     ...(typeof r.gpu === "boolean" ? { gpu: r.gpu } : {}),
     ...(typeof r.localModel === "string" ? { localModel: r.localModel } : {}),
     ...(typeof r.minFreeMemMb === "number" ? { minFreeMemMb: r.minFreeMemMb } : {}),
+    ...(typeof r.memoryMb === "number" ? { memoryMb: r.memoryMb } : {}),
   };
 }
 

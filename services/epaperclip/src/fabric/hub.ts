@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { LIMITS, ServerHandshake, fingerprint, generateIdentity, select, sha256hex, verificationString, newPairingSecret, encodePairing, recommendModels, usableMemory, type Candidate, type Capabilities, type Heartbeat, type Identity, type Requirements, type Transport, endpointsFor, type SchedRequest } from "@papercliped-engine/worker-fabric";
 import type { StateStore } from "../state.ts";
 import { HttpError } from "../http.ts";
+import { DEFAULT_JOB_MEMORY_MB, reservationMb, requirementErrors, workerLimits } from "@papercliped-engine/worker-fabric";
 
 /**
  * The Worker Fabric hub: the durable registry of adopted workers and everything the host decides about them. It owns
@@ -43,6 +44,10 @@ export interface LeaseRec {
   workspace: string;
   state: "active" | "released" | "stopped" | "destroyed";
   needsInference: boolean;
+  memoryMb?: number;
+  requirements?: Requirements;
+  /** Keep capacity charged until cancellation is acknowledged, including while offline. */
+  releasing?: boolean;
   createdAt: number;
   releasedAt?: number;
 }
@@ -175,11 +180,14 @@ export class FabricHub {
   // ---- views
 
   private candidate(w: WorkerRec, leases: LeaseRec[]): Candidate {
-    const mine = leases.filter((l) => l.workerId === w.id && l.state === "active");
+    const mine = leases.filter((l) => l.workerId === w.id && (l.state === "active" || l.releasing));
+    const hb = this.conns.get(w.id)?.hb;
     return {
       id: w.id, name: w.name, state: w.state, online: this.online(w.id), draining: w.draining, disabled: w.disabled, companies: w.companies,
       shellSlots: w.shellSlots, inferenceSlots: w.inferenceSlots, shellLeases: mine.length, inferenceLeases: mine.filter((l) => l.needsInference).length,
-      freeMemMb: this.conns.get(w.id)?.hb?.freeMemMb ?? null, capabilities: w.capabilities,
+      freeMemMb: hb && this.now() - hb.at < this.hbMs * 3 ? hb.freeMemMb : null,
+      loadedModels: hb?.loadedModels,
+      reservedMemoryMb: mine.reduce((sum, l) => sum + (l.memoryMb ?? DEFAULT_JOB_MEMORY_MB), 0), capabilities: w.capabilities,
     };
   }
   online(workerId: string): boolean {
@@ -188,11 +196,11 @@ export class FabricHub {
   }
   workerView(w: WorkerRec) {
     const c = this.conns.get(w.id);
-    const leases = Object.values(this.read().leases).filter((l) => l.workerId === w.id && l.state === "active");
+    const leases = Object.values(this.read().leases).filter((l) => l.workerId === w.id && (l.state === "active" || l.releasing));
     return {
       id: w.id, name: w.name, state: w.state, online: this.online(w.id), draining: w.draining, disabled: w.disabled, fingerprint: w.fingerprint, version: w.version,
       lastSeen: c ? this.now() : w.lastSeen, connectedSince: c ? c.connectedAt : null, transport: w.transport, companies: w.companies, shellSlots: w.shellSlots, inferenceSlots: w.inferenceSlots,
-      usage: { shellLeases: leases.length, inferenceRunning: c?.hb?.inferenceRunning ?? 0, inferenceQueued: c?.hb?.inferenceQueued ?? 0, loadAvg: c?.hb?.loadAvg ?? null, freeMemMb: c?.hb?.freeMemMb ?? null },
+      usage: { shellLeases: leases.length, reservedMemoryMb: leases.reduce((n, l) => n + (l.memoryMb ?? DEFAULT_JOB_MEMORY_MB), 0), inferenceRunning: c?.hb?.inferenceRunning ?? 0, inferenceQueued: c?.hb?.inferenceQueued ?? 0, loadAvg: c?.hb?.loadAvg ?? null, freeMemMb: c?.hb?.freeMemMb ?? null, swapUsedMb: c?.hb?.swapUsedMb ?? null },
       capabilities: w.capabilities,
     };
   }
@@ -290,9 +298,8 @@ export class FabricHub {
     return this.mutate((s) => {
       if (s.denied.includes(fp)) throw new Error("denied");
       const id = `wrk_${randomBytes(6).toString("hex")}`;
-      const cores = caps?.cpu.cores ?? 2;
       const rec: WorkerRec = {
-        id, name: name.trim() || caps?.hostname || id, publicKey, fingerprint: fp, state: "adopted", companies, shellSlots: Math.max(1, Math.floor(cores / 2)),
+        id, name: name.trim() || caps?.hostname || id, publicKey, fingerprint: fp, state: "adopted", companies, shellSlots: caps ? workerLimits(caps).shellSlots : 1,
         inferenceSlots: caps?.inference ? 1 : 0, draining: false, disabled: false, createdAt: this.now(), adoptedBy: by, lastSeen: null, version: null, capabilities: caps, transport: { provider: "unknown", address: remote }, cleanup: [],
       };
       s.workers[id] = rec;
@@ -439,6 +446,10 @@ export class FabricHub {
     // Anything owed from while it was away.
     const owed = this.worker(rec.id)?.cleanup ?? [];
     for (const path of owed) void this.call(rec.id, "ws.remove", { path }).then(() => this.mutate((s) => { const w = s.workers[rec.id]; if (w) w.cleanup = w.cleanup.filter((p) => p !== path); })).catch(() => {});
+    for (const l of this.leases(rec.id).filter((l) => l.releasing)) {
+      if (l.state === "destroyed") void this.destroy(l.companyId, l.id);
+      else void this.finishRelease(l);
+    }
     return conn;
   }
 
@@ -473,7 +484,7 @@ export class FabricHub {
     switch (m.ev) {
       case "hb": {
         const hb = m.hb as Heartbeat;
-        if (hb && typeof hb === "object") conn.hb = { at: this.now(), loadAvg: num(hb.loadAvg), freeMemMb: num(hb.freeMemMb), running: num(hb.running) ?? 0, inferenceRunning: num(hb.inferenceRunning) ?? 0, inferenceQueued: num(hb.inferenceQueued) ?? 0 };
+        if (hb && typeof hb === "object") conn.hb = { at: this.now(), loadAvg: num(hb.loadAvg), freeMemMb: num(hb.freeMemMb), swapUsedMb: num(hb.swapUsedMb) ?? 0, loadedModels: Array.isArray(hb.loadedModels) ? hb.loadedModels : [], running: num(hb.running) ?? 0, inferenceRunning: num(hb.inferenceRunning) ?? 0, inferenceQueued: num(hb.inferenceQueued) ?? 0 };
         break;
       }
       case "caps": {
@@ -488,7 +499,7 @@ export class FabricHub {
           w.lastSeen = this.now();
           // The first report decides the default inference lane count; an operator's later setting is kept.
           if (!had) w.inferenceSlots = caps.inference ? 1 : 0;
-          if (!had) w.shellSlots = Math.max(1, Math.floor(caps.cpu.cores / 2));
+          if (!had) w.shellSlots = workerLimits(caps).shellSlots;
           const prov = (caps.networks ?? []).find((n) => n.address && w.transport?.address.includes(n.address));
           if (prov && w.transport) w.transport.provider = prov.provider;
         });
@@ -649,6 +660,8 @@ export class FabricHub {
   /** Reserves capacity on a compatible worker and prepares the run's workspace. Selection and reservation are one synchronous step. */
   async acquire(companyId: string, a: { agentId: string; runId: string; environmentId: string; workerId?: string | null; requirements?: Requirements; needsInference?: boolean; workspaceKey?: string; reuse?: boolean }): Promise<LeaseRec> {
     if (!ID.test(a.agentId) || !ID.test(a.runId) || !ID.test(a.environmentId)) throw new HttpError(400, "bad_request", "Bad agent, run or environment id.");
+    const invalid = requirementErrors(a.requirements);
+    if (invalid.length) throw new HttpError(400, "bad_request", invalid.join(", "));
     const wsKey = sanitizeKey(a.workspaceKey || a.runId);
     let created: LeaseRec;
     {
@@ -657,7 +670,8 @@ export class FabricHub {
       // A kept (reusable) lease the engine has not released is the same agent coming back to its own workspace: hand it back.
       // It gets a new lease on the same workspace; the old one is released so two runs never share one lease.
       if (dup && a.reuse && dup.environmentId === a.environmentId) {
-        this.mutate((st) => { const o = st.leases[dup.id]; if (o) { o.state = "released"; o.releasedAt = this.now(); } });
+        if ([...(this.conns.get(dup.workerId)?.execs.values() ?? [])].some((e) => e.leaseId === dup.id)) throw new HttpError(409, "lease_conflict", "That thread still has a running command.");
+        await this.release(companyId, dup.id);
         this.audit("provider", "lease.supersede", dup.workerId, dup.id);
         return this.acquire(companyId, a);
       }
@@ -668,7 +682,7 @@ export class FabricHub {
       const sel = select(all, { companyId, workerId: prior?.workerId ?? a.workerId ?? null, requirements: a.requirements, needsInference: a.needsInference });
       if (!sel.ok) throw new HttpError(409, sel.code, `No worker can take this run: ${sel.reasons.map((r) => `${r.name}: ${r.reasons.join(", ")}`).join("; ") || "no workers are adopted"}`);
       const root = sel.worker.capabilities?.workspaceRoot ?? "/workspaces";
-      created = { id: `wl_${randomBytes(8).toString("hex")}`, workerId: sel.worker.id, companyId, agentId: a.agentId, runId: a.runId, environmentId: a.environmentId, workspace: `${root.replace(/\/+$/, "")}/${sanitizeKey(companyId)}/${sanitizeKey(a.agentId)}/${wsKey}`, state: "active", needsInference: !!a.needsInference, createdAt: this.now() };
+      created = { id: `wl_${randomBytes(8).toString("hex")}`, workerId: sel.worker.id, companyId, agentId: a.agentId, runId: a.runId, environmentId: a.environmentId, workspace: `${root.replace(/\/+$/, "")}/${sanitizeKey(companyId)}/${sanitizeKey(a.agentId)}/${wsKey}`, state: "active", needsInference: !!a.needsInference || !!a.requirements?.localModel, memoryMb: reservationMb({ companyId, ...a }), requirements: a.requirements ?? {}, createdAt: this.now() };
       this.mutate((st) => { st.leases[created.id] = created; });
     }
     try {
@@ -693,17 +707,19 @@ export class FabricHub {
 
   async resume(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.lease(companyId, id);
+    const previous = l.state;
     const w = this.worker(l.workerId);
     if (l.state === "destroyed" || !w || w.state !== "adopted") throw new HttpError(410, "expired", "That lease is gone.");
     if (l.state !== "active") {
+      if (l.releasing) throw new HttpError(409, "no_capacity", "The previous commands are still stopping.");
       const s = this.read();
       const c = this.candidate(w, Object.values(s.leases));
-      if (!c.online) throw new HttpError(409, "offline", "The worker is offline.");
-      if (w.disabled || w.draining) throw new HttpError(410, "expired", "The worker is not taking work.");
-      if (c.shellLeases >= c.shellSlots) throw new HttpError(409, "no_capacity", "All shell slots are in use.");
+      const sel = select([c], { companyId, requirements: { ...l.requirements, memoryMb: l.memoryMb ?? DEFAULT_JOB_MEMORY_MB }, needsInference: l.needsInference });
+      if (!sel.ok) throw new HttpError(409, sel.code, sel.reasons.flatMap((r) => r.reasons).join(", "));
       this.setLease(id, { state: "active" });
     }
-    await this.call(l.workerId, "ws.ensure", { path: l.workspace, mode: "directory" });
+    try { await this.call(l.workerId, "ws.ensure", { path: l.workspace, mode: "directory" }); }
+    catch (e) { if (previous !== "active") this.setLease(id, { state: previous }); throw e; }
     this.audit("provider", "lease.resume", l.workerId, id);
     return this.lease(companyId, id);
   }
@@ -721,6 +737,7 @@ export class FabricHub {
     if (l.state !== "active") throw new HttpError(409, "lease_inactive", "The lease is not active.");
     const w = this.worker(l.workerId);
     if (!w || w.state !== "adopted") throw new HttpError(410, "expired", "The worker is gone.");
+    if (w.disabled || (w.companies && !w.companies.includes(companyId))) throw new HttpError(403, "worker_unavailable", "The worker is disabled or no longer allows this organization.");
     const conn = this.conns.get(l.workerId);
     if (!conn || !this.online(l.workerId)) throw new HttpError(409, "offline", "The worker is offline.");
     if (typeof p.command !== "string" || !p.command || p.command.length > 4096 || (p.args ?? []).some((x) => typeof x !== "string")) throw new HttpError(400, "bad_request", "Bad command.");
@@ -748,26 +765,30 @@ export class FabricHub {
   }
 
   private async killAll(workerId: string, owner?: string) {
-    if (!this.conns.has(workerId)) return;
-    await this.call(workerId, "cancel", { target: "*", owner }, 15_000).catch(() => {});
+    if (!this.conns.has(workerId)) return false;
+    return this.call(workerId, "cancel", { target: "*", owner }, 15_000).then(() => true, () => false);
+  }
+
+  private async finishRelease(l: LeaseRec) {
+    if (await this.killAll(l.workerId, l.id)) this.setLease(l.id, { releasing: false });
   }
 
   async release(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.lease(companyId, id);
     if (l.state === "active") {
       // State first: while the cancel is in flight no new command may be admitted on this lease.
-      this.setLease(id, { state: "released", releasedAt: this.now() });
-      await this.killAll(l.workerId, id);
+      this.setLease(id, { state: "released", releasing: true, releasedAt: this.now() });
+      await this.finishRelease(l);
       this.audit("provider", "lease.release", l.workerId, id);
       this.emit("lease", { id });
-    }
+    } else if (l.releasing) await this.finishRelease(l);
     return this.lease(companyId, id);
   }
   async stop(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.lease(companyId, id);
     if (l.state === "destroyed") return l;
-    this.setLease(id, { state: "stopped", releasedAt: this.now() });
-    await this.killAll(l.workerId, id);
+    this.setLease(id, { state: "stopped", releasing: true, releasedAt: this.now() });
+    await this.finishRelease(l);
     this.audit("provider", "lease.stop", l.workerId, id);
     this.emit("lease", { id });
     return this.lease(companyId, id);
@@ -776,14 +797,16 @@ export class FabricHub {
   async destroy(companyId: string, id: string): Promise<LeaseRec> {
     const l = this.read().leases[id];
     if (!l || l.companyId !== companyId) return { id, workerId: "", companyId, agentId: "", runId: "", environmentId: "", workspace: "", state: "destroyed", needsInference: false, createdAt: 0 };
-    this.mutate((s) => { delete s.leases[id]; });
-    await this.killAll(l.workerId, id);
+    this.setLease(id, { state: "destroyed", releasing: true });
+    // Do not free a slot or remove live files until the worker acknowledges cancellation.
+    if (!await this.killAll(l.workerId, id)) return { ...l, state: "destroyed" };
     try {
       await this.call(l.workerId, "ws.remove", { path: l.workspace });
     } catch {
       // Offline: the removal is owed and happens when the worker reconnects.
       this.mutate((s) => { const w = s.workers[l.workerId]; if (w && !w.cleanup.includes(l.workspace)) w.cleanup.push(l.workspace); });
     }
+    this.mutate((s) => { delete s.leases[id]; });
     this.audit("provider", "lease.destroy", l.workerId, id);
     this.emit("lease", { id });
     return { ...l, state: "destroyed" };

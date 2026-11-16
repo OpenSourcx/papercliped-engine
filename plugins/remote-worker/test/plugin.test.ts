@@ -32,6 +32,12 @@ describe("config", () => {
     expect(checkConfig(parseConfig({ controlToken: "x" })).errors).toEqual([]);
     expect(checkConfig(parseConfig({ controlToken: "x", timeoutMs: 5 })).errors.join(" ")).toMatch(/timeoutMs/);
   });
+  it("keeps physical-memory requirements and refuses invalid budgets", () => {
+    const c = parseConfig({ controlToken: "x", requirements: { memoryMb: 4096, minFreeMemMb: 1024 } });
+    expect(c.requirements).toEqual({ memoryMb: 4096, minFreeMemMb: 1024 });
+    expect(checkConfig(c).errors).toEqual([]);
+    expect(checkConfig(parseConfig({ controlToken: "x", requirements: { memoryMb: -1 } })).errors).toContain("memoryMb must be a positive integer in MiB.");
+  });
 });
 
 describe("Paperclip environment harness", () => {

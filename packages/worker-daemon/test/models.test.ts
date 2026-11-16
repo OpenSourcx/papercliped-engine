@@ -38,4 +38,11 @@ describe("worker model recommendations", () => {
     expect(bestModel(caps()).fit).not.toBe("too_big");
     expect(bestModel(caps({ gpu: { present: true, kind: "nvidia", vramMb: 8192 } })).fit).toBe("gpu");
   });
+  it("counts shared memory once and recommends 3B, not 7B, on idle Orion", () => {
+    const orion = caps({ memMb: 7475, memory: { availableMb: 5530, swapTotalMb: 4096, swapUsedMb: 124 }, gpu: { present: true, kind: "jetson", vramMb: 4485 } });
+    expect(bestModel(orion).spec.id).toBe("qwen2.5-coder:3b");
+    expect(recommendModels(orion, { limit: 100 }).find((r) => r.spec.id === "qwen2.5-coder:7b")!.fit).toBe("too_big");
+    expect(usableMemory(orion).vramGb).toBe(usableMemory(orion).ramGb);
+    expect(recommendModels({ ...orion, memory: { ...orion.memory!, availableMb: 374 } }).every((r) => r.fit === "too_big")).toBe(true);
+  });
 });

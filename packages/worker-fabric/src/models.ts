@@ -1,4 +1,5 @@
 import type { Capabilities } from "./protocol.ts";
+import { workerLimits } from "./resources.ts";
 
 /**
  * A small, honest model catalogue for worker setup. Sizes are the Ollama download size and the
@@ -19,6 +20,8 @@ export const MODEL_CATALOG: ModelSpec[] = [
   { id: "qwen2.5:0.5b", label: "Qwen 2.5 0.5B", sizeGb: 0.4, minRamGb: 1, minVramGb: 1, tags: ["small", "chat"], note: "Tiny; good for smoke tests and low-power boxes." },
   { id: "llama3.2:1b", label: "Llama 3.2 1B", sizeGb: 1.3, minRamGb: 2, minVramGb: 2, note: "Fast small chat model; weak on hard reasoning.", tags: ["chat"] },
   { id: "llama3.2:3b", label: "Llama 3.2 3B", sizeGb: 2, minRamGb: 4, minVramGb: 3, tags: ["chat"], note: "Balanced small model; a good default on 4 GB GPUs and CPU-only workers." },
+  { id: "qwen2.5-coder:1.5b", label: "Qwen 2.5 Coder 1.5B", sizeGb: 1, minRamGb: 2, minVramGb: 2, tags: ["code", "small"], note: "Bounded edits only; requires coding qualification and tests." },
+  { id: "qwen2.5-coder:3b", label: "Qwen 2.5 Coder 3B", sizeGb: 1.9, minRamGb: 3, minVramGb: 3, tags: ["code", "small"], note: "Candidate for small workers at 4096 context; passing coding tests is required separately." },
   { id: "qwen2.5-coder:7b", label: "Qwen 2.5 Coder 7B", sizeGb: 4.7, minRamGb: 8, minVramGb: 6, tags: ["code"], note: "Strong local coding model; needs a real GPU for good speed." },
   { id: "llama3.1:8b", label: "Llama 3.1 8B", sizeGb: 4.9, minRamGb: 8, minVramGb: 6, tags: ["chat"], note: "General assistant; the usual 8 GB GPU baseline." },
   { id: "deepseek-r1:8b", label: "DeepSeek R1 8B", sizeGb: 5.2, minRamGb: 10, minVramGb: 8, tags: ["reasoning"], note: "Reasoning-oriented; slower and more memory-hungry." },
@@ -35,13 +38,16 @@ export interface ModelRecommendation {
 }
 
 /** Memory the worker may use for a model without starving the OS and the ePaperclip worker itself. */
-export function usableMemory(caps: Pick<Capabilities, "memMb" | "gpu">): { vramGb: number; ramGb: number } {
-  const ramGb = Math.max(0, (caps.memMb / 1024) * 0.6);
-  const vramGb = caps.gpu.present ? (caps.gpu.vramMb ? caps.gpu.vramMb / 1024 : ramGb * 0.5) : 0;
+export function usableMemory(caps: Pick<Capabilities, "memMb" | "gpu" | "memory">): { vramGb: number; ramGb: number } {
+  const available = caps.memory ? caps.memory.availableMb ?? 0 : caps.memMb * 0.8;
+  const headroom = workerLimits({ memMb: caps.memMb, cpu: { model: "", cores: 1 } }).reserveMemoryMb;
+  const ramGb = Math.max(0, (Math.min(caps.memMb, available) - headroom) / 1024);
+  const shared = caps.gpu.kind === "jetson" || caps.gpu.kind === "apple";
+  const vramGb = !caps.gpu.present ? 0 : shared ? Math.min(caps.gpu.vramMb ? caps.gpu.vramMb / 1024 : ramGb, ramGb) : (caps.gpu.vramMb ?? 0) / 1024;
   return { vramGb, ramGb };
 }
 
-export function recommendModels(caps: Pick<Capabilities, "memMb" | "gpu" | "storage" | "arch">, opts: { limit?: number } = {}): ModelRecommendation[] {
+export function recommendModels(caps: Pick<Capabilities, "memMb" | "gpu" | "storage" | "arch" | "memory">, opts: { limit?: number } = {}): ModelRecommendation[] {
   const { vramGb, ramGb } = usableMemory(caps);
   const freeGb = Math.max(0, ...caps.storage.map((s) => s.freeGb));
   const scored: ModelRecommendation[] = MODEL_CATALOG.map((spec) => {
@@ -60,8 +66,10 @@ export function recommendModels(caps: Pick<Capabilities, "memMb" | "gpu" | "stor
 }
 
 /** The model we would pull first: the largest GPU fit, otherwise the largest CPU fit, otherwise the smallest. */
-export function bestModel(caps: Pick<Capabilities, "memMb" | "gpu" | "storage" | "arch">): ModelRecommendation {
+export function bestModel(caps: Pick<Capabilities, "memMb" | "gpu" | "storage" | "arch" | "memory">): ModelRecommendation {
   const all = recommendModels(caps, { limit: MODEL_CATALOG.length });
+  const coder = all.find((r) => r.fit !== "too_big" && r.spec.tags.includes("code"));
+  if (coder) return coder;
   const gpu = all.find((r) => r.fit === "gpu");
   const cpu = all.find((r) => r.fit === "cpu");
   return gpu ?? cpu ?? all[all.length - 1]!;
