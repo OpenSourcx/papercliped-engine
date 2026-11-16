@@ -140,10 +140,16 @@ export function buildSshArgs(input: {
   command: string;
   /** Ask for a remote pseudo-terminal (`-tt`, forced even though our own stdin is a pipe) instead of none (`-T`). */
   tty?: boolean;
+  /**
+   * Hold a reverse forward instead of running a command: the container listens on `remotePort` (its own loopback only) and
+   * connections go to `localPort` on this host's loopback. ssh exits if the forward can't be set up.
+   */
+  forward?: { remotePort: number; localPort: number };
 }): string[] {
   const { target } = input;
   return [
-    input.tty ? "-tt" : "-T",
+    input.forward ? "-N" : input.tty ? "-tt" : "-T",
+    ...(input.forward ? ["-o", "ExitOnForwardFailure=yes", "-R", `127.0.0.1:${input.forward.remotePort}:127.0.0.1:${input.forward.localPort}`] : []),
     "-o", "BatchMode=yes",
     "-o", `StrictHostKeyChecking=${input.acceptNewHostKey ? "accept-new" : "yes"}`,
     "-o", `UserKnownHostsFile=${input.knownHostsFile}`,
@@ -164,7 +170,7 @@ export function buildSshArgs(input: {
     "-l", target.user,
     "--",
     target.host,
-    input.command,
+    ...(input.forward ? [] : [input.command]),
   ];
 }
 

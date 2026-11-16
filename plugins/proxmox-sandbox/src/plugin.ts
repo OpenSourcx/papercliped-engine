@@ -20,6 +20,8 @@ import path from "node:path";
 import { PluginEnvironmentCreationCleanupError, definePlugin } from "@paperclipai/plugin-sdk";
 import { Breaker, BreakerOpenError, type BreakerOptions, type BreakerStore } from "./breaker.js";
 import { loginCommandLine } from "./login-pty.js";
+import { McpTunnels, mcpForwardingScript, mcpProbeScript } from "./mcp-tunnel.js";
+import { isLoopbackHost, startMcpRelay, type McpRelay } from "./mcp-relay.js";
 import type {
   PluginContext,
   PluginEnvironmentAcquireLeaseParams,
@@ -90,6 +92,16 @@ export interface ProviderDeps {
   now?: () => number;
   /** Receives each background job (spare containers) so a test can wait for it. */
   trackBackground?: (job: Promise<void>) => void;
+  /**
+   * Reaching Paperclip's MCP servers from inside a container (mcp-relay.ts, mcp-tunnel.ts). On by default with the real ssh client;
+   * a test that injects `ssh` gets it only when it passes this. `false` turns it off.
+   */
+  mcp?: false | { engineUrl?: string; tunnels?: McpTunnels; startRelay?: typeof startMcpRelay };
+}
+
+/** The engine's address as Paperclip hands it to agents (PAPERCLIP_API_URL, without a trailing /api). ePaperclip's engine is always on loopback port 3100. */
+export function engineBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.PAPERCLIP_API_URL || "http://127.0.0.1:3100").replace(/\/+$/, "").replace(/\/api$/, "");
 }
 
 interface LeaseRef {
@@ -213,6 +225,50 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
   const now = deps.now ?? Date.now;
   /** How to reach each live lease again, for a login that arrives with only the lease id. Lost on a worker restart. */
   const reachable = new Map<string, SshTarget>();
+
+  // Paperclip's MCP servers, for agents inside containers. The engine address Paperclip writes into an agent's MCP configuration is
+  // the host's loopback, which a container cannot reach; each container gets that same loopback port through an SSH reverse forward
+  // that ends at a relay allowing only the MCP routes (mcp-relay.ts). Paperclip's own authentication is untouched.
+  const mcpEnabled = deps.mcp !== false && (deps.mcp !== undefined || deps.ssh === undefined);
+  const mcpOptions = deps.mcp === false ? undefined : deps.mcp;
+  const mcpTunnels = mcpOptions?.tunnels ?? new McpTunnels({ log: (level, message, meta) => log(level, message, meta) });
+  let mcpRelay: Promise<McpRelay> | null = null;
+  const mcpPrepared = new Set<string>();
+  if (mcpEnabled && !mcpOptions?.tunnels) process.once("exit", () => mcpTunnels.stopAll());
+  async function ensureMcpTunnel(key: string, target: SshTarget): Promise<void> {
+    if (!mcpEnabled) return;
+    try {
+      const base = mcpOptions?.engineUrl ?? engineBaseUrl();
+      const url = new URL(base);
+      // An engine that isn't on host loopback is reachable from containers the normal way; nothing to forward.
+      if (!isLoopbackHost(url.hostname)) return;
+      const port = Number(url.port || 80);
+      mcpRelay ??= (mcpOptions?.startRelay ?? startMcpRelay)({ target: base, log: (level, message, meta) => log(level, message, meta) }).catch((error) => { mcpRelay = null; throw error; });
+      const relay = await mcpRelay;
+      if (!mcpPrepared.has(key)) {
+        await runChecked(target, mcpForwardingScript(port), "let sshd accept the engine's MCP forward", 30_000);
+        mcpPrepared.add(key);
+      }
+      const fresh = !mcpTunnels.has(key);
+      await mcpTunnels.ensure(key, target, port, relay.port);
+      if (fresh) {
+        let up = false;
+        for (let i = 0; i < 8 && !up; i++) {
+          const probe = await ssh({ target, command: shCommand(mcpProbeScript(port)), timeoutMs: 10_000 }).catch(() => null);
+          up = !!probe && !probe.timedOut && probe.exitCode === 0;
+          if (!up) await sleep(500);
+        }
+        if (!up) log("warn", "The engine's MCP port did not come up inside the container; agents there will not reach Paperclip's MCP servers", { container: key, port });
+      }
+    } catch (error) {
+      // Never block a run on this: the agent still works, only its MCP servers are missing, and the log says why.
+      log("warn", "Could not give a container access to Paperclip's MCP servers", { container: key, error: errorMessage(error) });
+    }
+  }
+  function dropMcpTunnel(key: string): void {
+    mcpTunnels.stop(key);
+    mcpPrepared.delete(key);
+  }
   const logins = new Map<string, { host: string; session: PtySession }>();
   const loginByWorker = new Map<string, PtySession>();
   let ctx: PluginContext | null = null;
@@ -637,6 +693,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     if (!ref) throw new Error(`Not a Proxmox lease id: ${String(params.providerLeaseId)}`);
     const config = cleanupConfig(params.config, params.leaseMetadata);
     const api = client(config);
+    dropMcpTunnel(`${ref.node}/${ref.vmid}`);
     const deadline = Date.now() + config.timeoutMs;
     let ctConfig: Record<string, unknown>;
     try {
@@ -663,6 +720,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
     const config = cleanupConfig(params.config, params.leaseMetadata);
     const api = client(config);
     // A failed creation's container may never have got its tags; it is recognised by its hostname and description.
+    dropMcpTunnel(`${ref.node}/${ref.vmid}`);
     const failedCreate = params.leaseMetadata?.failedCreateCleanup !== undefined;
     await destroyContainer(api, ref, params.companyId, params.cancelActiveWork === true || failedCreate, Date.now() + config.timeoutMs,
       failedCreate ? { createdHostname: containerHostname(config, ref.vmid) } : {});
@@ -1065,6 +1123,7 @@ export function createProxmoxSandboxPlugin(deps: ProviderDeps = {}) {
       const knownHosts = str(params.lease.metadata?.knownHosts);
       const target = sshTarget(config, ref, ip, knownHosts);
       reachable.set(`${ref.node}/${ref.vmid}`, target);
+      await ensureMcpTunnel(`${ref.node}/${ref.vmid}`, target);
       const execId = randomUUID();
       let script: string;
       try {

@@ -54,6 +54,10 @@ a shell on the host, or findings in Proxmox, the engine or Node.js themselves (r
 5. Host service to the outside: model providers, the release feed, vendor checksum files, the signed catalog.
 6. Release to host: tarball, `.deb`, npm package, Node.js, the engine's npm packages.
 
+## Agent containers and the engine's MCP servers
+
+The engine listens on host loopback in authenticated mode, so an agent container cannot reach it. Paperclip hands each agent two MCP server addresses on that loopback port. The provider gives a container that port through an SSH reverse forward it opens itself (the container's sshd allows `AllowTcpForwarding remote` and `PermitListen 127.0.0.1:3100`, nothing else), ending at a relay on host loopback that forwards exactly `GET`/`POST /mcp/runtime-tools` and `POST /api/mcp/project-tools`. The agent's own run-scoped bearer token goes through unchanged and the engine still authenticates it; the relay adds no credential, drops cookies and unlisted headers, and rejects every other path or method (`plugins/proxmox-sandbox/src/mcp-relay.ts`, tests in `test/mcp-relay.test.ts`). What it does not do: it is not a general proxy, and other engine routes are as unreachable from a container as before.
+
 ## What is enforced, and where
 
 | Rule | Where | Test |

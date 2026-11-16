@@ -53,13 +53,15 @@ rm -f /root/engine_key.pub
 
 step "Configuring sshd"
 cat > /etc/ssh/sshd_config.d/10-epaperclip.conf <<'EOF'
-# Key-only logins; nothing forwarded.
+# Key-only logins. Nothing is forwarded except one thing the host asks for: it may open the engine's loopback port 3100 in here, so the
+# agent's Paperclip MCP servers (which Paperclip addresses as 127.0.0.1:3100) answer. Only the connecting side can request a forward.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 X11Forwarding no
 AllowAgentForwarding no
-AllowTcpForwarding no
+AllowTcpForwarding remote
+PermitListen 127.0.0.1:3100
 PermitTunnel no
 EOF
 sshd -t
